@@ -42,7 +42,7 @@ run = "go run -buildvcs=true ./cmd/sigil/"
 
 [tasks.test]
 description = "Run the test suite with race detector and coverage"
-run = "go test -race -covermode=atomic -coverprofile=coverage.txt ./..."
+run = "go test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.txt ./..."
 
 # golint-sl runs as a golangci-lint module plugin, so it has to be compiled into
 # a custom binary (./custom-gcl). Rebuilds only when .custom-gcl.yml changes.
