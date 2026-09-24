@@ -19,9 +19,10 @@ func NewCommand(opts ...Option) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "fmt [PATH...]",
 		Aliases: []string{"format"},
-		Short:   "Rewrite policy and kind files in the canonical style",
-		Long: `Rewrites Sigil policy and kind files into the one canonical style, like gofmt.
-It needs nothing but the files themselves.
+		Short:   "Rewrite Sigil files in the canonical style",
+		Long: `Rewrites Sigil files into the one canonical style, like gofmt. It needs
+nothing but the files themselves. In a file that holds several documents, fmt
+separates them with a "---" line, so a bundle has one canonical form too.
 
 Sigil's grammar is whitespace-insensitive, so styles drift between teams unless
 one tool owns the layout. Directories are formatted recursively; with no paths,

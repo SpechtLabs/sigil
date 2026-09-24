@@ -273,13 +273,33 @@ Should a module be able to re-export names it imports, so a team gets one `use` 
 
 Options: hosts build their own `sigil` binary with their functions linked in (a small `main` package the library provides); a plugin mechanism; or a stub mode where the test file supplies return values for each function call. The `policytest` package for `go test` doesn't have this problem, since it runs inside the host.
 
-## Kind and module files share the extension
+## Kind files in a bundle
 
 **Blocks: M5, M6**
 
-Settled: the project is Sigil, the CLI is `sigil`, and source files end in `.sigil`. The short form `.sgl` was the alternative considered; `.sigil` won because it matches the CLI and reads unambiguously in a file listing. The extension matters earlier than it looks, because `use deploy.production` resolves to `deploy/production.sigil`, so M5's loader bakes it in.
+Settled: the project is Sigil, the CLI is `sigil`, and source files end in `.sigil`. The short form `.sgl` was the alternative considered; `.sigil` won because it matches the CLI and reads unambiguously in a file listing. Documents resolve by the names in their headers, not by path, so the extension only decides which files the loader reads.
 
-What's still open is that kind files, module files and policy files all share the extension. A file's first keyword (`kind`, `module` or `policy`) tells them apart, so an exported kind lands as, say, `deploy_approval.sigil` next to the policies. Is that enough? The loader has to reject a `use` that resolves to a kind file, and any tool that globs `*.sigil` has to read each header to know what it's looking at. The alternative is a naming convention for kind files, such as a `kinds/` directory or a `_kind` suffix on the file name (`deploy_approval_kind.sigil`), which costs nothing in the grammar and saves every tool a sniff. Modules don't need one: a module and a policy are both valid targets of `use`, and the compiler reads the header anyway.
+Kind, module and policy documents share the extension, and a file can hold several documents. The loader skips kind documents, and the CLI takes the kind separately with `--kind`, so a kind that ends up in a bundle is harmless. What's open is whether that should be a silent skip, a warning, or an error. An exported kind next to the policies is normal in a repository; a kind inside a ConfigMap key probably means someone globbed too widely.
+
+## Trusted sources for required policies
+
+**Blocks: M5**
+
+`policy.Require("deploy.guardrails")` checks a name, and documents get their names from their own headers. Anyone who can add a document to the bundle can therefore define `deploy.guardrails`. If the real one is in the bundle too, the duplicate fails the load; if it isn't, a guardrail without denies satisfies the requirement.
+
+In a policy repository, CODEOWNERS plus the `path-matches-name` lint as an error closes the gap, and that's the documented setup. It doesn't help a host that loads a bundle nobody reviewed, or that wants the guardrails to come from somewhere teams can't write at all. Options:
+
+- **Layered bundles.** `Load` takes a trusted `fs.FS`, for example an `embed.FS` in the host binary, and a team `fs.FS`. A name the trusted bundle defines can't be defined by the team bundle.
+- **Source-pinned requirements.** `policy.Require` takes the source along with the name, `policy.Require("deploy.guardrails", policy.From(guardrails))`.
+- **Reserved prefixes.** The host declares that the team bundle may not define names under `deploy.`.
+
+Layered bundles look like the most general of the three, and they would also be the natural home for the deferred host-layered bases.
+
+## Document names in text output
+
+**Blocks: M4, M6**
+
+Every diagnostic and trace entry carries the document name alongside file, line and column. The proposed text format adds it in parentheses, `policies.sigil:42:5 (payments.production)`, and leaves it out when the file holds only that document and its path matches the name, so the common repository layout keeps short positions. The alternative is to always print it, which is uniform but doubles the length of every position in a one-document-per-file repository.
 
 ## Non-Go evaluators
 

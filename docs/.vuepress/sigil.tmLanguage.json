@@ -5,6 +5,7 @@
   "aliases": ["sgl"],
   "patterns": [
     { "include": "#comment" },
+    { "include": "#separator" },
     { "include": "#string" },
     { "include": "#raw-string" },
     { "include": "#duration" },
@@ -18,6 +19,10 @@
     { "include": "#operator" }
   ],
   "repository": {
+    "separator": {
+      "name": "punctuation.separator.document.sigil",
+      "match": "^\\s*---\\s*$"
+    },
     "comment": {
       "name": "comment.line.double-slash.sigil",
       "match": "//.*$"

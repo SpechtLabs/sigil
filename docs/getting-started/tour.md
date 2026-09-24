@@ -77,7 +77,7 @@ let eligible =
   }
 ```
 
-`module deploy.common: DeployApproval` names the module and the kind its expressions are checked against. The dotted name maps to a path: `deploy.common` lives at `deploy/common.sigil`. A module holds `let`s and nothing else, no rules and no params, so importing from it can never change a decision by itself.
+`module deploy.common: DeployApproval` names the module and the kind its expressions are checked against. Other files find it by that name, not by its path; the convention is still to keep `deploy.common` at `deploy/common.sigil`, and a file can hold several documents if that suits you better (see [Bundles and resolution](/reference/policy-files/#bundles-and-resolution)). A module holds `let`s and nothing else, no rules and no params, so importing from it can never change a decision by itself.
 
 A `let` names an expression so rules can refer to it. Lets live at the top level only, and they're evaluated against the same input as everything else.
 
@@ -194,7 +194,7 @@ The `sigil eval` and `sigil explain` blocks on this page show the planned output
 :::
 
 ```text
-$ sigil explain --kind deploy_approval.sigil payments/production.sigil
+$ sigil explain --kind deploy_approval.sigil --policy payments.production deploy/ payments/
 payments.production: 7 rules from 3 policies
 
 deny     not_eligible      payments:7 → guardrails:8

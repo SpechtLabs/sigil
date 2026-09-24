@@ -135,6 +135,8 @@ when cleared and "payments-sre" in actor.teams {
 
 The team rule can only add an approval. The guardrails' `not_eligible` and `soak_too_short` denies still win over it, because the kind ranks `deny` above `approve`, and the host requires `deploy.guardrails` to be invoked unconditionally, so no team can wrap it in a `when` to switch it off.
 
+Files are only containers. Imports resolve by the name in each document's header, so the same documents can ship one per file, as above, or several to a file separated by `---`, which is how they fit into a single key of a Kubernetes ConfigMap.
+
 The host evaluates the compiled policy and gets a typed result back:
 
 ```go
@@ -216,7 +218,7 @@ Documentation comes first. Implementation starts once the language specification
 | M2 Expressions | Lexer, Pratt parser, AST with positions, error hints | Planned |
 | M3 Types | `NewKind` reflection, type checker, evaluator over Go structs | Planned |
 | M4 Policies | `when`, decision constructors, precedence, default, trace | Planned |
-| M5 Composition | `param`, `let`, modules and imports, policy invocation, `Require`, `fs.FS` loader, cycle detection, `sigil explain` | Planned |
+| M5 Composition | `param`, `let`, modules and imports, policy invocation, `Require`, bundle loader, cycle detection, `sigil explain` | Planned |
 | M6 Tooling I | `sigil fmt`, kind export, `sigil check`, `sigil eval`, `sigil test` | Planned |
 | M7 Hardening | `LoadKind`, round-trip property tests, parser fuzzing, cost analysis | Planned |
 | M8 Tooling II | `sigil lsp`, `sigil gen go`, `sigil breaking` | Planned |

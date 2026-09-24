@@ -113,7 +113,7 @@ milestones:
       - title: Lexer
         state: TODO
         requirement: MUST
-        description: Identifiers, strings, raw strings, numbers, chained durations and comments, with positions.
+        description: Identifiers, strings, raw strings, numbers, chained durations, comments and the `---` document separator, with positions.
       - title: Pratt expression parser
         state: TODO
         requirement: MUST
@@ -198,10 +198,13 @@ milestones:
         state: TODO
         requirement: MUST
         description: Load option that fails compilation unless the named policies are invoked unconditionally.
-      - title: fs.FS loader
+      - title: Bundle loader
         state: TODO
         requirement: MUST
-        description: Resolves `deploy.production` to `deploy/production.sigil`, so `os.DirFS` and `embed.FS` both work.
+        description: |
+          Reads every document in every `.sigil` file of an `fs.FS`, indexes them by header name
+          and rejects duplicates, so `embed.FS`, `os.DirFS`, a mounted ConfigMap and
+          `policy.MapFS` all work.
       - title: Cycle detection
         state: TODO
         requirement: MUST

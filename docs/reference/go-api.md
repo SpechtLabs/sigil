@@ -77,7 +77,7 @@ The types `NewKind` accepts are listed in [Kind files](/reference/kind-files/). 
 
 ## Loading and evaluating
 
-`Load` compiles a policy by name from an `fs.FS` and resolves its imports through the same filesystem, so `embed.FS` and `os.DirFS` both work. Everything after the name is a load option; with none, the policy file binds everything it needs.
+`Load` reads every document in an `fs.FS` into one bundle, indexes the documents by the names in their headers, and compiles the policy with the given name as the root. Imports resolve by name within the bundle, so files are plain containers: one file per policy, one file per team, or everything in one file all work, and so do `embed.FS` and `os.DirFS`. Everything after the name is a load option; with none, the policy binds everything it needs.
 
 ```go
 //go:embed policies
@@ -107,13 +107,44 @@ p, err := Deploy.Load(policies, "deploy.gate",
 )
 ```
 
-`Compile` does the same as `Load` for a single source string and takes the same options. How it resolves the source's imports without a file system isn't specified yet. A compiled policy is immutable and safe for concurrent use. A host can't load a module; `Load` on a module's name returns an error saying it has no rules.
+`Compile` does the same as `Load` for a single source string, `Deploy.Compile(src, "payments.production", opts...)`. The source is a one-file bundle: it may hold several documents, and imports resolve among them. A compiled policy is immutable and safe for concurrent use. A host can't load a module; `Load` on a module's name returns an error saying it has no rules.
+
+### Bundles and ConfigMaps
+
+Which files `Load` reads, and how it treats duplicates, is specified in [Bundles and resolution](/reference/policy-files/#bundles-and-resolution). In short: every file ending in `.sigil`, skipping names that start with `.`, with a name defined twice being a compile error, and any broken document failing the load.
+
+A Kubernetes ConfigMap mounted as a volume is a directory, so `os.DirFS` reads it unchanged. Kubelet's hidden `..data` directory and its timestamped siblings start with `.`, so the loader skips them and reads each key once:
+
+```go
+p, err := Deploy.Load(os.DirFS("/etc/sigil"), "payments.production",
+	policy.Require("deploy.guardrails"))
+```
+
+A host that reads the ConfigMap through the Kubernetes API gets its `data` as a `map[string]string`. `policy.MapFS` turns that into an in-memory `fs.FS`, with each key as a file name:
+
+```go
+cm, err := client.CoreV1().ConfigMaps("deploy-gate").Get(ctx, "deploy-policies", metav1.GetOptions{})
+if err != nil {
+	return err
+}
+
+p, err := Deploy.Load(policy.MapFS(cm.Data), "payments.production",
+	policy.Require("deploy.guardrails"))
+```
+
+`testing/fstest.MapFS` would do the same job, but it wants a `*fstest.MapFile` per entry and lives in a testing package, so `policy.MapFS` saves every host the conversion. Mixing layouts works too: one key per team, or everything in one key. The host always names the root, so one ConfigMap can serve many policies.
+
+### Positions in errors and traces
+
+Every compile error and every trace entry carries the file, line and column, plus the name of the document it's in. In text form the name follows the position in parentheses, `policies.sigil:42:5 (payments.production)`, which stays readable when forty documents share one key. The document name is left out of text output when it adds nothing, that is when the file holds only that document and its path matches the name, so `deploy/production.sigil:16:5` stays as it is. (proposed) The Go values always carry both.
 
 ### Required policies
 
 `policy.Require` names the policies a root policy must invoke unconditionally. The compiler checks that each one is reachable from the root through top-level invocations only, with no `when` anywhere on the path, and fails the load otherwise, with an error pointing at the gated call or at the root's header when the call is missing. See [Evaluation semantics](/reference/evaluation/#required-policies) for what that guarantees.
 
 Put the requirement wherever the host loads team policies, and name the policies that hold the denies no team may switch off. The `sigil check --require` flag runs the same check in a policy repository's CI.
+
+`Require` trusts names. Documents resolve by name, so anyone who can add a document to the bundle can define a policy called `deploy.guardrails`. If the platform's definition is in the bundle too, the duplicate is a compile error. If it isn't, a team's own `deploy.guardrails`, with no denies in it, satisfies the requirement. In a policy repository, close that by enabling the `path-matches-name` lint as an error and putting CODEOWNERS on the guardrail files. How a host could pin a required policy to a trusted source instead, such as one embedded in its own binary, is an [open question](/project/open-questions/#trusted-sources-for-required-policies).
 
 ::: warning Unspecified
 Whether a requirement may be met through a chain of other policies ("transitive") or must be met by a call in the root file itself ("direct") is an [open question](/project/open-questions/). The check above describes the transitive reading. So is letting `Require` bound a required policy's params, for example `policy.Require("deploy.guardrails", policy.Min("min_soak", time.Hour))`.
@@ -142,7 +173,7 @@ type Result struct {
 }
 ```
 
-What `Policy` holds is still open. When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, reached through an invocation, so `Policy` could name either one. See [Open questions](/project/open-questions/). `Trace` lists every candidate by policy name, reason and call chain (for example `payments/production.sigil:14:3 → deploy/production.sigil:16:5`), and records which conditions held for the winner. See [Evaluation semantics](/reference/evaluation/) for how the winner is picked.
+What `Policy` holds is still open. When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, reached through an invocation, so `Policy` could name either one. See [Open questions](/project/open-questions/). `Trace` lists every candidate by policy name, reason and call chain, with each step's file, line, column and document name (for example `payments/production.sigil:14:3 → deploy/production.sigil:16:5`), and records which conditions held for the winner. See [Evaluation semantics](/reference/evaluation/) for how the winner is picked.
 
 ## Typed matching
 

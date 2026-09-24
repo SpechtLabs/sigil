@@ -128,6 +128,8 @@ payments/production.sigil:10:3: error: deploy.guardrails must be invoked uncondi
 
 Every candidate a required policy produces is then always in the candidate set, so a required policy's deny can never be outranked. Protection is explicit: the host decides which policies are guardrails, instead of every composed policy being protected implicitly.
 
+The requirement names a policy, and policies are found by the name in their header, not by file path (see [Bundles and resolution](/reference/policy-files/#bundles-and-resolution)). The guarantee holds for the `deploy.guardrails` in the bundle, so whoever controls which document carries that name controls what the guarantee protects. The [Go API](/reference/go-api/#required-policies) describes how a repository keeps that name in the platform team's hands.
+
 Params are still outside the guarantee. A team binds `min_soak` when it invokes `guardrails`, so it can loosen it. Letting a required policy bound its params is an [open question](/project/open-questions/), and so is whether a requirement may be met through a chain of other policies rather than directly in the root file.
 
 ## Lets

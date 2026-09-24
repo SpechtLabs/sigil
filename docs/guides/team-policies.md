@@ -71,7 +71,7 @@ The rules:
 - Arguments are named, and each one is type-checked against the param's declared type. `min_soak: "4h"` fails because a string isn't a duration. Arguments may use constants and the team policy's own params, but not inputs, so every invocation is a fixed instantiation.
 - An invocation inside `when` blocks adds their conditions to every rule it brings in. The two `production(...)` calls above give PCI-scoped services a second approver group.
 - The invoked policy must implement the same kind. Invoking a policy written for some other kind, say one for access requests, inside a `DeployApproval` policy is a compile error.
-- `deploy.production` resolves to `deploy/production.sigil` in the file system the host passes to `Load`, so all the files need to live in the same policy tree.
+- `use deploy.production` finds the document whose header is `policy deploy.production`, anywhere in the bundle the host passes to `Load`. The files can be laid out however suits the team, including all of them in one ConfigMap key; see [Policies in a ConfigMap](/guides/configmaps/).
 
 To check what a composition adds up to, run [`sigil explain`](/reference/cli/#sigil-explain) on the team file. It prints every rule the policy can fire, with each call's conditions pushed into the rule and each param replaced by its bound value.
 
@@ -97,6 +97,8 @@ payments/production.sigil:10:3: error: deploy.guardrails must be invoked uncondi
 ```
 
 A team policy that doesn't invoke the guardrails at all fails the same way. Put the `Require` wherever the host loads team policies, so no team can forget it.
+
+`Require` checks a name, and any document can claim a name. Keep the guardrails' name in the platform team's hands with CODEOWNERS on `deploy/` and the `path-matches-name` lint promoted to an error; [Policies in a ConfigMap](/guides/configmaps/#protect-the-guardrails) shows the setup.
 
 ::: info Planned API
 The Go API is planned, not implemented. See the [Go API reference](/reference/go-api/) for the full sketch.

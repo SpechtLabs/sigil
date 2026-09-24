@@ -63,7 +63,7 @@ Every policy file starts with a `policy` line that names the policy and the kind
 policy deploy.production: DeployApproval
 ```
 
-The name `deploy.production` has to match the file's path, `deploy/production.sigil`. That's how an import finds it later.
+Other files will import it by the name `deploy.production`, not by its path. Sigil finds documents by the names in their headers, so the file could be called anything, and one file could even hold several documents separated by `---`. Keeping the name and the path aligned, `deploy.production` in `deploy/production.sigil`, is a convention that makes a repository easy to navigate.
 
 A policy with no rules is valid. Evaluate it:
 
@@ -309,7 +309,7 @@ when "payments-sre" in actor.teams {
 ::: terminal Evaluate the team policy
 
 ```shell
-$ sigil eval --kind deploy_approval.sigil --input owner-deploy.json payments/production.sigil
+$ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
 decision  review
 reason    service_owner
 policy    payments.production
@@ -321,6 +321,8 @@ candidates
 ```
 
 :::
+
+The team policy imports `deploy.production`, so the command passes both directories. The CLI reads every document in them into one bundle and resolves the import by name. The bundle now holds two policies, so `--policy` says which one to evaluate.
 
 With `min_soak` lowered to four hours, the six-hour soak no longer trips `soak_too_short`. The base policy asks for review, the team's rule offers an approval, and review wins because it ranks higher in the kind's `precedence`. The first candidate's position is a call chain: the invocation on line 5 of the team file, then the rule on line 34 of the base.
 
@@ -403,7 +405,7 @@ The host now loads every team policy with `policy.Require("deploy.guardrails")`,
 ::: terminal Check the team policy against the requirement
 
 ```shell
-$ sigil check --kind deploy_approval.sigil --require deploy.guardrails payments/production.sigil
+$ sigil check --kind deploy_approval.sigil --require deploy.guardrails deploy/ payments/
 payments/production.sigil:1:1: error: deploy.guardrails must be invoked unconditionally
   |
 1 | policy payments.production: DeployApproval
@@ -443,7 +445,7 @@ Here the `when` around `production(...)` is exactly what you want: the block's c
 ::: terminal Evaluate the split policy
 
 ```shell
-$ sigil eval --kind deploy_approval.sigil --input owner-deploy.json payments/production.sigil
+$ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
 decision  review
 reason    service_owner
 policy    payments.production

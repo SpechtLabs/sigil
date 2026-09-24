@@ -9,9 +9,11 @@ permalink: /reference/policy-files/
 This page specifies the language as designed. Nothing is implemented yet; see [Open questions](/project/open-questions/).
 :::
 
-A policy file holds exactly one policy. It opens with a `policy` header, lists its imports, and then contains any number of `param`, `let` and `when` statements and policy invocations in any order. Each statement starts with a keyword or with the name of an imported policy followed by `(`, so the file needs no separators and no significant whitespace.
+A policy opens with a `policy` header, lists its imports, and then contains any number of `param`, `let` and `when` statements and policy invocations in any order. Each statement starts with a keyword or with the name of an imported policy followed by `(`, so a policy needs no separators and no significant whitespace.
 
-Shared matchers live in a second file type, the [module](#modules), which holds only imports and `let`s.
+Shared matchers live in a second kind of document, the [module](#modules), which holds only imports and `let`s.
+
+A `.sigil` file holds one or more documents, each a policy, a module or a kind. The host loads a bundle of files and finds documents by the names in their headers, not by file path, so a whole policy tree can live in one file, for example a single key of a Kubernetes ConfigMap. See [Bundles and resolution](#bundles-and-resolution).
 
 ## Statements at a glance
 
@@ -48,20 +50,20 @@ use deploy.common.{cleared, owns_service}     // selective
 use deploy.common.{owns_service as owner}     // selective with alias
 ```
 
-- A path resolves to a file in the host's `fs.FS`: `deploy.common` loads `deploy/common.sigil`. See [Files](#files).
+- A path names a document in the bundle: `use deploy.common` finds the document whose header is `module deploy.common`, in whichever file it lives. See [Bundles and resolution](#bundles-and-resolution).
 - The last path segment is the bound name unless `as` renames it.
-- A whole-file import of a [module](#modules) binds a qualifier: `common.cleared` reads the module's `cleared`. A whole-file import of a policy binds a name you can invoke.
+- A whole import of a [module](#modules) binds a qualifier: `common.cleared` reads the module's `cleared`. A whole import of a policy binds a name you can invoke.
 - A selective import, `use deploy.common.{...}`, binds each listed `let` under its own name, or under the name after `as`.
-- The imported file must implement the same kind. Importing a module or policy written for another kind, or a kind file, is a compile error.
+- The imported document must implement the same kind. Importing a module or policy written for another kind, or a kind document, is a compile error.
 - Imports come right after the header, before any `param`, `let`, rule or invocation.
 - An imported name that collides with an input, host function, param, `let` or another import is a compile error. Nothing shadows silently.
-- There are no wildcard imports. Every name used in a file is either defined there or listed in a `use`, so a reader can always find where it comes from.
+- There are no wildcard imports. Every name used in a document is either defined there or listed in a `use`, so a reader can always find where it comes from.
 - The import graph must be acyclic.
 - An unused import is a lint warning, not an error, so commenting out a rule while debugging doesn't break the build.
 
 ### Importing from a policy
 
-A policy's `let`s can be imported too, but only if they don't depend on a param, directly or through other `let`s. A param has no value outside an invocation, so a param-dependent `let` means nothing in the importing file. Suppose `deploy.guardrails` declared `let soak_ok = release.soak >= min_soak or release.hotfix`. The compiler tracks the dependency and names the param:
+A policy's `let`s can be imported too, but only if they don't depend on a param, directly or through other `let`s. A param has no value outside an invocation, so a param-dependent `let` means nothing in the importing document. Suppose `deploy.guardrails` declared `let soak_ok = release.soak >= min_soak or release.hotfix`. The compiler tracks the dependency and names the param:
 
 ```text
 payments/production.sigil:5:24: error: cannot import `soak_ok` from deploy.guardrails
@@ -75,7 +77,7 @@ payments/production.sigil:5:24: error: cannot import `soak_ok` from deploy.guard
 In practice this pushes shared matchers into modules, which is where they belong.
 
 ::: tip Proposed
-Reading a policy's param-free `let` through a whole-file import (`guardrails.some_let`) follows the same rule as a selective import. The design only spells out the selective form.
+Reading a policy's param-free `let` through a whole import (`guardrails.some_let`) follows the same rule as a selective import. The design only spells out the selective form.
 :::
 
 ## `param`
@@ -190,30 +192,82 @@ let eligible =
 - Every `let` in a module is exported. Whether modules need private helpers is an [open question](/project/open-questions/).
 - A host can't load or evaluate a module; it has no rules to evaluate.
 
-## Name resolution
+## Bundles and resolution
 
-### Files
+### Documents
 
-A policy or module name maps to a path in the host's `fs.FS` by replacing each `.` with `/` and appending `.sigil`:
+A file holds one or more documents. A document is a policy, a module or a kind, and it starts with its header: `policy`, `module` or `kind`. It ends where the next header starts, or at the end of the file.
 
-| Name                  | File                        |
+```sigil
+module deploy.common: DeployApproval
+
+let cleared =
+  split(service.labels["regions"], ",") all in actor.regions
+
+---
+
+policy deploy.guardrails: DeployApproval
+
+param min_soak: duration = 24h
+
+when release.soak < min_soak and not release.hotfix {
+  deny("soak_too_short")
+}
+```
+
+A header keyword can't appear anywhere inside a document at statement position, so the parser knows a new document has started when it meets one. The `---` separator is optional. It's there because YAML users expect it, and because it makes document boundaries easy to scan in a long file. `sigil fmt` always writes it between documents, so a bundle has one canonical form. See [Lexical structure](/reference/lexical/#document-separators) for how `---` lexes.
+
+- A `---` before the first document or after the last one is allowed, and so are several in a row. `sigil fmt` removes the extras. (proposed)
+- A comment belongs to the document that follows it, so a comment directly above a header stays with that document when a tool extracts or moves it. (proposed)
+- A file with no documents at all is valid and contributes nothing.
+
+### Bundles
+
+A bundle is every document in every file the host or the CLI loads, indexed by the name in each header. Files are plain containers:
+
+- `use deploy.common` resolves to the document named `deploy.common`, wherever it is. One key per team, one file per policy, or everything in one file all resolve the same way.
+- A name defined twice in a bundle is a compile error that points at both definitions.
+- Kind documents aren't part of the index. The loader skips them, and a `use` of a kind's name is a compile error. The kind itself always comes from the host, or from `--kind` in the CLI.
+- The host names the root policy explicitly, so one bundle can hold many policies and the host picks the entry point. A module can't be a root; it has no rules to evaluate.
+
+A bundle is loaded as a whole. A syntax error in any document fails the load, even in a document the root never uses. That keeps loading simple and predictable; the place to catch a broken document is `sigil check` in CI, before a bundle ships. See [Policies in a ConfigMap](/guides/configmaps/).
+
+```text
+policies.sigil:42:1: error: policy payments.access is defined twice
+   |
+42 | policy payments.access: DeployApproval
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: first defined at teams/payments.sigil:1:1
+```
+
+### Loading files
+
+The host passes the bundle as an `fs.FS`; see the [Go API](/reference/go-api/#loading-and-evaluating). The loader reads every file whose name ends in `.sigil`, in every directory, so ConfigMap keys need the extension too (`policies.sigil`). It skips every file or directory whose name starts with `.`. Skipping dot entries is what makes a mounted ConfigMap volume work: kubelet keeps the real files in a hidden `..2026_09_25_…` directory, links it as `..data`, and links each key at the top level, so without the rule every document would be read three times and collide with itself. Symbolic links to files are followed.
+
+The CLI takes files, directories and stdin; see [CLI & editor tooling](/reference/cli/#inputs).
+
+### File names
+
+Nothing in the language ties a file's path to the names inside it. In a policy repository, keeping them aligned still helps readers and lets CODEOWNERS protect a namespace, so it's a lint: `path-matches-name` warns when a file holds a document whose name doesn't match the file's path, with each `.` turned into `/` and `.sigil` appended.
+
+| Name                  | Expected file               |
 | --------------------- | --------------------------- |
 | `deploy.common`       | `deploy/common.sigil`       |
 | `deploy.production`   | `deploy/production.sigil`   |
 | `payments.production` | `payments/production.sigil` |
 
-The header inside the file must repeat the name the file was loaded under. A file at `deploy/production.sigil` whose header says `policy deploy.base` is a compile error. (proposed)
+A file whose documents all share a prefix matches when its path is that prefix, so `deploy.sigil` may hold `deploy.common`, `deploy.guardrails` and `deploy.production`. The lint is off by default. A repository that relies on it to protect required policies should turn it on and promote it to an error, because a team that can define `deploy.guardrails` in its own file could otherwise define one without denies. See [Required policies](/reference/evaluation/#required-policies).
 
-Kind files share the `.sigil` extension. A `use` that resolves to a file starting with `kind` is a compile error. (proposed)
-
-In a selective import, the path before `.{` names the file and the names inside the braces name its `let`s: `use deploy.common.{cleared}` loads `deploy/common.sigil`.
+::: tip Proposed
+The prefix rule for multi-document files is proposed here. The lint itself follows from resolving by name.
+:::
 
 ### Identifiers
 
 Each policy and module has one flat top-level namespace containing:
 
 - the kind's inputs and host functions,
-- the file's own params and lets,
+- the document's own params and lets,
 - every name bound by a `use`.
 
 Any collision between two of these is a compile error, and nothing shadows anything. A `param` named `release` in a kind that declares `input release` fails to compile, and so does a quantifier variable named `approvers` in a policy that has a param by that name.

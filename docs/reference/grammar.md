@@ -9,7 +9,7 @@ permalink: /reference/grammar/
 This page specifies the language as designed. Nothing is implemented yet; see [Open questions](/project/open-questions/).
 :::
 
-This is the complete syntax of policy files, module files and kind files. All three use the `.sigil` extension, and the first token (`policy`, `module` or `kind`) decides which grammar applies. It covers what parses; what type-checks is on the other reference pages. The planned parser is hand-written: recursive descent for statements and a Pratt parser for expressions. The grammar below is written so that both fall out of it directly, with one token of lookahead everywhere except at the start of a call argument, where the parser peeks at a second token (see [Calls](#calls)).
+This is the complete syntax of Sigil source files and the three kinds of document they hold: policies, modules and kinds. A file uses the `.sigil` extension and may hold several documents, and each document's header keyword (`policy`, `module` or `kind`) decides which grammar applies to it. It covers what parses; what type-checks is on the other reference pages. The planned parser is hand-written: recursive descent for statements and a Pratt parser for expressions. The grammar below is written so that both fall out of it directly, with one token of lookahead everywhere except at the start of a call argument, where the parser peeks at a second token (see [Calls](#calls)).
 
 ## Notation
 
@@ -52,16 +52,28 @@ Escape      ::= "\" EscapeBody     /* any escape Go accepts in an
 RawString   ::= "`" [^`]* "`"
 
 Comment     ::= "//" [^#xA]*
+Separator   ::= "---"
 ```
 
-The lexer takes the longest match. A run of digits followed directly by a unit is a `Duration`; `ms` wins over `m` followed by `s`. A number followed directly by any other letter is a lexical error. `??`, `==`, `!=`, `<=`, `>=` and `->` are single tokens.
+The lexer takes the longest match. A run of digits followed directly by a unit is a `Duration`; `ms` wins over `m` followed by `s`. A number followed directly by any other letter is a lexical error. `??`, `==`, `!=`, `<=`, `>=`, `->` and `---` are single tokens.
 
 `Ident` excludes keywords, but field names don't: see `Name` below.
+
+## Source files
+
+```text
+SourceFile   ::= Separator* ( Document ( Separator* Document )* Separator* )?
+Document     ::= PolicyDoc | ModuleDoc | KindDoc
+```
+
+A document ends where the next one's header starts, so the `Separator` between two documents is optional. `sigil fmt` writes exactly one between each pair and none before the first or after the last. See [Bundles and resolution](/reference/policy-files/#bundles-and-resolution) for how documents from several files form one bundle.
+
+A header keyword only starts a document at statement position. After `.`, in a `type` body, or as a named argument, `policy`, `module` and `kind` are names like any other keyword (see [Keywords as field names](#keywords-as-field-names)), so `resource.kind == "kube_cluster"` doesn't end anything.
 
 ## Policy files
 
 ```text
-PolicyFile   ::= PolicyHeader UseStmt* PolicyStmt*
+PolicyDoc    ::= PolicyHeader UseStmt* PolicyStmt*
 PolicyHeader ::= "policy" PolicyName ":" Ident
 PolicyName   ::= Ident ( "." Ident )*     /* no whitespace around "." */
 
@@ -94,7 +106,7 @@ In `use deploy.common.{cleared}`, the `.` before `{` follows the last path segme
 ## Module files
 
 ```text
-ModuleFile   ::= ModuleHeader UseStmt* LetStmt*
+ModuleDoc    ::= ModuleHeader UseStmt* LetStmt*
 ModuleHeader ::= "module" PolicyName ":" Ident
 ```
 
@@ -103,7 +115,7 @@ A module contains nothing but imports and `let`s. A `param`, `when` or call in a
 ## Kind files
 
 ```text
-KindFile     ::= KindHeader KindStmt*
+KindDoc      ::= KindHeader KindStmt*
 KindHeader   ::= "kind" Ident "version" Int
 
 KindStmt     ::= TypeDecl | InputDecl | FnDecl | DecisionDecl
@@ -221,7 +233,7 @@ It stops at a token that can't continue an expression: `)`, `]`, `}`, `,`, `{` i
 
 ### Statement boundaries
 
-Newlines never end anything. Every top-level statement starts with a keyword (`policy`, `use`, `param`, `let`, `when` in policy files; `module`, `use`, `let` in module files; `kind`, `type`, `input`, `fn`, `decision`, `precedence`, `default` in kind files), or, in a policy file, with an identifier followed by `(`, which is a policy invocation. None of those keywords can continue an expression, and an expression never continues with a bare identifier, so when the parser is inside a `let` expression and meets `let`, `when` or `guardrails(`, the expression is over. No other statement starts with an identifier, so the parse stays unambiguous. This is what makes the files safe to indent or join however a text templater likes.
+Newlines never end anything. Every top-level statement starts with a keyword (`policy`, `use`, `param`, `let`, `when` in policy files; `module`, `use`, `let` in module files; `kind`, `type`, `input`, `fn`, `decision`, `precedence`, `default` in kind files), or, in a policy file, with an identifier followed by `(`, which is a policy invocation. None of those keywords can continue an expression, and an expression never continues with a bare identifier, so when the parser is inside a `let` expression and meets `let`, `when` or `guardrails(`, the expression is over. A header keyword or a `---` ends the whole document the same way. No other statement starts with an identifier, so the parse stays unambiguous. This is what makes the files safe to indent or join however a text templater likes.
 
 ```sigil
 let a = environment == "production" let b = "deployer" in actor.roles guardrails(min_soak: 4h) when a and b { review("service_owner", approvers: approvers) }
