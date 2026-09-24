@@ -6,7 +6,7 @@
 
 [tools]
 # Keep in lockstep with the go directive in go.mod; Renovate bumps both together.
-go = "1.26.6"
+go = "1.27.1"
 "go:golang.org/x/tools/gopls" = "0.23.0"
 "go:github.com/go-delve/delve/cmd/dlv" = "1.27.2"
 
