@@ -34,7 +34,11 @@ markdownlint-cli2 = "0.23.2"
 
 [tasks.build]
 description = "Build the sigil binary into bin/"
-run = "go build -o bin/sigil ."
+run = "go build -o bin/sigil ./cmd/sigil/"
+
+[tasks.sigil]
+description = "Run the sigil binary with go run"
+run = "go run -buildvcs=true ./cmd/sigil/"
 
 [tasks.test]
 description = "Run the test suite with race detector and coverage"

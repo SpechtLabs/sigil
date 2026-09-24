@@ -71,10 +71,6 @@ linters:
   exclusions:
     generated: lax
     rules:
-      # init() is the idiomatic cobra pattern for registering commands and flags.
-      - linters:
-          - gochecknoinits
-        path: cmd/
       # Hold test files to a lighter bar than production code.
       - linters:
           - gosec

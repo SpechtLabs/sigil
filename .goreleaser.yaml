@@ -17,14 +17,13 @@ builds:
       - amd64
       - arm64
     binary: sigil
-    main: .
+    main: cmd/sigil/
     mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
       - -s -w
+      # Only the version is injected; commit, commit time and dirty state come
+      # from the VCS info the Go toolchain embeds (see `sigil version`).
       - -X=main.version={{ .Version }}
-      - -X=main.commit={{ .Commit }}
-      - -X=main.date={{ .CommitDate }}
-      - -X=main.builtBy=goreleaser
 
 archives:
   - id: sigil
