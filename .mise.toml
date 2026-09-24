@@ -1,0 +1,103 @@
+# .mise.toml — local tooling, exact pins (repo convention)
+#
+# The tasks below are the single definition of how sigil is built and checked.
+# CI calls exactly these, so a green `mise run check` locally means a green
+# pipeline. Renovate keeps every pin in this file current.
+
+[tools]
+# Keep in lockstep with the go directive in go.mod; Renovate bumps both together.
+go = "1.26.6"
+"go:golang.org/x/tools/gopls" = "0.23.0"
+"go:github.com/go-delve/delve/cmd/dlv" = "1.27.2"
+
+# Pre-commit for Git hooks
+pre-commit = "4.6.2"
+
+# Linters. golangci-lint must match the version in .custom-gcl.yml; Renovate
+# groups the two into one PR.
+golangci-lint = "2.13.2"
+yamllint = "1.38.0"
+actionlint = "1.7.12"
+
+# Release tooling
+goreleaser = "2.18.2"
+
+# Pins GitHub Actions to commit SHAs (see the update-gha task)
+pinact = "5.0.0"
+
+# Documentation website (docs/): VuePress builds under bun, and markdownlint-cli2
+# is the same version the docs workflow runs.
+bun = "1.3.14"
+markdownlint-cli2 = "0.23.2"
+# Renders roadmap.yml into docs/project/roadmap.md (see the docs-roadmap task).
+"github:SierraSoftworks/roadmap" = "1.4.2"
+
+[tasks.build]
+description = "Build the sigil binary into bin/"
+run = "go build -o bin/sigil ."
+
+[tasks.test]
+description = "Run the test suite with race detector and coverage"
+run = "go test -race -covermode=atomic -coverprofile=coverage.txt ./..."
+
+# golint-sl runs as a golangci-lint module plugin, so it has to be compiled into
+# a custom binary (./custom-gcl). Rebuilds only when .custom-gcl.yml changes.
+[tasks.lint-build]
+description = "Build the custom-gcl binary with the golint-sl plugin baked in"
+run = "golangci-lint custom"
+sources = [".custom-gcl.yml"]
+outputs = ["custom-gcl"]
+
+[tasks.lint]
+description = "Lint the module with golangci-lint and the golint-sl plugin"
+depends = ["lint-build"]
+run = "./custom-gcl run ./..."
+
+[tasks.yaml-lint]
+description = "Lint every YAML file in the repository"
+run = "yamllint --strict ."
+
+[tasks.actionlint]
+description = "Lint the GitHub Actions workflows"
+run = "actionlint"
+
+[tasks.release-check]
+description = "Validate the GoReleaser config"
+run = "goreleaser check"
+
+[tasks.snapshot]
+description = "Build a local GoReleaser snapshot into dist/"
+run = "goreleaser build --snapshot --clean"
+
+[tasks.check]
+description = "The definition of done: every gate CI runs on the Go code"
+depends = ["lint", "test", "yaml-lint", "actionlint", "release-check"]
+
+[tasks.update-gha]
+description = "Pin GitHub Actions to commit SHAs (Renovate keeps them current afterwards)"
+run = "pinact run -e 'SpechtLabs/StaticPages-Upload'"
+
+[tasks.docs-lint]
+description = "Lint the documentation markdown (the docs workflow's first job)"
+run = "markdownlint-cli2 'docs/**/*.md'"
+
+[tasks.docs-roadmap]
+description = "Validate roadmap.yml and render it into the docs site's roadmap page"
+# One source of truth: roadmap.yml at the repository root is canonical (it's
+# also where the roadmap.sierrasoftworks.com web viewer looks), and this renders
+# it with the roadmap-md renderer. docs/project/roadmap.md is gitignored so
+# nobody edits the copy and watches it drift.
+run = [
+  "roadmap validate roadmap.yml",
+  "roadmap render fmd --in roadmap.yml --out docs/project/roadmap.md --collapsed --frontmatter '{title: Roadmap, icon: \"mdi:timeline-outline\", permalink: /project/roadmap/, createTime: \"2026/09/24 22:30:00\", description: \"The Sigil milestones, generated from roadmap.yml\"}'",
+]
+
+[tasks.docs-dev]
+description = "Serve the documentation website locally with hot reload"
+depends = ["docs-roadmap"]
+run = "cd docs && bun install && bun run dev"
+
+[tasks.docs-build]
+description = "Build the documentation website (the docs workflow's second job)"
+depends = ["docs-roadmap"]
+run = "cd docs && bun install --frozen-lockfile && bun run build"

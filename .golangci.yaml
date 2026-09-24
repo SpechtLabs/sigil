@@ -1,0 +1,99 @@
+# golangci-lint configuration for sigil.
+#
+# golint-sl runs as a module plugin baked into ./custom-gcl (see .custom-gcl.yml).
+# The prebuilt golangci-lint cannot load the plugin, so run it with
+# `mise run lint`, which builds custom-gcl and runs it.
+# https://golangci-lint.run/usage/configuration/
+
+version: "2"
+
+run:
+  timeout: 10m
+  tests: true
+  modules-download-mode: readonly
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  enable:
+    # Default linters
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Additional recommended linters
+    - dogsled
+    - copyloopvar
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - goprintffuncname
+    - gosec
+    - misspell
+    - nakedret
+    - nolintlint
+    - prealloc
+    - revive
+    - rowserrcheck
+    - whitespace
+    - unconvert
+    - unparam
+
+    # golint-sl: production-ready Go patterns (error handling, observability, safety)
+    # https://golint.specht-labs.de/
+    - golint-sl
+
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # Too noisy for most projects
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: comment-spacings
+        - name: import-shadowing
+    custom:
+      golint-sl:
+        type: module
+        description: SpechtLabs Go linter collection for production-ready code
+        original-url: github.com/spechtlabs/golint-sl
+
+  exclusions:
+    generated: lax
+    rules:
+      # init() is the idiomatic cobra pattern for registering commands and flags.
+      - linters:
+          - gochecknoinits
+        path: cmd/
+      # Hold test files to a lighter bar than production code.
+      - linters:
+          - gosec
+          - goconst
+          - golint-sl
+        path: _test\.go
+
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

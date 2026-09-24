@@ -1,0 +1,61 @@
+version: 2
+
+project_name: sigil
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: sigil
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    binary: sigil
+    main: .
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w
+      - -X=main.version={{ .Version }}
+      - -X=main.commit={{ .Commit }}
+      - -X=main.date={{ .CommitDate }}
+      - -X=main.builtBy=goreleaser
+
+archives:
+  - id: sigil
+    ids:
+      - sigil
+    name_template: "sigil_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+# release-please writes the changelog and creates the GitHub release; GoReleaser
+# only attaches the artifacts to it.
+changelog:
+  disable: true
+
+# Keyless cosign signatures for every published binary.
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - --yes
+      - --oidc-issuer=https://token.actions.githubusercontent.com
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+    artifacts: binary
+
+release:
+  github:
+    owner: spechtlabs
+    name: sigil
+  mode: keep-existing

@@ -1,0 +1,94 @@
+name: Documentation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/**
+      - .markdownlint-cli2.yaml
+      - roadmap.yml
+      - .mise.toml
+      - .github/workflows/docs-website.yaml
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+    paths:
+      - docs/**
+      - .markdownlint-cli2.yaml
+      - roadmap.yml
+      - .mise.toml
+      - .github/workflows/docs-website.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  md:
+    name: Markdown
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Runs the markdownlint-cli2 pinned in .mise.toml, so local and CI agree.
+      - name: Set up mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: markdownlint-cli2
+
+      - name: Lint docs
+        run: mise run docs-lint
+
+  build:
+    name: Build (Docs)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: bun
+
+      - name: Build
+        run: mise run docs-build
+
+      - name: Upload Artifacts
+        # Only the deploy job consumes this, and it runs on push/dispatch.
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs
+          path: docs/.vuepress/dist
+          retention-days: 1
+
+  deploy-static-pages:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - md
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    permissions:
+      id-token: write
+      pages: write
+    steps:
+      - name: Download Artifacts for Website
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: docs
+          path: ./dist
+
+      - name: Upload to Static Pages
+        uses: SpechtLabs/StaticPages-Upload@main
+        with:
+          endpoint: https://pages.specht-labs.de
+          site-dir: dist/

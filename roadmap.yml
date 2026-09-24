@@ -1,0 +1,248 @@
+# yaml-language-server: $schema=https://schemas.sierrasoftworks.com/roadmap/v1/schema.json
+#
+# The single source of the Sigil roadmap. `mise run docs-roadmap` renders it
+# into docs/project/roadmap.md with SierraSoftworks' roadmap-md renderer, and
+# https://roadmap.sierrasoftworks.com/viewer/github.com#SpechtLabs/sigil
+# renders it straight from the default branch. Edit this file, never the
+# generated page.
+
+title: Roadmap
+description: |
+  Sigil is built in milestones, each with a concrete exit criterion. The Go API comes first and the
+  kind grammar last, because only tooling parses kind files: the defining host builds its kind from
+  Go structs and never reads one. At M4 the language can replace an existing YAML rule set, such as a
+  production deploy gate, which is its first real workload.
+
+  Documentation comes first, on purpose. Syntax is cheap to change in a Markdown file and expensive
+  to change once policies exist in the wild, and writing the reference pages has already surfaced
+  gaps the first sketch of the design glossed over, such as how optional structs get unwrapped. The
+  [open questions](/project/open-questions/) note which milestone each one blocks.
+
+authors:
+  - name: Cedric Specht
+    contact: cedric@specht-labs.de
+
+timeline:
+  - date: 2026-09-24
+    title: Documentation-first design starts
+    description: |
+      The language design moves into this documentation site. Nothing is implemented; the docs are
+      the specification until M1 closes.
+
+objectives:
+  - title: Replace hand-rolled YAML rule engines
+    description: |
+      Teams keep rebuilding YAML rule engines with label-selector matchers. Sigil succeeds when a
+      real one, such as a production deploy gate, runs on Sigil instead and its existing test
+      cases pass unchanged.
+
+  - title: Readable on first contact, strict enough to trust with a deny
+    description: |
+      Any engineer should be able to read a policy without learning a new paradigm, and a typo must
+      fail at compile time instead of silently switching a deny rule off.
+
+  - title: Errors that tell you the fix
+    description: |
+      Every compile error carries a file, line and column, what went wrong and a concrete fix,
+      quoting the kind's signature when a type or payload is wrong. Golden tests pin every message,
+      so a refactor that makes an error less helpful shows up as a diff.
+
+  - title: Policy repos that stand on their own
+    description: |
+      A team's policy repository lints, formats and tests in CI from the exported kind file alone,
+      without importing the host's Go code.
+
+milestones:
+  - title: Language specification
+    description: |
+      Write the language down precisely enough that the parser, type checker and evaluator can be
+      built against it, and settle the open questions that would otherwise be decided by whatever
+      the first implementation happened to do.
+
+      **Done when** every open question that blocks M2 has an answer.
+    deliverables:
+      - title: Language reference
+        state: DONE
+        requirement: MUST
+        description: |
+          Lexical structure, policy files, expressions, types, decisions, evaluation semantics and
+          kind files, stated as normative rules.
+        reference: https://github.com/SpechtLabs/sigil/tree/main/docs/reference
+      - title: Formal grammar
+        state: DONE
+        requirement: MUST
+        description: |
+          W3C-style EBNF for policy and kind files, with the operator precedence table.
+      - title: Rationale, tour and guides
+        state: DONE
+        requirement: SHOULD
+        description: |
+          The understanding pages, the getting-started path and the how-to guides, so reviewers can
+          judge the design by reading policies rather than grammar.
+      - title: Answer the syntax-affecting open questions
+        state: TODO
+        requirement: MUST
+        description: |
+          Boolean operator spelling, quantifier body extent, chained comparisons, keywords as field
+          names, glob syntax and multiple decisions per block.
+      - title: Published documentation site
+        state: DOING
+        requirement: SHOULD
+        description: |
+          The VuePress site, built and deployed from `docs/` on every push to `main`.
+
+  - title: Expressions
+    description: |
+      The front end of the language. The parser is hand-written: recursive descent for statements and
+      a Pratt parser for expressions. A generator like goyacc or ANTLR would get a working parser
+      sooner, but a hand-written one knows exactly what it expected at each point and can say "did
+      you mean `tier`?" instead of "syntax error near IDENT". Every statement starts with a
+      keyword, so one token of lookahead is enough to pick a statement parser.
+
+      **Done when** golden tests cover every operator and every error message.
+    deliverables:
+      - title: Lexer
+        state: TODO
+        requirement: MUST
+        description: Identifiers, strings, raw strings, numbers, chained durations and comments, with positions.
+      - title: Pratt expression parser
+        state: TODO
+        requirement: MUST
+        description: One binding power per level of the precedence table, including quantifiers and the non-associative comparison level.
+      - title: AST with source positions
+        state: TODO
+        requirement: MUST
+      - title: Error messages with fix hints
+        state: TODO
+        requirement: MUST
+        description: The `file:line:col`, caret and `help:` format used throughout the docs.
+      - title: Golden tests
+        state: TODO
+        requirement: MUST
+
+  - title: Types
+    description: |
+      Turn Go structs into a kind and check expressions against it. This is where the design's main
+      promise lands: a typo like `service.teir` fails at compile time instead of turning a deny
+      rule off at runtime.
+
+      **Done when** typos and type mismatches fail at compile time with a hint.
+    deliverables:
+      - title: NewKind reflection
+        state: TODO
+        requirement: MUST
+        description: Walks the input struct once and builds a precomputed accessor per field path, so evaluation never touches `reflect`.
+      - title: Type checker
+        state: TODO
+        requirement: MUST
+      - title: Evaluator over Go structs
+        state: TODO
+        requirement: MUST
+
+  - title: Policies
+    description: |
+      The first milestone with a user. Porting a YAML rule set that runs in production today and passing
+      its test cases is the test of whether the language can replace what it's meant to replace.
+
+      **Done when** an existing YAML rule set, such as a production deploy gate, is ported and its test cases pass.
+    deliverables:
+      - title: when blocks and decision constructors
+        state: TODO
+        requirement: MUST
+      - title: Precedence and default
+        state: TODO
+        requirement: MUST
+      - title: Evaluation trace
+        state: TODO
+        requirement: MUST
+        description: Every candidate, and for the winner, which conditions held.
+      - title: Port a real YAML rule set
+        state: TODO
+        requirement: MUST
+
+  - title: Composition
+    description: |
+      The templating story from [Composition without templating](/understanding/composition/). Until
+      this lands, per-team variants still need copying.
+
+      **Done when** a team policy instantiates the base with custom params.
+    deliverables:
+      - title: param and let
+        state: TODO
+        requirement: MUST
+      - title: use, with aliases
+        state: TODO
+        requirement: MUST
+      - title: fs.FS loader
+        state: TODO
+        requirement: MUST
+        description: Resolves `deploy.production` to `deploy/production.sigil`, so `os.DirFS` and `embed.FS` both work.
+      - title: Cycle detection
+        state: TODO
+        requirement: MUST
+        description: The `let` and `use` graphs must be acyclic.
+
+  - title: Tooling I
+    description: |
+      Move checking into policy repositories, so teams find errors in CI rather than when the host
+      loads their policy.
+
+      **Done when** a policy repo lints in CI without the host's code.
+    deliverables:
+      - title: sigil fmt
+        state: TODO
+        requirement: MUST
+        description: One canonical style, like `gofmt`. A whitespace-insensitive grammar drifts without it.
+      - title: Kind export with Schema()
+        state: TODO
+        requirement: MUST
+      - title: sigil check
+        state: TODO
+        requirement: MUST
+      - title: sigil eval and sigil test
+        state: TODO
+        requirement: MUST
+      - title: policytest package for go test
+        state: TODO
+        requirement: SHOULD
+
+  - title: Hardening
+    description: |
+      The round-trip property test guards the kind export, and fuzzing guards the parser against
+      inputs nobody thought to write a test for.
+
+      **Done when** a day of fuzzing finds no panics, and `Import(Export(k)) == k` holds.
+    deliverables:
+      - title: LoadKind
+        state: TODO
+        requirement: MUST
+      - title: Round-trip property test
+        state: TODO
+        requirement: MUST
+      - title: Parser fuzzing
+        state: TODO
+        requirement: MUST
+        description: "`go test -fuzz` on the parser."
+      - title: Static cost analysis
+        state: TODO
+        requirement: SHOULD
+        description: Worst-case cost from declared collection sizes, with a budget the host can enforce.
+
+  - title: Tooling II
+    description: |
+      Editor support and cross-service consumption. It comes last because it depends on the kind
+      file format being stable, and that format only settles once the earlier milestones have
+      exercised it.
+
+      **Done when** editor completion works from an exported kind file alone.
+    deliverables:
+      - title: sigil lsp (language server)
+        state: TODO
+        requirement: SHOULD
+      - title: sigil gen go (typed code generation)
+        state: TODO
+        requirement: SHOULD
+      - title: sigil breaking
+        state: TODO
+        requirement: MUST
+        description: Flags incompatible kind changes in CI, modeled on `buf breaking`.

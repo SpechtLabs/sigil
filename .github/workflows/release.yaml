@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish or repair (e.g. v0.2.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  id-token: write
+  pull-requests: write
+
+# Never cancel a release half-way: that can leave a tag published with no
+# artifacts. Pushes key on the SHA so each commit gets its own run; repairs key
+# on the tag so two repairs of the same tag cannot race.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yaml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    needs:
+      - ci
+    if: github.event_name == 'push'
+    steps:
+      # Renovate automerges in quick succession. A run whose commit is no longer
+      # main's tip leaves release-please to the newer run, so a stale run cannot
+      # rewrite the release PR behind a newer one.
+      - name: Refuse to act unless this run's head is still main's tip
+        id: still-current
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tip="$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)"
+          if [ "$tip" = "${{ github.sha }}" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::main has moved to $tip since this run started at ${{ github.sha }}; leaving release-please to that run."
+          fi
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release-please
+        if: steps.still-current.outputs.current == 'true'
+        with:
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+    outputs:
+      release_created: ${{ steps.release-please.outputs.release_created }}
+      tag_name: ${{ steps.release-please.outputs.tag_name }}
+
+  goreleaser:
+    name: GoReleaser Build & Publish
+    runs-on: ubuntu-latest
+    needs:
+      - ci
+      - release-please
+    if: >-
+      always() &&
+      needs.ci.result == 'success' &&
+      (
+        (github.event_name == 'push' && needs.release-please.outputs.release_created == 'true') ||
+        github.event_name == 'workflow_dispatch'
+      )
+    steps:
+      # A repair publishes an old tag with the current GoReleaser config, so a
+      # config fix on main can rescue a release that failed to publish.
+      - name: Checkout retry configuration
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preserve retry configuration
+        if: github.event_name == 'workflow_dispatch'
+        run: cp .goreleaser.yaml "${RUNNER_TEMP}/goreleaser.yaml"
+
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Set up mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: go goreleaser
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Run GoReleaser
+        run: goreleaser release --clean --config "${CONFIG}"
+        env:
+          CONFIG: ${{ github.event_name == 'workflow_dispatch' && format('{0}/goreleaser.yaml', runner.temp) || '.goreleaser.yaml' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

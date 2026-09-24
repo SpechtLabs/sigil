@@ -1,0 +1,48 @@
+config:
+  # Default state for all rules
+  default: true
+
+  # MD010: Go snippets are gofmt-formatted and indent with tabs.
+  MD010:
+    code_blocks: false
+
+  # MD013: Disable line length rule
+  MD013: false
+  MD024: false
+  MD038: false
+  MD060: false
+
+  # MD014: The `terminal` container parses a leading `$ ` to tell a command
+  # apart from its output, so command-only blocks inside one are deliberate.
+  MD014: false
+
+  # MD033: Allow the small set of inline HTML the theme's components need
+  MD033:
+    allowed_elements:
+      - div
+      - br
+      - p
+      - img
+      - kbd
+
+  # MD036: Allow bold labels used as pseudo-headings.
+  MD036: false
+
+  # MD040: Every fenced code block needs a language tag. Sigil snippets use
+  # ```sigil, which docs/.vuepress/sigil.tmLanguage.json highlights.
+  MD040: true
+
+  # MD046: The `terminal` container wraps fenced blocks in indented context,
+  # which trips the consistency check.
+  MD046: false
+
+# The documentation website is what this config governs, and the workflow's
+# markdownlint job runs the same glob.
+globs:
+  - "docs/**/*.md"
+
+ignores:
+  - "docs/node_modules/**"
+  # Generated from roadmap.yml by `mise run docs-roadmap`; the roadmap-md
+  # renderer's output is inline-HTML heavy by design.
+  - "docs/project/roadmap.md"

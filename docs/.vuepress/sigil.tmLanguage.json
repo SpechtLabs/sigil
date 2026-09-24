@@ -1,0 +1,116 @@
+{
+  "name": "sigil",
+  "displayName": "Sigil",
+  "scopeName": "source.sigil",
+  "aliases": ["sgl"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#raw-string" },
+    { "include": "#duration" },
+    { "include": "#number" },
+    { "include": "#declaration" },
+    { "include": "#keyword" },
+    { "include": "#word-operator" },
+    { "include": "#constant" },
+    { "include": "#type" },
+    { "include": "#call" },
+    { "include": "#operator" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.double-slash.sigil",
+      "match": "//.*$"
+    },
+    "string": {
+      "name": "string.quoted.double.sigil",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.sigil",
+          "match": "\\\\([abfnrtv\\\\\"']|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|[0-7]{3})"
+        }
+      ]
+    },
+    "raw-string": {
+      "name": "string.quoted.raw.sigil",
+      "begin": "`",
+      "end": "`"
+    },
+    "duration": {
+      "name": "constant.numeric.duration.sigil",
+      "match": "\\b(?:\\d+(?:ms|s|m|h|d))+\\b"
+    },
+    "number": {
+      "name": "constant.numeric.sigil",
+      "match": "\\b\\d+(?:\\.\\d+)?\\b"
+    },
+    "declaration": {
+      "patterns": [
+        {
+          "match": "\\b(policy|use)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
+          "captures": {
+            "1": { "name": "keyword.other.sigil" },
+            "2": { "name": "entity.name.namespace.sigil" }
+          }
+        },
+        {
+          "match": "\\b(kind|type)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.sigil" },
+            "2": { "name": "entity.name.type.sigil" }
+          }
+        },
+        {
+          "match": "\\b(param|let|input)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.sigil" },
+            "2": { "name": "variable.other.definition.sigil" }
+          }
+        },
+        {
+          "match": "\\b(fn|decision)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.sigil" },
+            "2": { "name": "entity.name.function.sigil" }
+          }
+        }
+      ]
+    },
+    "keyword": {
+      "patterns": [
+        {
+          "name": "keyword.control.sigil",
+          "match": "\\b(when)\\b"
+        },
+        {
+          "name": "keyword.other.sigil",
+          "match": "\\b(policy|use|as|param|let|kind|version|type|input|fn|decision|precedence|default)\\b"
+        }
+      ]
+    },
+    "word-operator": {
+      "name": "keyword.operator.word.sigil",
+      "match": "\\b(and|or|not|in|all|any|has|like|matches)\\b"
+    },
+    "constant": {
+      "name": "constant.language.sigil",
+      "match": "\\b(true|false)\\b"
+    },
+    "type": {
+      "name": "support.type.sigil",
+      "match": "\\b(bool|int|float|string|duration|timestamp|list|map)\\b"
+    },
+    "call": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+      "captures": {
+        "1": { "name": "entity.name.function.sigil" }
+      }
+    },
+    "operator": {
+      "name": "keyword.operator.sigil",
+      "match": "\\?\\?|==|!=|<=|>=|->|[<>+\\-?]"
+    }
+  }
+}
