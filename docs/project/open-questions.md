@@ -245,7 +245,7 @@ Direct is easier to read: open the team file and the guardrail call is there. Tr
 
 **Blocks: nothing yet**
 
-A host could layer a required policy itself, with something like `policy.Base("deploy.guardrails", params)`, so team files never mention it. That suits platforms where teams shouldn't see or bind the guardrails' params, and it sidesteps pinned params entirely. It's deferred rather than rejected, because the team file then no longer shows the whole picture, and `sigil explain` would need the host's configuration to print it. When is it worth adding?
+A host could layer a required policy itself, with something like `policy.Base("deploy.guardrails", params)`, so team files never mention it. `policy.From` already gives the host a trusted source for required policies; a base would add the invocation too. That suits platforms where teams shouldn't see or bind the guardrails' params, and it sidesteps pinned params entirely. It's deferred rather than rejected, because the team file then no longer shows the whole picture, and `sigil explain` would need the host's configuration to print it. When is it worth adding?
 
 ## Module privacy
 
@@ -273,27 +273,11 @@ Should a module be able to re-export names it imports, so a team gets one `use` 
 
 Options: hosts build their own `sigil` binary with their functions linked in (a small `main` package the library provides); a plugin mechanism; or a stub mode where the test file supplies return values for each function call. The `policytest` package for `go test` doesn't have this problem, since it runs inside the host.
 
-## Kind files in a bundle
+## File extension
 
-**Blocks: M5, M6**
+**Settled**
 
-Settled: the project is Sigil, the CLI is `sigil`, and source files end in `.sigil`. The short form `.sgl` was the alternative considered; `.sigil` won because it matches the CLI and reads unambiguously in a file listing. Documents resolve by the names in their headers, not by path, so the extension only decides which files the loader reads.
-
-Kind, module and policy documents share the extension, and a file can hold several documents. The loader skips kind documents, and the CLI takes the kind separately with `--kind`, so a kind that ends up in a bundle is harmless. What's open is whether that should be a silent skip, a warning, or an error. An exported kind next to the policies is normal in a repository; a kind inside a ConfigMap key probably means someone globbed too widely.
-
-## Trusted sources for required policies
-
-**Blocks: M5**
-
-`policy.Require("deploy.guardrails")` checks a name, and documents get their names from their own headers. Anyone who can add a document to the bundle can therefore define `deploy.guardrails`. If the real one is in the bundle too, the duplicate fails the load; if it isn't, a guardrail without denies satisfies the requirement.
-
-In a policy repository, CODEOWNERS plus the `path-matches-name` lint as an error closes the gap, and that's the documented setup. It doesn't help a host that loads a bundle nobody reviewed, or that wants the guardrails to come from somewhere teams can't write at all. Options:
-
-- **Layered bundles.** `Load` takes a trusted `fs.FS`, for example an `embed.FS` in the host binary, and a team `fs.FS`. A name the trusted bundle defines can't be defined by the team bundle.
-- **Source-pinned requirements.** `policy.Require` takes the source along with the name, `policy.Require("deploy.guardrails", policy.From(guardrails))`.
-- **Reserved prefixes.** The host declares that the team bundle may not define names under `deploy.`.
-
-Layered bundles look like the most general of the three, and they would also be the natural home for the deferred host-layered bases.
+The project is Sigil, the CLI is `sigil`, and source files end in `.sigil`. The short form `.sgl` was the alternative considered; `.sigil` won because it matches the CLI and reads unambiguously in a file listing. Documents resolve by the names in their headers, not by path, so the extension only decides which files the loader reads. Kind documents in a bundle are never taken as the contract: one with the host kind's name must match the host's `Schema()` exactly, and others are ignored. See [Bundles and resolution](/reference/policy-files/#bundles-and-resolution).
 
 ## Document names in text output
 

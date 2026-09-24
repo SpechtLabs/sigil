@@ -31,8 +31,14 @@ it with --recursive.
 
 --require names a policy that every root policy must invoke unconditionally,
 the same check a host makes with policy.Require. Repeat it to require several.
-The roots are the policies named with --policy, or, without it, every policy in
-the bundle that no other policy invokes.
+--trusted reads required policies, and everything they use, from separate paths,
+the same way policy.From does; the bundle may then not define any name the
+trusted paths define. The roots are the policies matching --policy, a name or a
+pattern such as 'payments.*'. Without --policy they are every bundle policy that
+no other policy invokes, apart from required ones; CI should name its roots.
+
+A kind document among the inputs must match the --kind file exactly, which
+catches a stale export.
 
 check needs only the kind file, not implementations of the host functions it
 declares, so it is the command a policy repository runs in CI.`,
@@ -46,7 +52,7 @@ sigil check --kind deploy_approval.sigil --recursive .
 sigil check --kind deploy_approval.sigil deploy/*.sigil payments/*.sigil
 
 # Check that every team policy invokes the guardrails unconditionally
-sigil check --kind deploy_approval.sigil --require deploy.guardrails deploy/ payments/`,
+sigil check --kind deploy_approval.sigil --require deploy.guardrails --trusted deploy/ --policy 'payments.*' payments/`,
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: complete.SigilFiles,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -56,13 +62,15 @@ sigil check --kind deploy_approval.sigil --require deploy.guardrails deploy/ pay
 
 	cmd.Flags().StringP("kind", "k", "", "Kind file to check the policies against (required)")
 	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories of directory arguments too")
-	cmd.Flags().StringSliceP("policy", "p", nil, "Root policy for --require checks (repeatable); every policy nothing invokes when omitted")
+	cmd.Flags().StringSliceP("policy", "p", nil, "Root policy name or pattern for --require checks, such as 'payments.*' (repeatable)")
+	cmd.Flags().StringSlice("trusted", nil, "File or directory to read required policies from, as policy.From does (repeatable)")
 	cmd.Flags().StringSlice("require", nil, "Policy that every checked policy must invoke unconditionally (repeatable)")
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagRequired("kind")
 	_ = cmd.MarkFlagFilename("kind", "sigil")
 	_ = cmd.RegisterFlagCompletionFunc("require", cobra.NoFileCompletions)
 	_ = cmd.RegisterFlagCompletionFunc("policy", cobra.NoFileCompletions)
+	_ = cmd.MarkFlagFilename("trusted", "sigil")
 
 	return cmd
 }

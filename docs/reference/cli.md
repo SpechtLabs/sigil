@@ -39,9 +39,9 @@ cat policies.sigil | sigil eval --kind deploy_approval.sigil --input release.jso
 - **Directories.** A directory contributes the `*.sigil` files directly inside it. `-R` (`--recursive`) includes subdirectories too. Entries whose names start with `.` are skipped, as the [loader](/reference/policy-files/#loading-files) does, so pointing the CLI at a mounted ConfigMap volume works.
 - **Stdin.** `-` reads one stream, which may hold several documents. It's how a CI job checks a key extracted from a rendered ConfigMap.
 - **One bundle.** Documents from all arguments are indexed by the names in their headers, exactly as the host's `Load` does, so a name defined in two files is an error here too.
-- **The kind stays separate.** `--kind` names the kind file, and it's never part of the bundle. A kind document found among the inputs, for example because a glob matched it, is skipped with a note on stderr.
+- **The kind stays separate.** `--kind` names the kind file, and it's never part of the bundle. A kind document for the same kind found among the inputs, for example because a glob matched the exported file, must match `--kind` exactly, or the command fails; that's how CI notices an export that wasn't regenerated. Kind documents for other kinds are ignored.
 
-`eval` and `explain` need a root policy; `check`, `fmt` and `test` don't. If the bundle holds exactly one policy, that's the root, so a single-file bundle needs no flag. Otherwise `--policy` (`-p`) names it, and leaving it out is an error that lists the policies found. `explain` is the exception: without `--policy` it explains every policy in the bundle, one after another, which is handy for reviewing a whole ConfigMap.
+`eval` and `explain` need a root policy; `check`, `fmt` and `test` don't. If the bundle holds exactly one policy, that's the root, so a single-file bundle needs no flag. Otherwise `--policy` (`-p`) names it, and leaving it out is an error that lists the policies found. `explain` is the exception: `--policy` also takes a pattern such as `'payments.*'`, and without it `explain` explains every policy in the bundle, one after another, which is handy for reviewing a whole ConfigMap. In a pattern, `*` matches any run of characters, dots included.
 
 ## `sigil fmt`
 
@@ -59,11 +59,16 @@ sigil check --kind deploy_approval.sigil --recursive .
 
 Every document in the bundle is checked, including ones no policy imports, so a broken document fails CI instead of failing the host's `Load` later.
 
-`--require` makes the same check a host makes with `policy.Require`: every root policy must invoke the named policy unconditionally, through top-level invocations only. Repeat the flag to require several. The roots are the policies named with `--policy`, or, without it, every policy in the bundle that no other policy invokes; the required policy itself is never a root. A policy repository that runs it in CI finds a gated or missing guardrail before the host refuses to load the policy.
+`--require` makes the same check a host makes with `policy.Require`: every root policy must invoke the named policy unconditionally, through top-level invocations only. Repeat the flag to require several. A policy repository that runs it in CI finds a gated or missing guardrail before the host refuses to load the policy.
 
 ```text
-sigil check --kind deploy_approval.sigil --require deploy.guardrails deploy/ payments/
+sigil check --kind deploy_approval.sigil \
+  --require deploy.guardrails --trusted deploy/ \
+  --policy 'payments.*' payments/
 ```
+
+- `--trusted` does what `policy.From` does in the host: required policies, and everything they import and invoke, are read from those paths, and the bundle may not define any name they define. Run CI with the same trusted source the host uses.
+- `--policy` names the roots, by name or by pattern, and can be repeated. Name them in CI. Without `--policy`, the roots are the bundle's policies that no other policy invokes, apart from the required ones. That guess misfires on a library bundle: checked on its own, the platform's `deploy/` has two uninvoked policies, and `deploy.production` would fail `--require` for not invoking the guardrails. With `--trusted deploy/`, the platform's documents aren't part of the bundle, so they're never roots.
 
 ## `sigil eval`
 

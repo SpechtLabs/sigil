@@ -27,8 +27,9 @@ answers what a policy actually does without reading every document it invokes.
 Every PATH is a file, a directory, or "-" for stdin, and a file may hold several
 documents. All documents from all paths form one bundle, indexed by the names in
 their headers. A directory contributes the .sigil files directly inside it, or
-every one below it with --recursive. --policy names the policy to explain;
-without it, explain explains every policy in the bundle, one after another.
+every one below it with --recursive. --policy names the policy to explain, or
+a pattern such as 'payments.*' to explain several; without it, explain explains
+every policy in the bundle, one after another.
 
 With --input, explain also evaluates the policy and marks which rules fired and
 which candidate won. Like eval, that needs an implementation of every function
@@ -51,7 +52,7 @@ sigil explain --kind deploy_approval.sigil --input release.json --policy payment
 
 	cmd.Flags().StringP("kind", "k", "", "Kind file the policy is written against (required)")
 	cmd.Flags().StringP("input", "i", "", `Input document (JSON) to mark firing rules for, or "-" for stdin`)
-	cmd.Flags().StringP("policy", "p", "", "Name of the policy to explain; every policy in the bundle when omitted")
+	cmd.Flags().StringP("policy", "p", "", "Name or pattern of the policies to explain; every policy in the bundle when omitted")
 	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories of directory arguments too")
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagRequired("kind")

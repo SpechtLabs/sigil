@@ -68,7 +68,36 @@ Document     ::= PolicyDoc | ModuleDoc | KindDoc
 
 A document ends where the next one's header starts, so the `Separator` between two documents is optional. `sigil fmt` writes exactly one between each pair and none before the first or after the last. See [Bundles and resolution](/reference/policy-files/#bundles-and-resolution) for how documents from several files form one bundle.
 
-A header keyword only starts a document at statement position. After `.`, in a `type` body, or as a named argument, `policy`, `module` and `kind` are names like any other keyword (see [Keywords as field names](#keywords-as-field-names)), so `resource.kind == "kube_cluster"` doesn't end anything.
+A header keyword only starts a document at top-level statement position: outside every pair of braces, parentheses and brackets, where the parser expects the next statement. Anywhere else, `policy`, `module` and `kind` are names like any other keyword (see [Keywords as field names](#keywords-as-field-names)). None of these end a document:
+
+```sigil
+kind JIT_Approval version 1
+
+type Resource {
+  kind: string        // field declaration inside a type body
+  policy: string
+  labels: map<string, string>
+}
+
+input resource: Resource
+
+decision review(reason: string, approvers: list<string>)
+decision deny(reason: string)
+
+precedence deny > review
+default deny("no_rule_matched")
+
+---
+
+policy jit.sandbox: JIT_Approval
+
+when resource.kind == "kube_cluster"      // field access after `.`
+  and resource.policy != "" {
+  review("cluster_access", approvers: ["sre-leads"])
+}
+```
+
+The first `type` body is the case to watch: `kind:` sits at the start of a line, where a statement could begin, but it's inside braces, so it's a field. The parser's golden tests cover a `kind:` and a `policy:` field in a `type` body, a `kind` payload field in a decision, and `resource.kind` in a condition.
 
 ## Policy files
 

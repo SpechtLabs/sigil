@@ -98,7 +98,14 @@ payments/production.sigil:10:3: error: deploy.guardrails must be invoked uncondi
 
 A team policy that doesn't invoke the guardrails at all fails the same way. Put the `Require` wherever the host loads team policies, so no team can forget it.
 
-`Require` checks a name, and any document can claim a name. Keep the guardrails' name in the platform team's hands with CODEOWNERS on `deploy/` and the `path-matches-name` lint promoted to an error; [Policies in a ConfigMap](/guides/configmaps/#protect-the-guardrails) shows the setup.
+`Require` checks a name, and any document can claim a name. When teams can write to the bundle, the host also passes `policy.From` with a source only the platform controls, so the guardrails, and everything they import, come from there and nowhere else:
+
+```go
+p, err := Deploy.Load(teamFS, "payments.production",
+	policy.Require("deploy.guardrails", policy.From(platformFS)))
+```
+
+A team document that claims `deploy.guardrails` or `deploy.common` is then a compile error. [Policies in a ConfigMap](/guides/configmaps/#protect-the-guardrails) shows the full setup.
 
 ::: info Planned API
 The Go API is planned, not implemented. See the [Go API reference](/reference/go-api/) for the full sketch.

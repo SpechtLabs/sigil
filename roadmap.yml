@@ -128,6 +128,9 @@ milestones:
       - title: Golden tests
         state: TODO
         requirement: MUST
+        description: |
+          Including document boundaries: `kind:` and `policy:` fields in a `type` body, a `kind`
+          payload field, and `resource.kind` in a condition must never start a new document.
 
   - title: Types
     description: |
@@ -204,7 +207,14 @@ milestones:
         description: |
           Reads every document in every `.sigil` file of an `fs.FS`, indexes them by header name
           and rejects duplicates, so `embed.FS`, `os.DirFS`, a mounted ConfigMap and
-          `policy.MapFS` all work.
+          `policy.MapFS` all work. Uses `fs.Stat`, so the symlinked keys of a mounted ConfigMap
+          load; a test builds the real `..data` layout. Kind documents must match `Schema()`.
+      - title: policy.From
+        state: TODO
+        requirement: MUST
+        description: |
+          Takes required policies, and everything they use, from a trusted source, and makes a
+          bundle document that claims a trusted name a compile error.
       - title: Cycle detection
         state: TODO
         requirement: MUST

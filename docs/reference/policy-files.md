@@ -215,7 +215,7 @@ when release.soak < min_soak and not release.hotfix {
 }
 ```
 
-A header keyword can't appear anywhere inside a document at statement position, so the parser knows a new document has started when it meets one. The `---` separator is optional. It's there because YAML users expect it, and because it makes document boundaries easy to scan in a long file. `sigil fmt` always writes it between documents, so a bundle has one canonical form. See [Lexical structure](/reference/lexical/#document-separators) for how `---` lexes.
+A header keyword can't start a statement inside a document, so the parser knows a new document has started when it meets one at the top level. Inside braces, after `.` or as a named argument, `policy`, `module` and `kind` are ordinary names: a `type Resource { kind: string }` body or a `resource.kind` read never ends a document. See [Grammar](/reference/grammar/#source-files). The `---` separator is optional. It's there because YAML users expect it, and because it makes document boundaries easy to scan in a long file. `sigil fmt` always writes it between documents, so a bundle has one canonical form. See [Lexical structure](/reference/lexical/#document-separators) for how `---` lexes.
 
 - A `---` before the first document or after the last one is allowed, and so are several in a row. `sigil fmt` removes the extras. (proposed)
 - A comment belongs to the document that follows it, so a comment directly above a header stays with that document when a tool extracts or moves it. (proposed)
@@ -227,10 +227,11 @@ A bundle is every document in every file the host or the CLI loads, indexed by t
 
 - `use deploy.common` resolves to the document named `deploy.common`, wherever it is. One key per team, one file per policy, or everything in one file all resolve the same way.
 - A name defined twice in a bundle is a compile error that points at both definitions.
-- Kind documents aren't part of the index. The loader skips them, and a `use` of a kind's name is a compile error. The kind itself always comes from the host, or from `--kind` in the CLI.
+- Kind documents aren't part of the index, and they're never taken as the contract. The kind always comes from the host's Go definition, or from `--kind` in the CLI. A kind document with the same kind name must match that contract exactly, or the load fails, which catches a stale export; one for another kind is ignored. A `use` of a kind's name is a compile error.
 - The host names the root policy explicitly, so one bundle can hold many policies and the host picks the entry point. A module can't be a root; it has no rules to evaluate.
+- A host can load required policies from a separate, trusted source with `policy.From`. Every name that source defines is reserved, and a bundle document that claims one is a compile error. See [Where required policies come from](/reference/go-api/#where-required-policies-come-from).
 
-A bundle is loaded as a whole. A syntax error in any document fails the load, even in a document the root never uses. That keeps loading simple and predictable; the place to catch a broken document is `sigil check` in CI, before a bundle ships. See [Policies in a ConfigMap](/guides/configmaps/).
+A bundle is loaded as a whole. A syntax error in any document fails the load, even in a document the root never uses. That keeps loading simple and predictable; the place to catch a broken document is `sigil check` in CI, before a bundle ships. On a hot reload, the host keeps the last policy that loaded; see [Hot reload](/reference/go-api/#hot-reload). Giving each team its own key or file keeps one team's mistakes out of other teams' review diffs, even though the load still fails as a whole. See [Policies in a ConfigMap](/guides/configmaps/).
 
 ```text
 policies.sigil:42:1: error: policy payments.access is defined twice
@@ -242,13 +243,13 @@ policies.sigil:42:1: error: policy payments.access is defined twice
 
 ### Loading files
 
-The host passes the bundle as an `fs.FS`; see the [Go API](/reference/go-api/#loading-and-evaluating). The loader reads every file whose name ends in `.sigil`, in every directory, so ConfigMap keys need the extension too (`policies.sigil`). It skips every file or directory whose name starts with `.`. Skipping dot entries is what makes a mounted ConfigMap volume work: kubelet keeps the real files in a hidden `..2026_09_25_…` directory, links it as `..data`, and links each key at the top level, so without the rule every document would be read three times and collide with itself. Symbolic links to files are followed.
+The host passes the bundle as an `fs.FS`; see the [Go API](/reference/go-api/#loading-and-evaluating). The loader reads every file whose name ends in `.sigil`, in every directory, so ConfigMap keys need the extension too (`policies.sigil`). It skips every file or directory whose name starts with `.`. Skipping dot entries is what makes a mounted ConfigMap volume work: kubelet keeps the real files in a hidden `..2026_09_25_…` directory, links it as `..data`, and links each key at the top level, so without the rule every document would be read three times and collide with itself. Symbolic links are followed: the loader checks each entry with `fs.Stat`, not with the directory entry's type, because in a mounted ConfigMap every key at the top level is a symbolic link.
 
 The CLI takes files, directories and stdin; see [CLI & editor tooling](/reference/cli/#inputs).
 
 ### File names
 
-Nothing in the language ties a file's path to the names inside it. In a policy repository, keeping them aligned still helps readers and lets CODEOWNERS protect a namespace, so it's a lint: `path-matches-name` warns when a file holds a document whose name doesn't match the file's path, with each `.` turned into `/` and `.sigil` appended.
+Nothing in the language ties a file's path to the names inside it. In a policy repository, keeping them aligned still helps readers and lets CODEOWNERS map to namespaces, so it's a lint: `path-matches-name` warns when a file holds a document whose name doesn't match the file's path, with each `.` turned into `/` and `.sigil` appended.
 
 | Name                  | Expected file               |
 | --------------------- | --------------------------- |
@@ -256,7 +257,7 @@ Nothing in the language ties a file's path to the names inside it. In a policy r
 | `deploy.production`   | `deploy/production.sigil`   |
 | `payments.production` | `payments/production.sigil` |
 
-A file whose documents all share a prefix matches when its path is that prefix, so `deploy.sigil` may hold `deploy.common`, `deploy.guardrails` and `deploy.production`. The lint is off by default. A repository that relies on it to protect required policies should turn it on and promote it to an error, because a team that can define `deploy.guardrails` in its own file could otherwise define one without denies. See [Required policies](/reference/evaluation/#required-policies).
+A file whose documents all share a prefix matches when its path is that prefix, so `deploy.sigil` may hold `deploy.common`, `deploy.guardrails` and `deploy.production`. The lint is off by default. It's a review aid, not a security control: it helps in a repository, and does nothing for a bundle that arrives through `policy.MapFS`. Required policies are protected by `policy.From`; see [Required policies](/reference/evaluation/#required-policies).
 
 ::: tip Proposed
 The prefix rule for multi-document files is proposed here. The lint itself follows from resolving by name.

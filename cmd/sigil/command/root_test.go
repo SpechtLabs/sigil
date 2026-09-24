@@ -46,6 +46,7 @@ func TestCommandSurface(t *testing.T) {
 		{args: []string{"check", "p.sigil"}, wantErr: `required flag(s) "kind" not set`},
 		{args: []string{"check", "--kind", "k.sigil", "--require", "deploy.guardrails", "p.sigil"}, wantErr: notImplemented},
 		{args: []string{"check", "--kind", "k.sigil", "--recursive", "."}, wantErr: notImplemented},
+		{args: []string{"check", "-k", "k.sigil", "--require", "deploy.guardrails", "--trusted", "deploy/", "-p", "payments.*", "payments/"}, wantErr: notImplemented},
 		{args: []string{"eval", "--kind", "k.sigil", "--input", "in.json", "p.sigil"}, wantErr: notImplemented},
 		{args: []string{"eval", "--kind", "k.sigil", "p.sigil"}, wantErr: `required flag(s) "input" not set`},
 		{args: []string{"eval", "-k", "k.sigil", "-i", "in.json", "-p", "payments.production", "-R", "deploy/", "payments/"}, wantErr: notImplemented},
