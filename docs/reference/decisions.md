@@ -58,9 +58,9 @@ policy_decisions_total{decision="review", reason="service_owner"}
 A computed reason is a compile error:
 
 ```text
-deploy/production.sigil:34:12: error: decision reason must be a string literal
+deploy/production.sigil:16:12: error: decision reason must be a string literal
    |
-34 |     review(service.tier, approvers: approvers)
+16 |     review(service.tier, approvers: approvers)
    |            ^^^^^^^^^^^^
    = help: put dynamic text in a `detail` field; declare `detail: string = ""` on decision review in the kind
 ```
@@ -91,12 +91,12 @@ Everything after the reason is the payload.
 - Field types, defaults and required-ness come from the kind. A field with a default may be left out; a field without one must be passed.
 - A payload key the kind doesn't declare is a compile error, and so is a value of the wrong type.
 - Passing the same key twice is a compile error. (proposed)
-- Values are ordinary [expressions](/reference/expressions/) over inputs, params, lets and aliased lets, evaluated when the rule fires. A payload expression that hits a runtime error makes `Eval` return that error.
+- Values are ordinary [expressions](/reference/expressions/) over inputs, params, lets and imported lets, evaluated when the rule fires. A payload expression that hits a runtime error makes `Eval` return that error.
 
 ```text
-payments/production.sigil:9:27: error: decision approve has no payload field "bak"
+payments/production.sigil:18:27: error: decision approve has no payload field "bak"
    |
- 9 |   approve("payments_sre", bak: 15m)
+18 |   approve("payments_sre", bak: 15m)
    |                           ^^^
    = help: approve is declared as: decision approve(reason: string, bake: duration = 1h)
 ```
@@ -125,10 +125,10 @@ After evaluation, the host receives a result describing the winner:
 | Payload  | `approvers: [...]`   | The typed payload, with defaults filled in               |
 | Trace    |                      | Every candidate, and for the winner, which conditions held |
 
-The trace identifies each rule by policy name, reason and source position, so the language needs no separate syntax for naming rules. When nothing fires, the result holds the kind's default and the trace lists no candidates.
+The trace identifies each rule by policy name, reason and source position, so the language needs no separate syntax for naming rules. For a rule reached through invocations, the position is the full call chain, for example `payments/production.sigil:14:3 → deploy/production.sigil:16:5`. When nothing fires, the result holds the kind's default and the trace lists no candidates.
 
 ::: warning Unspecified
-When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in the `use`d `deploy.production` base. It's unsettled whether `Policy` names the policy the host evaluated (`payments.production`) or the policy whose rule won (`deploy.production`). The trace carries each candidate's source position either way.
+When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, which the team policy invokes. It's unsettled whether `Policy` names the policy the host evaluated (`payments.production`) or the policy whose rule won (`deploy.production`). The trace carries each candidate's call chain either way.
 :::
 
 On the Go side, `Decision[T].Match` gives typed access to the payload. See the [Go API](/reference/go-api/).

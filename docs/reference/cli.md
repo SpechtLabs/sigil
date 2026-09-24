@@ -16,12 +16,13 @@ All tooling reads the exported kind file (`deploy_approval.sigil` in the running
 | `sigil fmt`      | Rewrites files into the one canonical style, like `gofmt`                                      | Nothing                     |
 | `sigil check`    | Parses and type-checks policies against a kind, reports cost                                   | Kind file                   |
 | `sigil eval`     | Evaluates a policy against a JSON input and prints the result and trace                        | Kind file + bound functions |
+| `sigil explain`  | Flattens a policy into its guarded decisions, with every invocation inlined                    | Kind file                   |
 | `sigil test`     | Runs test cases: input JSON plus expected decision and reason                                  | Kind file + bound functions |
 | `sigil breaking` | Compares two kind versions and flags incompatible changes                                      | Two kind files              |
 | `sigil gen go`   | Generates typed Go code from a kind file                                                       | Kind file                   |
-| `sigil lsp`      | Completion from the kind, hover with decision signatures, go-to-definition for `let` and `use` | Kind file                   |
+| `sigil lsp`      | Completion from the kind and imports, hover, go-to-definition across imports and invocations   | Kind file                   |
 
-Policy files and kind files share the `.sigil` extension. The first keyword in the file, `policy` or `kind`, tells the tools which one they're looking at.
+Policy, module and kind files share the `.sigil` extension. The first keyword in the file, `policy`, `module` or `kind`, tells the tools which one they're looking at.
 
 ## `sigil fmt`
 
@@ -31,10 +32,16 @@ The formatter matters more than it looks. Sigil's grammar is whitespace-insensit
 
 ## `sigil check`
 
-Parses and type-checks policies against a kind, resolves `use` statements, detects `let` and `use` cycles, and reports the estimated worst-case cost of each policy (see [Halting by construction](/understanding/halting/)). This is the command a policy repository runs in CI. It doesn't need host function implementations, only their signatures from the kind file.
+Parses and type-checks policies and modules against a kind, resolves imports and invocations, detects `let`, import and invocation cycles, and reports the estimated worst-case cost of each policy (see [Halting by construction](/understanding/halting/)). This is the command a policy repository runs in CI. It doesn't need host function implementations, only their signatures from the kind file.
 
 ```text
 sigil check --kind deploy_approval.sigil deploy/production.sigil
+```
+
+`--require` makes the same check a host makes with `policy.Require`: every checked policy must invoke the named policy unconditionally, through top-level invocations only. Repeat the flag to require several. A policy repository that runs it in CI finds a gated or missing guardrail before the host refuses to load the policy.
+
+```text
+sigil check --kind deploy_approval.sigil --require deploy.guardrails payments/
 ```
 
 ## `sigil eval`
@@ -44,6 +51,42 @@ Evaluates a policy against a JSON input and prints the result and the full trace
 ```text
 sigil eval --kind deploy_approval.sigil --input release.json payments/production.sigil
 ```
+
+## `sigil explain`
+
+Flattens a policy into one list of guarded decisions. Every invocation is inlined, and its gates are pushed down into each rule's condition. Invocation makes composition flexible; `explain` keeps it transparent, so the answer to "what does this policy actually do" is one command away.
+
+```text
+$ sigil explain --kind deploy_approval.sigil payments/production.sigil
+payments.production: 7 rules from 3 policies
+
+deny     not_eligible      payments:7 → guardrails:8
+         not eligible
+
+deny     soak_too_short    payments:7 → guardrails:12
+         release.soak < 4h and not release.hotfix
+
+review   service_owner     payments:14 → production:16
+         service.labels["compliance"] != "pci"
+         and cleared
+         and service.tier in ["standard", "internal"] and owns_service
+         approvers = ["payments-leads"]
+
+approve  payments_sre      payments:18
+         cleared and "payments-sre" in actor.teams
+         bake = 15m
+...
+```
+
+Each entry names the decision, the reason and the call chain that reaches the rule, then the rule's full condition: every `when` around every call on the chain, joined with `and`. Params show as their bound values, which is why invocation arguments can't depend on inputs. `let`s stay by name, so a condition reads the way its author wrote it.
+
+With `--input`, the output also marks which rules fired and which candidate won. Like `eval`, that needs bound functions; without `--input`, `explain` needs only the kind file.
+
+```text
+sigil explain --kind deploy_approval.sigil --input release.json payments/production.sigil
+```
+
+The layout is illustrative; the exact format isn't fixed yet. [The tour](/getting-started/tour/#what-the-team-policy-adds-up-to) shows the complete output for this policy.
 
 ## `sigil test`
 
@@ -59,7 +102,28 @@ sigil breaking old/deploy_approval.sigil deploy_approval.sigil
 
 ## Language server
 
-`sigil lsp` reads the kind file and offers completion for inputs, fields, functions and decision payload keys; hover that shows a decision's full signature; and go-to-definition for `let` bindings and `use` targets. Editor completion working from a kind file alone is the exit criterion for the tooling milestone on the [roadmap](/project/roadmap/).
+`sigil lsp` reads the kind file and offers completion for inputs, fields, functions and decision payload keys, and hover that shows a decision's full signature. Editor completion working from a kind file alone is the exit criterion for the tooling milestone on the [roadmap](/project/roadmap/).
+
+Imports and invocations get their own support:
+
+- Completion after `use deploy.common.{` lists the module's exported `let`s. Path-first imports are what make this work: the editor knows the file before you type the names.
+- Go-to-definition works across imports and into invoked policies.
+- A code lens on each invocation summarizes what it contributes, for example "production: 1 approve, 1 review, gated by compliance != pci".
+- Hovering an invocation shows its flattened rules, the same view as `sigil explain`, scoped to that call.
+
+## Lints
+
+`sigil check` reports lints as warnings. They don't fail compilation unless a repository promotes them to errors.
+
+| Lint | Default | Fires when |
+| --- | --- | --- |
+| `unused-import` | warn | A `use` binds a name nothing references |
+| `gated-deny` | warn | A policy that contains denies is invoked inside `when` and isn't required by `--require` or the host. That may be intended, but it's the pattern that silently switches denies off |
+| `duplicate-invocation` | warn | The same policy is invoked twice with identical arguments |
+| `duplicate-reason` | warn | One policy uses the same reason twice (see [Decisions](/reference/decisions/)) |
+| `qualified-imports` | off | A selective import is used. For teams that want Go-style provenance at every use site |
+
+How a repository configures lints, and how a promoted lint is spelled, isn't designed yet.
 
 ## `policytest` for Go hosts
 
@@ -74,11 +138,11 @@ Generates typed Go code from a kind file, so a second Go service can consume dec
 Error messages follow filt-rs: file, line and column, what went wrong, and a concrete fix.
 
 ```text
-deploy/production.sigil:27:16: error: unknown field "teir" on type Service
-   |
-27 |   when service.teir == "critical"
-   |                ^^^^
-   = help: did you mean "tier"? Service declares: name, tier, owners, labels
+deploy/production.sigil:9:16: error: unknown field "teir" on type Service
+  |
+9 |   when service.teir == "critical"
+  |                ^^^^
+  = help: did you mean "tier"? Service declares: name, tier, owners, labels
 ```
 
 When the error is a type or payload mismatch, the message quotes the relevant signature from the kind, so the author sees what `review` expects without opening another file. The same format applies to every tool and to errors returned from the Go API's `Load` and `Compile`.

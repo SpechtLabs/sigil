@@ -9,7 +9,7 @@ permalink: /reference/grammar/
 This page specifies the language as designed. Nothing is implemented yet; see [Open questions](/project/open-questions/).
 :::
 
-This is the complete syntax of policy files and kind files. Both use the `.sigil` extension, and the first token (`policy` or `kind`) decides which of the two grammars applies. It covers what parses; what type-checks is on the other reference pages. The planned parser is hand-written: recursive descent for statements and a Pratt parser for expressions. The grammar below is written so that both fall out of it directly, with one token of lookahead.
+This is the complete syntax of policy files, module files and kind files. All three use the `.sigil` extension, and the first token (`policy`, `module` or `kind`) decides which grammar applies. It covers what parses; what type-checks is on the other reference pages. The planned parser is hand-written: recursive descent for statements and a Pratt parser for expressions. The grammar below is written so that both fall out of it directly, with one token of lookahead everywhere except at the start of a call argument, where the parser peeks at a second token (see [Calls](#calls)).
 
 ## Notation
 
@@ -35,7 +35,7 @@ Whitespace and comments may appear between any two tokens and are discarded. Non
 
 ```text
 Ident       ::= [A-Za-z_] [A-Za-z0-9_]* - Keyword
-Keyword     ::= "policy" | "use" | "as" | "param" | "let" | "when"
+Keyword     ::= "policy" | "module" | "use" | "as" | "param" | "let" | "when"
               | "kind" | "version" | "type" | "input" | "fn" | "decision"
               | "precedence" | "default"
               | "and" | "or" | "not" | "in" | "all" | "any" | "has"
@@ -61,26 +61,44 @@ The lexer takes the longest match. A run of digits followed directly by a unit i
 ## Policy files
 
 ```text
-PolicyFile   ::= PolicyHeader PolicyStmt*
+PolicyFile   ::= PolicyHeader UseStmt* PolicyStmt*
 PolicyHeader ::= "policy" PolicyName ":" Ident
 PolicyName   ::= Ident ( "." Ident )*     /* no whitespace around "." */
 
-PolicyStmt   ::= UseStmt | ParamStmt | LetStmt | WhenStmt
+PolicyStmt   ::= ParamStmt | LetStmt | WhenStmt | Call
 
-UseStmt      ::= "use" PolicyName "(" NamedArgs? ")" ( "as" Ident )?
+UseStmt      ::= "use" PolicyName ( "as" Ident | "." "{" ImportList "}" )?
+ImportList   ::= ImportItem ( "," ImportItem )* ","?
+ImportItem   ::= Ident ( "as" Ident )?
+
 ParamStmt    ::= "param" Ident ":" Type ( "=" Expr )?
 LetStmt      ::= "let" Ident "=" Expr
 WhenStmt     ::= "when" Expr "{" RuleItem* "}"
-RuleItem     ::= WhenStmt | Constructor
+RuleItem     ::= WhenStmt | Call
 
-Constructor  ::= Ident "(" Expr ( "," NamedArg )* ","? ")"
-                 /* the first argument is the reason; the checker
-                    requires a string literal */
+Call         ::= Ident "(" CallArgs? ")"
+CallArgs     ::= Expr ( "," NamedArg )* ","?       /* decision constructor */
+               | NamedArgs                         /* policy invocation */
 
 NamedArgs    ::= NamedArg ( "," NamedArg )* ","?
 NamedArg     ::= Name ":" Expr
 Name         ::= Ident | Keyword          /* field and payload names */
 ```
+
+A `Call` is either a decision constructor or a policy invocation, and the parser doesn't need to know which. The checker decides by the name: a decision of the kind makes it a constructor, whose first argument must be a string literal reason; an imported policy makes it an invocation, whose arguments must all be named. Anything else is a compile error.
+
+`UseStmt`s come before every other statement. A `use` after a `param`, `let`, rule or invocation is a parse error with a hint to move it up.
+
+In `use deploy.common.{cleared}`, the `.` before `{` follows the last path segment directly, like the dots inside the path.
+
+## Module files
+
+```text
+ModuleFile   ::= ModuleHeader UseStmt* LetStmt*
+ModuleHeader ::= "module" PolicyName ":" Ident
+```
+
+A module contains nothing but imports and `let`s. A `param`, `when` or call in a module is a parse error with a hint that it belongs in a policy.
 
 ## Kind files
 
@@ -142,7 +160,7 @@ MapLit       ::= "{" ( MapEntry ( "," MapEntry )* ","? )? "}"
 MapEntry     ::= Coalesce ":" Expr
 ```
 
-Syntax alone accepts a few things the checker rejects: a call on anything but a host function name, a non-literal pattern after `like` or `matches`, a non-literal reason in a constructor, and `.name` on something that isn't a struct or an alias. Leaving those to the checker gives better error messages than a parse failure would.
+Syntax alone accepts a few things the checker rejects: a call expression on anything but a host function name, a call statement on anything but a decision or an imported policy, a non-literal pattern after `like` or `matches`, a non-literal reason in a constructor, and `.name` on something that isn't a struct or a whole-module import. Leaving those to the checker gives better error messages than a parse failure would.
 
 ## Operator precedence
 
@@ -203,10 +221,10 @@ It stops at a token that can't continue an expression: `)`, `]`, `}`, `,`, `{` i
 
 ### Statement boundaries
 
-Newlines never end anything. Every top-level statement starts with a keyword (`policy`, `use`, `param`, `let`, `when` in policy files; `kind`, `type`, `input`, `fn`, `decision`, `precedence`, `default` in kind files), and none of those keywords can continue an expression. So when the parser is inside a `let` expression and meets `let` or `when`, the expression is over. This is what makes the files safe to indent or join however a text templater likes.
+Newlines never end anything. Every top-level statement starts with a keyword (`policy`, `use`, `param`, `let`, `when` in policy files; `module`, `use`, `let` in module files; `kind`, `type`, `input`, `fn`, `decision`, `precedence`, `default` in kind files), or, in a policy file, with an identifier followed by `(`, which is a policy invocation. None of those keywords can continue an expression, and an expression never continues with a bare identifier, so when the parser is inside a `let` expression and meets `let`, `when` or `guardrails(`, the expression is over. No other statement starts with an identifier, so the parse stays unambiguous. This is what makes the files safe to indent or join however a text templater likes.
 
 ```sigil
-let a = environment == "production" let b = "deployer" in actor.roles when a and b { review("service_owner", approvers: approvers) }
+let a = environment == "production" let b = "deployer" in actor.roles guardrails(min_soak: 4h) when a and b { review("service_owner", approvers: approvers) }
 ```
 
 That line parses the same as the formatted version, although `sigil fmt` would never produce it.
@@ -216,9 +234,13 @@ Two other boundaries work the same way:
 - A `when` condition ends at a `{` in operator position. A `{` in operand position starts a map literal instead, which is how `when service.labels has {"team": "payments"} { ... }` parses: the first `{` follows `has`, the second follows a complete expression.
 - In a `type` body, a field's type ends where the next `Name :` begins, because a type never continues with a name.
 
+### Calls
+
+A `Call`'s arguments are either one positional reason followed by named payload fields, or named arguments only. The parser tells the two apart at the first argument: a `Name` followed by `:` starts a named argument, anything else starts the positional reason. That's the one place the grammar needs two tokens of lookahead. An expression can't start with an identifier followed by `:`, so the choice is never ambiguous.
+
 ### Keywords as field names
 
-A Go host can tag a field with any name, and Kubernetes-shaped data often has a field called `type`, which is a keyword. The grammar allows any keyword wherever a field or payload name appears: after `.`, in `type` bodies, in decision fields and in named arguments. If `Service` declared a `type` field, `service.type` would parse, because the token after `.` is always a name. Top-level names (inputs, params, lets, aliases, host functions, decisions, types) must still be plain identifiers.
+A Go host can tag a field with any name, and Kubernetes-shaped data often has a field called `type`, which is a keyword. The grammar allows any keyword wherever a field or payload name appears: after `.`, in `type` bodies, in decision fields and in named arguments. If `Service` declared a `type` field, `service.type` would parse, because the token after `.` is always a name. Top-level names (inputs, params, lets, imported names, host functions, decisions, types) must still be plain identifiers.
 
 ### Closing angle brackets
 
@@ -229,11 +251,11 @@ A Go host can tag a field with any name, and Kubernetes-shaped data often has a 
 A parse error reports the file, line and column, what the parser expected, and a fix when one is obvious:
 
 ```text
-deploy/production.sigil:27:3: error: expected a decision constructor or `when`, found `let`
-   |
-27 |   let tmp = release.soak
-   |   ^^^
-   = help: `let` is only allowed at the top level; move it outside the `when` block
+deploy/production.sigil:9:3: error: expected a decision constructor, invocation or `when`, found `let`
+  |
+9 |   let tmp = release.soak
+  |   ^^^
+  = help: `let` is only allowed at the top level; move it outside the `when` block
 ```
 
 The layout is illustrative; the exact format isn't fixed yet.

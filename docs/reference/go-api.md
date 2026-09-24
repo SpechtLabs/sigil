@@ -77,28 +77,47 @@ The types `NewKind` accepts are listed in [Kind files](/reference/kind-files/). 
 
 ## Loading and evaluating
 
-`Load` compiles a policy by name from an `fs.FS` and resolves its `use` statements through the same filesystem, so `embed.FS` and `os.DirFS` both work. The third argument binds params from Go; `nil` means the policy file binds everything it needs.
+`Load` compiles a policy by name from an `fs.FS` and resolves its imports through the same filesystem, so `embed.FS` and `os.DirFS` both work. Everything after the name is a load option; with none, the policy file binds everything it needs.
 
 ```go
 //go:embed policies
 var policies embed.FS
 
-p, err := Deploy.Load(policies, "payments.production", nil)
+p, err := Deploy.Load(policies, "payments.production",
+	policy.Require("deploy.guardrails"))
 if err != nil {
 	log.Fatal(err) // file:line:col plus a fix hint
 }
 ```
 
-Binding params from Go, for example from a CRD, uses `policy.Params`. The values are type-checked against the `param` declarations at compile time, just like a `use` binding:
+| Option                     | Does                                                                 |
+| -------------------------- | -------------------------------------------------------------------- |
+| `policy.Params{...}`       | Binds the root policy's params from Go                               |
+| `policy.Require(names...)` | Requires the root policy to invoke each named policy unconditionally |
+
+Binding params from Go, for example from a CRD, uses `policy.Params`. The values are type-checked against the `param` declarations at compile time, just like invocation arguments:
 
 ```go
-p, err := Deploy.Compile(src, policy.Params{
-	"approvers": []string{"payments-leads"},
-	"min_soak":  4 * time.Hour,
-})
+p, err := Deploy.Load(policies, "deploy.gate",
+	policy.Params{
+		"approvers": []string{"payments-leads"},
+		"min_soak":  4 * time.Hour,
+	},
+	policy.Require("deploy.guardrails"),
+)
 ```
 
-`Compile` does the same as `Load` for a single source string. A compiled policy is immutable and safe for concurrent use.
+`Compile` does the same as `Load` for a single source string and takes the same options. How it resolves the source's imports without a file system isn't specified yet. A compiled policy is immutable and safe for concurrent use. A host can't load a module; `Load` on a module's name returns an error saying it has no rules.
+
+### Required policies
+
+`policy.Require` names the policies a root policy must invoke unconditionally. The compiler checks that each one is reachable from the root through top-level invocations only, with no `when` anywhere on the path, and fails the load otherwise, with an error pointing at the gated call or at the root's header when the call is missing. See [Evaluation semantics](/reference/evaluation/#required-policies) for what that guarantees.
+
+Put the requirement wherever the host loads team policies, and name the policies that hold the denies no team may switch off. The `sigil check --require` flag runs the same check in a policy repository's CI.
+
+::: warning Unspecified
+Whether a requirement may be met through a chain of other policies ("transitive") or must be met by a call in the root file itself ("direct") is an [open question](/project/open-questions/). The check above describes the transitive reading. So is letting `Require` bound a required policy's params, for example `policy.Require("deploy.guardrails", policy.Min("min_soak", time.Hour))`.
+:::
 
 `Eval` runs the policy against one input:
 
@@ -123,7 +142,7 @@ type Result struct {
 }
 ```
 
-What `Policy` holds is still open. When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in the `use`d `deploy.production` base, so `Policy` could name either one. See [Open questions](/project/open-questions/). `Trace` lists every candidate by policy name, reason and source position, and records which conditions held for the winner. See [Evaluation semantics](/reference/evaluation/) for how the winner is picked.
+What `Policy` holds is still open. When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, reached through an invocation, so `Policy` could name either one. See [Open questions](/project/open-questions/). `Trace` lists every candidate by policy name, reason and call chain (for example `payments/production.sigil:14:3 → deploy/production.sigil:16:5`), and records which conditions held for the winner. See [Evaluation semantics](/reference/evaluation/) for how the winner is picked.
 
 ## Typed matching
 

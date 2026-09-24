@@ -40,7 +40,7 @@ config:
 
       - title: Templating is a language feature
         icon: mdi:layers-triple
-        details: Base policies declare typed params, and team policies instantiate them with use. No text/template, and no way for a team rule to downgrade a base deny.
+        details: Shared policies declare typed params, and team policies invoke them with their own values, optionally under conditions. No text/template, and the guardrails the host requires can't be switched off.
 
       - title: Parse once, evaluate many
         icon: mdi:lightning-bolt
@@ -70,8 +70,8 @@ config:
           description: "Every field, function and payload key is checked against the kind"
         - title: "Order-independent"
           description: "All rules run; precedence decides between the candidates"
-        - title: "Typed params and use"
-          description: "Teams instantiate a base policy with values, never with text substitution"
+        - title: "Typed params and invocation"
+          description: "Teams invoke a shared policy with values, never with text substitution"
         - title: "Reason plus payload"
           description: "Every decision names why it happened and carries the data the host acts on"
 
@@ -101,38 +101,54 @@ precedence deny > review > approve
 default deny("no_rule_matched")
 ```
 
-A platform team writes rules against it. Each `when` block that holds produces a candidate decision, and the highest-precedence candidate wins:
+A platform team writes rules against it. Each `when` block that holds produces a candidate decision, and the highest-precedence candidate wins. Denies go in a guardrails policy:
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.guardrails: DeployApproval
 
 param min_soak: duration = 24h
-param approvers: list<string>
-
-let owns_service = actor.teams any in service.owners
 
 when release.soak < min_soak and not release.hotfix {
   deny("soak_too_short")
 }
+```
 
-when owns_service {
+Approvals and reviews go in another:
+
+```sigil
+policy deploy.production: DeployApproval
+
+param approvers: list<string>
+
+when actor.teams any in service.owners {
   review("service_owner", approvers: approvers)
 }
 ```
 
-A product team then reuses that policy with its own values and adds its own approval, which can never override the base policy's `soak_too_short` deny:
+A product team imports both with `use` and invokes them like decision constructors, with its own values. Inside a `when`, an invocation's rules only apply where the condition holds. The team adds its own approval, which can never override the `soak_too_short` deny:
 
 ```sigil
 policy payments.production: DeployApproval
 
-use deploy.production(min_soak: 4h, approvers: ["payments-leads"])
+use deploy.guardrails
+use deploy.production
+
+guardrails(min_soak: 4h)
+
+when service.labels["compliance"] == "pci" {
+  production(approvers: ["payments-leads", "security-leads"])
+}
+
+when service.labels["compliance"] != "pci" {
+  production(approvers: ["payments-leads"])
+}
 
 when "payments-sre" in actor.teams {
   approve("payments_sre", bake: 15m)
 }
 ```
 
-The [tour](/getting-started/tour/) walks through the full version of these three files and evaluates them against real inputs.
+The host loads it with `policy.Require("deploy.guardrails")`, so moving `guardrails(...)` inside a `when` fails the build. The [tour](/getting-started/tour/) walks through the full version of these files and evaluates them against real inputs.
 
 ## Side by side with a YAML rule engine
 
@@ -142,14 +158,10 @@ Here's the full deploy gate twice: once in Sigil, and once for the kind of YAML 
 
 @tab Sigil
 
-The platform team's base policy:
+The platform team's shared matchers:
 
-```sigil title="deploy/production.sigil"
-policy deploy.production: DeployApproval
-
-param min_soak: duration = 24h
-param approvers: list<string>
-param tiers: list<string> = ["standard", "internal"]
+```sigil title="deploy/common.sigil"
+module deploy.common: DeployApproval
 
 let owns_service = actor.teams any in service.owners
 let cleared = split(service.labels["regions"], ",") all in actor.regions
@@ -159,6 +171,16 @@ let eligible = "deployer" in actor.roles
     "app.kubernetes.io/managed-by": "argocd",
     "platform.example.com/lifecycle": "ga",
   }
+```
+
+The guardrails, which the host requires every team policy to invoke:
+
+```sigil title="deploy/guardrails.sigil"
+policy deploy.guardrails: DeployApproval
+
+use deploy.common.{eligible}
+
+param min_soak: duration = 24h
 
 when not eligible {
   deny("not_eligible")
@@ -167,6 +189,17 @@ when not eligible {
 when release.soak < min_soak and not release.hotfix {
   deny("soak_too_short")
 }
+```
+
+The approvals and reviews:
+
+```sigil title="deploy/production.sigil"
+policy deploy.production: DeployApproval
+
+use deploy.common.{cleared, owns_service}
+
+param approvers: list<string>
+param tiers: list<string> = ["standard", "internal"]
 
 when cleared {
   when service.tier == "critical"
@@ -181,17 +214,26 @@ when cleared {
 }
 ```
 
-The payments team's policy, which reuses the base with its own values:
+The payments team's policy, which invokes both with its own values:
 
 ```sigil title="payments/production.sigil"
 policy payments.production: DeployApproval
 
-use deploy.production(
-  min_soak: 4h,
-  approvers: ["payments-leads"],
-)
+use deploy.guardrails
+use deploy.production
+use deploy.common.{cleared}
 
-when "payments-sre" in actor.teams {
+guardrails(min_soak: 4h)
+
+when service.labels["compliance"] == "pci" {
+  production(approvers: ["payments-leads", "security-leads"])
+}
+
+when service.labels["compliance"] != "pci" {
+  production(approvers: ["payments-leads"])
+}
+
+when cleared and "payments-sre" in actor.teams {
   approve("payments_sre", bake: 15m)
 }
 ```
@@ -262,6 +304,26 @@ rules:
           op: in
           value: {{ .Tiers | default (list "standard" "internal") | toJson }}
         - { field: actor.teams, op: intersects, valueFrom: service.owners }
+{{- if .PCIApprovers }}
+        - { field: service.labels.compliance, op: notEquals, value: pci }
+
+  - name: service-owner-pci                                           # [4]
+    decision: review
+    reason: service_owner
+    payload:
+      approvers: {{ .PCIApprovers | toJson }}
+    match:
+      all:
+        - field: service.labels.regions
+          op: splitSubsetOf
+          separator: ","
+          valueFrom: actor.regions
+        - { field: service.labels.compliance, op: equals, value: pci }
+        - field: service.tier
+          op: in
+          value: {{ .Tiers | default (list "standard" "internal") | toJson }}
+        - { field: actor.teams, op: intersects, valueFrom: service.owners }
+{{- end }}
 ```
 
 The payments team's values file, which fills in the template:
@@ -269,6 +331,7 @@ The payments team's values file, which fills in the template:
 ```yaml title="teams/payments.values.yaml"
 MinSoak: 4h
 Approvers: [payments-leads]
+PCIApprovers: [payments-leads, security-leads]
 ExtraRules:
   - name: payments-sre
     decision: approve
@@ -276,6 +339,10 @@ ExtraRules:
     payload: { bake: 15m }
     match:
       all:
+        - field: service.labels.regions                               # [4]
+          op: splitSubsetOf
+          separator: ","
+          valueFrom: actor.regions
         - { field: actor.teams, op: contains, value: payments-sre }
 ```
 
@@ -283,8 +350,8 @@ What the `[1]` to `[4]` markers point at:
 
 1. **Order decides the outcome.** The team's approve has to sit below the denies, or it overrides them. Where it lands relative to `service-owner` changes behaviour, too: a service owner who's also in `payments-sre` gets approved here, because the team rule matches first. In Sigil every rule runs, `deny > review > approve` picks the winner, and that owner gets a review.
 2. **Nothing is typed.** `"4h"` stays a string until the engine parses it at evaluation time, and a misspelled path such as `service.teir` resolves to nothing, so its rule quietly stops matching. Sigil checks both against the kind at compile time: `min_soak: 4h` is a `duration`, and `service.teir` is an [error with a fix hint](/understanding/strictness/).
-3. **Templating is text.** The team's rules get spliced in as text, so a wrong `indent` produces a different YAML file instead of an error, and every team's values file has to know the template's internals. Sigil's `use` binds [typed params](/understanding/composition/), and a team can only add candidates, never remove a base deny.
-4. **Nothing is named or shared.** The regions check is pasted into every rule that needs it, and the engine grew a one-off `splitSubsetOf` operator to express it. Sigil names it once as `let cleared` and builds it from `split` and the general `all in`.
+3. **Templating is text.** The team's rules get spliced in as text, so a wrong `indent` produces a different YAML file instead of an error, and every team's values file has to know the template's internals. Sigil's invocations bind [typed params](/understanding/composition/), a team can only add candidates, and the guardrails the host requires can't be gated off.
+4. **Nothing is named or shared.** The regions check is pasted into every rule that needs it, even into the team's values file, and the engine grew a one-off `splitSubsetOf` operator to express it. Giving PCI services other approvers means a second copy of the whole `service-owner` rule behind an `if`. Sigil names the check once as `let cleared` in a module, builds it from `split` and the general `all in`, and adds a condition to a shared policy by invoking it inside a `when`.
 
 :::
 

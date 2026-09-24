@@ -11,7 +11,7 @@ This page specifies the language as designed. Nothing is implemented yet; see [O
 
 A kind is the contract between a Go host and the policies it evaluates. It declares what input looks like, which host functions exist, which decisions a policy can produce and how they rank. Every policy names exactly one kind in its header and gets type-checked against it.
 
-Kinds are defined in Go and exported to a kind file, the same way Go structs become an OpenAPI spec. Kind files use the same `.sigil` extension as policies; the `kind` header tells them apart, and by convention the file is named after the kind (`deploy_approval.sigil`). Nobody writes a kind file by hand. The defining host never loads one; everyone else can.
+Kinds are defined in Go and exported to a kind file, the same way Go structs become an OpenAPI spec. Kind files use the same `.sigil` extension as policies and modules; the `kind` header tells them apart, and by convention the file is named after the kind (`deploy_approval.sigil`). Nobody writes a kind file by hand. The defining host never loads one; everyone else can.
 
 ```mermaid
 flowchart LR
@@ -214,7 +214,7 @@ The exported kind carries a version, and `sigil breaking old/deploy_approval.sig
 | Reorder `precedence` or change `default`       | Breaking in behaviour, even though every policy still compiles |
 
 ::: warning Adding an input or function can collide
-Inputs, host functions, params, lets and aliases share one flat namespace per policy, with no shadowing (see [Policy files](/reference/policy-files/)). A new `input approvers` therefore breaks every policy that already declares `param approvers`. `sigil breaking` only sees the two kind files, so it can't catch this; `sigil check` against the new kind can. Adding a decision is safe here because decision names live in their own namespace.
+Inputs, host functions, params, lets and imported names share one flat namespace per policy, with no shadowing (see [Policy files](/reference/policy-files/)). A new `input approvers` therefore breaks every policy that already declares `param approvers`. `sigil breaking` only sees the two kind files, so it can't catch this; `sigil check` against the new kind can. Adding a decision is safe here because decision names live in their own namespace.
 :::
 
 A policy's header names a kind but not a version. Whether policies should pin a kind version, and what happens when they don't match, is unspecified. For the operational side of changing a kind, see [Evolve a kind safely](/guides/evolve-a-kind/).

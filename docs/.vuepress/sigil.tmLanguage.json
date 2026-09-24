@@ -49,7 +49,7 @@
     "declaration": {
       "patterns": [
         {
-          "match": "\\b(policy|use)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
+          "match": "\\b(policy|module|use)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
           "captures": {
             "1": { "name": "keyword.other.sigil" },
             "2": { "name": "entity.name.namespace.sigil" }
@@ -86,7 +86,7 @@
         },
         {
           "name": "keyword.other.sigil",
-          "match": "\\b(policy|use|as|param|let|kind|version|type|input|fn|decision|precedence|default)\\b"
+          "match": "\\b(policy|module|use|as|param|let|kind|version|type|input|fn|decision|precedence|default)\\b"
         }
       ]
     },

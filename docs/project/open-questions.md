@@ -95,21 +95,25 @@ when active {
 }
 ```
 
-The cost is scoping rules: shadowing (which the flat namespace currently forbids), visibility through `use ... as`, and how the trace names a scoped binding. Top-level `let` plus nesting covers every example written so far, so this stays closed unless real policies need it.
+The cost is scoping rules: shadowing (which the flat namespace currently forbids), whether a scoped binding can be imported, and how the trace names it. Top-level `let` plus nesting covers every example written so far, so this stays closed unless real policies need it.
 
-## Pinned params
+## Pinned params on required policies
 
 **Blocks: M5** (and the grammar of `param`, so it touches M2)
 
-A team can lower a base policy's `min_soak`, which moves the base's `soak_too_short` deny along with it. Binding `min_soak: 0s` switches that deny off entirely. [Composition without templating](/understanding/composition/) explains why the union-of-candidates guarantee doesn't cover params.
+A team invoking `guardrails(min_soak: 0s)` switches the `soak_too_short` deny off, even though the host requires `deploy.guardrails`. `policy.Require` guarantees the guardrails' candidates are always in the set; it says nothing about the values they compare against. [Composition without templating](/understanding/composition/) explains why the union-of-candidates guarantee doesn't cover params.
 
-Can a base policy constrain a param so teams can't loosen it? One option is bounds in the declaration:
+Two places could hold the bound:
 
 ```sigil
 param min_soak: duration = 24h min 1h
 ```
 
-Bounds would be checked at compile time when a `use` or Go binding supplies a literal. For bindings computed from Go at runtime, `Compile` would have to check them when binding. Other options: a `pinned` modifier that forbids overriding entirely, or leaving it to review and CI. Bounds are the most flexible, but they only make sense for ordered types (`int`, `float`, `duration`), so lists like `approvers` would need a different mechanism, if any.
+```go
+policy.Require("deploy.guardrails", policy.Min("min_soak", time.Hour))
+```
+
+Bounds in the policy keep the contract visible in the file, next to the rule that reads the param. Bounds set by the host keep it with whoever owns the guardrail, and don't need grammar. Either way, bounds are checked at compile time, since invocation arguments are constants; for params bound from Go with `policy.Params`, `Load` checks them when binding. Other options: a `pinned` modifier that forbids overriding entirely, or leaving it to review and CI. Bounds only make sense for ordered types (`int`, `float`, `duration`), so lists like `approvers` would need a different mechanism, if any.
 
 ## Optional structs
 
@@ -139,9 +143,9 @@ The current design says comparisons are strictly typed but doesn't say which typ
 
 **Blocks: M3, M8**
 
-A kind carries `version 1`, but a policy header names only the kind (`policy deploy.production: DeployApproval`). Nothing says what happens when a policy written against version 1 compiles against version 2. The number feeds `sigil breaking`, and beyond that its role is undefined. Options: policies pin a version (`: DeployApproval@1`) and the loader rejects mismatches; or the version is informational and compatibility is decided by type-checking alone.
+A kind carries `version 1`, but a policy or module header names only the kind (`policy deploy.production: DeployApproval`). Nothing says what happens when a policy written against version 1 compiles against version 2. The number feeds `sigil breaking`, and beyond that its role is undefined. Options: policies pin a version (`: DeployApproval@1`) and the loader rejects mismatches; or the version is informational and compatibility is decided by type-checking alone.
 
-Two neighbouring gaps in the versioning table belong here too. Adding an input can collide with an existing policy name (see [Namespaces and aliases](#namespaces-and-aliases)). Adding a `fn` doesn't break any policy, but it does break every service that evaluates through `LoadKind`, because `Eval` refuses to run until all declared functions are bound. "Compatible" needs to say compatible for whom.
+Two neighbouring gaps in the versioning table belong here too. Adding an input can collide with an existing policy name (see [Namespaces and imports](#namespaces-and-imports)). Adding a `fn` doesn't break any policy, but it does break every service that evaluates through `LoadKind`, because `Eval` refuses to run until all declared functions are bound. "Compatible" needs to say compatible for whom.
 
 ## `in` versus `has` for map keys
 
@@ -151,13 +155,13 @@ Two operators test for a map key: `"env" in service.labels` and `service.labels 
 
 Options: keep both as synonyms; drop the single-key form of `has`; or keep both in the grammar and have `sigil fmt` rewrite one into the other. Two spellings for one check is exactly the kind of drift a canonical formatter should prevent, so the formatter option is the likely answer. Which form wins is still open.
 
-## Namespaces and aliases
+## Namespaces and imports
 
 **Blocks: M3, M5**
 
-The proposed rule gives each policy one flat top-level namespace containing inputs, host functions, params, lets and `use` aliases. Any collision is a compile error, and nothing shadows anything, including quantifier variables.
+The proposed rule gives each policy one flat top-level namespace containing inputs, host functions, params, lets and every name bound by `use`. Any collision is a compile error, and nothing shadows anything, including quantifier variables.
 
-Confirming it closes several questions at once: `use deploy.production(...) as actor` is an error because `actor` is an input, a `let` can't be named `split`, and `any release in ...` can't shadow the `release` input. The cost is that adding an input to a kind can break an existing policy that already had a `let` of that name, which makes "add an input" less compatible than the [versioning table](/reference/kind-files/) claims. Either the table needs a footnote, or kind-declared names need to live in a namespace policies can't collide with.
+Confirming it closes several questions at once: `use deploy.common.{cleared as actor}` is an error because `actor` is an input, a `let` can't be named `split`, and `any release in ...` can't shadow the `release` input. It also needs one addition: an imported policy is called in the same position as a decision constructor, so importing a policy under a name the kind uses for a decision has to be an error too. The cost is that adding an input to a kind can break an existing policy that already had a `let` or an import of that name, which makes "add an input" less compatible than the [versioning table](/reference/kind-files/) claims. Either the table needs a footnote, or kind-declared names need to live in a namespace policies can't collide with.
 
 ## Vacuous `all in`
 
@@ -180,19 +184,19 @@ Whatever the answer, it has to cover the quantifier too: `all r in actor.roles: 
 
 **Blocks: M4**
 
-The MVP picks the earliest source position when several candidates share the winning decision, with `use`d policies counting as earlier than the file's own rules. See [Why rule order never matters](/understanding/order-independence/).
+The MVP picks the earliest source position when several candidates share the winning decision. A candidate reached through an invocation takes its call site's position first, then its position in the invoked file. See [Why rule order never matters](/understanding/order-independence/).
 
-That has a surprising consequence in the canonical example. Take a critical service and an actor who is a release manager and also in the `payments-sre` team. The base policy's `approve("release_manager")` (bake 1h, the kind's default) and the team's `approve("payments_sre", bake: 15m)` both fire. The base wins because it's earlier, so the team asked for a 15-minute bake and the deploy gets an hour.
+That has a surprising consequence in the canonical example. Take a critical service and an actor who is a release manager and also in the `payments-sre` team. `deploy.production`'s `approve("release_manager")` (bake 1h, the kind's default) and the team's `approve("payments_sre", bake: 15m)` both fire. The team file calls `production(...)` above its own rule, so the release manager's approval wins: the team asked for a 15-minute bake and the deploy gets an hour. Moving the team rule above the call would flip the result, which is exactly the kind of order dependence the rest of the language avoids.
 
 The alternative is a merge function declared in the kind per payload field, such as the minimum `bake` or the union of `approvers`. That removes the last trace of order dependence, but it raises its own questions: what the merged result's reason is, and which policy the result names.
 
-If earliest-position stays, it needs one more rule: how several `use` statements in one file order against each other and against the policies they `use` in turn. [Evaluation semantics](/reference/evaluation/) proposes a depth-first walk in source order.
+If earliest-position stays, [Evaluation semantics](/reference/evaluation/) proposes comparing whole call chains element by element, which orders nested invocations too.
 
 ## What the result's `Policy` field names
 
 **Blocks: M4**
 
-The current design describes the `Policy` field of `Result` as "the name of the policy that produced it", and that phrase has two readings. When the host evaluates `payments.production` and the `service_owner` review wins, is `Policy` the evaluated policy (`payments.production`) or the policy whose rule won (`deploy.production`, pulled in through `use`)? Those are two different fields. The illustrative `sigil eval` output in these docs shows the evaluated policy on top and each candidate's source file in the trace, which carries both. The open part is which one the top-level field should hold, and whether the other deserves its own field.
+The current design describes the `Policy` field of `Result` as "the name of the policy that produced it", and that phrase has two readings. When the host evaluates `payments.production` and the `service_owner` review wins, is `Policy` the evaluated policy (`payments.production`) or the policy whose rule won (`deploy.production`, reached through an invocation)? Those are two different fields. The illustrative `sigil eval` output in these docs shows the evaluated policy on top and each candidate's call chain in the trace, which carries both. The open part is which one the top-level field should hold, and whether the other deserves its own field.
 
 ## Cost of nested quantifiers
 
@@ -206,29 +210,54 @@ An earlier draft of this design called evaluation cost linear in policy size tim
 
 The linter warns when a policy uses the same reason twice. Two things aren't specified:
 
-- Does the check include reasons inherited through `use`? If the base says `approve("release_manager")` and the team adds its own `approve("release_manager")`, metrics can't tell them apart. But warning means a team has to know every reason in the base.
+- Does the check include reasons from invoked policies? If `deploy.production` says `approve("release_manager")` and the team adds its own `approve("release_manager")`, metrics can't tell them apart. But warning means a team has to know every reason in every policy it invokes. A policy invoked twice produces the same reason twice by construction, so that case at least has to be exempt.
 - What if base and team use the same reason for *different* decisions, `deny("release_manager")` in one and `approve("release_manager")` in the other? A metric keyed on reason alone would mix them. Decision plus reason is probably the right identity, which would make this case legal but still worth a warning.
 
 ## Checking a base policy on its own
 
 **Blocks: M5, M6**
 
-A missing required param is a compile error. So `deploy.production`, which declares `param approvers: list<string>` without a default, fails `sigil check` unless something binds `approvers`. That's right when a host loads it, and wrong for a policy repo that wants to lint its base policies in CI before any team uses them. Options: `sigil check` type-checks unbound params by their declared type and reports them as unbound rather than as errors; or a base policy is only ever checked through its instantiations.
+A missing required param is a compile error. So `deploy.production`, which declares `param approvers: list<string>` without a default, fails `sigil check` unless something binds `approvers`. That's right when a host loads it, and wrong for a policy repo that wants to lint its shared policies in CI before any team invokes them. Options: `sigil check` type-checks unbound params by their declared type and reports them as unbound rather than as errors; or a shared policy is only ever checked through the policies that invoke it. `sigil explain` has the same problem: without bound values it can only print param names.
 
-## What `use` arguments may reference
-
-**Blocks: M5**
-
-Params are bound at compile time, which suggests the arguments in `use deploy.production(min_soak: 4h)` must be constants. Nothing in the current design says so. Allowing `use deploy.production(min_soak: release.soak)` would turn a param into a per-evaluation value, which blurs the line between a param and a `let` and makes static bounds (see [Pinned params](#pinned-params)) impossible to check. Proposal: constants only, including other params of the using policy.
-
-## Using the same base twice
+## Input-dependent invocation arguments
 
 **Blocks: M5**
 
-`use` of the same base under two aliases, for example `deploy.production` once as `eu` with EU approvers and once as `us` with US approvers, is allowed. Two problems follow from composition being a union:
+Invocation arguments may reference constants and the invoking policy's own params, but not inputs. That keeps every invocation a static instantiation: `sigil explain` can print concrete values, and bounds on params (see [Pinned params on required policies](#pinned-params-on-required-policies)) can be checked at compile time. `production(approvers: service.owners)` would turn a param into a per-evaluation value, which blurs the line between a param and a `let`.
 
-- Any unscoped deny in the base fires for both instances. `deploy.production` has `when not eligible { deny("not_eligible") }`. If `eligible` depended on a param, say a required lifecycle label bound differently per region, the `eu` instance would deny every deploy the `us` instance was meant to approve. Bases meant for multi-instance use have to scope every rule to their own params, and nothing enforces that.
-- Both instances produce candidates with the same policy name, reason and source position, so the trace can't tell them apart. The alias should probably be part of a candidate's identity.
+The workaround is a `when` per case, as the PCI split in the canonical example does. Relax the rule only if a real policy needs it.
+
+## Invoking the same policy twice
+
+**Blocks: M5**
+
+A policy may invoke the same policy more than once with different arguments, for example `deploy.regional` once for `eu-1` and once for `us-1`. Each call is a separate instantiation, and each candidate records its call chain, so the trace can tell the instances apart. One problem remains, because composition is a union: any rule the invoked policy doesn't scope fires for every call. If `deploy.regional` had `when not in_scope { deny("out_of_region") }`, the `eu-1` call would deny every deploy the `us-1` call was meant to review. Policies meant to be invoked more than once have to scope every rule to their own params, or callers have to gate each call, and nothing enforces either. A lint for unscoped denies in a policy that's invoked twice could.
+
+## Direct or transitive requirement
+
+**Blocks: M5**
+
+`policy.Require("deploy.guardrails")` makes the compiler check that the root policy reaches `deploy.guardrails` through top-level invocations only. Should the call have to sit in the root file itself, or is an ungated chain through other policies enough?
+
+Direct is easier to read: open the team file and the guardrail call is there. Transitive allows shared "team baseline" policies, such as a `deploy.gate` that invokes the guardrails and the approvals, which a team then invokes in turn. The [Go API](/reference/go-api/#required-policies) currently describes the transitive reading.
+
+## Host-layered bases
+
+**Blocks: nothing yet**
+
+A host could layer a required policy itself, with something like `policy.Base("deploy.guardrails", params)`, so team files never mention it. That suits platforms where teams shouldn't see or bind the guardrails' params, and it sidesteps pinned params entirely. It's deferred rather than rejected, because the team file then no longer shows the whole picture, and `sigil explain` would need the host's configuration to print it. When is it worth adding?
+
+## Module privacy
+
+**Blocks: M5**
+
+Every `let` in a module is exported. If modules turn out to need private helpers, a `let` other lets build on but importers shouldn't use, the options are a `pub` marker (as in Rust) or an underscore prefix. Neither is needed by any example written so far.
+
+## Re-exports
+
+**Blocks: M5**
+
+Should a module be able to re-export names it imports, so a team gets one `use` line instead of several? Leaning no, because it hides where names come from, which is exactly what banning wildcard imports protects.
 
 ## Input encoding for the CLI
 
@@ -244,13 +273,13 @@ Params are bound at compile time, which suggests the arguments in `use deploy.pr
 
 Options: hosts build their own `sigil` binary with their functions linked in (a small `main` package the library provides); a plugin mechanism; or a stub mode where the test file supplies return values for each function call. The `policytest` package for `go test` doesn't have this problem, since it runs inside the host.
 
-## Names and file extension
+## Kind and module files share the extension
 
 **Blocks: M5, M6**
 
-Mostly settled: the project is Sigil, the CLI is `sigil`, and source files end in `.sigil`. The short form `.sgl` was the alternative considered; `.sigil` won because it matches the CLI and reads unambiguously in a file listing. The extension matters earlier than it looks, because `use deploy.production` resolves to `deploy/production.sigil`, so M5's loader bakes it in.
+Settled: the project is Sigil, the CLI is `sigil`, and source files end in `.sigil`. The short form `.sgl` was the alternative considered; `.sigil` won because it matches the CLI and reads unambiguously in a file listing. The extension matters earlier than it looks, because `use deploy.production` resolves to `deploy/production.sigil`, so M5's loader bakes it in.
 
-What's still open is that kind files and policy files share the extension. A file's first keyword (`kind` or `policy`) tells them apart, so an exported kind lands as, say, `deploy_approval.sigil` next to the policies. Is that enough? The loader has to reject a `use` that resolves to a kind file, and any tool that globs `*.sigil` has to read each header to know what it's looking at. The alternative is a naming convention for kind files, such as a `kinds/` directory or a `_kind` suffix on the file name (`deploy_approval_kind.sigil`), which costs nothing in the grammar and saves every tool a sniff.
+What's still open is that kind files, module files and policy files all share the extension. A file's first keyword (`kind`, `module` or `policy`) tells them apart, so an exported kind lands as, say, `deploy_approval.sigil` next to the policies. Is that enough? The loader has to reject a `use` that resolves to a kind file, and any tool that globs `*.sigil` has to read each header to know what it's looking at. The alternative is a naming convention for kind files, such as a `kinds/` directory or a `_kind` suffix on the file name (`deploy_approval_kind.sigil`), which costs nothing in the grammar and saves every tool a sniff. Modules don't need one: a module and a policy are both valid targets of `use`, and the compiler reads the header anyway.
 
 ## Non-Go evaluators
 

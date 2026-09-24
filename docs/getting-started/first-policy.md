@@ -5,7 +5,7 @@ createTime: 2026/09/24 22:30:00
 permalink: /getting-started/first-policy/
 ---
 
-In this tutorial you'll write `deploy/production.sigil` from an empty file, one rule at a time, against the `DeployApproval` kind from the [tour](/getting-started/tour/). After each step you'll check the policy and evaluate it against a sample deploy, and along the way you'll hit two of the compile errors Sigil exists to produce.
+In this tutorial you'll write `deploy/production.sigil` from an empty file, one rule at a time, against the `DeployApproval` kind from the [tour](/getting-started/tour/). After each step you'll check the policy and evaluate it against a sample deploy, and along the way you'll hit the compile errors Sigil exists to produce. At the end you'll invoke it from a team policy and split it into the files the tour uses.
 
 ::: info Illustrative CLI
 Sigil is in the design phase and the `sigil` CLI doesn't exist yet. The commands, flags and output on this page show the intended experience; the exact spelling will change. The language itself is what this page specifies.
@@ -23,6 +23,8 @@ policies/
 ├── owner-deploy.json
 └── wrong-lifecycle.json
 ```
+
+By the end, `deploy/` will hold two more files and a `payments/` directory will sit next to it.
 
 `deploy_approval.sigil` is the kind file the host generates from Go. It starts with the `kind` keyword, which is how tools tell it apart from a policy. You can copy it from the [tour](/getting-started/tour/#the-kind); you won't edit it.
 
@@ -61,7 +63,7 @@ Every policy file starts with a `policy` line that names the policy and the kind
 policy deploy.production: DeployApproval
 ```
 
-The name `deploy.production` has to match the file's path, `deploy/production.sigil`. That's how `use` finds it later.
+The name `deploy.production` has to match the file's path, `deploy/production.sigil`. That's how an import finds it later.
 
 A policy with no rules is valid. Evaluate it:
 
@@ -267,7 +269,7 @@ Some notes on what you just wrote:
 - `approve("release_manager")` passes no payload, so `bake` takes the kind's default of `1h`. Writing `approve("release_manager", bake: 2h)` would override it.
 - `approvers` has no default, so it's required. That matters in the next step.
 
-## Step 6: bind the params
+## Step 6: invoke it from a team policy
 
 Try to evaluate the base policy on its own:
 
@@ -279,8 +281,8 @@ deploy/production.sigil:4:7: error: required param "approvers" is not bound
   |
 4 | param approvers: list<string>
   |       ^^^^^^^^^
-  = help: bind it from a policy that uses this one, as in
-          use deploy.production(approvers: [...]), or from Go with policy.Params
+  = help: bind it from a policy that invokes this one, as in
+          production(approvers: [...]), or from Go with policy.Params
 ```
 
 :::
@@ -290,7 +292,9 @@ A policy with a required param is a template until someone fills it in. Create `
 ```sigil
 policy payments.production: DeployApproval
 
-use deploy.production(
+use deploy.production
+
+production(
   min_soak: 4h,
   approvers: ["payments-leads"],
 )
@@ -299,6 +303,8 @@ when "payments-sre" in actor.teams {
   approve("payments_sre", bake: 15m)
 }
 ```
+
+`use deploy.production` imports the policy under the name `production`, and nothing else. The call on line 5 is what adds its rules: a policy invocation looks like a decision constructor with named arguments, and it binds the invoked policy's params. `tiers` isn't mentioned, so it keeps its default.
 
 ::: terminal Evaluate the team policy
 
@@ -310,21 +316,151 @@ policy    payments.production
 payload   approvers = ["payments-leads"]
 
 candidates
-  review   service_owner     deploy/production.sigil:34:5
-  approve  payments_sre      payments/production.sigil:9:3
+  review   service_owner     payments/production.sigil:5:1 → deploy/production.sigil:34:5
+  approve  payments_sre      payments/production.sigil:11:3
 ```
 
 :::
 
-With `min_soak` lowered to four hours, the six-hour soak no longer trips `soak_too_short`. The base policy asks for review, the team's rule offers an approval, and review wins because it ranks higher in the kind's `precedence`. The [tour](/getting-started/tour/#evaluating-it-by-hand) walks through more inputs against this exact pair of files.
+With `min_soak` lowered to four hours, the six-hour soak no longer trips `soak_too_short`. The base policy asks for review, the team's rule offers an approval, and review wins because it ranks higher in the kind's `precedence`. The first candidate's position is a call chain: the invocation on line 5 of the team file, then the rule on line 34 of the base.
 
 ::: tip Checking a base policy on its own
-Whether `sigil check` should accept a base policy with unbound required params, treating it as a library, or report them the way `eval` does, isn't settled yet. Either way, checking the instantiation checks the base too.
+Whether `sigil check` should accept a base policy with unbound required params, treating it as a library, or report them the way `eval` does, isn't settled yet. Either way, checking a policy that invokes it checks the base too.
 :::
 
-## Step 7: pin the behaviour with test cases
+## Step 7: protect the denies
 
-A policy is only as trustworthy as the cases you've pinned down. `sigil test` (and the `policytest` package for `go test`) will run cases that pair an input JSON file with the decision and reason you expect. The file format isn't designed yet, so here are the cases this tutorial has already exercised, as a plain table:
+An invocation can go anywhere a decision can, including inside a `when` block, where the block's condition gets added to every rule it brings in. That's useful: it's how a team says "these approvals, but only for some services". It's also a hole. Nothing stops a team from writing this:
+
+```sigil
+when false {
+  production(min_soak: 4h, approvers: ["payments-leads"])
+}
+```
+
+That switches off `not_eligible` and `soak_too_short` along with everything else. The fix is to keep the denies in a policy of their own and have the host require it. Split `deploy/production.sigil` into three files.
+
+The shared matchers move to a module, a file that holds `let`s and nothing else. Create `deploy/common.sigil`:
+
+```sigil
+module deploy.common: DeployApproval
+
+let owns_service = actor.teams any in service.owners
+let cleared =
+  split(service.labels["regions"], ",") all in actor.regions
+let eligible =
+  "deployer" in actor.roles
+  and environment == "production"
+  and service.labels has {
+    "app.kubernetes.io/managed-by": "argocd",
+    "platform.example.com/lifecycle": "ga",
+  }
+```
+
+The two denies move to `deploy/guardrails.sigil`, together with the param they read:
+
+```sigil
+policy deploy.guardrails: DeployApproval
+
+use deploy.common.{eligible}
+
+param min_soak: duration = 24h
+
+when not eligible {
+  deny("not_eligible")
+}
+
+when release.soak < min_soak and not release.hotfix {
+  deny("soak_too_short")
+}
+```
+
+`use deploy.common.{eligible}` imports one `let` by name. What's left in `deploy/production.sigil` is the approvals and reviews:
+
+```sigil
+policy deploy.production: DeployApproval
+
+use deploy.common.{cleared, owns_service}
+
+param approvers: list<string>
+param tiers: list<string> = ["standard", "internal"]
+
+when cleared {
+  when service.tier == "critical"
+    and "release_manager" in actor.roles {
+    approve("release_manager")
+  }
+
+  when service.tier in tiers
+    and owns_service {
+    review("service_owner", approvers: approvers)
+  }
+}
+```
+
+The host now loads every team policy with `policy.Require("deploy.guardrails")`, and a policy repository runs the same check in CI with `sigil check --require`. Try it on the team policy from step 6, which doesn't invoke the guardrails yet:
+
+::: terminal Check the team policy against the requirement
+
+```shell
+$ sigil check --kind deploy_approval.sigil --require deploy.guardrails payments/production.sigil
+payments/production.sigil:1:1: error: deploy.guardrails must be invoked unconditionally
+  |
+1 | policy payments.production: DeployApproval
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: the host requires deploy.guardrails for every DeployApproval policy.
+          Add `use deploy.guardrails` and invoke it at the top level.
+```
+
+:::
+
+The same check reports a second error, left out above: `deploy.production` no longer declares `min_soak`, so the call on line 5 passes an argument the policy doesn't have. The requirement check also fails if the call is there but sits inside a `when`. Update the team policy to invoke both policies. While you're at it, give services in PCI scope a second approver group, and only offer the SRE fast path to actors who are cleared for the service's regions:
+
+```sigil
+policy payments.production: DeployApproval
+
+use deploy.guardrails
+use deploy.production
+use deploy.common.{cleared}
+
+guardrails(min_soak: 4h)
+
+when service.labels["compliance"] == "pci" {
+  production(approvers: ["payments-leads", "security-leads"])
+}
+
+when service.labels["compliance"] != "pci" {
+  production(approvers: ["payments-leads"])
+}
+
+when cleared and "payments-sre" in actor.teams {
+  approve("payments_sre", bake: 15m)
+}
+```
+
+Here the `when` around `production(...)` is exactly what you want: the block's condition is added to every rule the call brings in. The guardrails are invoked at the top level, so the check passes and every guardrail deny is always a candidate.
+
+::: terminal Evaluate the split policy
+
+```shell
+$ sigil eval --kind deploy_approval.sigil --input owner-deploy.json payments/production.sigil
+decision  review
+reason    service_owner
+policy    payments.production
+payload   approvers = ["payments-leads"]
+
+candidates
+  review   service_owner     payments/production.sigil:14:3 → deploy/production.sigil:16:5
+  approve  payments_sre      payments/production.sigil:18:3
+```
+
+:::
+
+Same decision as before the split; only the positions moved. These are the exact files the [tour](/getting-started/tour/#evaluating-it-by-hand) walks through with more inputs. To see everything the team policy can decide in one place, run `sigil explain` on it; the tour shows [its output](/getting-started/tour/#what-the-team-policy-adds-up-to).
+
+## Step 8: pin the behaviour with test cases
+
+A policy is only as trustworthy as the cases you've pinned down. `sigil test` (and the `policytest` package for `go test`) will run cases that pair an input JSON file with the decision and reason you expect. The file format isn't designed yet, so here are the cases this tutorial has already exercised, plus one for the PCI split, as a plain table:
 
 | Policy | Input | Expected decision | Expected reason |
 | --- | --- | --- | --- |
@@ -332,13 +468,14 @@ A policy is only as trustworthy as the cases you've pinned down. `sigil test` (a
 | `payments.production` | `owner-deploy.json` with `"soak": "2h"` | `deny` | `soak_too_short` |
 | `payments.production` | `wrong-lifecycle.json` | `deny` | `not_eligible` |
 | `payments.production` | `owner-deploy.json` with the actor's teams set to `["checkout"]` | `deny` | `no_rule_matched` |
+| `payments.production` | `owner-deploy.json` with `"compliance": "pci"` on the service | `review` | `service_owner` |
 
-Because reasons are string literals, a test that expects `soak_too_short` breaks loudly if someone renames the reason, and a dashboard grouping by reason keeps working as long as the tests pass.
+Because reasons are string literals, a test that expects `soak_too_short` breaks loudly if someone renames the reason, and a dashboard grouping by reason keeps working as long as the tests pass. The last case has the same decision and reason as the first; asserting on the payload's `approvers` as well is what would tell them apart, which is one reason the test format should allow payload assertions.
 
 ## Where you are now
 
-You've written a base policy with a required param, a team policy that binds it, and you've seen the evaluator pick a winner from several candidates. From here:
+You've written a policy with a required param, invoked it from a team policy, split its denies into guardrails the host requires, and seen the evaluator pick a winner from several candidates. From here:
 
-- [Per-team policies](/guides/team-policies/) covers `use ... as`, binding params from Go, and what teams can and can't override.
+- [Per-team policies](/guides/team-policies/) covers imports, invoking under conditions, binding params from Go, and what teams can and can't override.
 - [Common patterns](/guides/patterns/) collects recipes for labels, optionals, quantifiers and time.
 - The [policy files reference](/reference/policy-files/) is the precise definition of every statement you used.

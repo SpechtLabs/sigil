@@ -160,11 +160,11 @@ Replaying a decision later is then just evaluating the same input again, `now` i
 A policy fails closed when the absence of information leads to a deny. The pieces:
 
 - Make the kind's `default` a deny. Anything no rule covers gets refused.
-- Write explicit denies for things that must never be approved. Deny outranks every other decision, and no composed policy can remove a deny.
+- Write explicit denies for things that must never be approved, in a policy the host requires with `policy.Require`. Deny outranks every other decision, no composed policy can remove a deny, and a required policy can't be gated behind a `when`.
 - Write grants as positive matches. A grant that fires on `!=` or `not` fires on missing data too (see the missing-keys warning above).
 - Let runtime errors fall back. When a host function fails or an index is out of range, `Eval` returns the error together with the kind's default decision, so a host that just uses the result stays closed.
 
-The eligibility check in `deploy.production` shows the shape:
+The eligibility check in `deploy.guardrails` shows the shape:
 
 ```sigil
 when not eligible {
@@ -176,17 +176,44 @@ when not eligible {
 
 ## Share matchers across policies
 
-Define a matcher once as a `let` in the base policy and reach it from other policies through a `use` alias:
+Define a matcher once as a `let` in a module and import it wherever it's needed:
 
 ```sigil
-use deploy.production(approvers: ["payments-leads"]) as base
+module deploy.common: DeployApproval
 
-when base.eligible and "payments-sre" in actor.teams {
+let cleared =
+  split(service.labels["regions"], ",") all in actor.regions
+```
+
+```sigil
+use deploy.common.{cleared}
+
+when cleared and "payments-sre" in actor.teams {
   approve("payments_sre", bake: 15m)
 }
 ```
 
-`use` always brings the used policy's rules along with its lets, so here the team gets `deploy.production`'s denies too. That's usually what you want. If you only want the matchers, put them in a policy with lets and no rules; there's no separate "library" file type, and such a policy works as one as long as it implements the same kind. [Per-team policies](/guides/team-policies/) covers aliases in more detail.
+A module holds `let`s and nothing else, so importing from it never brings rules along. `use deploy.common` without braces works too, and then the matcher reads `common.cleared`. A policy's own `let`s can be imported the same way as long as they don't read a param; one that does has no value outside an invocation. [Per-team policies](/guides/team-policies/) covers imports in more detail.
+
+## Add conditions to a shared policy
+
+Invoke a shared policy inside a `when` block to apply its rules only where the block's condition holds. The condition is added to every rule the call brings in:
+
+```sigil
+use deploy.production
+
+when service.labels["compliance"] == "pci" {
+  production(approvers: ["payments-leads", "security-leads"])
+}
+
+when service.labels["compliance"] != "pci" {
+  production(approvers: ["payments-leads"])
+}
+```
+
+Two gated calls with complementary conditions are the idiom for "this policy, with different params depending on the input". Invocation arguments can't read inputs, so the input-dependent choice goes into the `when`, and `sigil explain` can still print every rule with concrete values.
+
+Don't gate a policy that holds denies unless you mean to switch them off where the condition is false. The `gated-deny` lint warns about it, and a host that requires the policy rejects it outright.
 
 ## Compare strings case-sensitively, or not
 

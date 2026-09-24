@@ -68,7 +68,7 @@ It costs one line. In exchange, each block states its full condition, a reviewer
 
 ## What the trace buys you
 
-Because every block runs, the evaluator can report every candidate, not just the winner. The trace lists each candidate with its policy, reason and source position, and for the winner it records which conditions held. When someone asks "why was this denied and not approved", the answer is in the trace: the approve fired too, and deny outranked it.
+Because every block runs, the evaluator can report every candidate, not just the winner. The trace lists each candidate with its policy, reason and source position (the whole call chain, for a rule reached through invocations), and for the winner it records which conditions held. When someone asks "why was this denied and not approved", the answer is in the trace: the approve fired too, and deny outranked it.
 
 A first-match engine can't give you that. It stopped looking after the first match.
 
@@ -76,9 +76,9 @@ A first-match engine can't give you that. It stopped looking after the first mat
 
 Precedence settles conflicts between different decisions. It doesn't settle ties within one decision. If two `approve` rules fire with different bake times, something has to pick.
 
-For the MVP, the earliest source position wins, and policies pulled in with `use` count as earlier than the file's own rules. It's a deterministic rule, so the same input still always produces the same result, and the trace shows every tied candidate so nothing hides. But it is an order dependence, and it's the only one left.
+For the MVP, the earliest source position wins. A rule reached through an invocation takes its call site's position first, then its own position in the invoked file. It's a deterministic rule, so the same input still always produces the same result, and the trace shows every tied candidate so nothing hides. But it is an order dependence, and it's the only one left.
 
-It bites in the canonical example. Take a critical service and an actor who is a release manager and also in the `payments-sre` team. The base's `approve("release_manager")` (bake 1h, the kind's default) and the team's `approve("payments_sre", bake: 15m)` both fire. The base's rule counts as earlier, so it wins: the team asked for a 15-minute bake and the deploy gets an hour.
+It bites in the canonical example. Take a critical service and an actor who is a release manager and also in the `payments-sre` team. `deploy.production`'s `approve("release_manager")` (bake 1h, the kind's default) and the team's `approve("payments_sre", bake: 15m)` both fire. The team file invokes `production(...)` above its own rule, so the release manager's approval counts as earlier and wins: the team asked for a 15-minute bake and the deploy gets an hour.
 
 The cleaner answer is a merge function declared in the kind: take the minimum `bake`, or the union of `approvers`. That would remove the last trace of order from the language. It's listed under "Ties within one decision" in the [open questions](/project/open-questions/), and the normative rules live in [Evaluation semantics](/reference/evaluation/).
 

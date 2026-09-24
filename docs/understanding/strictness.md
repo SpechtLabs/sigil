@@ -35,11 +35,11 @@ Because every policy declares its kind, the compiler knows every input, every fi
 The error names the location and suggests a fix:
 
 ```text
-deploy/production.sigil:27:16: error: unknown field "teir" on type Service
-   |
-27 |   when service.teir == "critical"
-   |                ^^^^
-   = help: did you mean "tier"? Service declares: name, tier, owners, labels
+deploy/production.sigil:9:16: error: unknown field "teir" on type Service
+  |
+9 |   when service.teir == "critical"
+  |                ^^^^
+  = help: did you mean "tier"? Service declares: name, tier, owners, labels
 ```
 
 The policy never loads, so it never gets the chance to be wrong in production. When the error is a type or payload mismatch, the message quotes the relevant signature from the kind so the author doesn't have to go looking for it.

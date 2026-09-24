@@ -29,7 +29,7 @@ Sigil also differs on case sensitivity: string comparison is case-sensitive, bec
 
 [Cedar](https://www.cedarpolicy.com/), from AWS, is the closest thing to Sigil in spirit. Policies validate against a schema before they run, `forbid` always beats `permit`, and policy templates with slots let you stamp out per-tenant variants without copying text.
 
-All three ideas show up in Sigil in a generalised form. The schema becomes the _kind_. Forbid-overrides-permit becomes a `precedence` declaration, so a host can define `deny > review > approve` or any other order its decisions need. Templates with slots become typed `param`s bound through `use`.
+All three ideas show up in Sigil in a generalised form. The schema becomes the _kind_. Forbid-overrides-permit becomes a `precedence` declaration, so a host can define `deny > review > approve` or any other order its decisions need. Templates with slots become typed `param`s bound by invoking a policy.
 
 What Sigil can't take is Cedar's fixed data model. Every Cedar request is a principal, an action, a resource and a context. That fits access control well and fits "should this hotfix ship to production before it finished soaking in staging" badly. Sigil lets the host define arbitrary typed inputs instead.
 
@@ -49,4 +49,4 @@ Rego is powerful and its Datalog roots make some things elegant, but engineers w
 
 The declarative feel is worth keeping: a policy should describe conditions and outcomes, not a procedure. What goes wrong with YAML-based rule engines is everything around that feel. Deeply nested blocks fight text templating, because indentation becomes load-bearing. Anchors and aliases end up as the reuse mechanism, which nobody enjoys debugging. Matchers are strings interpreted at runtime, so `tier: "critical"` and `teir: "critical"` are both valid YAML.
 
-Sigil keeps statements keyword-led and whitespace-insensitive so templating can't break them, replaces anchors with `use` and `let`, and types every matcher against the kind.
+Sigil keeps statements keyword-led and whitespace-insensitive so templating can't break them, replaces anchors with modules, imports and `let`, and types every matcher against the kind.
