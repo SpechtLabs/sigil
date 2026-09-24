@@ -53,9 +53,9 @@ linters:
       check-type-assertions: false
       check-blank: false
     govet:
+      # fieldalignment stays on: the language runtime should keep structs
+      # compact. The CLI under cmd/ is excluded below.
       enable-all: true
-      disable:
-        - fieldalignment # Too noisy for most projects
     misspell:
       locale: US
     revive:
@@ -77,6 +77,12 @@ linters:
           - goconst
           - golint-sl
         path: _test\.go
+      # The CLI isn't on the hot path, so its structs are laid out for
+      # readability rather than size.
+      - linters:
+          - govet
+        text: "^fieldalignment:"
+        path: ^cmd/
 
     paths:
       - third_party$
