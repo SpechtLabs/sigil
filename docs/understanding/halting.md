@@ -13,7 +13,7 @@ A policy engine runs on a request path, often on every request. A policy author 
 
 **No loops.** There's no `for`, no `while`, no recursion through data. The only iteration is the quantifiers, `any x in xs: ...` and `all x in xs: ...`, plus the list operators `all in` and `any in`. All of them range over a list that came from the input, a param or a literal, and all of those are finite.
 
-**No recursion.** A `let` can refer to other `let`s, and a policy can `use` other policies, but both graphs must be acyclic. The compiler builds the dependency graph and rejects a cycle with an error pointing at the edge that closes it. Without cycles, every `let` has a finite expansion and every `use` chain bottoms out.
+**No recursion.** A `let` can refer to other `let`s, a file can import from other files, and a policy can invoke other policies, but all three graphs must be acyclic. The compiler builds each dependency graph and rejects a cycle with an error pointing at the edge that closes it. Without cycles, every `let` has a finite expansion and every chain of invocations bottoms out, so flattening a policy the way `sigil explain` does always terminates.
 
 **No user-defined functions.** Functions are how most expression languages sneak recursion back in. In Sigil, the only callable things are host functions declared in the kind, like `fn split(s: string, sep: string) -> list<string>`. The host implements them in Go, and they must be pure: same arguments, same result, no side effects. If a host function hangs, that's a Go bug in the host, reviewed and tested like any other Go code.
 
@@ -26,9 +26,9 @@ With those pieces gone, each expression node runs at most once per `when` block 
 That makes static cost estimation possible, the same trick CEL uses. If the host declares a maximum size for each collection, the compiler can walk the policy and compute a worst-case cost. The host can then set a budget and reject policies that exceed it at load time. Suppose the payments team appended a rule to `payments/production.sigil` that spells out the ownership check by hand:
 
 ```text
-payments/production.sigil:12:6: error: estimated worst-case cost 1048576 exceeds budget 100000
+payments/production.sigil:21:6: error: estimated worst-case cost 1048576 exceeds budget 100000
    |
-12 | when any a in actor.teams: any b in service.owners: a == b {
+21 | when any a in actor.teams: any b in service.owners: a == b {
    |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: nested quantifiers multiply; actor.teams (max 1024) x service.owners (max 1024)
 ```

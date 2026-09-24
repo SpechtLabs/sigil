@@ -9,7 +9,7 @@ permalink: /reference/expressions/
 This page specifies the language as designed. Nothing is implemented yet; see [Open questions](/project/open-questions/).
 :::
 
-Expressions appear in `when` conditions, `let` bindings, param defaults, `use` bindings and decision payloads. Every expression has a static type that the compiler knows before evaluation, and nothing converts between types implicitly. The types themselves are on [Types](/reference/types/).
+Expressions appear in `when` conditions, `let` bindings, param defaults, policy invocation arguments and decision payloads. Every expression has a static type that the compiler knows before evaluation, and nothing converts between types implicitly. The types themselves are on [Types](/reference/types/).
 
 ## Operator precedence
 
@@ -197,16 +197,16 @@ These are postfix and bind tightest.
 `x.field` reads a field of a struct value. A field the struct type doesn't declare is a compile error:
 
 ```text
-deploy/production.sigil:27:16: error: unknown field "teir" on type Service
-   |
-27 |   when service.teir == "critical"
-   |                ^^^^
-   = help: did you mean "tier"? Service declares: name, tier, owners, labels
+deploy/production.sigil:9:16: error: unknown field "teir" on type Service
+  |
+9 |   when service.teir == "critical"
+  |                ^^^^
+  = help: did you mean "tier"? Service declares: name, tier, owners, labels
 ```
 
 That message format is illustrative; the exact layout isn't fixed yet.
 
-`alias.name` reads a `let` from a policy included with `use ... as alias`. See [Policy files](/reference/policy-files/).
+`common.name` reads a `let` through a whole-file import such as `use deploy.common`. See [Policy files](/reference/policy-files/#use).
 
 `m[k]` indexes a map. `k` must have the map's key type. A missing key yields the zero value of the value type, like Go: `service.labels["absent"]` is `""`.
 
@@ -246,7 +246,7 @@ To end a quantifier early, wrap it in parentheses:
 (any r in actor.roles: r like "sre-*") and eligible
 ```
 
-The quantifier variable follows the no-shadowing rule: naming it after an input, param, let, alias or host function is a compile error.
+The quantifier variable follows the no-shadowing rule: naming it after an input, param, let, imported name or host function is a compile error.
 
 ::: tip Proposed
 The "extends as far right as possible" rule and the no-shadowing rule for quantifier variables are proposed. The current design shows quantifiers only in isolation.

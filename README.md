@@ -14,7 +14,7 @@ Sigil lets engineers write rules that evaluate host-provided input to a typed de
 
 ## What it looks like
 
-A working setup has three files. The example below gates production deployments: a platform team writes the base policy, and a product team reuses it with its own settings.
+The example below gates production deployments: a platform team writes shared policies, and a product team composes them with its own settings.
 
 **The kind** is the contract. The host defines it in Go and exports it as `deploy_approval.sigil`; nobody writes it by hand.
 
@@ -53,14 +53,10 @@ precedence deny > review > approve
 default deny("no_rule_matched")
 ```
 
-**A base policy** holds the rules. `param`s make it reusable; `let`s name the conditions.
+**A module** holds shared matchers. `let`s name conditions; a module has nothing else, so importing from it can never change a decision.
 
 ```sigil
-policy deploy.production: DeployApproval
-
-param min_soak: duration = 24h
-param approvers: list<string>
-param tiers: list<string> = ["standard", "internal"]
+module deploy.common: DeployApproval
 
 let owns_service = actor.teams any in service.owners
 let cleared =
@@ -72,6 +68,16 @@ let eligible =
     "app.kubernetes.io/managed-by": "argocd",
     "platform.example.com/lifecycle": "ga",
   }
+```
+
+**Two platform policies** hold the rules: guardrails that deny, and approvals that teams tune. `use` imports names; `param`s make a policy reusable.
+
+```sigil
+policy deploy.guardrails: DeployApproval
+
+use deploy.common.{eligible}
+
+param min_soak: duration = 24h
 
 when not eligible {
   deny("not_eligible")
@@ -80,6 +86,15 @@ when not eligible {
 when release.soak < min_soak and not release.hotfix {
   deny("soak_too_short")
 }
+```
+
+```sigil
+policy deploy.production: DeployApproval
+
+use deploy.common.{cleared, owns_service}
+
+param approvers: list<string>
+param tiers: list<string> = ["standard", "internal"]
 
 when cleared {
   when service.tier == "critical"
@@ -94,27 +109,39 @@ when cleared {
 }
 ```
 
-**A team policy** instantiates the base with its own values and adds a rule.
+**A team policy** invokes the platform's policies like decision constructors, with its own values. Inside a `when`, an invocation's rules only apply where the condition holds, so PCI-scoped services get a second approver group. The team also adds a rule of its own.
 
 ```sigil
 policy payments.production: DeployApproval
 
-use deploy.production(
-  min_soak: 4h,
-  approvers: ["payments-leads"],
-)
+use deploy.guardrails
+use deploy.production
+use deploy.common.{cleared}
 
-when "payments-sre" in actor.teams {
+guardrails(min_soak: 4h)
+
+when service.labels["compliance"] == "pci" {
+  production(approvers: ["payments-leads", "security-leads"])
+}
+
+when service.labels["compliance"] != "pci" {
+  production(approvers: ["payments-leads"])
+}
+
+when cleared and "payments-sre" in actor.teams {
   approve("payments_sre", bake: 15m)
 }
 ```
 
-The team rule can only add an approval. The base policy's `not_eligible` and `soak_too_short` denies still win over it, because the kind ranks `deny` above `approve`.
+The team rule can only add an approval. The guardrails' `not_eligible` and `soak_too_short` denies still win over it, because the kind ranks `deny` above `approve`, and the host requires `deploy.guardrails` to be invoked unconditionally, so no team can wrap it in a `when` to switch it off.
+
+Files are only containers. Imports resolve by the name in each document's header, so the same documents can ship one per file, as above, or several to a file separated by `---`, which is how they fit into a single key of a Kubernetes ConfigMap.
 
 The host evaluates the compiled policy and gets a typed result back:
 
 ```go
-p, err := Deploy.Load(policies, "payments.production", nil)
+p, err := Deploy.Load(policies, "payments.production",
+	policy.Require("deploy.guardrails"))
 if err != nil {
 	log.Fatal(err) // file:line:col plus a fix hint
 }
@@ -131,7 +158,7 @@ if r, ok := Review.Match(res); ok {
 - **Finite and halting by design.** No loops, no recursion, no user-defined functions, so evaluation cost depends only on list sizes and can be bounded before a policy ships.
 - **Typed against the host's contract.** Unknown fields, type mismatches and wrong payload keys fail at compile time. A typo can't silently switch a deny rule off.
 - **Self-describing decisions.** A mandatory, literal reason on every decision, plus a typed payload the host acts on.
-- **Composable from day one.** Typed `param` and `use` replace text templating for per-team variants.
+- **Composable from day one.** Typed `param`s, `use` imports and policy invocation replace text templating for per-team variants, and `sigil explain` flattens any composition back into the rules it adds up to.
 - **Parse once, evaluate many.** A compiled policy is immutable and safe for concurrent use.
 
 Out of scope: general computation, evaluators in languages other than Go (for now), and org-wide authorization in the style of OPA or Cedar. Sigil targets decisions embedded in a single application.
@@ -150,7 +177,7 @@ flowchart LR
   E --> F
 ```
 
-The host gets back the winning decision, its reason and payload, the policy that produced it, and a trace of every candidate.
+The host gets back the winning decision, its reason and payload, the policy that produced it, and a trace of every candidate. An invoked policy's rules join the same pool, with the conditions of any `when` around the call added to each of them.
 
 ## Prior art
 
@@ -170,7 +197,7 @@ The docs site lives in [`docs/`](./docs) and follows the [Diátaxis](https://dia
 | --- | --- |
 | [Getting started](./docs/getting-started/overview.md) | What Sigil is, a tour of the language, and a first policy built step by step |
 | [Guides](./docs/guides/team-policies.md) | Per-team policies, common patterns, evolving a kind without breaking policies |
-| [Understanding](./docs/understanding/design-goals.md) | Why the language is shaped this way: order independence, strictness, halting, composition |
+| [Understanding](./docs/understanding/design-goals.md) | Why the language is shaped this way: order independence, strictness, halting, composition and required guardrails |
 | [Reference](./docs/reference/policy-files.md) | The language specification: lexical structure, statements, expressions, types, decisions, evaluation, kind files, grammar |
 | [Project](./docs/project/open-questions.md) | Open design questions, plus the roadmap rendered from [`roadmap.yml`](./roadmap.yml) |
 
@@ -191,7 +218,7 @@ Documentation comes first. Implementation starts once the language specification
 | M2 Expressions | Lexer, Pratt parser, AST with positions, error hints | Planned |
 | M3 Types | `NewKind` reflection, type checker, evaluator over Go structs | Planned |
 | M4 Policies | `when`, decision constructors, precedence, default, trace | Planned |
-| M5 Composition | `param`, `let`, `use`, `fs.FS` loader, cycle detection | Planned |
+| M5 Composition | `param`, `let`, modules and imports, policy invocation, `Require`, bundle loader, cycle detection, `sigil explain` | Planned |
 | M6 Tooling I | `sigil fmt`, kind export, `sigil check`, `sigil eval`, `sigil test` | Planned |
 | M7 Hardening | `LoadKind`, round-trip property tests, parser fuzzing, cost analysis | Planned |
 | M8 Tooling II | `sigil lsp`, `sigil gen go`, `sigil breaking` | Planned |

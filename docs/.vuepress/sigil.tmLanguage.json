@@ -5,6 +5,7 @@
   "aliases": ["sgl"],
   "patterns": [
     { "include": "#comment" },
+    { "include": "#separator" },
     { "include": "#string" },
     { "include": "#raw-string" },
     { "include": "#duration" },
@@ -18,6 +19,10 @@
     { "include": "#operator" }
   ],
   "repository": {
+    "separator": {
+      "name": "punctuation.separator.document.sigil",
+      "match": "^\\s*---\\s*$"
+    },
     "comment": {
       "name": "comment.line.double-slash.sigil",
       "match": "//.*$"
@@ -49,7 +54,7 @@
     "declaration": {
       "patterns": [
         {
-          "match": "\\b(policy|use)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
+          "match": "\\b(policy|module|use)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
           "captures": {
             "1": { "name": "keyword.other.sigil" },
             "2": { "name": "entity.name.namespace.sigil" }
@@ -86,7 +91,7 @@
         },
         {
           "name": "keyword.other.sigil",
-          "match": "\\b(policy|use|as|param|let|kind|version|type|input|fn|decision|precedence|default)\\b"
+          "match": "\\b(policy|module|use|as|param|let|kind|version|type|input|fn|decision|precedence|default)\\b"
         }
       ]
     },

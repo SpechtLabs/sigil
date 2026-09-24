@@ -26,10 +26,10 @@ The three parts:
 | Part | Written by | What it is |
 | --- | --- | --- |
 | The kind (`deploy_approval.sigil`) | Generated from Go | The contract: which inputs exist, their types, which host functions policies may call, which decisions they may make, and how conflicts resolve |
-| A base policy (`deploy/production.sigil`) | A platform team | Rules written against the kind, with typed `param`s for the parts teams may tune |
-| An instantiation (`payments/production.sigil`) | A product team, here payments | A policy that `use`s the base, binds its params, and optionally adds rules of its own |
+| Shared policies (`deploy/*.sigil`) | A platform team | Rules written against the kind, with typed `param`s for the parts teams may tune: guardrails that deny, approvals and reviews, and a module of shared matchers |
+| A team policy (`payments/production.sigil`) | A product team, here payments | A policy that invokes the shared ones with its own values, optionally under conditions, and adds rules of its own |
 
-Two rules from the base policy give a feel for the syntax:
+Two rules from the platform's guardrails give a feel for the syntax:
 
 ```sigil
 when not eligible {
@@ -41,7 +41,7 @@ when release.soak < min_soak and not release.hotfix {
 }
 ```
 
-Every statement starts with a keyword, rules are `when` blocks, and decisions are constructor calls with a string-literal reason. There are no loops, no user-defined functions and no `else`.
+Every statement starts with a keyword, rules are `when` blocks, and decisions are constructor calls with a string-literal reason. There are no loops, no user-defined functions and no `else`. A team policy reuses these rules by importing the policy with `use` and invoking it like a constructor, `guardrails(min_soak: 4h)`, and the host requires that call so no team can switch the denies off.
 
 ## Who writes what
 

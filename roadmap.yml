@@ -79,6 +79,14 @@ milestones:
         description: |
           The understanding pages, the getting-started path and the how-to guides, so reviewers can
           judge the design by reading policies rather than grammar.
+      - title: Imports and policy invocation
+        state: DONE
+        requirement: MUST
+        description: |
+          `use` becomes import-only, modules hold shared `let`s, policies are invoked like decision
+          constructors and can be gated by `when`, and the host protects guardrails with
+          `policy.Require`.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/understanding/composition.md
       - title: Answer the syntax-affecting open questions
         state: TODO
         requirement: MUST
@@ -97,14 +105,15 @@ milestones:
       a Pratt parser for expressions. A generator like goyacc or ANTLR would get a working parser
       sooner, but a hand-written one knows exactly what it expected at each point and can say "did
       you mean `tier`?" instead of "syntax error near IDENT". Every statement starts with a
-      keyword, so one token of lookahead is enough to pick a statement parser.
+      keyword or, for a policy invocation, with a name followed by `(`, so one token of lookahead
+      is enough to pick a statement parser.
 
       **Done when** golden tests cover every operator and every error message.
     deliverables:
       - title: Lexer
         state: TODO
         requirement: MUST
-        description: Identifiers, strings, raw strings, numbers, chained durations and comments, with positions.
+        description: Identifiers, strings, raw strings, numbers, chained durations, comments and the `---` document separator, with positions.
       - title: Pratt expression parser
         state: TODO
         requirement: MUST
@@ -119,6 +128,9 @@ milestones:
       - title: Golden tests
         state: TODO
         requirement: MUST
+        description: |
+          Including document boundaries: `kind:` and `policy:` fields in a `type` body, a `kind`
+          payload field, and `resource.kind` in a condition must never start a new document.
 
   - title: Types
     description: |
@@ -163,24 +175,54 @@ milestones:
   - title: Composition
     description: |
       The templating story from [Composition without templating](/understanding/composition/). Until
-      this lands, per-team variants still need copying.
+      this lands, per-team variants still need copying. Invocation makes composition flexible, so
+      `sigil explain` ships with it: what a composed policy actually does has to stay one command
+      away.
 
-      **Done when** a team policy instantiates the base with custom params.
+      **Done when** a team policy invokes the platform's policies with custom params, under a
+      condition, and the host rejects it when a required guardrail is gated.
     deliverables:
       - title: param and let
         state: TODO
         requirement: MUST
-      - title: use, with aliases
+      - title: Modules and imports
         state: TODO
         requirement: MUST
-      - title: fs.FS loader
+        description: |
+          `module` files, whole-file, selective and aliased `use`, and the rule that a policy's
+          `let` can only be imported if it doesn't read a param.
+      - title: Policy invocation
         state: TODO
         requirement: MUST
-        description: Resolves `deploy.production` to `deploy/production.sigil`, so `os.DirFS` and `embed.FS` both work.
+        description: |
+          Invocations at the top level and inside `when`, with named, type-checked arguments and
+          the call site recorded in every candidate's trace.
+      - title: policy.Require
+        state: TODO
+        requirement: MUST
+        description: Load option that fails compilation unless the named policies are invoked unconditionally.
+      - title: Bundle loader
+        state: TODO
+        requirement: MUST
+        description: |
+          Reads every document in every `.sigil` file of an `fs.FS`, indexes them by header name
+          and rejects duplicates, so `embed.FS`, `os.DirFS`, a mounted ConfigMap and
+          `policy.MapFS` all work. Uses `fs.Stat`, so the symlinked keys of a mounted ConfigMap
+          load; a test builds the real `..data` layout. Kind documents must match `Schema()`.
+      - title: policy.From
+        state: TODO
+        requirement: MUST
+        description: |
+          Takes required policies, and everything they use, from a trusted source, and makes a
+          bundle document that claims a trusted name a compile error.
       - title: Cycle detection
         state: TODO
         requirement: MUST
-        description: The `let` and `use` graphs must be acyclic.
+        description: The `let`, import and invocation graphs must be acyclic.
+      - title: sigil explain
+        state: TODO
+        requirement: MUST
+        description: Flattens a policy into its guarded decisions, with every invocation inlined and params bound.
 
   - title: Tooling I
     description: |

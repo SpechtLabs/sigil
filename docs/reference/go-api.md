@@ -77,28 +77,105 @@ The types `NewKind` accepts are listed in [Kind files](/reference/kind-files/). 
 
 ## Loading and evaluating
 
-`Load` compiles a policy by name from an `fs.FS` and resolves its `use` statements through the same filesystem, so `embed.FS` and `os.DirFS` both work. The third argument binds params from Go; `nil` means the policy file binds everything it needs.
+`Load` reads every document in an `fs.FS` into one bundle, indexes the documents by the names in their headers, and compiles the policy with the given name as the root. Imports resolve by name within the bundle, so files are plain containers: one file per policy, one file per team, or everything in one file all work, and so do `embed.FS` and `os.DirFS`. Everything after the name is a load option; with none, the policy binds everything it needs.
 
 ```go
 //go:embed policies
 var policies embed.FS
 
-p, err := Deploy.Load(policies, "payments.production", nil)
+p, err := Deploy.Load(policies, "payments.production",
+	policy.Require("deploy.guardrails"))
 if err != nil {
 	log.Fatal(err) // file:line:col plus a fix hint
 }
 ```
 
-Binding params from Go, for example from a CRD, uses `policy.Params`. The values are type-checked against the `param` declarations at compile time, just like a `use` binding:
+| Option                        | Does                                                                                                       |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `policy.Params{...}`          | Binds the root policy's params from Go                                                                     |
+| `policy.Require(name, ...)`   | Requires the root policy to invoke the named policy unconditionally                                        |
+| `policy.From(fsys)`           | Inside `Require`: takes the required policy, and everything it uses, from a trusted source (see [below](#where-required-policies-come-from)) |
+
+Binding params from Go, for example from a CRD, uses `policy.Params`. The values are type-checked against the `param` declarations at compile time, just like invocation arguments:
 
 ```go
-p, err := Deploy.Compile(src, policy.Params{
-	"approvers": []string{"payments-leads"},
-	"min_soak":  4 * time.Hour,
-})
+p, err := Deploy.Load(policies, "deploy.gate",
+	policy.Params{
+		"approvers": []string{"payments-leads"},
+		"min_soak":  4 * time.Hour,
+	},
+	policy.Require("deploy.guardrails"),
+)
 ```
 
-`Compile` does the same as `Load` for a single source string. A compiled policy is immutable and safe for concurrent use.
+`Compile` does the same as `Load` for a single source string, `Deploy.Compile(src, "payments.production", opts...)`. The source is a one-file bundle: it may hold several documents, and imports resolve among them. A compiled policy is immutable and safe for concurrent use. A host can't load a module; `Load` on a module's name returns an error saying it has no rules.
+
+### Bundles and ConfigMaps
+
+Which files `Load` reads, and how it treats duplicates, is specified in [Bundles and resolution](/reference/policy-files/#bundles-and-resolution). In short: every file ending in `.sigil`, skipping names that start with `.`, with a name defined twice being a compile error, and any broken document failing the load.
+
+The loader decides what's a file with `fs.Stat`, which follows symbolic links, never with `DirEntry.Type()`. In a mounted ConfigMap every top-level key is a symbolic link into `..data/`, so a loader that only accepted regular directory entries would load nothing at all, without an error. (The implementation's tests build that exact layout.)
+
+A kind document in the bundle is never taken as the contract. The contract is the host's Go definition. If the bundle holds a kind document with the host kind's name, `Load` compares it with `Deploy.Schema()` and fails on any difference, which also catches a stale export: a policy repository that forgot to regenerate `deploy_approval.sigil` fails to load instead of being checked against an outdated contract. Kind documents for other kinds are ignored, so one bundle can serve hosts of different kinds.
+
+A Kubernetes ConfigMap mounted as a volume is a directory, so `os.DirFS` reads it unchanged. Kubelet's hidden `..data` directory and its timestamped siblings start with `.`, so the loader skips them and reads each key once:
+
+```go
+p, err := Deploy.Load(os.DirFS("/etc/sigil"), "payments.production",
+	policy.Require("deploy.guardrails"))
+```
+
+A host that reads the ConfigMap through the Kubernetes API gets its `data` as a `map[string]string`. `policy.MapFS` turns that into an in-memory `fs.FS`, with each key as a file name:
+
+```go
+cm, err := client.CoreV1().ConfigMaps("deploy-gate").Get(ctx, "deploy-policies", metav1.GetOptions{})
+if err != nil {
+	return err
+}
+
+p, err := Deploy.Load(policy.MapFS(cm.Data), "payments.production",
+	policy.Require("deploy.guardrails"))
+```
+
+`testing/fstest.MapFS` would do the same job, but it wants a `*fstest.MapFile` per entry and lives in a testing package, so `policy.MapFS` saves every host the conversion. Mixing layouts works too: one key per team, or everything in one key. The host always names the root, so one ConfigMap can serve many policies.
+
+### Positions in errors and traces
+
+Every compile error and every trace entry carries the file, line and column, plus the name of the document it's in. In text form the name follows the position in parentheses, `policies.sigil:42:5 (payments.production)`, which stays readable when forty documents share one key. The document name is left out of text output when it adds nothing, that is when the file holds only that document and its path matches the name, so `deploy/production.sigil:16:5` stays as it is. (proposed) The Go values always carry both.
+
+### Required policies
+
+`policy.Require` names the policies a root policy must invoke unconditionally. The compiler checks that each one is reachable from the root through top-level invocations only, with no `when` anywhere on the path, and fails the load otherwise, with an error pointing at the gated call or at the root's header when the call is missing. See [Evaluation semantics](/reference/evaluation/#required-policies) for what that guarantees.
+
+Put the requirement wherever the host loads team policies, and name the policies that hold the denies no team may switch off. The `sigil check --require` flag runs the same check in a policy repository's CI.
+
+#### Where required policies come from
+
+Documents resolve by name, so on its own `Require` only checks that *a* policy called `deploy.guardrails` is invoked, not *which* one. Anyone who can write to the bundle, for example to the ConfigMap behind `policy.MapFS(cm.Data)`, could ship a `deploy.guardrails` with no denies in it and pass the check. `policy.From` closes that by naming the source a required policy must come from:
+
+```go
+//go:embed platform
+var platformFS embed.FS // or a platform-owned ConfigMap, mounted separately
+
+p, err := Deploy.Load(policy.MapFS(cm.Data), "payments.production",
+	policy.Require("deploy.guardrails", policy.From(platformFS)))
+```
+
+With `From`, the loader reads the trusted source as its own bundle, separate from the one passed to `Load`:
+
+- The required policy is taken from the trusted source, and so is everything it imports and invokes. A trusted policy never resolves a name in the untrusted bundle, so a team can't redefine `deploy.common.eligible` to switch a guardrail off from underneath it.
+- Every name the trusted source defines is reserved. A document in the untrusted bundle that claims one of them, a `deploy.guardrails` or a `deploy.common`, is a compile error naming both definitions, not a silent override in either direction.
+- Team policies import and invoke trusted documents by name as usual, so `use deploy.guardrails` and `use deploy.common.{cleared}` work unchanged.
+
+Without `From`, the required policy is looked up in the bundle like any other document. That's fine when the whole bundle is trusted, for example an `embed.FS` built from a reviewed repository, and it's how the examples in these docs read. Whenever someone other than the platform team can write to the bundle, pass `From`.
+
+Pinning by content, as in `policy.Require("deploy.guardrails", policy.Digest("sha256:…"))`, is the lighter alternative that was considered. It needs no second source, but every guardrail change then needs a host release to update the digest, and a digest over one document says nothing about the modules it imports, so the digest would have to cover the whole import closure. `From` covers both with one rule.
+
+::: warning Unspecified
+Whether a requirement may be met through a chain of other policies ("transitive") or must be met by a call in the root file itself ("direct") is an [open question](/project/open-questions/). The check above describes the transitive reading. So is letting `Require` bound a required policy's params, for example `policy.Require("deploy.guardrails", policy.Min("min_soak", time.Hour))`.
+:::
+
+### Evaluating
 
 `Eval` runs the policy against one input:
 
@@ -123,7 +200,7 @@ type Result struct {
 }
 ```
 
-What `Policy` holds is still open. When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in the `use`d `deploy.production` base, so `Policy` could name either one. See [Open questions](/project/open-questions/). `Trace` lists every candidate by policy name, reason and source position, and records which conditions held for the winner. See [Evaluation semantics](/reference/evaluation/) for how the winner is picked.
+What `Policy` holds is still open. When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, reached through an invocation, so `Policy` could name either one. See [Open questions](/project/open-questions/). `Trace` lists every candidate by policy name, reason and call chain, with each step's file, line, column and document name (for example `payments/production.sigil:14:3 → deploy/production.sigil:16:5`), and records which conditions held for the winner. See [Evaluation semantics](/reference/evaluation/) for how the winner is picked.
 
 ## Typed matching
 
@@ -164,6 +241,23 @@ current.Store(p)
 
 res, err := current.Load().Eval(ctx, input)
 ```
+
+Reload with last-known-good semantics. A bundle loads as a whole, so on reload one team's typo in a shared bundle fails the compile for every policy in it. Compile the new bundle first, swap only on success, and otherwise keep serving the old policy, log the error and count it:
+
+```go
+func reload(fsys fs.FS) {
+	p, err := Deploy.Load(fsys, "payments.production",
+		policy.Require("deploy.guardrails", policy.From(platformFS)))
+	if err != nil {
+		log.Error("policy reload failed, keeping the last good policy", "err", err)
+		reloadFailures.Inc() // alert on this: the running policy is now stale
+		return
+	}
+	current.Store(p)
+}
+```
+
+At startup there's no last good policy, so a failed `Load` should stop the process. On Kubernetes that holds a rollout at the old pods instead of serving without a policy.
 
 ## Exporting the kind
 

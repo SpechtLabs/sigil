@@ -46,7 +46,7 @@ A change is compatible when every policy that compiled before still compiles and
 | Add a payload field without a default | Breaking |
 | Reorder `precedence` or change `default` | Breaking in behaviour, even though every policy still compiles |
 
-Adding things is almost always safe, because no existing policy refers to them. The exception is a name collision: inputs and functions share one namespace with each policy's params, lets and aliases (proposed), so a new `input approvers` breaks any policy that declares `param approvers`. `sigil breaking` only compares the two kind files and can't see that; run `sigil check` over the policy repo against the new kind before you ship it. The [kind files reference](/reference/kind-files/) has the details. Removing or renaming is always breaking, because the type checker rejects any policy that still uses the old name. That's the point: the break shows up at compile time, in the policy repo's CI, instead of as a rule that silently stops matching.
+Adding things is almost always safe, because no existing policy refers to them. The exception is a name collision: inputs and functions share one namespace with each policy's params, lets and imported names (proposed), so a new `input approvers` breaks any policy that declares `param approvers`. `sigil breaking` only compares the two kind files and can't see that; run `sigil check` over the policy repo against the new kind before you ship it. The [kind files reference](/reference/kind-files/) has the details. Removing or renaming is always breaking, because the type checker rejects any policy that still uses the old name. That's the point: the break shows up at compile time, in the policy repo's CI, instead of as a rule that silently stops matching.
 
 ## Add a payload field
 
@@ -71,10 +71,10 @@ Every existing `approve("release_manager")` still compiles and gets `notify = fa
 Leave the default off and every existing call site breaks:
 
 ```text
-payments/production.sigil:9:3: error: decision approve is missing required payload field "notify"
-  |
-9 |   approve("payments_sre", bake: 15m)
-  |   ^^^^^^^
+payments/production.sigil:18:3: error: decision approve is missing required payload field "notify"
+   |
+18 |   approve("payments_sre", bake: 15m)
+   |   ^^^^^^^
   = note: DeployApproval declares: decision approve(reason: string, bake: duration = 1h, notify: bool)
 ```
 
@@ -91,7 +91,7 @@ Swap review and approve in the `DeployApproval` kind:
 +precedence deny > approve > review
 ```
 
-Every policy compiles. But the service-owner deploy from the [tour](/getting-started/tour/#a-service-owner-ships-after-six-hours-of-soak), which produced a review from the base policy and an approval from the payments team, now resolves to `approve`. The payments team's SRE fast path suddenly bypasses review, and no compiler told anyone.
+Every policy compiles. But the service-owner deploy from the [tour](/getting-started/tour/#a-service-owner-ships-after-six-hours-of-soak), which produced a review from `deploy.production` and an approval from the payments team, now resolves to `approve`. The payments team's SRE fast path suddenly bypasses review, and no compiler told anyone.
 
 Changing `default deny("no_rule_matched")` to `default review("no_rule_matched", approvers: [...])` is the same kind of change: every deploy that no rule covered used to be refused and now lands in a human's queue.
 

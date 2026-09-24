@@ -11,6 +11,7 @@ import (
 	"github.com/spechtlabs/sigil/cmd/sigil/command/breaking"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/check"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/eval"
+	"github.com/spechtlabs/sigil/cmd/sigil/command/explain"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/format"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/gen"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/lsp"
@@ -69,6 +70,7 @@ sigil eval --kind deploy_approval.sigil --input release.json deploy/production.s
 		format.NewCommand(),
 		check.NewCommand(),
 		eval.NewCommand(),
+		explain.NewCommand(),
 		test.NewCommand(),
 	)
 	addToGroup(cmd, groupKind.ID,

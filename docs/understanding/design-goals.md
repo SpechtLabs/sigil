@@ -41,7 +41,7 @@ A decision is more than a boolean. `review` needs to know who reviews; `approve`
 
 ### Composable and templatable from day one
 
-Teams want their own version of a shared policy, usually with a different soak time or a different approver list. The usual answer is `text/template` over YAML, which works until someone's indentation breaks a production rule. Sigil makes this a language feature: a policy declares typed `param`s, and a team policy instantiates it with `use`. See [Composition without templating](/understanding/composition/).
+Teams want their own version of a shared policy, usually with a different soak time or a different approver list. The usual answer is `text/template` over YAML, which works until someone's indentation breaks a production rule. Sigil makes this a language feature: a policy declares typed `param`s, a team policy imports it with `use` and invokes it with its own values, optionally inside a `when` that narrows where it applies. Shared matchers live in modules, and the host names the guardrail policies no team can switch off. See [Composition without templating](/understanding/composition/).
 
 ### Parse once, evaluate many
 
@@ -63,6 +63,6 @@ OPA and Cedar solve a different problem: one central authorization service answe
 
 ## When goals conflict
 
-They do, occasionally. Readability and strictness pull against each other when a type error would be more precise but less friendly; the answer there is better error messages, not looser types. Composability and safety pull against each other with params, since a team can lower a base policy's `min_soak`. That one is unresolved and sits under "Pinned params" in the [open questions](/project/open-questions/).
+They do, occasionally. Readability and strictness pull against each other when a type error would be more precise but less friendly; the answer there is better error messages, not looser types. Composability and safety pull against each other with params, since a team can lower a base policy's `min_soak`. That one is unresolved and sits under "Pinned params on required policies" in the [open questions](/project/open-questions/).
 
 When in doubt, the order is: halting first, then strictness, then readability, then everything else. A policy that's pleasant to read but silently fails open is worse than one that's a bit verbose.

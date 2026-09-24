@@ -9,7 +9,7 @@ permalink: /reference/lexical/
 This page specifies the language as designed. Nothing is implemented yet; see [Open questions](/project/open-questions/).
 :::
 
-Sigil source is UTF-8 text. The lexer turns it into a flat stream of tokens and throws away whitespace and comments, so newlines and indentation carry no meaning anywhere in the language. Every statement starts with a keyword, which is how the parser finds statement boundaries (see [Grammar](/reference/grammar/)).
+Sigil source is UTF-8 text. The lexer turns it into a flat stream of tokens and throws away whitespace and comments, so newlines and indentation carry no meaning anywhere in the language. Every statement starts with a keyword or, for a policy invocation, with a name followed by `(`, which is how the parser finds statement boundaries (see [Grammar](/reference/grammar/)).
 
 ## Whitespace and comments
 
@@ -28,7 +28,7 @@ let cleared = environment == "production" // so is this tail
 identifier = [A-Za-z_][A-Za-z0-9_]*
 ```
 
-Identifiers name inputs, types, fields, params, lets, host functions, decisions, quantifier variables and `use` aliases. They're case-sensitive: `Release` and `release` are different names.
+Identifiers name inputs, types, fields, params, lets, host functions, decisions, quantifier variables and names bound by `use`. They're case-sensitive: `Release` and `release` are different names.
 
 Unlike filt-rs, an identifier can't contain `-` or `.`. A key such as `platform.example.com/lifecycle` isn't a name; you reach it through map indexing:
 
@@ -44,10 +44,10 @@ Policy names are a separate lexical form from identifiers: one or more identifie
 policy_name = identifier ( "." identifier )*
 ```
 
-`deploy.production` and `payments.production` are policy names. They only appear after the `policy` and `use` keywords, and a policy name resolves to a file path by turning each `.` into `/` and appending `.sigil`, so `deploy.production` loads `deploy/production.sigil`. See [Policy files](/reference/policy-files/).
+`deploy.common`, `deploy.production` and `payments.production` are policy names; modules are named the same way. They only appear after the `policy`, `module` and `use` keywords. A name in a `use` refers to the document whose header carries that name, wherever it lives in the bundle; it isn't a file path. In a selective import such as `use deploy.common.{cleared}`, the name ends where `.{` begins. See [Policy files](/reference/policy-files/).
 
 ::: tip Proposed
-Dotted policy names need a lexing rule of their own. Treating them as their own token class, only valid after `policy` and `use`, is the proposed rule.
+Dotted policy names need a lexing rule of their own. Treating them as their own token class, only valid after `policy`, `module` and `use`, is the proposed rule.
 :::
 
 ## Keywords
@@ -56,7 +56,7 @@ These words are reserved and can't be used as identifiers.
 
 | Group          | Keywords                                                                          |
 | -------------- | --------------------------------------------------------------------------------- |
-| Policy files   | `policy`, `use`, `as`, `param`, `let`, `when`                                     |
+| Policy files   | `policy`, `module`, `use`, `as`, `param`, `let`, `when`                           |
 | Kind files     | `kind`, `version`, `type`, `input`, `fn`, `decision`, `precedence`, `default`     |
 | Operators      | `and`, `or`, `not`, `in`, `all`, `any`, `has`, `like`, `matches`                  |
 | Literals       | `true`, `false`                                                                   |
@@ -65,7 +65,7 @@ The built-in type names (`bool`, `int`, `float`, `string`, `duration`, `timestam
 
 Decision names like `deny` or `approve` aren't keywords either. Each kind declares its own.
 
-Keywords are allowed as field and payload names, because real Go structs have fields called `kind` or `type`. `service.type` is valid: the token after `.` is always read as a name. The same goes for field declarations in a `type` body, decision fields and named arguments. Top-level names such as inputs, params, lets and aliases must be plain identifiers. (proposed; without it, a Go field tagged `type` or `kind` couldn't be exported to a kind at all.)
+Keywords are allowed as field and payload names, because real Go structs have fields called `kind` or `type`. `service.type` is valid: the token after `.` is always read as a name. The same goes for field declarations in a `type` body, decision fields and named arguments. Top-level names such as inputs, params, lets and imported names must be plain identifiers. (proposed; without it, a Go field tagged `type` or `kind` couldn't be exported to a kind at all.)
 
 ## Literals
 
@@ -150,12 +150,12 @@ Keys and values are expressions; every key must share one type and every value m
 
 ### Trailing commas
 
-A trailing comma is allowed in every comma-separated list: list and map literals, function call arguments, decision payloads and `use` parameter bindings. It keeps diffs to one line and keeps text-templated output valid.
+A trailing comma is allowed in every comma-separated list: list and map literals, function call arguments, decision payloads, policy invocation arguments and selective imports. It keeps diffs to one line and keeps text-templated output valid.
 
 ```sigil
-use deploy.production(
-  min_soak: 4h,
-  approvers: ["payments-leads"],
+production(
+  approvers: ["payments-leads", "security-leads"],
+  tiers: ["standard"],
 )
 ```
 
@@ -166,14 +166,45 @@ use deploy.production(
 | `==` `!=` `<` `<=` `>` `>=` | Comparison                                  |
 | `+` `-`                     | Arithmetic, unary minus                     |
 | `??`                        | Optional default                            |
-| `.`                         | Field access, alias member access           |
+| `.`                         | Field access, qualified import access       |
 | `[` `]`                     | List literals, indexing                     |
-| `{` `}`                     | Map literals, rule bodies, type bodies      |
-| `(` `)`                     | Grouping, calls, decision constructors      |
+| `{` `}`                     | Map literals, rule bodies, type bodies, selective imports |
+| `(` `)`                     | Grouping, calls, decision constructors, policy invocations |
 | `:`                         | Type annotations, named arguments, quantifier bodies, map entries |
 | `,`                         | Separators                                  |
 | `=`                         | `let` bindings, param and payload defaults  |
 | `->`                        | Return type in `fn` declarations            |
 | `?`                         | Optional type prefix (`?string`)            |
+| `---`                       | Document separator                          |
 
-The lexer uses longest match, so `??` is one token, `<=` is one token, and `->` is one token.
+The lexer uses longest match, so `??` is one token, `<=` is one token, `->` is one token, and `---` is one token.
+
+## Document separators
+
+A file can hold several documents, and `---` may separate them, as in YAML:
+
+```sigil
+module deploy.common: DeployApproval
+
+let owns_service = actor.teams any in service.owners
+
+---
+
+policy deploy.production: DeployApproval
+
+use deploy.common.{owns_service}
+```
+
+`---` is a single token by longest match. No statement starts with `-`, so a `---` between two statements is never ambiguous: it ends the current document. It's optional, because the next header ends a document too, but `sigil fmt` always writes it between documents, on a line of its own with a blank line on each side.
+
+The one casualty is writing `a---b` to mean `a - (-(-b))`. It lexes as `a`, `---`, `b` and fails with an error that says so. `a - --b` still means `a - (-(-b))`, since `--` is two `-` tokens, and `----` lexes as `---` followed by `-`, which is an error too.
+
+```text
+policies.sigil:12:21 (deploy.guardrails): error: `---` separates documents and can't appear inside an expression
+   |
+12 | let tight = min_soak---1h
+   |                     ^^^
+   = help: if you meant arithmetic, put spaces between the minus signs
+```
+
+Inside a YAML block scalar, such as a ConfigMap value written with `|`, the `---` lines are indented with the rest of the text, so YAML doesn't read them as its own document markers.
