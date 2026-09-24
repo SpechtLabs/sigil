@@ -152,10 +152,8 @@ param approvers: list<string>
 param tiers: list<string> = ["standard", "internal"]
 
 let owns_service = actor.teams any in service.owners
-let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
-let eligible =
-  "deployer" in actor.roles
+let cleared = split(service.labels["regions"], ",") all in actor.regions
+let eligible = "deployer" in actor.roles
   and environment == "production"
   and service.labels has {
     "app.kubernetes.io/managed-by": "argocd",
