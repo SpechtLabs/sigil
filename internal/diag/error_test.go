@@ -18,7 +18,8 @@ func TestErrorString(t *testing.T) {
 	}{
 		{&diag.Error{Msg: "unterminated string literal", Pos: at(40, 12, 21)}, "12:21: unterminated string literal"},
 		{&diag.Error{File: "deploy/production.sigil", Msg: "expected `{`", Pos: at(0, 1, 1)}, "deploy/production.sigil:1:1: expected `{`"},
-		{&diag.Error{File: "x.sigil", Msg: "no position"}, "x.sigil:-: no position"},
+		{&diag.Error{File: "x.sigil", Msg: "no position"}, "x.sigil: no position"},
+		{&diag.Error{Msg: "no position or file"}, "no position or file"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {

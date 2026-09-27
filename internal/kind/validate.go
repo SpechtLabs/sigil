@@ -1,0 +1,323 @@
+package kind
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/spechtlabs/sigil/internal/diag"
+	"github.com/spechtlabs/sigil/internal/token"
+	"github.com/spechtlabs/sigil/internal/types"
+)
+
+var identRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+type validator struct {
+	kind *Kind
+	errs diag.ErrorList
+}
+
+// Validate checks the rules a kind must satisfy and returns one
+// diagnostic per violation, without positions: the model doesn't know
+// where it came from, so a kind-file loader attaches them and NewKind
+// panics with the messages.
+func (k *Kind) Validate() diag.ErrorList {
+	v := &validator{kind: k}
+	v.header()
+	v.types()
+	v.inputsAndFuncs()
+	v.decisions()
+	v.resolution()
+	return v.errs
+}
+
+func (v *validator) errorf(help, format string, args ...any) {
+	v.errs = append(v.errs, &diag.Error{Msg: fmt.Sprintf(format, args...), Help: help})
+}
+
+func (v *validator) header() {
+	if !isIdent(v.kind.Name) {
+		v.errorf("a kind's name is an identifier, like `DeployApproval`", "invalid kind name %q", v.kind.Name)
+	}
+	if v.kind.Version < 1 {
+		v.errorf("the version is a positive integer that changes when the contract does", "invalid kind version %d", v.kind.Version)
+	}
+}
+
+// types checks that struct names are unique, unreserved identifiers, that
+// fields are unique names with types that resolve, and that no struct
+// reaches itself.
+func (v *validator) types() {
+	seen := map[string]bool{}
+	for _, s := range v.kind.Types {
+		switch {
+		case !isIdent(s.Name):
+			v.errorf("a type name is an identifier, like `Service`", "invalid type name %q", s.Name)
+		case types.IsReserved(s.Name):
+			v.errorf("the built-in type names are reserved; pick another name", "type %q shadows a built-in type", s.Name)
+		case seen[s.Name]:
+			v.errorf("give each type one declaration", "type %q is declared twice", s.Name)
+		}
+		seen[s.Name] = true
+
+		fields := map[string]bool{}
+		for _, f := range s.Fields {
+			if !isName(f.Name) {
+				v.errorf("a field name is an identifier; keywords are allowed", "type %s: invalid field name %q", s.Name, f.Name)
+			}
+			if fields[f.Name] {
+				v.errorf("give each field one declaration", "type %s: field %q is declared twice", s.Name, f.Name)
+			}
+			fields[f.Name] = true
+			v.typeResolves(f.Type, fmt.Sprintf("type %s, field %q", s.Name, f.Name))
+		}
+	}
+
+	for _, s := range v.kind.Types {
+		if path := v.cycle(s, nil); path != nil {
+			v.errorf("policies can't loop, so a recursive type could only be read to a fixed depth; model the relation with an id instead",
+				"type %s is recursive: %s", s.Name, strings.Join(path, " -> "))
+		}
+	}
+}
+
+// cycle returns the path from s back to itself through struct-typed
+// fields, or nil. Each struct only reports the cycle that starts at it.
+func (v *validator) cycle(s *types.Struct, path []string) []string {
+	if s == nil {
+		return nil
+	}
+	path = append(path, s.Name)
+	for _, f := range s.Fields {
+		next := structOf(f.Type)
+		if next == nil {
+			continue
+		}
+		if next.Name == path[0] {
+			return append(path, next.Name)
+		}
+		if contains(path, next.Name) {
+			continue // a cycle that doesn't pass through path[0]; reported from its own start
+		}
+		if decl := v.kind.Type(next.Name); decl != nil {
+			if p := v.cycle(decl, path); p != nil {
+				return p
+			}
+		}
+	}
+	return nil
+}
+
+// structOf returns the struct type inside t, looking through lists, maps
+// and optionals, or nil.
+func structOf(t types.Type) *types.Struct {
+	switch t := t.(type) {
+	case *types.Struct:
+		return t
+	case *types.List:
+		return structOf(t.Elem)
+	case *types.Map:
+		return structOf(t.Value)
+	case *types.Optional:
+		return structOf(t.Elem)
+	}
+	return nil
+}
+
+func contains(xs []string, x string) bool {
+	for _, y := range xs {
+		if y == x {
+			return true
+		}
+	}
+	return false
+}
+
+// typeResolves checks that every struct type inside t is declared, and
+// that t is well-formed: no nested optionals, no decision-typed data.
+func (v *validator) typeResolves(t types.Type, where string) {
+	switch t := t.(type) {
+	case types.Basic:
+		switch t {
+		case types.Invalid:
+			v.errorf("", "%s: invalid type", where)
+		case types.Decision:
+			v.errorf("`decision` values only come from `outcome`; data can't hold them", "%s: type can't be decision", where)
+		}
+	case *types.List:
+		v.typeResolves(t.Elem, where)
+	case *types.Map:
+		if !types.IsKey(t.Key) {
+			v.errorf("map keys are scalars, as in Go: bool, int, float, string, duration or timestamp", "%s: map key type can't be %s", where, t.Key)
+		} else {
+			v.typeResolves(t.Key, where)
+		}
+		v.typeResolves(t.Value, where)
+	case *types.Optional:
+		if _, nested := t.Elem.(*types.Optional); nested {
+			v.errorf("write `?T` with a single `?`", "%s: optional types don't nest", where)
+		}
+		v.typeResolves(t.Elem, where)
+	case *types.Struct:
+		if v.kind.Type(t.Name) == nil {
+			v.errorf("declare it with `type "+t.Name+" { ... }`", "%s: undeclared type %s", where, t.Name)
+		}
+	default:
+		v.errorf("", "%s: invalid type", where)
+	}
+}
+
+// inputsAndFuncs checks the shared namespace of inputs and host
+// functions, and each function's signature.
+func (v *validator) inputsAndFuncs() {
+	seen := map[string]string{}
+	for _, in := range v.kind.Inputs {
+		if !isIdent(in.Name) {
+			v.errorf("an input name is a plain identifier, not a keyword", "invalid input name %q", in.Name)
+		}
+		if prev, dup := seen[in.Name]; dup {
+			v.errorf("inputs and host functions share one namespace", "input %q collides with %s %q", in.Name, prev, in.Name)
+		}
+		seen[in.Name] = "input"
+		v.typeResolves(in.Type, fmt.Sprintf("input %q", in.Name))
+	}
+	for _, f := range v.kind.Funcs {
+		if !isIdent(f.Name) {
+			v.errorf("a function name is a plain identifier, not a keyword", "invalid function name %q", f.Name)
+		}
+		if prev, dup := seen[f.Name]; dup {
+			v.errorf("inputs and host functions share one namespace", "function %q collides with %s %q", f.Name, prev, f.Name)
+		}
+		seen[f.Name] = "function"
+		params := map[string]bool{}
+		for _, p := range f.Params {
+			if !isIdent(p.Name) {
+				v.errorf("a parameter name is a plain identifier", "function %s: invalid parameter name %q", f.Name, p.Name)
+			}
+			if params[p.Name] {
+				v.errorf("", "function %s: parameter %q is declared twice", f.Name, p.Name)
+			}
+			params[p.Name] = true
+			v.typeResolves(p.Type, fmt.Sprintf("function %s, parameter %q", f.Name, p.Name))
+		}
+		if _, opt := f.Result.(*types.Optional); opt {
+			v.errorf("return the zero value and let the policy compare, or return a list", "function %s: the result can't be optional", f.Name)
+		} else {
+			v.typeResolves(f.Result, fmt.Sprintf("function %s, result", f.Name))
+		}
+	}
+}
+
+// decisions checks decision names, payload fields and their defaults.
+func (v *validator) decisions() {
+	if len(v.kind.Decisions) == 0 {
+		v.errorf("declare at least one decision", "kind %s declares no decisions", v.kind.Name)
+	}
+	seen := map[string]bool{}
+	for _, d := range v.kind.Decisions {
+		if !isIdent(d.Name) {
+			v.errorf("a decision name is a plain identifier, not a keyword", "invalid decision name %q", d.Name)
+		}
+		if seen[d.Name] {
+			v.errorf("give each decision one declaration", "decision %q is declared twice", d.Name)
+		}
+		seen[d.Name] = true
+
+		fields := map[string]bool{}
+		for _, f := range d.Fields {
+			where := fmt.Sprintf("decision %s, field %q", d.Name, f.Name)
+			switch {
+			case f.Name == "reason":
+				v.errorf("every decision takes `reason: string` first; it isn't a payload field", "%s: reason is implied and can't be declared as a payload field", where)
+			case !isName(f.Name):
+				v.errorf("a field name is an identifier; keywords are allowed", "%s: invalid field name", where)
+			case fields[f.Name]:
+				v.errorf("give each field one declaration", "%s: declared twice", where)
+			}
+			fields[f.Name] = true
+			v.typeResolves(f.Type, where)
+			if f.HasDefault && !Conforms(f.Default, f.Type) {
+				v.errorf("a default is a constant of the field's type", "%s: default %s is not a %s", where, Format(f.Default), f.Type)
+			}
+		}
+	}
+}
+
+// resolution checks precedence, collect and the default decision.
+func (v *validator) resolution() {
+	k := v.kind
+	switch {
+	case k.Collect && len(k.Precedence) > 0:
+		v.errorf("a kind resolves decisions one way: rank them with `precedence`, or apply all with `collect all`", "kind %s has both precedence and collect all", k.Name)
+	case !k.Collect && len(k.Precedence) == 0:
+		v.errorf("rank the decisions with `precedence`, or declare `collect all`", "kind %s has neither precedence nor collect all", k.Name)
+	case !k.Collect:
+		v.precedence()
+	}
+
+	if k.Default == nil {
+		if !k.Collect {
+			v.errorf("declare `default <decision>(\"<reason>\")` for the case where no rule fires", "kind %s has no default decision", k.Name)
+		}
+		return
+	}
+	v.defaultCall()
+}
+
+func (v *validator) precedence() {
+	k := v.kind
+	seen := map[string]bool{}
+	for _, name := range k.Precedence {
+		if k.Decision(name) == nil {
+			v.errorf("precedence lists the declared decisions, highest first", "precedence names undeclared decision %q", name)
+		}
+		if seen[name] {
+			v.errorf("list every decision exactly once", "precedence names %q twice", name)
+		}
+		seen[name] = true
+	}
+	for _, d := range k.Decisions {
+		if !seen[d.Name] {
+			v.errorf("list every decision exactly once, highest first", "precedence doesn't name decision %q", d.Name)
+		}
+	}
+}
+
+func (v *validator) defaultCall() {
+	def := v.kind.Default
+	d := v.kind.Decision(def.Decision)
+	if d == nil {
+		v.errorf("the default constructs one of the kind's decisions", "default names undeclared decision %q", def.Decision)
+		return
+	}
+	if def.Reason == "" {
+		v.errorf("the reason is a stable identifier, like `no_rule_matched`", "default %s has an empty reason", d.Name)
+	}
+	for name, val := range def.Args {
+		f := d.Field(name)
+		if f == nil {
+			v.errorf(d.Name+" is declared as: "+d.Signature(), "default: decision %s has no payload field %q", d.Name, name)
+			continue
+		}
+		if !Conforms(val, f.Type) {
+			v.errorf("a default is a constant of the field's type", "default: field %q value %s is not a %s", name, Format(val), f.Type)
+		}
+	}
+	for _, f := range d.Fields {
+		if _, given := def.Args[f.Name]; !given && !f.HasDefault {
+			v.errorf(d.Name+" is declared as: "+d.Signature(), "default: field %q is required and has no value", f.Name)
+		}
+	}
+}
+
+// isIdent reports whether name is a plain identifier: the right shape and
+// not a keyword. Top-level names must be; field names may be keywords.
+func isIdent(name string) bool {
+	return identRE.MatchString(name) && token.Lookup(name) == token.Ident
+}
+
+// isName reports whether name can be a field or payload name, which may
+// be spelled like a keyword.
+func isName(name string) bool {
+	return identRE.MatchString(name)
+}

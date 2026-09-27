@@ -56,7 +56,7 @@ func TestRender(t *testing.T) {
 		{
 			name: "invalid position",
 			err:  &diag.Error{File: "p.sigil", Msg: "nowhere"},
-			want: "p.sigil:-: nowhere\n",
+			want: "p.sigil: nowhere\n",
 		},
 		{
 			name: "two-digit line numbers widen the gutter",

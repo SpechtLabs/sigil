@@ -215,11 +215,11 @@ A kind is valid when:
 | `time.Duration`            | `duration`       |
 | `time.Time`                | `timestamp`      |
 | `[]T`                      | `list<T>`        |
-| `map[string]T`             | `map<string, T>` |
+| `map[K]T`, scalar `K`      | `map<K, T>`      |
 | `*T`                       | `?T`             |
 | struct with `policy:` tags | `type`           |
 
-`NewKind` rejects anything else: channels, funcs, interfaces, non-string map keys, unexported fields. That strictness is what makes the round trip safe. `Import(Export(k))` must equal `k`, and that's a property test in the suite.
+`NewKind` rejects anything else: channels, funcs, interfaces, map keys that aren't scalars, unexported fields. That strictness is what makes the round trip safe. `Import(Export(k))` must equal `k`, and that's a property test in the suite.
 
 Payload structs map to decision fields the same way. A default comes from the struct tag:
 
