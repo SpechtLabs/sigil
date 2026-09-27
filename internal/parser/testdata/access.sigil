@@ -1,0 +1,43 @@
+kind AccessGrant version 1
+
+type Actor {
+  name: string
+  groups: list<string>
+  clearance: string
+}
+
+input actor: Actor
+
+decision read(reason: string)
+decision write(reason: string)
+decision admin(reason: string, ttl: duration = 8h)
+decision customer_data_writer(reason: string)
+decision development_environment_writer(reason: string)
+
+collect all
+
+---
+
+policy access.guardrails: AccessGrant
+
+assert [customer_data_writer, development_environment_writer] exclusive in outcome,
+  "sod_customer_dev"
+
+assert customer_data_writer not in outcome or actor.clearance == "pii",
+  "pii_needs_clearance"
+
+assert all g in actor.groups: g != "root", "no_root"
+
+---
+
+policy access.platform: AccessGrant
+
+use access.guardrails
+
+guardrails()
+
+when "platform" in actor.groups {
+  write("platform_member")
+  development_environment_writer("platform_member")
+  assert actor.name != "", "actor_named"
+}

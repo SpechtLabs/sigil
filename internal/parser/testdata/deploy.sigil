@@ -1,0 +1,49 @@
+module deploy.common: DeployApproval
+
+let owns_service = actor.teams any in service.owners
+let cleared =
+  split(service.labels["regions"], ",") all in actor.regions
+let eligible =
+  "deployer" in actor.roles
+  and environment == "production"
+  and service.labels has {
+    "app.kubernetes.io/managed-by": "argocd",
+    "platform.example.com/lifecycle": "ga",
+  }
+
+---
+
+policy deploy.guardrails: DeployApproval
+
+use deploy.common.{eligible}
+
+param min_soak: duration = 24h
+
+when not eligible {
+  deny("not_eligible")
+}
+
+when release.soak < min_soak and not release.hotfix {
+  deny("soak_too_short")
+}
+
+---
+
+policy deploy.production: DeployApproval
+
+use deploy.common.{cleared, owns_service}
+
+param approvers: list<string>
+param tiers: list<string> = ["standard", "internal"]
+
+when cleared {
+  when service.tier == "critical"
+    and "release_manager" in actor.roles {
+    approve("release_manager")
+  }
+
+  when service.tier in tiers
+    and owns_service {
+    review("service_owner", approvers: approvers)
+  }
+}

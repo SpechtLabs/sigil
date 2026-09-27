@@ -1,0 +1,1 @@
+policy single.line: DeployApproval use deploy.common.{cleared} let a = environment == "production" let b = "deployer" in actor.roles guardrails(min_soak: 4h) when a and b { review("service_owner", approvers: approvers) } --- module single.more: DeployApproval let x = cleared

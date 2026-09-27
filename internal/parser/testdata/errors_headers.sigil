@@ -1,0 +1,16 @@
+let orphan = true
+
+policy : DeployApproval
+
+policy good.first: DeployApproval
+
+when true {
+  deny("unclosed")
+
+policy good.two: DeployApproval
+let a = min_soak
+---
+1h
+---
+module good.three: DeployApproval
+let b = `unterminated
