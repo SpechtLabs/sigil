@@ -15,7 +15,7 @@ A policy engine runs on a request path, often on every request. A policy author 
 
 **No recursion.** A `let` can refer to other `let`s, a file can import from other files, and a policy can invoke other policies, but all three graphs must be acyclic. The compiler builds each dependency graph and rejects a cycle with an error pointing at the edge that closes it. Without cycles, every `let` has a finite expansion and every chain of invocations bottoms out, so flattening a policy the way `sigil explain` does always terminates.
 
-**No user-defined functions.** Functions are how most expression languages sneak recursion back in. In Sigil, the only callable things are host functions declared in the kind, like `fn split(s: string, sep: string) -> list<string>`. The host implements them in Go, and they must be pure: same arguments, same result, no side effects. If a host function hangs, that's a Go bug in the host, reviewed and tested like any other Go code.
+**No user-defined functions.** Functions are how most expression languages sneak recursion back in. In Sigil, the only callable things are host functions declared in the kind, like `fn split(string, string) -> list<string>`. The host implements them in Go, and they must be pure: same arguments, same result, no side effects. If a host function hangs, that's a Go bug in the host, reviewed and tested like any other Go code.
 
 **No backtracking regexes.** `matches` uses Go's RE2 engine, which runs in time linear in the input. The pattern must be a literal, so it compiles once when the policy loads, and a catastrophic pattern like `(a+)+$` can't blow up at evaluation time the way it would under a backtracking engine.
 

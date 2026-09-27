@@ -6,7 +6,7 @@ permalink: /reference/expressions/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The lexer and parser implement the syntax; type checking and evaluation aren't implemented yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. The lexer and parser implement the syntax and kinds are implemented; type checking and evaluation aren't yet. See [Open questions](/project/open-questions/).
 :::
 
 Expressions appear in `when` conditions, `assert` conditions, `let` bindings, param defaults, policy invocation arguments and decision payloads. Every expression has a static type that the compiler knows before evaluation, and nothing converts between types implicitly. The types themselves are on [Types](/reference/types/).

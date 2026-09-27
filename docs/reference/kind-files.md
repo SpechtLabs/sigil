@@ -6,7 +6,7 @@ permalink: /reference/kind-files/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The lexer and parser implement the syntax; type checking and evaluation aren't implemented yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. The lexer and parser implement the syntax and kinds are implemented; type checking and evaluation aren't yet. See [Open questions](/project/open-questions/).
 :::
 
 A kind is the contract between a Go host and the policies it evaluates. It declares what input looks like, which host functions exist, which decisions a policy can produce, and whether one of them wins or all of them apply. Every policy names exactly one kind in its header and gets type-checked against it.
@@ -51,7 +51,7 @@ input service: Service
 input actor: Actor
 input environment: string
 
-fn split(s: string, sep: string) -> list<string>
+fn split(string, string) -> list<string>
 
 decision deny(reason: string)
 decision review(reason: string, approvers: list<string>)
@@ -68,7 +68,7 @@ default deny("no_rule_matched")
 | `kind`       | `kind DeployApproval version 1`                            | Name and contract version                |
 | `type`       | `type Release { soak: duration }`                          | Struct types reachable from inputs       |
 | `input`      | `input release: Release`                                   | Top-level names policies can read        |
-| `fn`         | `fn split(s: string, sep: string) -> list<string>`         | Host function signatures                 |
+| `fn`         | `fn split(string, string) -> list<string>`         | Host function signatures                 |
 | `decision`   | `decision review(reason: string, approvers: list<string>)` | Decision constructors and payload schema |
 | `precedence` | `precedence deny > review > approve`                       | Conflict resolution order                |
 | `collect`    | `collect all`                                              | Every fired decision applies (instead of `precedence`) |
@@ -95,7 +95,7 @@ type Service {
 
 Declares a struct type with named, typed fields. Fields are written `name: type` with no separator between them; the parser finds the next field by its `name:` prefix. Field names must be unique within a type. A field's type may be any [type](/reference/types/), including another struct type and an optional `?T`.
 
-Struct types must not be recursive, directly or through other types. (proposed; Go allows `type Node struct { Next *Node }`, and a recursive type would let input describe unbounded depth, but the current design doesn't cover it.)
+Struct types must not be recursive, directly or through other types. Go allows `type Node struct { Next *Node }`, but policies can't loop, so a recursive type could only ever be read to a fixed depth; `NewKind` and the kind loader reject one, naming the cycle.
 
 ### `input`
 
@@ -108,10 +108,10 @@ Declares a top-level name policies can read, and its type. Inputs are read-only.
 ### `fn`
 
 ```sigil
-fn split(s: string, sep: string) -> list<string>
+fn split(string, string) -> list<string>
 ```
 
-Declares a host function's signature. Parameter names are documentation; policies pass arguments positionally. The return type is required and can't be optional. (proposed)
+Declares a host function's signature: the parameter types and the result type. Parameters have no names, because policies pass arguments positionally and a Go function's parameter names aren't recoverable by reflection anyway. The return type is required and can't be optional.
 
 Host functions must be pure and deterministic. The Go implementation may return `(T, error)`; a non-nil error becomes a [runtime error](/reference/evaluation/).
 
@@ -137,7 +137,7 @@ How policies call these is on [Decisions](/reference/decisions/).
 precedence deny > review > approve
 ```
 
-Ranks decisions from highest to lowest. When candidates of different decisions compete, the highest-ranked one wins. The declaration must name every declared decision exactly once, which makes precedence a total order. (proposed; the Go side derives precedence from the order of `policy.Decisions(...)`, which is always total.)
+Ranks decisions from highest to lowest. When candidates of different decisions compete, the highest-ranked one wins. The declaration must name every declared decision exactly once, which makes precedence a total order. The Go side derives precedence from the order of `policy.WithDecisions(...)`, which is always total.
 
 ### `collect`
 
@@ -145,7 +145,7 @@ Ranks decisions from highest to lowest. When candidates of different decisions c
 collect all
 ```
 
-Declares a collecting kind: instead of one winner, the host gets every candidate that fired. A kind has either `precedence` or `collect all`, never both and never neither, so leaving out a line can't silently switch a kind from one winner to many. (proposed)
+Declares a collecting kind: instead of one winner, the host gets every candidate that fired. A kind has either `precedence` or `collect all`, never both and never neither, so leaving out a line can't silently switch a kind from one winner to many.
 
 Collecting fits decisions that combine instead of competing, such as roles a user can hold at the same time:
 
@@ -188,7 +188,7 @@ default deny("no_rule_matched")
 
 The result when no rule fires. It's a decision constructor with a literal reason, and every payload value must be a constant.
 
-A kind with `precedence` must declare a default. A collecting kind may leave it out, and then an evaluation where nothing fires returns no decisions at all. (proposed)
+A kind with `precedence` must declare a default. A collecting kind may leave it out, and then an evaluation where nothing fires returns no decisions at all.
 
 ## Validity rules
 

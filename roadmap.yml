@@ -148,10 +148,27 @@ milestones:
 
       **Done when** typos and type mismatches fail at compile time with a hint.
     deliverables:
-      - title: NewKind reflection
-        state: TODO
+      - title: Type model and kind contract
+        state: DONE
         requirement: MUST
-        description: Walks the input struct once and builds a precomputed accessor per field path, so evaluation never touches `reflect`.
+        description: |
+          The sealed type language and the kind model, with every validity rule from the kind-files
+          page in one place, so a kind loaded from a file and one reflected from Go structs are
+          checked the same way. Map keys follow Go's rule: any scalar.
+      - title: Kind file loader
+        state: DONE
+        requirement: MUST
+        description: |
+          Loads a kind document into the model with positioned diagnostics and a did-you-mean hint
+          for unknown types, and prints a kind back as canonical source, which is what `Schema()`
+          exports and what the round-trip test compares.
+      - title: NewKind reflection
+        state: DONE
+        requirement: MUST
+        description: |
+          Walks the input struct, the payload structs and the host functions once and records the
+          Go field paths and function values for the evaluator, so evaluation never touches
+          `reflect`. Panics with every problem at once, like `regexp.MustCompile`.
       - title: Type checker
         state: TODO
         requirement: MUST

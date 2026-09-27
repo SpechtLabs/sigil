@@ -193,7 +193,7 @@ The current design says comparisons are strictly typed but doesn't say which typ
 
 - Does `==` work on lists, maps and structs? Structural equality is easy to define, but it's rarely what a policy wants and it hides cost in a single operator.
 - Can strings be ordered with `<`? Byte-wise ordering is well defined in Go, but `"v10" < "v9"` is true, which is the kind of result that makes a version rule wrong.
-- May kind types be recursive? Go allows `type Node struct { Parent *Node }`. Since policies can't loop or recurse, a recursive type is readable only to a fixed depth, which suggests `NewKind` should reject it.
+- Recursive kind types are settled: `NewKind` and the kind loader reject them, naming the cycle, since a policy could only read one to a fixed depth. Map keys are settled too, on Go's rule: any scalar can be a key.
 
 ## What the kind version means
 

@@ -356,5 +356,5 @@ What the `[1]` to `[4]` markers point at:
 :::
 
 ::: warning Design phase
-Sigil is being designed documentation-first. The lexer and parser are implemented; type checking, evaluation and the CLI are not. These pages **are** the specification, and they will change as the [open questions](/project/open-questions/) get answered. If something reads wrong, [open an issue](https://github.com/SpechtLabs/sigil/issues).
+Sigil is being designed documentation-first. The lexer, the parser and kind definition (from Go structs and from kind files) are implemented; type checking, evaluation and the CLI are not. These pages **are** the specification, and they will change as the [open questions](/project/open-questions/) get answered. If something reads wrong, [open an issue](https://github.com/SpechtLabs/sigil/issues).
 :::

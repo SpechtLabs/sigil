@@ -122,7 +122,7 @@ Removing or renaming something breaks every policy that uses it. Do it in steps 
 
 1. Add the new name alongside the old one. For a rename of `Service.tier` to `Service.criticality`, both fields exist for a while. This is a compatible change.
 2. Move the policies over to the new name. `sigil check` tells you where the old one is still used, because every reference is a type-checked field access.
-3. Remove the old name, and bump the kind version with `policy.Version(2)`. `sigil breaking` will flag the removal; that's expected, and the version bump is what tells other consumers of the kind file that the contract changed.
+3. Remove the old name, and bump the kind version with `policy.WithVersion(2)`. `sigil breaking` will flag the removal; that's expected, and the version bump is what tells other consumers of the kind file that the contract changed.
 
 There's no deprecation marker in the kind format yet, so step 1 relies on communicating the migration out of band.
 

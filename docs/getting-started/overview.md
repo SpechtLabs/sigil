@@ -8,7 +8,7 @@ permalink: /getting-started/overview/
 Sigil is a small, statically typed policy language that you embed in a Go application. Engineers write rules that read host-provided input and produce a typed decision such as `approve`, `deny` or `review`. Every decision carries a reason and a payload, so the host always knows what was decided, why, and with which parameters.
 
 ::: info Design phase
-The lexer and parser are implemented; type checking, evaluation and the CLI are not. These pages are the specification, written before the first line of code. If an example here looks wrong, surprising or hard to read, that's exactly the feedback the design needs: [open an issue](https://github.com/SpechtLabs/sigil/issues).
+The lexer, the parser and kind definition (from Go structs and from kind files) are implemented; type checking, evaluation and the CLI are not. These pages are the specification, written before the first line of code. If an example here looks wrong, surprising or hard to read, that's exactly the feedback the design needs: [open an issue](https://github.com/SpechtLabs/sigil/issues).
 :::
 
 ## The problem it replaces
