@@ -77,12 +77,18 @@ linters:
           - goconst
           - golint-sl
         path: _test\.go
+
       # The CLI isn't on the hot path, so its structs are laid out for
-      # readability rather than size.
+      # readability rather than size. Neither are test tables.
       - linters:
           - govet
         text: "^fieldalignment:"
         path: ^cmd/
+
+      - linters:
+          - govet
+        text: "^fieldalignment:"
+        path: _test\.go
 
     paths:
       - third_party$

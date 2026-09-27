@@ -28,6 +28,12 @@ timeline:
     description: |
       The language design moves into this documentation site. Nothing is implemented; the docs are
       the specification until M1 closes.
+  - date: 2026-09-27
+    title: Front end implemented
+    description: |
+      The lexer, the Pratt expression parser and the document parser land under `internal/`, with
+      golden tests for every document form and every error message. Type checking and evaluation
+      are next.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -88,12 +94,12 @@ milestones:
           `policy.Require`.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/understanding/composition.md
       - title: Answer the syntax-affecting open questions
-        state: TODO
+        state: DOING
         requirement: MUST
         description: |
-          Quantifier body extent, chained comparisons, keywords as field names, glob syntax,
-          multiple decisions per block and the `assert` syntax. Boolean operator spelling is
-          settled: words.
+          Settled with the parser: quantifier body extent, chained comparisons, keywords as field
+          names and the `assert` syntax. Boolean operator spelling is settled: words. Still open:
+          glob syntax (M3) and multiple decisions per block (M4); the parser accepts several.
       - title: Published documentation site
         state: DOING
         requirement: SHOULD
@@ -109,25 +115,26 @@ milestones:
       keyword or, for a policy invocation, with a name followed by `(`, so one token of lookahead
       is enough to pick a statement parser.
 
-      **Done when** golden tests cover every operator and every error message.
+      **Done when** golden tests cover every operator and every error message. They do: see
+      `internal/parser/testdata`.
     deliverables:
       - title: Lexer
-        state: TODO
+        state: DONE
         requirement: MUST
         description: Identifiers, strings, raw strings, numbers, chained durations, comments and the `---` document separator, with positions.
       - title: Pratt expression parser
-        state: TODO
+        state: DONE
         requirement: MUST
         description: One binding power per level of the precedence table, including quantifiers and the non-associative comparison level.
       - title: AST with source positions
-        state: TODO
+        state: DONE
         requirement: MUST
       - title: Error messages with fix hints
-        state: TODO
+        state: DONE
         requirement: MUST
         description: The `file:line:col`, caret and `help:` format used throughout the docs.
       - title: Golden tests
-        state: TODO
+        state: DONE
         requirement: MUST
         description: |
           Including document boundaries: `kind:` and `policy:` fields in a `type` body, a `kind`

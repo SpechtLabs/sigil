@@ -1,0 +1,52 @@
+kind Broken version 1 [1:1-11:23]
+  input release: Release [11:1-11:23]
+
+== diagnostics ==
+
+errors_kind.sigil:4:18: a field in a `type` body can't have a default
+  |
+4 |   soak: duration = 24h
+  |                  ^
+  = help: defaults belong to decision payload fields
+
+errors_kind.sigil:11:1: expected `}`, found `input`
+   |
+11 | input release: Release
+   | ^^^^^
+   = help: to close the `{` at 8:15
+
+errors_kind.sigil:13:16: expected a payload field like `reason: string`, found `)`
+   |
+13 | decision empty()
+   |                ^
+   = help: a decision is written `decision name(reason: string, field: type)`
+
+errors_kind.sigil:14:41: optional types don't nest
+   |
+14 | decision nested(reason: string, ticket: ??string)
+   |                                         ^^
+   = help: write `?T` with a single `?`
+
+errors_kind.sigil:15:51: expected `>`, found `)`
+   |
+15 | decision missing(reason: string, tags: list<string)
+   |                                                   ^
+   = help: to close the `<` at 15:44
+
+errors_kind.sigil:18:1: expected `all`, found `default`
+   |
+18 | default "no_rule_matched"
+   | ^^^^^^^
+   = help: a collecting kind is declared with `collect all`
+
+errors_kind.sigil:18:9: expected a decision constructor, found `"no_rule_matched"`
+   |
+18 | default "no_rule_matched"
+   |         ^^^^^^^^^^^^^^^^^
+   = help: the default is written `default deny("no_rule_matched")`
+
+errors_kind.sigil:20:19: expected a decision name after `>`, found `>`
+   |
+20 | precedence deny > > review
+   |                   ^
+   = help: precedence is written `precedence deny > review > approve`, highest first

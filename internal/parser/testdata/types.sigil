@@ -1,0 +1,33 @@
+kind Shapes version 2
+
+type Nested {
+  matrix: list<list<string>>
+  lookup: map<string, list<int>>
+  maybe: ?string
+  deep: map<string, map<string, ?Nested>>
+}
+
+input nested: Nested
+input flag: bool
+
+fn keys(m: map<string, string>,) -> list<string>
+fn now() -> timestamp
+
+decision allow(reason: string, weights: map<string, int> = {}, tags: list<string> = [],)
+
+precedence allow
+default allow("none")
+
+---
+
+policy shapes.demo: Shapes
+
+param m: map<string, int>= {}
+param names: list<string>= ["a"]
+param nested: list<list<string>> = [["a"], []]
+param limit: int = -3
+param timeout: duration = 1h + 30m
+
+when flag {
+  allow("ok", weights: m, tags: names,)
+}

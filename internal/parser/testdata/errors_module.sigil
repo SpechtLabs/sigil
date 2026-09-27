@@ -1,0 +1,17 @@
+module errors.mod: DeployApproval
+
+let owns_service = actor.teams any in service.owners
+
+use deploy.common
+
+param min_soak: duration = 24h
+
+when owns_service {
+  deny("no_rules_in_modules")
+}
+
+assert owns_service, "no_asserts_either"
+
+guardrails(min_soak: 4h)
+
+let still_parsed = true

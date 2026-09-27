@@ -1,0 +1,27 @@
+kind AccessGrant version 1 [1:1-17:12]
+  type Actor { [3:1-7:2]
+    name: string
+    groups: list<string>
+    clearance: string
+  }
+  input actor: Actor [9:1-9:19]
+  decision read(reason: string) [11:1-11:30]
+  decision write(reason: string) [12:1-12:31]
+  decision admin(reason: string, ttl: duration = 8h) [13:1-13:51]
+  decision customer_data_writer(reason: string) [14:1-14:46]
+  decision development_environment_writer(reason: string) [15:1-15:56]
+  collect all [17:1-17:12]
+---
+policy access.guardrails: AccessGrant [21:1-29:53]
+  assert ([customer_data_writer, development_environment_writer] exclusive in outcome), "sod_customer_dev" [23:1-24:21]
+  assert ((customer_data_writer not in outcome) or (actor.clearance == "pii")), "pii_needs_clearance" [26:1-27:24]
+  assert (all g in actor.groups: (g != "root")), "no_root" [29:1-29:53]
+---
+policy access.platform: AccessGrant [33:1-43:2]
+  use access.guardrails [35:1-35:22]
+  guardrails() [37:1-37:13]
+  when ("platform" in actor.groups) { [39:1-43:2]
+    write("platform_member") [40:3-40:27]
+    development_environment_writer("platform_member") [41:3-41:52]
+    assert (actor.name != ""), "actor_named" [42:3-42:41]
+  }

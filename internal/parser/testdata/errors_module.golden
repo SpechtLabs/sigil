@@ -1,0 +1,36 @@
+module errors.mod: DeployApproval [1:1-17:24]
+  use deploy.common [5:1-5:18]
+  let owns_service = (actor.teams any in service.owners) [3:1-3:53]
+  let still_parsed = true [17:1-17:24]
+
+== diagnostics ==
+
+errors_module.sigil:5:1: `use` must come before every other statement
+  |
+5 | use deploy.common
+  | ^^^^^^^^^^^^^^^^^
+  = help: move it up, right after the header
+
+errors_module.sigil:7:1: a module can't contain `param`
+  |
+7 | param min_soak: duration = 24h
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: a module holds only imports and lets; rules, params and invocations belong in a policy
+
+errors_module.sigil:9:1: a module can't contain `when`
+  |
+9 | when owns_service {
+  | ^^^^^^^^^^^^^^^^^^^
+  = help: a module holds only imports and lets; rules, params and invocations belong in a policy
+
+errors_module.sigil:13:1: a module can't contain `assert`
+   |
+13 | assert owns_service, "no_asserts_either"
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: a module holds only imports and lets; rules, params and invocations belong in a policy
+
+errors_module.sigil:15:1: a module can't contain an invocation
+   |
+15 | guardrails(min_soak: 4h)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: a module holds only imports and lets; rules, params and invocations belong in a policy

@@ -1,0 +1,35 @@
+// Header keywords only start a document at statement position. None of
+// the `kind` and `policy` tokens below end one.
+kind JIT_Approval version 1
+
+type Resource {
+  kind: string        // field declaration inside a type body
+  policy: string
+  module: ?string
+  labels: map<string, string>
+}
+
+input resource: Resource
+
+decision review(reason: string, approvers: list<string>, kind: string = "")
+decision deny(reason: string)
+
+precedence deny > review
+default deny("no_rule_matched")
+
+// No separator: the next header ends the kind document.
+policy jit.sandbox: JIT_Approval
+
+when resource.kind == "kube_cluster"      // field access after `.`
+  and resource.policy != ""
+  and resource.module ?? "" == "" {
+  review("cluster_access", approvers: ["sre-leads"], kind: resource.kind)
+}
+---
+---
+// Extra separators and comments between documents are fine.
+module jit.common: JIT_Approval
+
+let is_cluster = resource.kind == "kube_cluster"
+
+---

@@ -6,7 +6,7 @@ permalink: /reference/kind-files/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. Nothing is implemented yet; see [Open questions](/project/open-questions/).
+This page specifies the language as designed. The lexer and parser implement the syntax; type checking and evaluation aren't implemented yet. See [Open questions](/project/open-questions/).
 :::
 
 A kind is the contract between a Go host and the policies it evaluates. It declares what input looks like, which host functions exist, which decisions a policy can produce, and whether one of them wins or all of them apply. Every policy names exactly one kind in its header and gets type-checked against it.
