@@ -9,13 +9,13 @@ permalink: /reference/lexical/
 This page specifies the language as designed. Nothing is implemented yet; see [Open questions](/project/open-questions/).
 :::
 
-Sigil source is UTF-8 text. The lexer turns it into a flat stream of tokens and throws away whitespace and comments, so newlines and indentation carry no meaning anywhere in the language. Every statement starts with a keyword or, for a policy invocation, with a name followed by `(`, which is how the parser finds statement boundaries (see [Grammar](/reference/grammar/)).
+Sigil source is UTF-8 text. The lexer turns it into a flat stream of tokens and throws away whitespace, so newlines and indentation carry no meaning anywhere in the language. Comments become tokens of their own, which the parser skips and `sigil fmt` keeps, so formatting a file never loses one. Every statement starts with a keyword or, for a policy invocation, with a name followed by `(`, which is how the parser finds statement boundaries (see [Grammar](/reference/grammar/)).
 
 ## Whitespace and comments
 
 Spaces, tabs, carriage returns and newlines separate tokens and are otherwise ignored.
 
-A comment starts with `//` and runs to the end of the line. There are no block comments.
+A comment starts with `//` and runs to the end of the line, not including the line break. There are no block comments. A comment has no meaning to the parser, which treats it like whitespace, but the lexer emits it as a token so that tools which rewrite source, such as `sigil fmt`, can put it back where it was.
 
 ```sigil
 // This whole line is a comment.
@@ -44,7 +44,7 @@ Policy names are a separate lexical form from identifiers: one or more identifie
 policy_name = identifier ( "." identifier )*
 ```
 
-`deploy.common`, `deploy.production` and `payments.production` are policy names; modules are named the same way. They only appear after the `policy`, `module` and `use` keywords. A name in a `use` refers to the document whose header carries that name, wherever it lives in the bundle; it isn't a file path. In a selective import such as `use deploy.common.{cleared}`, the name ends where `.{` begins. See [Policy files](/reference/policy-files/).
+`deploy.common`, `deploy.production` and `payments.production` are policy names; modules are named the same way. Every segment is an identifier, so a keyword can't be one: `access.type` and `deploy.default` aren't valid names. They only appear after the `policy`, `module` and `use` keywords. A name in a `use` refers to the document whose header carries that name, wherever it lives in the bundle; it isn't a file path. In a selective import such as `use deploy.common.{cleared}`, the name ends where `.{` begins. See [Policy files](/reference/policy-files/).
 
 ::: tip Proposed
 Dotted policy names need a lexing rule of their own. Treating them as their own token class, only valid after `policy`, `module` and `use`, is the proposed rule.
@@ -86,7 +86,7 @@ Keywords are allowed as field and payload names, because real Go structs have fi
 3.0     // float
 ```
 
-A float literal needs digits on both sides of the point: `.5` and `5.` aren't valid. Integer literals are decimal and fit in a signed 64-bit integer; a literal outside that range is a compile error. Negative numbers are written with unary minus (`-3`), which is an operator, not part of the literal.
+A float literal needs digits on both sides of the point: `.5` and `5.` aren't valid. Integer literals are decimal and fit in a signed 64-bit integer; a literal outside that range is a compile error. Leading zeros are allowed and carry no meaning: `007` is the integer seven, never octal, and `sigil fmt` removes them. Negative numbers are written with unary minus (`-3`), which is an operator, not part of the literal.
 
 The current design doesn't specify hex, octal, binary, exponent notation or `_` digit separators. They're not part of the language until someone decides otherwise.
 

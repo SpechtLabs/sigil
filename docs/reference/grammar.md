@@ -29,7 +29,7 @@ The grammar uses the W3C EBNF notation from the XML specification:
 | `A - B`       | `A` but not `B`                       |
 | `/* ... */`   | Comment                               |
 
-Whitespace and comments may appear between any two tokens and are discarded. None of the productions mention them.
+Whitespace and comments may appear between any two tokens. The parser ignores both, so none of the productions mention them; see [Whitespace and comments](/reference/lexical/#whitespace-and-comments) for why comments are still tokens.
 
 ## Lexical grammar
 
