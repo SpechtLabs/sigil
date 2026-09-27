@@ -3,6 +3,7 @@ package kind
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/spechtlabs/sigil/internal/diag"
@@ -12,17 +13,39 @@ import (
 
 var identRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+// Locator maps a validation key to the source span of the thing it names,
+// so a kind loaded from a file can report rule violations at the right
+// place. The keys are paths into the kind:
+//
+//	kind                          the header
+//	kind.version                  the version number
+//	type T                        a type's name
+//	type T.field F                a field's name
+//	type T.field F.type           a field's type
+//	input I / input I.type        an input's name / type
+//	fn F / fn F.result            a function's name / result type
+//	fn F.param P / fn F.param P.type
+//	decision D / decision D.field F / decision D.field F.type / decision D.field F.default
+//	precedence / precedence.D     the declaration / one name in it
+//	collect
+//	default / default.reason / default.arg F
+//
+// A Locator that doesn't know a key returns false, and the diagnostic is
+// left without a position.
+type Locator func(key string) (start, end token.Pos, ok bool)
+
 type validator struct {
-	kind *Kind
-	errs diag.ErrorList
+	kind   *Kind
+	locate Locator
+	errs   diag.ErrorList
 }
 
 // Validate checks the rules a kind must satisfy and returns one
-// diagnostic per violation, without positions: the model doesn't know
-// where it came from, so a kind-file loader attaches them and NewKind
-// panics with the messages.
-func (k *Kind) Validate() diag.ErrorList {
-	v := &validator{kind: k}
+// diagnostic per violation. The model doesn't know where it came from, so
+// positions come from locate, which may be nil: NewKind panics with the
+// bare messages, while a kind-file loader supplies the spans.
+func (k *Kind) Validate(locate Locator) diag.ErrorList {
+	v := &validator{kind: k, locate: locate}
 	v.header()
 	v.types()
 	v.inputsAndFuncs()
@@ -31,16 +54,23 @@ func (k *Kind) Validate() diag.ErrorList {
 	return v.errs
 }
 
-func (v *validator) errorf(help, format string, args ...any) {
-	v.errs = append(v.errs, &diag.Error{Msg: fmt.Sprintf(format, args...), Help: help})
+// errorf records a violation at the source of key.
+func (v *validator) errorf(key, help, format string, args ...any) {
+	e := &diag.Error{Msg: fmt.Sprintf(format, args...), Help: help}
+	if v.locate != nil {
+		if start, end, ok := v.locate(key); ok {
+			e.Pos, e.End = start, end
+		}
+	}
+	v.errs = append(v.errs, e)
 }
 
 func (v *validator) header() {
 	if !isIdent(v.kind.Name) {
-		v.errorf("a kind's name is an identifier, like `DeployApproval`", "invalid kind name %q", v.kind.Name)
+		v.errorf("kind", "a kind's name is an identifier, like `DeployApproval`", "invalid kind name %q", v.kind.Name)
 	}
 	if v.kind.Version < 1 {
-		v.errorf("the version is a positive integer that changes when the contract does", "invalid kind version %d", v.kind.Version)
+		v.errorf("kind.version", "the version is a positive integer that changes when the contract does", "invalid kind version %d", v.kind.Version)
 	}
 }
 
@@ -50,32 +80,34 @@ func (v *validator) header() {
 func (v *validator) types() {
 	seen := map[string]bool{}
 	for _, s := range v.kind.Types {
+		key := "type " + s.Name
 		switch {
 		case !isIdent(s.Name):
-			v.errorf("a type name is an identifier, like `Service`", "invalid type name %q", s.Name)
+			v.errorf(key, "a type name is an identifier, like `Service`", "invalid type name %q", s.Name)
 		case types.IsReserved(s.Name):
-			v.errorf("the built-in type names are reserved; pick another name", "type %q shadows a built-in type", s.Name)
+			v.errorf(key, "the built-in type names are reserved; pick another name", "type %q shadows a built-in type", s.Name)
 		case seen[s.Name]:
-			v.errorf("give each type one declaration", "type %q is declared twice", s.Name)
+			v.errorf(key, "give each type one declaration", "type %q is declared twice", s.Name)
 		}
 		seen[s.Name] = true
 
 		fields := map[string]bool{}
 		for _, f := range s.Fields {
+			fkey := key + ".field " + f.Name
 			if !isName(f.Name) {
-				v.errorf("a field name is an identifier; keywords are allowed", "type %s: invalid field name %q", s.Name, f.Name)
+				v.errorf(fkey, "a field name is an identifier; keywords are allowed", "type %s: invalid field name %q", s.Name, f.Name)
 			}
 			if fields[f.Name] {
-				v.errorf("give each field one declaration", "type %s: field %q is declared twice", s.Name, f.Name)
+				v.errorf(fkey, "give each field one declaration", "type %s: field %q is declared twice", s.Name, f.Name)
 			}
 			fields[f.Name] = true
-			v.typeResolves(f.Type, fmt.Sprintf("type %s, field %q", s.Name, f.Name))
+			v.typeResolves(f.Type, fkey+".type", fmt.Sprintf("type %s, field %q", s.Name, f.Name))
 		}
 	}
 
 	for _, s := range v.kind.Types {
 		if path := v.cycle(s, nil); path != nil {
-			v.errorf("policies can't loop, so a recursive type could only be read to a fixed depth; model the relation with an id instead",
+			v.errorf("type "+s.Name, "policies can't loop, so a recursive type could only be read to a fixed depth; model the relation with an id instead",
 				"type %s is recursive: %s", s.Name, strings.Join(path, " -> "))
 		}
 	}
@@ -125,45 +157,40 @@ func structOf(t types.Type) *types.Struct {
 }
 
 func contains(xs []string, x string) bool {
-	for _, y := range xs {
-		if y == x {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(xs, x)
 }
 
 // typeResolves checks that every struct type inside t is declared, and
-// that t is well-formed: no nested optionals, no decision-typed data.
-func (v *validator) typeResolves(t types.Type, where string) {
+// that t is well-formed: no nested optionals, no decision-typed data,
+// scalar map keys. key locates the type in source; where names it in the
+// message. types.Invalid passes: a loader puts it where a name didn't
+// resolve, and has already reported that at the name.
+func (v *validator) typeResolves(t types.Type, key, where string) {
 	switch t := t.(type) {
 	case types.Basic:
-		switch t {
-		case types.Invalid:
-			v.errorf("", "%s: invalid type", where)
-		case types.Decision:
-			v.errorf("`decision` values only come from `outcome`; data can't hold them", "%s: type can't be decision", where)
+		if t == types.Decision {
+			v.errorf(key, "`decision` values only come from `outcome`; data can't hold them", "%s: type can't be decision", where)
 		}
 	case *types.List:
-		v.typeResolves(t.Elem, where)
+		v.typeResolves(t.Elem, key, where)
 	case *types.Map:
 		if !types.IsKey(t.Key) {
-			v.errorf("map keys are scalars, as in Go: bool, int, float, string, duration or timestamp", "%s: map key type can't be %s", where, t.Key)
+			v.errorf(key, "map keys are scalars, as in Go: bool, int, float, string, duration or timestamp", "%s: map key type can't be %s", where, t.Key)
 		} else {
-			v.typeResolves(t.Key, where)
+			v.typeResolves(t.Key, key, where)
 		}
-		v.typeResolves(t.Value, where)
+		v.typeResolves(t.Value, key, where)
 	case *types.Optional:
 		if _, nested := t.Elem.(*types.Optional); nested {
-			v.errorf("write `?T` with a single `?`", "%s: optional types don't nest", where)
+			v.errorf(key, "write `?T` with a single `?`", "%s: optional types don't nest", where)
 		}
-		v.typeResolves(t.Elem, where)
+		v.typeResolves(t.Elem, key, where)
 	case *types.Struct:
 		if v.kind.Type(t.Name) == nil {
-			v.errorf("declare it with `type "+t.Name+" { ... }`", "%s: undeclared type %s", where, t.Name)
+			v.errorf(key, "declare it with `type "+t.Name+" { ... }`", "%s: undeclared type %s", where, t.Name)
 		}
 	default:
-		v.errorf("", "%s: invalid type", where)
+		v.errorf(key, "", "%s: invalid type", where)
 	}
 }
 
@@ -172,38 +199,41 @@ func (v *validator) typeResolves(t types.Type, where string) {
 func (v *validator) inputsAndFuncs() {
 	seen := map[string]string{}
 	for _, in := range v.kind.Inputs {
+		key := "input " + in.Name
 		if !isIdent(in.Name) {
-			v.errorf("an input name is a plain identifier, not a keyword", "invalid input name %q", in.Name)
+			v.errorf(key, "an input name is a plain identifier, not a keyword", "invalid input name %q", in.Name)
 		}
 		if prev, dup := seen[in.Name]; dup {
-			v.errorf("inputs and host functions share one namespace", "input %q collides with %s %q", in.Name, prev, in.Name)
+			v.errorf(key, "inputs and host functions share one namespace", "input %q collides with %s %q", in.Name, prev, in.Name)
 		}
 		seen[in.Name] = "input"
-		v.typeResolves(in.Type, fmt.Sprintf("input %q", in.Name))
+		v.typeResolves(in.Type, key+".type", fmt.Sprintf("input %q", in.Name))
 	}
 	for _, f := range v.kind.Funcs {
+		key := "fn " + f.Name
 		if !isIdent(f.Name) {
-			v.errorf("a function name is a plain identifier, not a keyword", "invalid function name %q", f.Name)
+			v.errorf(key, "a function name is a plain identifier, not a keyword", "invalid function name %q", f.Name)
 		}
 		if prev, dup := seen[f.Name]; dup {
-			v.errorf("inputs and host functions share one namespace", "function %q collides with %s %q", f.Name, prev, f.Name)
+			v.errorf(key, "inputs and host functions share one namespace", "function %q collides with %s %q", f.Name, prev, f.Name)
 		}
 		seen[f.Name] = "function"
 		params := map[string]bool{}
 		for _, p := range f.Params {
+			pkey := key + ".param " + p.Name
 			if !isIdent(p.Name) {
-				v.errorf("a parameter name is a plain identifier", "function %s: invalid parameter name %q", f.Name, p.Name)
+				v.errorf(pkey, "a parameter name is a plain identifier", "function %s: invalid parameter name %q", f.Name, p.Name)
 			}
 			if params[p.Name] {
-				v.errorf("", "function %s: parameter %q is declared twice", f.Name, p.Name)
+				v.errorf(pkey, "", "function %s: parameter %q is declared twice", f.Name, p.Name)
 			}
 			params[p.Name] = true
-			v.typeResolves(p.Type, fmt.Sprintf("function %s, parameter %q", f.Name, p.Name))
+			v.typeResolves(p.Type, pkey+".type", fmt.Sprintf("function %s, parameter %q", f.Name, p.Name))
 		}
 		if _, opt := f.Result.(*types.Optional); opt {
-			v.errorf("return the zero value and let the policy compare, or return a list", "function %s: the result can't be optional", f.Name)
+			v.errorf(key+".result", "return the zero value and let the policy compare, or return a list", "function %s: the result can't be optional", f.Name)
 		} else {
-			v.typeResolves(f.Result, fmt.Sprintf("function %s, result", f.Name))
+			v.typeResolves(f.Result, key+".result", fmt.Sprintf("function %s, result", f.Name))
 		}
 	}
 }
@@ -211,33 +241,35 @@ func (v *validator) inputsAndFuncs() {
 // decisions checks decision names, payload fields and their defaults.
 func (v *validator) decisions() {
 	if len(v.kind.Decisions) == 0 {
-		v.errorf("declare at least one decision", "kind %s declares no decisions", v.kind.Name)
+		v.errorf("kind", "declare at least one decision", "kind %s declares no decisions", v.kind.Name)
 	}
 	seen := map[string]bool{}
 	for _, d := range v.kind.Decisions {
+		key := "decision " + d.Name
 		if !isIdent(d.Name) {
-			v.errorf("a decision name is a plain identifier, not a keyword", "invalid decision name %q", d.Name)
+			v.errorf(key, "a decision name is a plain identifier, not a keyword", "invalid decision name %q", d.Name)
 		}
 		if seen[d.Name] {
-			v.errorf("give each decision one declaration", "decision %q is declared twice", d.Name)
+			v.errorf(key, "give each decision one declaration", "decision %q is declared twice", d.Name)
 		}
 		seen[d.Name] = true
 
 		fields := map[string]bool{}
 		for _, f := range d.Fields {
+			fkey := key + ".field " + f.Name
 			where := fmt.Sprintf("decision %s, field %q", d.Name, f.Name)
 			switch {
 			case f.Name == "reason":
-				v.errorf("every decision takes `reason: string` first; it isn't a payload field", "%s: reason is implied and can't be declared as a payload field", where)
+				v.errorf(fkey, "every decision takes `reason: string` first; it isn't a payload field", "%s: reason is implied and can't be declared as a payload field", where)
 			case !isName(f.Name):
-				v.errorf("a field name is an identifier; keywords are allowed", "%s: invalid field name", where)
+				v.errorf(fkey, "a field name is an identifier; keywords are allowed", "%s: invalid field name", where)
 			case fields[f.Name]:
-				v.errorf("give each field one declaration", "%s: declared twice", where)
+				v.errorf(fkey, "give each field one declaration", "%s: declared twice", where)
 			}
 			fields[f.Name] = true
-			v.typeResolves(f.Type, where)
+			v.typeResolves(f.Type, fkey+".type", where)
 			if f.HasDefault && !Conforms(f.Default, f.Type) {
-				v.errorf("a default is a constant of the field's type", "%s: default %s is not a %s", where, Format(f.Default), f.Type)
+				v.errorf(fkey+".default", "a default is a constant of the field's type", "%s: default %s is not a %s", where, Format(f.Default), f.Type)
 			}
 		}
 	}
@@ -248,16 +280,16 @@ func (v *validator) resolution() {
 	k := v.kind
 	switch {
 	case k.Collect && len(k.Precedence) > 0:
-		v.errorf("a kind resolves decisions one way: rank them with `precedence`, or apply all with `collect all`", "kind %s has both precedence and collect all", k.Name)
+		v.errorf("collect", "a kind resolves decisions one way: rank them with `precedence`, or apply all with `collect all`", "kind %s has both precedence and collect all", k.Name)
 	case !k.Collect && len(k.Precedence) == 0:
-		v.errorf("rank the decisions with `precedence`, or declare `collect all`", "kind %s has neither precedence nor collect all", k.Name)
+		v.errorf("kind", "rank the decisions with `precedence`, or declare `collect all`", "kind %s has neither precedence nor collect all", k.Name)
 	case !k.Collect:
 		v.precedence()
 	}
 
 	if k.Default == nil {
 		if !k.Collect {
-			v.errorf("declare `default <decision>(\"<reason>\")` for the case where no rule fires", "kind %s has no default decision", k.Name)
+			v.errorf("kind", "declare `default <decision>(\"<reason>\")` for the case where no rule fires", "kind %s has no default decision", k.Name)
 		}
 		return
 	}
@@ -269,16 +301,16 @@ func (v *validator) precedence() {
 	seen := map[string]bool{}
 	for _, name := range k.Precedence {
 		if k.Decision(name) == nil {
-			v.errorf("precedence lists the declared decisions, highest first", "precedence names undeclared decision %q", name)
+			v.errorf("precedence."+name, "precedence lists the declared decisions, highest first", "precedence names undeclared decision %q", name)
 		}
 		if seen[name] {
-			v.errorf("list every decision exactly once", "precedence names %q twice", name)
+			v.errorf("precedence."+name, "list every decision exactly once", "precedence names %q twice", name)
 		}
 		seen[name] = true
 	}
 	for _, d := range k.Decisions {
 		if !seen[d.Name] {
-			v.errorf("list every decision exactly once, highest first", "precedence doesn't name decision %q", d.Name)
+			v.errorf("precedence", "list every decision exactly once, highest first", "precedence doesn't name decision %q", d.Name)
 		}
 	}
 }
@@ -287,25 +319,25 @@ func (v *validator) defaultCall() {
 	def := v.kind.Default
 	d := v.kind.Decision(def.Decision)
 	if d == nil {
-		v.errorf("the default constructs one of the kind's decisions", "default names undeclared decision %q", def.Decision)
+		v.errorf("default", "the default constructs one of the kind's decisions", "default names undeclared decision %q", def.Decision)
 		return
 	}
 	if def.Reason == "" {
-		v.errorf("the reason is a stable identifier, like `no_rule_matched`", "default %s has an empty reason", d.Name)
+		v.errorf("default.reason", "the reason is a stable identifier, like `no_rule_matched`", "default %s has an empty reason", d.Name)
 	}
 	for name, val := range def.Args {
 		f := d.Field(name)
 		if f == nil {
-			v.errorf(d.Name+" is declared as: "+d.Signature(), "default: decision %s has no payload field %q", d.Name, name)
+			v.errorf("default.arg "+name, d.Name+" is declared as: "+d.Signature(), "default: decision %s has no payload field %q", d.Name, name)
 			continue
 		}
 		if !Conforms(val, f.Type) {
-			v.errorf("a default is a constant of the field's type", "default: field %q value %s is not a %s", name, Format(val), f.Type)
+			v.errorf("default.arg "+name, "a default is a constant of the field's type", "default: field %q value %s is not a %s", name, Format(val), f.Type)
 		}
 	}
 	for _, f := range d.Fields {
 		if _, given := def.Args[f.Name]; !given && !f.HasDefault {
-			v.errorf(d.Name+" is declared as: "+d.Signature(), "default: field %q is required and has no value", f.Name)
+			v.errorf("default", d.Name+" is declared as: "+d.Signature(), "default: field %q is required and has no value", f.Name)
 		}
 	}
 }

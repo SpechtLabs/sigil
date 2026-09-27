@@ -80,9 +80,9 @@ func TestValidate(t *testing.T) {
 		{name: "field with decision map key", mutate: func(k *kind.Kind) {
 			k.Types[0].Fields[0].Type = &types.Map{Key: types.Decision, Value: types.String}
 		}, want: []string{`type Release, field "soak": map key type can't be decision`}},
-		{name: "field of invalid type", mutate: func(k *kind.Kind) {
+		{name: "field of invalid type was reported by the loader", mutate: func(k *kind.Kind) {
 			k.Types[0].Fields[0].Type = types.Invalid
-		}, want: []string{`type Release, field "soak": invalid type`}},
+		}},
 		{name: "field of nil type", mutate: func(k *kind.Kind) {
 			k.Types[0].Fields[0].Type = nil
 		}, want: []string{`type Release, field "soak": invalid type`}},
@@ -206,7 +206,7 @@ func TestValidate(t *testing.T) {
 			if tt.mutate != nil {
 				tt.mutate(k)
 			}
-			errs := k.Validate()
+			errs := k.Validate(nil)
 			got := make([]string, len(errs))
 			for i, e := range errs {
 				got[i] = e.Msg
