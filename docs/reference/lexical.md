@@ -6,7 +6,7 @@ permalink: /reference/lexical/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. Nothing is implemented yet; see [Open questions](/project/open-questions/).
+This page specifies the language as designed. The lexer and parser implement the syntax; type checking and evaluation aren't implemented yet. See [Open questions](/project/open-questions/).
 :::
 
 Sigil source is UTF-8 text. The lexer turns it into a flat stream of tokens and throws away whitespace, so newlines and indentation carry no meaning anywhere in the language. Comments become tokens of their own, which the parser skips and `sigil fmt` keeps, so formatting a file never loses one. Every statement starts with a keyword or, for a policy invocation, with a name followed by `(`, which is how the parser finds statement boundaries (see [Grammar](/reference/grammar/)).
@@ -46,9 +46,7 @@ policy_name = identifier ( "." identifier )*
 
 `deploy.common`, `deploy.production` and `payments.production` are policy names; modules are named the same way. Every segment is an identifier, so a keyword can't be one: `access.type` and `deploy.default` aren't valid names. They only appear after the `policy`, `module` and `use` keywords. A name in a `use` refers to the document whose header carries that name, wherever it lives in the bundle; it isn't a file path. In a selective import such as `use deploy.common.{cleared}`, the name ends where `.{` begins. See [Policy files](/reference/policy-files/).
 
-::: tip Proposed
-Dotted policy names need a lexing rule of their own. Treating them as their own token class, only valid after `policy`, `module` and `use`, is the proposed rule.
-:::
+The lexer doesn't know about policy names: `deploy.common` is three tokens, and the parser joins them, rejecting whitespace around the dots. That keeps the lexer context-free and matches the [grammar](/reference/grammar/#policy-files), which defines `PolicyName` from tokens.
 
 ## Keywords
 

@@ -2,7 +2,7 @@
 
 A small, statically typed policy language for Go hosts.
 
-![Status: design phase](https://img.shields.io/badge/status-design%20phase-orange)
+![Status: front end implemented](https://img.shields.io/badge/status-front%20end%20implemented-yellow)
 ![Language: Go](https://img.shields.io/badge/host-Go-00ADD8?logo=go&logoColor=white)
 
 📖 **Language documentation:** [the docs site](./docs) &nbsp;·&nbsp; 🧭 **Where it stands:** [roadmap](./roadmap.yml) and [open questions](./docs/project/open-questions.md)
@@ -10,7 +10,7 @@ A small, statically typed policy language for Go hosts.
 Sigil lets engineers write rules that evaluate host-provided input to a typed decision such as `approve`, `deny` or `review`. Every decision carries a reason and a payload, every policy is type-checked against a contract the host defines in Go, and every evaluation is guaranteed to halt. It ships as an importable Go library, in the spirit of [filt-rs](https://github.com/SierraSoftworks/filters), and it's meant to replace the YAML rule engines with label-selector matchers that teams keep rebuilding.
 
 > [!IMPORTANT]
-> Sigil is being designed documentation-first. **Nothing is implemented yet.** The [documentation](./docs) is the specification, and it'll change as the [open questions](./docs/project/open-questions.md) get settled. Feedback on the language design is the most useful contribution right now; please [open an issue](https://github.com/SpechtLabs/sigil/issues).
+> Sigil is being designed documentation-first. **The lexer and parser are implemented; type checking, evaluation and the CLI are not.** The [documentation](./docs) is the specification, and it'll change as the [open questions](./docs/project/open-questions.md) get settled. Feedback on the language design is the most useful contribution right now; please [open an issue](https://github.com/SpechtLabs/sigil/issues).
 
 ## What it looks like
 
@@ -210,12 +210,12 @@ mise run docs-dev
 
 ## Roadmap
 
-Documentation comes first. Implementation starts once the language specification has settled, and the hand-written parser (recursive descent for statements, Pratt parsing for expressions) comes before anything else.
+Documentation came first. The hand-written parser (recursive descent for statements, Pratt parsing for expressions) is in, under `internal/`; the type checker is next.
 
 | Milestone | Scope | State |
 | --- | --- | --- |
 | M1 Language specification | Reference, grammar, rationale, answers to the syntax-affecting open questions | In progress |
-| M2 Expressions | Lexer, Pratt parser, AST with positions, error hints | Planned |
+| M2 Expressions | Lexer, Pratt parser, AST with positions, error hints | Done |
 | M3 Types | `NewKind` reflection, type checker, evaluator over Go structs | Planned |
 | M4 Policies | `when`, decision constructors, precedence, default, trace | Planned |
 | M5 Composition | `param`, `let`, modules and imports, policy invocation, `Require`, bundle loader, cycle detection, `sigil explain` | Planned |

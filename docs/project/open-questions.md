@@ -34,7 +34,9 @@ Accepting both spellings and having `sigil fmt` canonicalize was ruled out, beca
 
 ## Quantifier body extent
 
-**Blocks: M2**
+**Settled**
+
+The parser implements the rule below: the body extends as far right as possible, and parentheses end it early. Whether the formatter should add parentheses around a body that contains `and` or `or` is still open, for M6.
 
 A quantifier like `any r in actor.roles: r like "sre-*"` needs a rule for where its body ends. The proposed rule in [Expressions](/reference/expressions/) says the body extends as far right as possible, so
 
@@ -48,7 +50,9 @@ That's how lambdas work in most languages, and it's easy to implement in a Pratt
 
 ## Chained comparisons
 
-**Blocks: M2**
+**Settled**
+
+Level-4 operators are non-associative. The parser reports "`<` can't follow `<`: comparisons don't chain" at the second operator and suggests parentheses or `and`.
 
 The proposed rule makes all precedence-level-4 operators (`==`, `<`, `in`, `has`, `like` and the rest) non-associative, so `a < b < c` and `x in xs == true` are compile errors instead of parsing as `(a < b) < c`.
 
@@ -56,7 +60,9 @@ Confirming this costs nothing at parse time and prevents a class of bug where a 
 
 ## Keywords as field names
 
-**Blocks: M2**
+**Settled**
+
+Any keyword is accepted after `.`, in `type` bodies, in decision fields and in named arguments; top-level names must be plain identifiers, and so must every segment of a policy name. The `>=` split happens only after a type argument list.
 
 Hosts that model Kubernetes objects, or anything else with a `type` or `kind` field, will declare struct fields whose names are Sigil keywords. A policy that reads a field named `kind` or `type` is natural, but `kind` also opens a kind file and `type` declares a struct. [Lexical structure](/reference/lexical/) proposes allowing any keyword wherever only a field or payload name can appear: after `.`, inside `type` bodies, in decision fields and in named arguments. Go struct tags can produce any name, so the alternative (reject keyword field names in `NewKind`) would push renames onto hosts for no benefit to readers.
 
@@ -64,13 +70,15 @@ A related lexer corner: in type position, `map<string, int>= {}` has to split `>
 
 ## Glob syntax for `like`
 
-**Blocks: M2, M3**
+**Blocks: M3**
 
 `like` is described as a glob, but no page pins down which glob. The reference proposes only `*` (any run of characters) and `?` (one character), and doesn't yet say whether `*` crosses `/` or `.` the way it does in shell globs versus path globs. Labels such as `platform.example.com/env` make that choice visible: `"platform.*"` matches it only if `*` crosses both. Proposal: `*` matches anything, including separators, because Sigil matches strings, not paths.
 
 ## Multiple decisions per block
 
-**Blocks: M2, M4**
+**Blocks: M4**
+
+The parser accepts several constructors in one body, so this is the checker's decision.
 
 Should a `when` body be allowed to contain several decision constructors?
 
@@ -87,7 +95,9 @@ Allowing it is more general and costs nothing in the evaluator, since each const
 
 ## Assertions
 
-**Blocks: M2, M4**
+**Blocks: M4**
+
+The syntax is settled and parsed: `assert cond, "reason"`, with the comma ending the condition. The rest below is open.
 
 `assert <condition>, "<reason>"` fails the evaluation loudly when its condition is false, and it's the guardrail mechanism for [collecting kinds](#collecting-kinds), which have no deny that outranks a grant. The proposal is spread across [Policy files](/reference/policy-files/#assert), [Expressions](/reference/expressions/#decision-values-and-outcome) and [Evaluation semantics](/reference/evaluation/#assertions). Still open:
 
@@ -127,7 +137,9 @@ A kind that declares `collect all` instead of `precedence` returns every candida
 
 ## Scoped `let`
 
-**Blocks: M2, M5**
+**Blocks: M5**
+
+The parser rejects a `let` inside a `when` body with a hint to move it to the top level, as decided for now.
 
 Only top-level `let` exists for now. Block-scoped bindings would help deeply nested rules that compute the same sub-expression in several inner blocks:
 
