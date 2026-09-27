@@ -10,7 +10,7 @@ type Nested {
 input nested: Nested
 input flag: bool
 
-fn keys(m: map<string, string>,) -> list<string>
+fn keys(map<string, string>,) -> list<string>
 fn now() -> timestamp
 
 decision allow(reason: string, weights: map<string, int> = {}, tags: list<string> = [],)

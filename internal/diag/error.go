@@ -19,15 +19,21 @@ type Error struct {
 	End  token.Pos // just after the offending source
 }
 
-// Error formats e as file:line:col: msg, leaving the file out when unknown.
+// Error formats e as file:line:col: msg, leaving out the file when it's
+// unknown and the position when there is none, as for a rule of the kind
+// model that has no source.
 func (e *Error) Error() string {
 	var b strings.Builder
 	if e.File != "" {
 		b.WriteString(e.File)
 		b.WriteByte(':')
 	}
-	b.WriteString(e.Pos.String())
-	b.WriteString(": ")
+	if e.Pos.IsValid() {
+		b.WriteString(e.Pos.String())
+		b.WriteString(": ")
+	} else if e.File != "" {
+		b.WriteByte(' ')
+	}
 	b.WriteString(e.Msg)
 	return b.String()
 }

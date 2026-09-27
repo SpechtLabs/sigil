@@ -90,6 +90,34 @@ linters:
         text: "^fieldalignment:"
         path: _test\.go
 
+      # types mirrors go/types; the singular would read as a variable name.
+      - linters:
+          - golint-sl
+        text: "^pkgnaming:"
+        path: ^internal/types/
+
+      # The checker's and the compiler's rule methods take AST nodes the
+      # parser guarantees are non-nil; returning quietly on nil would hide
+      # a parser bug rather than prevent one.
+      - linters:
+          - golint-sl
+        text: "^nilcheck:"
+        path: ^internal/(check|eval)/
+      # Runtime values are boxed as any when they cross into host data, and
+      # a runtime error already carries the failing expression's position.
+      - linters:
+          - golint-sl
+        text: "^(emptyinterface|errorwrap):"
+        path: ^internal/eval/
+
+      # Constants are dynamically typed by design (their Sigil type is
+      # checked separately), and the diagnostics it returns already carry
+      # position and hint; wrapping would only bury them.
+      - linters:
+          - golint-sl
+        text: "^(emptyinterface|errorwrap):"
+        path: ^internal/constant/
+
     paths:
       - third_party$
       - builtin$

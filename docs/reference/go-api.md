@@ -6,10 +6,10 @@ permalink: /reference/go-api/
 ---
 
 ::: warning Planned API
-Nothing on this page exists yet. It describes the Go API as currently designed, so the language reference has a concrete host to point at. Package names, function names and signatures will change before the first release.
+Defining a kind exists: `NewKind`, `Decision`, `None`, the `With` options and `Schema()`. Loading, compiling and evaluating policies don't yet. The rest of this page describes the API as designed, so the language reference has a concrete host to point at; names and signatures may still change before the first release.
 :::
 
-The API mirrors `regexp`: define a kind once at package level, compile policies once, and evaluate them many times from any goroutine. Everything lives in package `policy`, planned import path `github.com/spechtlabs/sigil/policy`.
+The API mirrors `regexp`: define a kind once at package level, compile policies once, and evaluate them many times from any goroutine. Everything lives in package `policy`, import path `github.com/spechtlabs/sigil/pkg/policy`.
 
 ## Defining a kind
 
@@ -57,33 +57,33 @@ var (
 
 ```go
 var Deploy = policy.NewKind[Input]("DeployApproval",
-	policy.Version(1),
-	policy.Decisions(Deny, Review, Approve), // order = precedence
-	policy.Default(Deny, "no_rule_matched"),
-	policy.Func("split", strings.Split),
+	policy.WithVersion(1),
+	policy.WithDecisions(Deny, Review, Approve), // order = precedence
+	policy.WithDefault(Deny, "no_rule_matched"),
+	policy.WithFunc("split", strings.Split),
 )
 ```
 
 | Option                        | Kind file equivalent                  | Notes                                                                  |
 | ----------------------------- | ------------------------------------- | ---------------------------------------------------------------------- |
-| `policy.Version(n)`           | `kind DeployApproval version n`       | Contract version, compared by `sigil breaking`                         |
-| `policy.Decisions(d...)`      | `decision ...` and `precedence ...`   | Argument order is precedence, highest first                            |
-| `policy.Collect(d...)`        | `decision ...` and `collect all`      | Instead of `Decisions`: every fired decision applies. Argument order is declaration order (proposed) |
-| `policy.Default(d, reason)`   | `default deny("no_rule_matched")`     | Result when no rule fires; payload fields take their defaults          |
-| `policy.Func(name, fn)`       | `fn split(s: string, sep: string) -> list<string>` | The DSL signature is derived from the Go function's type  |
+| `policy.WithVersion(n)`           | `kind DeployApproval version n`       | Contract version, compared by `sigil breaking`                         |
+| `policy.WithDecisions(d...)`      | `decision ...` and `precedence ...`   | Argument order is precedence, highest first                            |
+| `policy.WithCollect(d...)`        | `decision ...` and `collect all`      | Instead of `Decisions`: every fired decision applies. Argument order is declaration order (proposed) |
+| `policy.WithDefault(d, reason)`   | `default deny("no_rule_matched")`     | Result when no rule fires; payload fields take their defaults          |
+| `policy.WithFunc(name, fn)`   | `fn split(string, string) -> list<string>` | The DSL signature is derived from the Go function's type |
 
-A kind takes exactly one of `policy.Decisions` and `policy.Collect`; `NewKind` panics on both or neither. A collecting kind may leave out `policy.Default`:
+Options that take several values add up, so `policy.WithDecisions(Deny, Review)` and `policy.WithDecisions(Deny), policy.WithDecisions(Review)` declare the same kind, in the same order. A kind takes `policy.WithDecisions` or `policy.WithCollect`, never both and never neither; `NewKind` panics otherwise. A collecting kind may leave out `policy.WithDefault`:
 
 ```go
 var Access = policy.NewKind[AccessInput]("AccessGrant",
-	policy.Version(1),
-	policy.Collect(Read, Write, Admin, CustomerDataWriter, DevEnvWriter),
+	policy.WithVersion(1),
+	policy.WithCollect(Read, Write, Admin, CustomerDataWriter, DevEnvWriter),
 )
 ```
 
 `NewKind` reflects over `Input` once and builds a precomputed accessor per field path, so `Eval` never touches `reflect`. `policy.Func` derives the DSL signature from the Go function's type.
 
-The types `NewKind` accepts are listed in [Kind files](/reference/kind-files/). Anything else (channels, funcs, interfaces, non-string map keys, unexported tagged fields) makes `NewKind` panic at init. That's deliberate: a kind that exists can always be exported, which is what makes the round trip `Import(Export(k)) == k` hold.
+The types `NewKind` accepts are listed in [Kind files](/reference/kind-files/). Anything else (channels, funcs, interfaces, map keys that aren't scalars, unexported tagged fields) makes `NewKind` panic at init. That's deliberate: a kind that exists can always be exported, which is what makes the round trip `Import(Export(k)) == k` hold.
 
 ## Loading and evaluating
 

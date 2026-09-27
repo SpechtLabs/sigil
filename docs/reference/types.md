@@ -6,7 +6,7 @@ permalink: /reference/types/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The lexer and parser implement the syntax; type checking and evaluation aren't implemented yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. Syntax, kinds, type checking and expression evaluation are implemented; rules and decisions, composition and the CLI aren't yet. See [Open questions](/project/open-questions/).
 :::
 
 Sigil is statically typed. The compiler knows the type of every input, param, let and expression before a policy runs, and it checks them against the kind the policy implements. Nothing converts implicitly: an `int` never becomes a `float`, a `string` never becomes a `duration`, and a `?T` never becomes a `T` without `??`.
@@ -59,11 +59,11 @@ A point in time, matching Go's `time.Time`. It has no literal form and can only 
 
 An ordered sequence of values of one type. List literals must be homogeneous: `["a", 1]` is a compile error.
 
-An empty literal `[]` takes its element type from context: the declared type of a param, the other operand of a binary operator, or the payload field it's passed to. An empty list with no context, such as `let nothing = []`, is a compile error. (proposed)
+An empty literal `[]` takes its element type from context: the declared type of a param, the other operand of a binary operator, or the payload field it's passed to. An empty list with no context, such as `let nothing = []`, is a compile error.
 
 ### `map<K, V>`
 
-An unordered collection of key-value pairs. Kinds exported from Go only produce `map<string, V>`, since `NewKind` rejects non-string keys, so in practice `K` is always `string`. Map literals follow the same homogeneity and empty-literal rules as lists.
+An unordered collection of key-value pairs. The key type follows Go's rule for map keys: any scalar (`bool`, `int`, `float`, `string`, `duration`, `timestamp`), never a list, map, optional or `decision`. Struct keys wait on the [open question](/project/open-questions/#composite-values-equality-ordering-and-recursion) of struct equality. In practice most keys are strings, because labels are. Map literals follow the same homogeneity and empty-literal rules as lists.
 
 Indexing a map with a missing key yields the zero value of `V`. Use `m has "k"` or `"k" in m` when absence and emptiness need to be told apart.
 
@@ -73,7 +73,7 @@ Every decision the kind declares is also a value of type `decision`, written as 
 
 `decision` values support `==`, `!=` and the list operators, and appear in list literals such as `[read, write, admin]`. The one place they come from evaluation is [`outcome`](/reference/expressions/#decision-values-and-outcome), a `list<decision>` that only `assert` conditions can read.
 
-A param can't have type `decision` or `list<decision>`, and a `decision` has no zero value, so it can't be a map value. (proposed)
+A param can't have type `decision` or `list<decision>`, and a `decision` has no zero value, so it can't be a map value. Like `outcome`, a bare decision name is only a value inside an `assert` condition.
 
 ## Optional types: `?T`
 

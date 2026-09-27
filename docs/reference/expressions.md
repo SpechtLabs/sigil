@@ -6,7 +6,7 @@ permalink: /reference/expressions/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The lexer and parser implement the syntax; type checking and evaluation aren't implemented yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. Syntax, kinds, type checking and expression evaluation are implemented; rules and decisions, composition and the CLI aren't yet. See [Open questions](/project/open-questions/).
 :::
 
 Expressions appear in `when` conditions, `assert` conditions, `let` bindings, param defaults, policy invocation arguments and decision payloads. Every expression has a static type that the compiler knows before evaluation, and nothing converts between types implicitly. The types themselves are on [Types](/reference/types/).
@@ -66,7 +66,7 @@ The operators are words, not `&&`, `||` and `!`. Words read better across multi-
 release.hotfix xor release.scheduled
 ```
 
-It can't short-circuit, because the result always depends on both sides, so both operands are evaluated and either can raise a runtime error. `xor` takes exactly two operands. Chaining it would compute parity (an odd number of true operands), which is almost never what a reader expects from `a xor b xor c`, so it's a compile error; for "exactly one of several" use [`one in`](#list-set-operators). (proposed: the level and the ban on chaining)
+It can't short-circuit, because the result always depends on both sides, so both operands are evaluated and either can raise a runtime error. `xor` takes exactly two operands. Chaining it would compute parity (an odd number of true operands), which is almost never what a reader expects from `a xor b xor c`, so it's a compile error; for "exactly one of several" use [`one in`](#list-set-operators).
 
 ## Comparison
 
@@ -124,7 +124,7 @@ actor.teams any in service.owners
 
 `exclusive in` is mutual exclusion as separation-of-duties rules mean it: holding none of the listed values is fine, holding two is not. `one in` additionally requires one of them to be present. With two elements, `[a, b] one in xs` is `(a in xs) xor (b in xs)`.
 
-Both count distinct elements of `a` that appear in `b`. Repeats don't count twice on either side, so `["x", "x"] exclusive in ["x"]` is true, and so is `["x", "y"] exclusive in ["x", "x"]`. A literal left side with duplicates, or with fewer than two elements, always gives the same answer, and the linter warns about it. (proposed)
+Both count distinct elements of `a` that appear in `b`. Repeats don't count twice on either side, so `["x", "x"] exclusive in ["x"]` is true, and so is `["x", "y"] exclusive in ["x", "x"]`. A literal left side with duplicates, or with fewer than two elements, always gives the same answer, and the linter will warn about it.
 
 An empty left side makes `all in` and `exclusive in` true, and `any in` and `one in` false. The vacuous truth of `[] all in b` is an [open question](/project/open-questions/): either keep the math and have the linter warn, or define an empty left side as false.
 
@@ -172,9 +172,7 @@ service.labels["team"] matches `^team-[a-z]+$`
 
 RE2 runs in linear time in the input length, which keeps the [halting guarantee](/understanding/halting/) intact.
 
-::: tip Proposed
-The current design says "glob" without defining it. The proposal is `*` and `?` only, with `*` crossing `/`, and no character classes or escapes. Anything richer belongs in `matches`.
-:::
+A glob is `*` and `?` only, with `*` crossing `/` and `.`, and no character classes or escapes: Sigil matches strings, not paths. Anything richer belongs in `matches`.
 
 ## Optional default: `??`
 
@@ -187,7 +185,7 @@ release.ticket ?? "none"
 
 `??` is right-associative, so `a ?? b ?? c` means `a ?? (b ?? c)` and works when `a` and `b` are both `?T` and `c` is `T`.
 
-Applying `??` to a value that isn't optional is a compile error. (proposed)
+Applying `??` to a value that isn't optional is a compile error.
 
 Struct types have no literal, so an optional struct (`?Release`) can't be unwrapped with `??` today. How to fix that is an [open question](/project/open-questions/).
 
@@ -212,9 +210,7 @@ release.soak + 2h >= min_soak
 now - release.built_at > 2h        // assuming an input `now` and a field `built_at`, both timestamps
 ```
 
-::: tip Proposed
-The result types in this table, and the absence of string concatenation, are proposed. The current design lists `+` and `-` for "numbers, durations, timestamps" without spelling out the combinations.
-:::
+The table is complete: any other combination, including `+` on strings, is a compile error that says so.
 
 ## Field access, indexing and calls
 
@@ -274,15 +270,13 @@ To end a quantifier early, wrap it in parentheses:
 
 The quantifier variable follows the no-shadowing rule: naming it after an input, param, let, imported name or host function is a compile error.
 
-::: tip Proposed
-The "extends as far right as possible" rule and the no-shadowing rule for quantifier variables are proposed. The current design shows quantifiers only in isolation.
-:::
+Both rules, the body extending as far right as possible and no shadowing, are implemented.
 
 ## Decision values and `outcome`
 
 Inside an `assert`, a policy can test what evaluation decided. Two things make that possible:
 
-- A decision's name, used as an operand, is a value of type [`decision`](/reference/types/#decision). `approve` in `approve in outcome` refers to the decision, not to a constructor call; a constructor always has parentheses.
+- A decision's name, used as an operand, is a value of type [`decision`](/reference/types/#decision). `approve` in `approve in outcome` refers to the decision, not to a constructor call; a constructor always has parentheses. Like `outcome`, a bare decision name is only a value inside an `assert` condition: `when deny == approve` has nothing to say, so it's a compile error that points at the constructor form.
 - `outcome` is a `list<decision>` holding each distinct decision the host will get back, in the kind's declaration order. In a kind with `precedence` it holds exactly one element, the winner or the default. In a [collecting kind](/reference/kind-files/#collect) it holds every decision that fired, or the default if the kind declares one and nothing fired.
 
 ```sigil
@@ -293,7 +287,7 @@ assert customer_data_writer not in outcome or actor.clearance == "pii",
   "pii_needs_clearance"
 ```
 
-`outcome` can only appear in an `assert` condition. A `when` condition or a `let` that read it could make a rule depend on its own result: `when admin not in outcome { admin("x") }` would fire exactly when it doesn't. See [Assertions](/reference/evaluation/#assertions) for when asserts run. (proposed)
+`outcome` can only appear in an `assert` condition. A `when` condition or a `let` that read it could make a rule depend on its own result: `when admin not in outcome { admin("x") }` would fire exactly when it doesn't. See [Assertions](/reference/evaluation/#assertions) for when asserts run.
 
 Decision values can be compared with `==` and `!=` and collected in lists, and nothing else. Reading a payload through `outcome` isn't possible yet; see [Open questions](/project/open-questions/#decision-values-and-outcome).
 
