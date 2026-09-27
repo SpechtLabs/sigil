@@ -5,7 +5,8 @@
 # pipeline. Renovate keeps every pin in this file current.
 
 [tools]
-# Keep in lockstep with the go directive in go.mod; Renovate bumps both together.
+# Keep in lockstep with the toolchain directive in go.mod; Renovate bumps both
+# together. The go directive (minimum language version) is bumped by hand.
 go = "1.27.1"
 "go:golang.org/x/tools/gopls" = "0.23.0"
 "go:github.com/go-delve/delve/cmd/dlv" = "1.27.2"
