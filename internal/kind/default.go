@@ -4,7 +4,7 @@ package kind
 // applies when no rule fires. Args holds the constant payload values it
 // passes by field name.
 type Default struct {
-	Args     map[string]any //nolint:emptyinterface // constants are typed by their Sigil type; see Conforms
+	Args     map[string]any //nolint:emptyinterface // constants are typed by their Sigil type; see constant.Conforms
 	Decision string
 	Reason   string
 }

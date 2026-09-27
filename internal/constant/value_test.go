@@ -1,10 +1,10 @@
-package kind_test
+package constant_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/spechtlabs/sigil/internal/kind"
+	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
@@ -42,8 +42,8 @@ func TestConforms(t *testing.T) {
 		{"a", &types.Struct{Name: "S"}, false},
 	}
 	for _, tt := range tests {
-		t.Run(kind.Format(tt.v)+" as "+tt.t.String(), func(t *testing.T) {
-			if got := kind.Conforms(tt.v, tt.t); got != tt.want {
+		t.Run(constant.Format(tt.v)+" as "+tt.t.String(), func(t *testing.T) {
+			if got := constant.Conforms(tt.v, tt.t); got != tt.want {
 				t.Errorf("Conforms(%v, %v) = %v, want %v", tt.v, tt.t, got, tt.want)
 			}
 		})
@@ -82,7 +82,7 @@ func TestFormat(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			if got := kind.Format(tt.v); got != tt.want {
+			if got := constant.Format(tt.v); got != tt.want {
 				t.Errorf("Format(%v) = %q, want %q", tt.v, got, tt.want)
 			}
 		})

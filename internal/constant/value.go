@@ -1,4 +1,4 @@
-package kind
+package constant
 
 import (
 	"fmt"

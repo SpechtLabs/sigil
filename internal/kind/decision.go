@@ -3,6 +3,7 @@ package kind
 import (
 	"strings"
 
+	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
@@ -14,10 +15,10 @@ type Decision struct {
 }
 
 // Field is a payload field. Default holds a constant in the evaluator's
-// representation (see Conforms) when HasDefault is set; a field without a
-// default is required at every call site. A nil Default with HasDefault
-// set means the kind's source couldn't produce the value and has reported
-// why, so Validate doesn't report it again.
+// representation (see constant.Conforms) when HasDefault is set; a field
+// without a default is required at every call site. A nil Default with
+// HasDefault set means the kind's source couldn't produce the value and
+// has reported why, so Validate doesn't report it again.
 type Field struct {
 	Type       types.Type
 	Default    any
@@ -44,7 +45,7 @@ func (d *Decision) Signature() string {
 	for _, f := range d.Fields {
 		p := f.Name + ": " + f.Type.String()
 		if f.HasDefault {
-			p += " = " + Format(f.Default)
+			p += " = " + constant.Format(f.Default)
 		}
 		parts = append(parts, p)
 	}

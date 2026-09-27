@@ -9,6 +9,10 @@
 // every one of those places knows: the field's, the param's. That's what
 // gives an empty `[]` its element type and what turns a mismatch into a
 // message naming both types.
+//
+// The package also owns the Go representation of a constant value:
+// Conforms says which Go values stand for which Sigil type, and Format
+// prints one back as a literal.
 package constant
 
 import (
@@ -25,7 +29,7 @@ import (
 const help = "a constant is a literal, a list or map of literals, or `+` and `-` applied to those"
 
 // Eval evaluates x as a constant of type want and returns its value in
-// the representation kind.Conforms accepts: bool, int64, float64, string,
+// the representation Conforms accepts: bool, int64, float64, string,
 // time.Duration, []any and map[any]any. An optional type takes a constant
 // of its element type. The error, if any, points into x.
 func Eval(x ast.Expr, want types.Type) (any, *diag.Error) {
@@ -43,6 +47,27 @@ func Eval(x ast.Expr, want types.Type) (any, *diag.Error) {
 		return nil, errorf(x, "", "%s has no literal form, so a constant can't be one", want.Name)
 	}
 	return nil, errorf(x, "", "invalid type")
+}
+
+// AddInt returns a+b, or a-b when sub is set, and false on overflow.
+// Constant folding and the evaluator both use it, so an overflow is
+// caught the same way at compile time and at run time.
+func AddInt(a, b int64, sub bool) (int64, bool) {
+	if sub {
+		if b == math.MinInt64 {
+			// -MinInt64 doesn't exist, but a - MinInt64 fits when a is negative.
+			if a < 0 {
+				return a - b, true
+			}
+			return 0, false
+		}
+		b = -b
+	}
+	sum := a + b
+	if (sum > a) != (b > 0) {
+		return 0, false
+	}
+	return sum, true
 }
 
 func errorf(at ast.Node, hint, format string, args ...any) *diag.Error {
@@ -176,7 +201,7 @@ func evalArith(x *ast.BinaryExpr, want types.Basic) (any, *diag.Error) {
 	sub := x.Op == ast.OpSub
 	switch l := l.(type) {
 	case int64:
-		v, ok := addInt(l, r.(int64), sub)
+		v, ok := AddInt(l, r.(int64), sub)
 		if !ok {
 			return nil, errorf(x, "", "integer overflow in constant")
 		}
@@ -187,32 +212,13 @@ func evalArith(x *ast.BinaryExpr, want types.Basic) (any, *diag.Error) {
 		}
 		return l + r.(float64), nil
 	case time.Duration:
-		v, ok := addInt(int64(l), int64(r.(time.Duration)), sub)
+		v, ok := AddInt(int64(l), int64(r.(time.Duration)), sub)
 		if !ok {
 			return nil, errorf(x, "", "duration overflow in constant")
 		}
 		return time.Duration(v), nil
 	}
 	return nil, errorf(x, "", "invalid constant")
-}
-
-// addInt returns a+b, or a-b when sub is set, and false on overflow.
-func addInt(a, b int64, sub bool) (int64, bool) {
-	if sub {
-		if b == math.MinInt64 {
-			// -MinInt64 doesn't exist, but a - MinInt64 fits when a is negative.
-			if a < 0 {
-				return a - b, true
-			}
-			return 0, false
-		}
-		b = -b
-	}
-	sum := a + b
-	if (sum > a) != (b > 0) {
-		return 0, false
-	}
-	return sum, true
 }
 
 func numeric(t types.Basic) bool {

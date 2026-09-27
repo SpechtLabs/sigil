@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/token"
 	"github.com/spechtlabs/sigil/internal/types"
@@ -261,8 +262,8 @@ func (v *validator) decisions() {
 			v.typeResolves(f.Type, fkey+".type", where)
 			// A nil default with HasDefault set means the source of the kind
 			// couldn't produce the value and has reported why.
-			if f.HasDefault && f.Default != nil && !Conforms(f.Default, f.Type) {
-				v.errorf(fkey+".default", "a default is a constant of the field's type", "%s: default %s is not a %s", where, Format(f.Default), f.Type)
+			if f.HasDefault && f.Default != nil && !constant.Conforms(f.Default, f.Type) {
+				v.errorf(fkey+".default", "a default is a constant of the field's type", "%s: default %s is not a %s", where, constant.Format(f.Default), f.Type)
 			}
 		}
 	}
@@ -324,8 +325,8 @@ func (v *validator) defaultCall() {
 			v.errorf("default.arg "+name, d.Name+" is declared as: "+d.Signature(), "default: decision %s has no payload field %q", d.Name, name)
 			continue
 		}
-		if !Conforms(val, f.Type) {
-			v.errorf("default.arg "+name, "a default is a constant of the field's type", "default: field %q value %s is not a %s", name, Format(val), f.Type)
+		if !constant.Conforms(val, f.Type) {
+			v.errorf("default.arg "+name, "a default is a constant of the field's type", "default: field %q value %s is not a %s", name, constant.Format(val), f.Type)
 		}
 	}
 	for _, f := range d.Fields {

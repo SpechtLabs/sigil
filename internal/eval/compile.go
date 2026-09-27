@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spechtlabs/sigil/internal/ast"
+	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
@@ -20,15 +21,15 @@ func (c *compiler) expr(x ast.Expr) Expr {
 	case *ast.Ident:
 		return c.ident(x)
 	case *ast.BoolLit:
-		return constant(x.Value)
+		return constExpr(x.Value)
 	case *ast.IntLit:
-		return constant(x.Value)
+		return constExpr(x.Value)
 	case *ast.FloatLit:
-		return constant(x.Value)
+		return constExpr(x.Value)
 	case *ast.StringLit:
-		return constant(x.Value)
+		return constExpr(x.Value)
 	case *ast.DurationLit:
-		return constant(x.Value)
+		return constExpr(x.Value)
 	case *ast.Outcome:
 		return func(f *Frame) Value { return f.Outcome }
 	case *ast.ListLit:
@@ -52,7 +53,7 @@ func (c *compiler) expr(x ast.Expr) Expr {
 	return nil
 }
 
-func constant(v any) Expr {
+func constExpr(v any) Expr {
 	val := reflect.ValueOf(v)
 	return func(*Frame) Value { return val }
 }
@@ -67,7 +68,7 @@ func (c *compiler) ident(x *ast.Ident) Expr {
 		return func(f *Frame) Value { return f.Input.FieldByIndex(idx) }
 	}
 	if c.typeOf(x) == types.Decision {
-		return constant(x.Name)
+		return constExpr(x.Name)
 	}
 	throwf(x, "`%s` has no slot and isn't an input", x.Name)
 	return nil
@@ -392,7 +393,7 @@ func (c *compiler) arith(x *ast.BinaryExpr) Expr {
 	switch {
 	case lt == types.Int:
 		return func(f *Frame) Value {
-			v, ok := addInt(norm(l(f)).Int(), norm(r(f)).Int(), sub)
+			v, ok := constant.AddInt(norm(l(f)).Int(), norm(r(f)).Int(), sub)
 			if !ok {
 				throwf(x, "integer overflow in `%s`", ast.Sprint(x))
 			}
@@ -405,7 +406,7 @@ func (c *compiler) arith(x *ast.BinaryExpr) Expr {
 		return func(f *Frame) Value { return reflect.ValueOf(norm(l(f)).Float() + norm(r(f)).Float()) }
 	case lt == types.Duration:
 		return func(f *Frame) Value {
-			v, ok := addInt(norm(l(f)).Int(), norm(r(f)).Int(), sub)
+			v, ok := constant.AddInt(norm(l(f)).Int(), norm(r(f)).Int(), sub)
 			if !ok {
 				throwf(x, "duration overflow in `%s`", ast.Sprint(x))
 			}
@@ -424,24 +425,6 @@ func (c *compiler) arith(x *ast.BinaryExpr) Expr {
 		a, b := norm(l(f)).Interface().(time.Time), norm(r(f)).Interface().(time.Time)
 		return reflect.ValueOf(a.Sub(b))
 	}
-}
-
-// addInt returns a+b, or a-b when sub is set, and false on overflow.
-func addInt(a, b int64, sub bool) (int64, bool) {
-	if sub {
-		if b == math.MinInt64 {
-			if a < 0 {
-				return a - b, true
-			}
-			return 0, false
-		}
-		b = -b
-	}
-	sum := a + b
-	if (sum > a) != (b > 0) {
-		return 0, false
-	}
-	return sum, true
 }
 
 // selector compiles a field read through the index path the binding

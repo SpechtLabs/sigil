@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/spechtlabs/sigil/internal/constant"
 )
 
 // Source renders the kind as a kind file in canonical form: what a host
@@ -79,7 +81,7 @@ func (d *Default) Source(decl *Decision) string {
 	args := make([]string, 0, 1+len(names))
 	args = append(args, strconv.Quote(d.Reason))
 	for _, name := range names {
-		args = append(args, name+": "+Format(d.Args[name]))
+		args = append(args, name+": "+constant.Format(d.Args[name]))
 	}
 	return "default " + d.Decision + "(" + strings.Join(args, ", ") + ")"
 }
