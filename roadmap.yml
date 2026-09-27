@@ -155,7 +155,7 @@ milestones:
       - title: Evaluation trace
         state: TODO
         requirement: MUST
-        description: Every candidate, and for the winner, which conditions held.
+        description: Every candidate, and for each candidate of the winning decision, which conditions held.
       - title: Port a real YAML rule set
         state: TODO
         requirement: MUST

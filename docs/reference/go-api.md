@@ -119,11 +119,11 @@ type Result struct {
 	Reason   string           // "service_owner"
 	Policy   string           // "payments.production"
 	Payload  map[string]Value // untyped view; use Decision[T].Match for typed
-	Trace    Trace            // all candidates, conditions for the winner
+	Trace    Trace            // all candidates, conditions for the winning decision
 }
 ```
 
-What `Policy` holds is still open. When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in the `use`d `deploy.production` base, so `Policy` could name either one. See [Open questions](/project/open-questions/). `Trace` lists every candidate by policy name, reason and source position, and records which conditions held for the winner. See [Evaluation semantics](/reference/evaluation/) for how the winner is picked.
+What `Policy` holds is still open. When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in the `use`d `deploy.production` base, so `Policy` could name either one. See [Open questions](/project/open-questions/). `Trace` lists every candidate by policy name, reason and source position, and records which conditions held for every candidate of the winning decision. See [Evaluation semantics](/reference/evaluation/) for how the winner is picked.
 
 ## Typed matching
 

@@ -68,7 +68,7 @@ It costs one line. In exchange, each block states its full condition, a reviewer
 
 ## What the trace buys you
 
-Because every block runs, the evaluator can report every candidate, not just the winner. The trace lists each candidate with its policy, reason and source position, and for the winner it records which conditions held. When someone asks "why was this denied and not approved", the answer is in the trace: the approve fired too, and deny outranked it.
+Because every block runs, the evaluator can report every candidate, not just the winner. The trace lists each candidate with its policy, reason and source position, and for every candidate of the winning decision it records which conditions held. If two branches produce the same decision and reason, both show up with their own conditions. When someone asks "why was this denied and not approved", the answer is in the trace: the approve fired too, and deny outranked it.
 
 A first-match engine can't give you that. It stopped looking after the first match.
 

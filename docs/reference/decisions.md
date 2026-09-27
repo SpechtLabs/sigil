@@ -67,7 +67,22 @@ deploy/production.sigil:34:12: error: decision reason must be a string literal
 
 Error messages on this page are illustrative; the exact layout isn't fixed yet.
 
-The linter warns when one policy uses the same reason twice. It doesn't fail compilation, and reasons may repeat across policies.
+A decision and reason may appear in more than one branch. When two different conditions lead to the same outcome, give both the same reason:
+
+```sigil
+param hotfix_min_soak: duration = 1h
+
+when release.soak < min_soak and not release.hotfix {
+  deny("soak_too_short")
+}
+when release.hotfix and release.soak < hotfix_min_soak {
+  deny("soak_too_short")
+}
+```
+
+A metric keyed on decision and reason counts both branches together, which is what you want when they mean the same thing. Auditability doesn't suffer, because the trace records every candidate by source position along with the conditions that held for it, so you can always see which branch, or both, produced the result.
+
+Reusing a reason across *different* decisions, such as `deny("release_manager")` and `approve("release_manager")` in one policy, is legal but draws a linter warning. See [Open questions](/project/open-questions/).
 
 ### Dynamic text: `detail`
 
@@ -123,9 +138,9 @@ After evaluation, the host receives a result describing the winner:
 | Reason   | `service_owner`      | Its reason literal                                       |
 | Policy   | `payments.production` | The policy that produced it (see the note below)        |
 | Payload  | `approvers: [...]`   | The typed payload, with defaults filled in               |
-| Trace    |                      | Every candidate, and for the winner, which conditions held |
+| Trace    |                      | Every candidate, and for each one sharing the winner's decision, which conditions held |
 
-The trace identifies each rule by policy name, reason and source position, so the language needs no separate syntax for naming rules. When nothing fires, the result holds the kind's default and the trace lists no candidates.
+The trace identifies each rule by policy name, reason and source position, so two branches with the same reason stay distinguishable, so the language needs no separate syntax for naming rules. When nothing fires, the result holds the kind's default and the trace lists no candidates.
 
 ::: warning Unspecified
 When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in the `use`d `deploy.production` base. It's unsettled whether `Policy` names the policy the host evaluated (`payments.production`) or the policy whose rule won (`deploy.production`). The trace carries each candidate's source position either way.
