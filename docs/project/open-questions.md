@@ -204,14 +204,13 @@ The current design describes the `Policy` field of `Result` as "the name of the 
 
 An earlier draft of this design called evaluation cost linear in policy size times input size. That holds for a single quantifier, but a quantifier nested in another's body costs the product of both list sizes, so `all a in xs: any b in ys: a == b` is quadratic. The static cost estimate still works (it multiplies the declared maximum sizes), but the budget has to be expressed in those terms, and the docs shouldn't promise "linear".
 
-## Reason uniqueness across composed policies
+## One reason on different decisions
 
 **Blocks: M5, M6**
 
-The linter warns when a policy uses the same reason twice. Two things aren't specified:
+Repeating a decision and reason across branches is settled: it's allowed, including across invoked policies and for a policy invoked twice, and the trace tells the branches apart by call chain. See [Decisions](/reference/decisions/).
 
-- Does the check include reasons from invoked policies? If `deploy.production` says `approve("release_manager")` and the team adds its own `approve("release_manager")`, metrics can't tell them apart. But warning means a team has to know every reason in every policy it invokes. A policy invoked twice produces the same reason twice by construction, so that case at least has to be exempt.
-- What if base and team use the same reason for *different* decisions, `deny("release_manager")` in one and `approve("release_manager")` in the other? A metric keyed on reason alone would mix them. Decision plus reason is probably the right identity, which would make this case legal but still worth a warning.
+What's left is the same reason on *different* decisions, `deny("release_manager")` in one place and `approve("release_manager")` in another. A metric keyed on reason alone would mix them, so the proposal treats decision plus reason as the identity and has the linter warn. Unsettled: whether that warning should also fire when the two sides sit in different policies, one invoking the other, which means a team has to know every reason in every policy it invokes to avoid it.
 
 ## Checking a base policy on its own
 

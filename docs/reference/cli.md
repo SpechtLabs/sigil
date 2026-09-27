@@ -72,7 +72,7 @@ sigil check --kind deploy_approval.sigil \
 
 ## `sigil eval`
 
-Evaluates a policy against a JSON input and prints the result and the full trace: every candidate, the winner, and which of the winner's conditions held. Because evaluation calls host functions, `eval` needs implementations for every `fn` the kind declares. How a standalone CLI gets those bindings is still open; a host can always build its own `sigil` binary with its functions linked in.
+Evaluates a policy against a JSON input and prints the result and the full trace: every candidate, the winner, and which conditions held for each candidate of the winning decision. Because evaluation calls host functions, `eval` needs implementations for every `fn` the kind declares. How a standalone CLI gets those bindings is still open; a host can always build its own `sigil` binary with its functions linked in.
 
 ```text
 sigil eval --kind deploy_approval.sigil --input release.json --policy payments.production deploy/ payments/
