@@ -24,7 +24,7 @@ var identRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 //	type T.field F.type           a field's type
 //	input I / input I.type        an input's name / type
 //	fn F / fn F.result            a function's name / result type
-//	fn F.param P / fn F.param P.type
+//	fn F.param N                  the Nth parameter's type, from 1
 //	decision D / decision D.field F / decision D.field F.type / decision D.field F.default
 //	precedence / precedence.D     the declaration / one name in it
 //	collect
@@ -218,17 +218,8 @@ func (v *validator) inputsAndFuncs() {
 			v.errorf(key, "inputs and host functions share one namespace", "function %q collides with %s %q", f.Name, prev, f.Name)
 		}
 		seen[f.Name] = "function"
-		params := map[string]bool{}
-		for _, p := range f.Params {
-			pkey := key + ".param " + p.Name
-			if !isIdent(p.Name) {
-				v.errorf(pkey, "a parameter name is a plain identifier", "function %s: invalid parameter name %q", f.Name, p.Name)
-			}
-			if params[p.Name] {
-				v.errorf(pkey, "", "function %s: parameter %q is declared twice", f.Name, p.Name)
-			}
-			params[p.Name] = true
-			v.typeResolves(p.Type, pkey+".type", fmt.Sprintf("function %s, parameter %q", f.Name, p.Name))
+		for i, p := range f.Params {
+			v.typeResolves(p, fmt.Sprintf("%s.param %d", key, i+1), fmt.Sprintf("function %s, parameter %d", f.Name, i+1))
 		}
 		if _, opt := f.Result.(*types.Optional); opt {
 			v.errorf(key+".result", "return the zero value and let the policy compare, or return a list", "function %s: the result can't be optional", f.Name)
@@ -268,7 +259,9 @@ func (v *validator) decisions() {
 			}
 			fields[f.Name] = true
 			v.typeResolves(f.Type, fkey+".type", where)
-			if f.HasDefault && !Conforms(f.Default, f.Type) {
+			// A nil default with HasDefault set means the source of the kind
+			// couldn't produce the value and has reported why.
+			if f.HasDefault && f.Default != nil && !Conforms(f.Default, f.Type) {
 				v.errorf(fkey+".default", "a default is a constant of the field's type", "%s: default %s is not a %s", where, Format(f.Default), f.Type)
 			}
 		}

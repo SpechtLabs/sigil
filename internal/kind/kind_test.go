@@ -62,7 +62,7 @@ func deploy() *kind.Kind {
 			{Name: "environment", Type: types.String},
 		},
 		Funcs: []*kind.Func{
-			{Name: "split", Params: []*kind.Param{{Name: "s", Type: types.String}, {Name: "sep", Type: types.String}}, Result: strList},
+			{Name: "split", Params: []types.Type{types.String, types.String}, Result: strList},
 		},
 		Decisions: []*kind.Decision{
 			{Name: "deny"},

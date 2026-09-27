@@ -15,7 +15,9 @@ type Decision struct {
 
 // Field is a payload field. Default holds a constant in the evaluator's
 // representation (see Conforms) when HasDefault is set; a field without a
-// default is required at every call site.
+// default is required at every call site. A nil Default with HasDefault
+// set means the kind's source couldn't produce the value and has reported
+// why, so Validate doesn't report it again.
 type Field struct {
 	Type       types.Type
 	Default    any

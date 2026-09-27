@@ -33,7 +33,7 @@ input service: Service
 input actor: Actor
 input environment: string
 
-fn split(s: string, sep: string) -> list<string>
+fn split(string, string) -> list<string>
 
 decision deny(reason: string)
 decision review(reason: string, approvers: list<string>)

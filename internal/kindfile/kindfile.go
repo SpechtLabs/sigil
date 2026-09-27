@@ -186,11 +186,9 @@ func (l *loader) fn(d *ast.FnDecl) {
 	l.set(key, d.Name)
 	l.set(key+".result", d.Result)
 	f := &kind.Func{Name: d.Name.Name, Result: l.resolve(d.Result)}
-	for _, p := range d.Params {
-		pkey := key + ".param " + p.Name.Name
-		l.set(pkey, p.Name)
-		l.set(pkey+".type", p.Type)
-		f.Params = append(f.Params, &kind.Param{Name: p.Name.Name, Type: l.resolve(p.Type)})
+	for i, p := range d.Params {
+		l.set(fmt.Sprintf("%s.param %d", key, i+1), p)
+		f.Params = append(f.Params, l.resolve(p))
 	}
 	l.kind.Funcs = append(l.kind.Funcs, f)
 }

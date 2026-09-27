@@ -169,7 +169,11 @@ func (d *dumper) decl(decl Decl) {
 	case *InputDecl:
 		d.linef("input %s: %s %s", decl.Name.Name, TypeString(decl.Type), spanOf(decl))
 	case *FnDecl:
-		d.linef("fn %s(%s) -> %s %s", decl.Name.Name, fieldsString(decl.Params), TypeString(decl.Result), spanOf(decl))
+		params := make([]string, len(decl.Params))
+		for i, p := range decl.Params {
+			params[i] = TypeString(p)
+		}
+		d.linef("fn %s(%s) -> %s %s", decl.Name.Name, strings.Join(params, ", "), TypeString(decl.Result), spanOf(decl))
 	case *DecisionDecl:
 		d.linef("decision %s(%s) %s", decl.Name.Name, fieldsString(decl.Fields), spanOf(decl))
 	case *PrecedenceDecl:

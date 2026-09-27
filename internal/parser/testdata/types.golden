@@ -7,7 +7,7 @@ kind Shapes version 2 [1:1-19:22]
   }
   input nested: Nested [10:1-10:21]
   input flag: bool [11:1-11:17]
-  fn keys(m: map<string, string>) -> list<string> [13:1-13:49]
+  fn keys(map<string, string>) -> list<string> [13:1-13:46]
   fn now() -> timestamp [14:1-14:22]
   decision allow(reason: string, weights: map<string, int> = {}, tags: list<string> = []) [16:1-16:89]
   precedence allow [18:1-18:17]

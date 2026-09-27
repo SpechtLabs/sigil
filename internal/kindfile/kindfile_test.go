@@ -32,7 +32,7 @@ input service: Service
 input actor: Actor
 input environment: string
 
-fn split(s: string, sep: string) -> list<string>
+fn split(string, string) -> list<string>
 
 decision deny(reason: string)
 decision review(reason: string, approvers: list<string>)
@@ -158,12 +158,12 @@ default d("x")
 		// Inputs and functions.
 		{name: "input declared twice", src: "kind K version 1\ninput a: int\ninput a: string\ndecision d(reason: string)\nprecedence d\ndefault d(\"x\")",
 			errs: []string{"3:7: input \"a\" collides with input \"a\""}},
-		{name: "function collides with input", src: "kind K version 1\ninput split: int\nfn split(s: string) -> list<string>\ndecision d(reason: string)\nprecedence d\ndefault d(\"x\")",
+		{name: "function collides with input", src: "kind K version 1\ninput split: int\nfn split(string) -> list<string>\ndecision d(reason: string)\nprecedence d\ndefault d(\"x\")",
 			errs: []string{"3:4: function \"split\" collides with input \"split\""}, help: "inputs and host functions share one namespace"},
 		{name: "function with optional result", src: "kind K version 1\nfn f() -> ?string\ndecision d(reason: string)\nprecedence d\ndefault d(\"x\")",
 			errs: []string{"2:11: function f: the result can't be optional"}},
-		{name: "function parameter declared twice", src: "kind K version 1\nfn f(a: int, a: int) -> int\ndecision d(reason: string)\nprecedence d\ndefault d(\"x\")",
-			errs: []string{"2:14: function f: parameter \"a\" is declared twice"}},
+		{name: "function parameter of unknown type", src: "kind K version 1\nfn f(int, Ticket) -> int\ndecision d(reason: string)\nprecedence d\ndefault d(\"x\")",
+			errs: []string{"2:11: unknown type `Ticket`"}},
 
 		// Decisions.
 		{name: "decision without reason", src: "kind K version 1\ndecision d(approvers: list<string>)\nprecedence d\ndefault d(\"x\")",

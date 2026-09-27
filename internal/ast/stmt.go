@@ -197,11 +197,12 @@ type InputDecl struct {
 	Span
 }
 
-// FnDecl is `fn name(params) -> result`.
+// FnDecl is `fn name(types) -> result`. Parameters have types only;
+// policies pass arguments positionally.
 type FnDecl struct {
 	Result Type
 	Name   *Ident
-	Params []*Field
+	Params []Type
 	Span
 }
 

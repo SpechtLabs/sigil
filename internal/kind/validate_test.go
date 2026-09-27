@@ -112,13 +112,12 @@ func TestValidate(t *testing.T) {
 			k.Inputs[0].Type = &types.Struct{Name: "Deploy"}
 		}, want: []string{`input "release": undeclared type Deploy`}},
 		{name: "function name is a keyword", mutate: func(k *kind.Kind) { k.Funcs[0].Name = "fn" }, want: []string{`invalid function name "fn"`}},
-		{name: "function parameter declared twice", mutate: func(k *kind.Kind) { k.Funcs[0].Params[1].Name = "s" },
-			want: []string{`function split: parameter "s" is declared twice`}},
-		{name: "function parameter is a keyword", mutate: func(k *kind.Kind) { k.Funcs[0].Params[1].Name = "type" },
-			want: []string{`function split: invalid parameter name "type"`}},
 		{name: "function parameter of undeclared type", mutate: func(k *kind.Kind) {
-			k.Funcs[0].Params[0].Type = &types.Struct{Name: "Text"}
-		}, want: []string{`function split, parameter "s": undeclared type Text`}},
+			k.Funcs[0].Params[1] = &types.Struct{Name: "Text"}
+		}, want: []string{"function split, parameter 2: undeclared type Text"}},
+		{name: "function parameter of decision type", mutate: func(k *kind.Kind) {
+			k.Funcs[0].Params[0] = &types.List{Elem: types.Decision}
+		}, want: []string{"function split, parameter 1: type can't be decision"}},
 		{name: "function returns optional", mutate: func(k *kind.Kind) { k.Funcs[0].Result = &types.Optional{Elem: types.String} },
 			want: []string{"function split: the result can't be optional"}},
 		{name: "function returns undeclared type", mutate: func(k *kind.Kind) { k.Funcs[0].Result = &types.Struct{Name: "Parts"} },

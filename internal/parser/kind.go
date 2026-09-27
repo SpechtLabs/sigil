@@ -102,18 +102,20 @@ func (p *parser) parseInput() *ast.InputDecl {
 	return d
 }
 
-// parseFn parses `fn name(param: type, ...) -> type`.
+// parseFn parses `fn name(type, ...) -> type`. Parameters are types
+// only: policies pass arguments positionally, so names would be
+// documentation the exporter can't recover from a Go function anyway.
 func (p *parser) parseFn() *ast.FnDecl {
-	const shape = "a function is written `fn name(param: type) -> type`"
+	const shape = "a function is written `fn name(type, type) -> type`"
 	kw := p.tok
 	p.next()
 	d := &ast.FnDecl{Name: p.expectIdent("a name after `fn`", shape)}
 	open := p.expect(token.LParen, shape)
 	for p.tok.Kind != token.RParen {
-		f := &ast.Field{Name: p.expectIdent("a parameter name", shape)}
-		p.expect(token.Colon, "a parameter is written `name: type`")
-		f.Type = p.parseType()
-		d.Params = append(d.Params, f)
+		if p.tok.Kind == token.Ident && p.peek().Kind == token.Colon {
+			p.errorTok(p.tok, "expected a parameter type, found a name", "parameters have types only; policies pass arguments by position")
+		}
+		d.Params = append(d.Params, p.parseType())
 		if p.tok.Kind != token.Comma {
 			break
 		}

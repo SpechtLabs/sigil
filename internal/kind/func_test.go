@@ -12,7 +12,7 @@ func TestFuncSignature(t *testing.T) {
 	tests := []struct {
 		got, want string
 	}{
-		{k.Func("split").Signature(), "fn split(s: string, sep: string) -> list<string>"},
+		{k.Func("split").Signature(), "fn split(string, string) -> list<string>"},
 		{(&kind.Func{Name: "now", Result: types.Timestamp}).Signature(), "fn now() -> timestamp"},
 	}
 	for _, tt := range tests {
