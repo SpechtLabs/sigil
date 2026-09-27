@@ -9,7 +9,7 @@ permalink: /reference/kind-files/
 This page specifies the language as designed. Nothing is implemented yet; see [Open questions](/project/open-questions/).
 :::
 
-A kind is the contract between a Go host and the policies it evaluates. It declares what input looks like, which host functions exist, which decisions a policy can produce and how they rank. Every policy names exactly one kind in its header and gets type-checked against it.
+A kind is the contract between a Go host and the policies it evaluates. It declares what input looks like, which host functions exist, which decisions a policy can produce, and whether one of them wins or all of them apply. Every policy names exactly one kind in its header and gets type-checked against it.
 
 Kinds are defined in Go and exported to a kind file, the same way Go structs become an OpenAPI spec. Kind files use the same `.sigil` extension as policies and modules; the `kind` header tells them apart, and by convention the file is named after the kind (`deploy_approval.sigil`). Nobody writes a kind file by hand. The defining host never loads one; everyone else can.
 
@@ -71,7 +71,8 @@ default deny("no_rule_matched")
 | `fn`         | `fn split(s: string, sep: string) -> list<string>`         | Host function signatures                 |
 | `decision`   | `decision review(reason: string, approvers: list<string>)` | Decision constructors and payload schema |
 | `precedence` | `precedence deny > review > approve`                       | Conflict resolution order                |
-| `default`    | `default deny("no_rule_matched")`                          | Result when nothing fires                |
+| `collect`    | `collect all`                                              | Every fired decision applies (instead of `precedence`) |
+| `default`    | `default deny("no_rule_matched")`                          | Result when nothing fires; optional with `collect all` |
 
 ### `kind`
 
@@ -138,6 +139,47 @@ precedence deny > review > approve
 
 Ranks decisions from highest to lowest. When candidates of different decisions compete, the highest-ranked one wins. The declaration must name every declared decision exactly once, which makes precedence a total order. (proposed; the Go side derives precedence from the order of `policy.Decisions(...)`, which is always total.)
 
+### `collect`
+
+```sigil
+collect all
+```
+
+Declares a collecting kind: instead of one winner, the host gets every candidate that fired. A kind has either `precedence` or `collect all`, never both and never neither, so leaving out a line can't silently switch a kind from one winner to many. (proposed)
+
+Collecting fits decisions that combine instead of competing, such as roles a user can hold at the same time:
+
+```sigil
+kind AccessGrant version 1
+
+type Actor {
+  name: string
+  groups: list<string>
+  clearance: string
+}
+
+input actor: Actor
+
+decision read(reason: string)
+decision write(reason: string)
+decision admin(reason: string, ttl: duration = 8h)
+decision customer_data_writer(reason: string)
+decision development_environment_writer(reason: string)
+
+collect all
+```
+
+A policy for this kind grants each role in its own `when` block, and several can fire for one actor. Nothing ranks them and no candidate can cancel another, so a collecting kind has no `deny` in the usual sense. Its guardrails are [asserts](/reference/policy-files/#assert) instead, typically in a policy the host [requires](/reference/evaluation/#required-policies):
+
+```sigil
+policy access.guardrails: AccessGrant
+
+assert [customer_data_writer, development_environment_writer] exclusive in outcome,
+  "sod_customer_dev"
+```
+
+How the candidates are ordered and returned is on [Evaluation semantics](/reference/evaluation/#collecting-kinds).
+
 ### `default`
 
 ```sigil
@@ -145,6 +187,8 @@ default deny("no_rule_matched")
 ```
 
 The result when no rule fires. It's a decision constructor with a literal reason, and every payload value must be a constant.
+
+A kind with `precedence` must declare a default. A collecting kind may leave it out, and then an evaluation where nothing fires returns no decisions at all. (proposed)
 
 ## Validity rules
 
@@ -155,8 +199,9 @@ A kind is valid when:
 - no struct type is recursive,
 - inputs and host functions share one namespace and every name in it is unique,
 - every decision declares `reason: string` first,
-- `precedence` lists every decision exactly once,
-- `default` constructs a declared decision with a literal reason and constant payload values that satisfy its schema.
+- exactly one of `precedence` and `collect all` is declared,
+- `precedence`, if declared, lists every decision exactly once,
+- `default` is declared if `precedence` is, and constructs a declared decision with a literal reason and constant payload values that satisfy its schema.
 
 `NewKind` enforces these rules on the Go side and panics at init if they fail, so a kind that exists can always be exported.
 
@@ -212,9 +257,10 @@ The exported kind carries a version, and `sigil breaking old/deploy_approval.sig
 | Change a type                                  | Breaking                                                       |
 | Add a payload field without a default          | Breaking                                                       |
 | Reorder `precedence` or change `default`       | Breaking in behaviour, even though every policy still compiles |
+| Switch between `precedence` and `collect all`  | Breaking                                                       |
 
 ::: warning Adding an input or function can collide
-Inputs, host functions, params, lets and imported names share one flat namespace per policy, with no shadowing (see [Policy files](/reference/policy-files/)). A new `input approvers` therefore breaks every policy that already declares `param approvers`. `sigil breaking` only sees the two kind files, so it can't catch this; `sigil check` against the new kind can. Adding a decision is safe here because decision names live in their own namespace.
+Inputs, host functions, params, lets and imported names share one flat namespace per policy, with no shadowing (see [Policy files](/reference/policy-files/)). A new `input approvers` therefore breaks every policy that already declares `param approvers`. `sigil breaking` only sees the two kind files, so it can't catch this; `sigil check` against the new kind can. Decision names share that namespace, because asserts use them as values, so a new decision collides the same way. (proposed)
 :::
 
 A policy's header names a kind but not a version. Whether policies should pin a kind version, and what happens when they don't match, is unspecified. For the operational side of changing a kind, see [Evolve a kind safely](/guides/evolve-a-kind/).

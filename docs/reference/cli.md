@@ -17,7 +17,7 @@ All tooling reads the exported kind file (`deploy_approval.sigil` in the running
 | `sigil check`    | Parses and type-checks policies against a kind, reports cost                                   | Kind file                   |
 | `sigil eval`     | Evaluates a policy against a JSON input and prints the result and trace                        | Kind file + bound functions |
 | `sigil explain`  | Flattens a policy into its guarded decisions, with every invocation inlined                    | Kind file                   |
-| `sigil test`     | Runs test cases: input JSON plus expected decision and reason                                  | Kind file + bound functions |
+| `sigil test`     | Runs test cases: input JSON plus expected decisions and reasons, or expected assert failures   | Kind file + bound functions |
 | `sigil breaking` | Compares two kind versions and flags incompatible changes                                      | Two kind files              |
 | `sigil gen go`   | Generates typed Go code from a kind file                                                       | Kind file                   |
 | `sigil lsp`      | Completion from the kind and imports, hover, go-to-definition across imports and invocations   | Kind file                   |
@@ -72,7 +72,7 @@ sigil check --kind deploy_approval.sigil \
 
 ## `sigil eval`
 
-Evaluates a policy against a JSON input and prints the result and the full trace: every candidate, the winner, and which conditions held for each candidate of the winning decision. Because evaluation calls host functions, `eval` needs implementations for every `fn` the kind declares. How a standalone CLI gets those bindings is still open; a host can always build its own `sigil` binary with its functions linked in.
+Evaluates a policy against a JSON input and prints the result and the full trace: every candidate, the winner (or, for a collecting kind, the whole outcome), which conditions held for each candidate of the winning decision, and any failing asserts. Because evaluation calls host functions, `eval` needs implementations for every `fn` the kind declares. How a standalone CLI gets those bindings is still open; a host can always build its own `sigil` binary with its functions linked in.
 
 ```text
 sigil eval --kind deploy_approval.sigil --input release.json --policy payments.production deploy/ payments/
@@ -106,7 +106,7 @@ approve  payments_sre      payments:18
 ...
 ```
 
-Each entry names the decision, the reason and the call chain that reaches the rule, then the rule's full condition: every `when` around every call on the chain, joined with `and`. Params show as their bound values, which is why invocation arguments can't depend on inputs. `let`s stay by name, so a condition reads the way its author wrote it.
+Each entry names the decision, the reason and the call chain that reaches the rule, then the rule's full condition. Asserts appear as entries too, marked `assert` in the decision column, with the condition under which they're checked and the condition they check: every `when` around every call on the chain, joined with `and`. Params show as their bound values, which is why invocation arguments can't depend on inputs. `let`s stay by name, so a condition reads the way its author wrote it.
 
 With `--input`, the output also marks which rules fired and which candidate won. Like `eval`, that needs bound functions; without `--input`, `explain` needs only the kind file.
 
@@ -119,6 +119,8 @@ The layout is illustrative; the exact format isn't fixed yet. [The tour](/gettin
 ## `sigil test`
 
 Runs test cases, each an input JSON document plus the expected decision and reason. Asserting on the reason as well as the decision catches the case where a deploy is denied for the wrong reason, which is a common way policy regressions hide. Like `eval`, it needs bound functions.
+
+A test case for a collecting kind lists every expected decision and reason, and passes only if the outcome holds exactly those. A test case can also expect an evaluation to fail, naming the reasons of the asserts that should fail; any other failing assert, or none, fails the test. How a test file spells either isn't designed yet. (proposed)
 
 ## `sigil breaking`
 
@@ -146,6 +148,7 @@ Imports and invocations get their own support:
 | Lint | Default | Fires when |
 | --- | --- | --- |
 | `unused-import` | warn | A `use` binds a name nothing references |
+| `gated-assert` | warn | A policy that contains asserts is invoked inside `when` and isn't required. Its asserts only run while the gate holds (proposed) |
 | `gated-deny` | warn | A policy that contains denies is invoked inside `when` and isn't required by `--require` or the host. That may be intended, but it's the pattern that silently switches denies off |
 | `duplicate-invocation` | warn | The same policy is invoked twice with identical arguments |
 | `duplicate-reason` | warn | One policy uses the same reason twice (see [Decisions](/reference/decisions/)) |

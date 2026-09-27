@@ -80,7 +80,7 @@ For the MVP, the earliest source position wins. A rule reached through an invoca
 
 It bites in the canonical example. Take a critical service and an actor who is a release manager and also in the `payments-sre` team. `deploy.production`'s `approve("release_manager")` (bake 1h, the kind's default) and the team's `approve("payments_sre", bake: 15m)` both fire. The team file invokes `production(...)` above its own rule, so the release manager's approval counts as earlier and wins: the team asked for a 15-minute bake and the deploy gets an hour.
 
-The cleaner answer is a merge function declared in the kind: take the minimum `bake`, or the union of `approvers`. That would remove the last trace of order from the language. It's listed under "Ties within one decision" in the [open questions](/project/open-questions/), and the normative rules live in [Evaluation semantics](/reference/evaluation/).
+A [collecting kind](/reference/evaluation/#collecting-kinds) doesn't have this problem, because it returns every candidate and picks none. For a kind with `precedence`, the cleaner answer is a merge function declared in the kind: take the minimum `bake`, or the union of `approvers`. That would remove the last trace of order from the language. It's listed under "Ties within one decision" in the [open questions](/project/open-questions/), and the normative rules live in [Evaluation semantics](/reference/evaluation/).
 
 ## What you give up
 

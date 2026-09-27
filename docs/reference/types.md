@@ -25,6 +25,7 @@ Sigil is statically typed. The compiler knows the type of every input, param, le
 | `map<K, V>`    | `{"k": "v"}`   | `{}`           | Missing key yields the zero value of `V`, like Go                        |
 | `?T`           | none           | absent         | Optional, from Go pointer fields. Must be unwrapped with `??` before use |
 | Struct types   | none           | all fields zero | Declared in the kind, reached with `.field`                             |
+| `decision`     | `approve`      | none           | A decision's name as a value; only useful in `assert` (proposed)         |
 
 Zero values matter in one place: a missing map key. `service.labels["absent"]` is `""`, and indexing a missing key in a `map<string, int>` gives `0`.
 
@@ -32,7 +33,7 @@ Zero values matter in one place: a missing map key. `service.labels["absent"]` i
 
 ### `bool`
 
-The only type a `when` condition, a quantifier body, or an operand of `and`, `or` and `not` can have.
+The only type a `when` condition, an `assert` condition, a quantifier body, or an operand of `and`, `or`, `xor` and `not` can have.
 
 ### `int` and `float`
 
@@ -65,6 +66,14 @@ An empty literal `[]` takes its element type from context: the declared type of 
 An unordered collection of key-value pairs. Kinds exported from Go only produce `map<string, V>`, since `NewKind` rejects non-string keys, so in practice `K` is always `string`. Map literals follow the same homogeneity and empty-literal rules as lists.
 
 Indexing a map with a missing key yields the zero value of `V`. Use `m has "k"` or `"k" in m` when absence and emptiness need to be told apart.
+
+## `decision`
+
+Every decision the kind declares is also a value of type `decision`, written as its bare name: `approve`, `customer_data_writer`. The constructor `approve("release_manager")` builds a candidate; the bare `approve` only names the decision. The type is closed: its values are exactly the kind's decisions, so a misspelled decision name is a compile error like any other unknown name.
+
+`decision` values support `==`, `!=` and the list operators, and appear in list literals such as `[read, write, admin]`. The one place they come from evaluation is [`outcome`](/reference/expressions/#decision-values-and-outcome), a `list<decision>` that only `assert` conditions can read.
+
+A param can't have type `decision` or `list<decision>`, and a `decision` has no zero value, so it can't be a map value. (proposed)
 
 ## Optional types: `?T`
 
@@ -107,11 +116,12 @@ The rules for each operator are on [Expressions](/reference/expressions/). In sh
 
 | Operation                   | Allowed types                                                             |
 | --------------------------- | ------------------------------------------------------------------------- |
-| `==` `!=`                   | same type on both sides; `bool`, `int`, `float`, `string`, `duration`, `timestamp` |
+| `==` `!=`                   | same type on both sides; `bool`, `int`, `float`, `string`, `duration`, `timestamp`, `decision` |
 | `<` `<=` `>` `>=`           | same type on both sides; `int`, `float`, `duration`, `timestamp`          |
-| `and` `or` `not`            | `bool`                                                                    |
+| `and` `or` `xor` `not`      | `bool`                                                                    |
 | `in`                        | `T in list<T>`, `K in map<K, V>`, `string in string`                      |
 | `all in` `any in`           | `list<T>` on both sides                                                   |
+| `one in` `exclusive in`     | `list<T>` on both sides                                                   |
 | `has`                       | `map<K, V> has map<K, V>`, `map<K, V> has K`                              |
 | `like` `matches`            | `string` and a string literal                                             |
 | `??`                        | `?T ?? T`, result `T`                                                     |

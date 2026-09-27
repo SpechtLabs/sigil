@@ -134,6 +134,19 @@ If the guardrails deny, the result is deny, whatever the team adds. In the examp
 
 Protection is explicit now: the host decides which policies are guardrails, instead of every composed policy being protected implicitly. That's what makes it reasonable for a platform team to own the guardrails and let product teams own their compositions without reviewing every change.
 
+### Collecting kinds
+
+A [collecting kind](/reference/kind-files/#collect) returns every decision that fired, and nothing outranks anything, so the union of candidates can only add grants. A guardrail can't cancel a team's grant with a deny. It can fail the evaluation with an [assert](/reference/policy-files/#assert) instead:
+
+```sigil
+policy access.guardrails: AccessGrant
+
+assert [customer_data_writer, development_environment_writer] exclusive in outcome,
+  "sod_customer_dev"
+```
+
+`outcome` is the whole root's outcome, so this assert sees every grant any team adds. Required with `policy.Require`, it runs on every evaluation, and a composition that grants both roles fails loudly instead of granting them. The guarantee has the same shape as for denies, and the same host-side step makes it hold.
+
 ## What the guarantee doesn't cover
 
 Three things sit outside it, and all are easy to miss.

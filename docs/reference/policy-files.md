@@ -9,7 +9,7 @@ permalink: /reference/policy-files/
 This page specifies the language as designed. Nothing is implemented yet; see [Open questions](/project/open-questions/).
 :::
 
-A policy opens with a `policy` header, lists its imports, and then contains any number of `param`, `let` and `when` statements and policy invocations in any order. Each statement starts with a keyword or with the name of an imported policy followed by `(`, so a policy needs no separators and no significant whitespace.
+A policy opens with a `policy` header, lists its imports, and then contains any number of `param`, `let`, `when` and `assert` statements and policy invocations in any order. Each statement starts with a keyword or with the name of an imported policy followed by `(`, so a policy needs no separators and no significant whitespace.
 
 Shared matchers live in a second kind of document, the [module](#modules), which holds only imports and `let`s.
 
@@ -23,7 +23,8 @@ A `.sigil` file holds one or more documents, each a policy, a module or a kind. 
 | `use <path>`                       | after the header        | Imports names from another policy or module. Never adds rules by itself |
 | `param <name>: <type> [= <expr>]`  | top level               | Typed input set at instantiation. No default means required             |
 | `let <name> = <expr>`              | top level               | Named, reusable expression                                              |
-| `when <expr> { ... }`              | top level or nested     | Rule block. Body holds nested `when` blocks, decisions and invocations  |
+| `when <expr> { ... }`              | top level or nested     | Rule block. Body holds nested `when` blocks, decisions, asserts and invocations |
+| `assert <expr>, "<reason>"`        | top level or nested     | Condition that must hold, or evaluation fails with an assertion error   |
 | `<policy>(<param>: <expr>, ...)`   | top level or nested     | Invokes an imported policy, adding its rules with its params bound      |
 
 Kind files use a different set of statements; see [Kind files](/reference/kind-files/).
@@ -132,11 +133,37 @@ when cleared {
 
 A `when` block has a condition and a body in braces. The condition must have type `bool`; anything else is a compile error, so there's no truthiness.
 
-The body contains nested `when` blocks, [decision constructors](/reference/decisions/) and [policy invocations](#policy-invocation), and nothing else. There's no `let`, no `use` and no bare expression inside a body.
+The body contains nested `when` blocks, [decision constructors](/reference/decisions/), [asserts](#assert) and [policy invocations](#policy-invocation), and nothing else. There's no `let`, no `use` and no bare expression inside a body.
 
 There's no `else`. Write `when not x { ... }` instead. A nested `when` fires only if every enclosing condition holds, which makes nesting a conjunction. The full rules live on [Evaluation semantics](/reference/evaluation/).
 
 Whether a single body may contain more than one decision constructor is an [open question](/project/open-questions/). The examples in these docs use one constructor per body.
+
+## `assert`
+
+```sigil
+assert release.soak >= 0s, "negative_soak"
+
+when service.tier == "critical" {
+  assert "team" in service.labels, "critical_needs_team_label"
+}
+
+assert [customer_data_writer, development_environment_writer] exclusive in outcome,
+  "sod_customer_dev"
+```
+
+An assert states something that must be true whenever it's reached. If its condition is false, evaluation fails: `Eval` returns an assertion error, and the host records it as an error, not as a decision. Use a decision for an outcome you expect, such as denying a deploy that hasn't soaked, and an assert for a state that means the policy, the host or the input is wrong.
+
+- The condition must have type `bool`. It can read inputs, params, lets and imported lets, and, unlike any other expression, [`outcome`](/reference/expressions/#decision-values-and-outcome), the decisions evaluation produced.
+- The reason is a string literal and follows the same rules as a [decision reason](/reference/decisions/#the-reason): it's a stable identifier for metrics and grep, and dynamic text isn't allowed.
+- An assert may appear at the top level or inside a `when` body. Inside a body it's only checked when every enclosing condition holds, the same conjunction rule as for decisions. An assert in an invoked policy gets the invocation's enclosing conditions too.
+- An assert never produces a candidate and never changes the outcome. It can only fail the evaluation.
+
+`xor`, `one in` and `exclusive in` exist mostly for asserts. `exclusive in` over `outcome` is how a [collecting kind](/reference/kind-files/#collect) keeps two decisions from being granted together. When and in what order asserts run, and what the host gets back when one fails, is on [Evaluation semantics](/reference/evaluation/#assertions).
+
+::: tip Proposed
+The `assert` statement, its syntax and its semantics are proposed. The open parts are listed under [Assertions](/project/open-questions/#assertions).
+:::
 
 ## Policy invocation
 
@@ -187,7 +214,7 @@ let eligible =
 ```
 
 - The header names the kind, because the `let`s read inputs and have to type-check against them.
-- A module may contain `use` and `let` statements only. `param`, `when`, decision constructors and invocations are compile errors.
+- A module may contain `use` and `let` statements only. `param`, `when`, `assert`, decision constructors and invocations are compile errors.
 - A module may `use` other modules.
 - Every `let` in a module is exported. Whether modules need private helpers is an [open question](/project/open-questions/).
 - A host can't load or evaluate a module; it has no rules to evaluate.
@@ -267,13 +294,13 @@ The prefix rule for multi-document files is proposed here. The lint itself follo
 
 Each policy and module has one flat top-level namespace containing:
 
-- the kind's inputs and host functions,
+- the kind's inputs, host functions and decisions,
 - the document's own params and lets,
 - every name bound by a `use`.
 
 Any collision between two of these is a compile error, and nothing shadows anything. A `param` named `release` in a kind that declares `input release` fails to compile, and so does a quantifier variable named `approvers` in a policy that has a param by that name.
 
-Decision names live in their own namespace and only appear in constructor position, so a let called `deny` doesn't collide with the `deny` decision. An imported policy is called in the same position, so an import whose bound name is also a decision of the kind is a compile error: rename it with `as`. (proposed)
+Decision names are part of that namespace, because a bare decision name is a [value](/reference/types/#decision) in `assert` conditions. A let called `deny` in a kind that declares `decision deny` is a compile error, and so is an import whose bound name is a decision: rename it with `as`. (proposed; an earlier draft kept decisions in a namespace of their own, which only worked while they appeared in constructor position alone. See [Open questions](/project/open-questions/#decision-values-and-outcome).)
 
 ::: tip Proposed
 The single flat namespace and the no-shadowing rule are proposed here to close a gap in the current design. The goal is that any name in a policy has exactly one meaning, which you can find without knowing scoping rules.

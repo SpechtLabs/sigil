@@ -15,9 +15,9 @@ If you have an opinion on any of these, [open an issue](https://github.com/Spech
 
 ## Boolean operators
 
-**Blocks: M2**
+**Settled**
 
-The docs use `and`/`or`/`not` because they read better across multi-line conditions:
+The language uses the words `and`, `or`, `xor` and `not`, not `&&`, `||` and `!`. Words read better across multi-line conditions:
 
 ```sigil
 when service.tier in tiers
@@ -26,9 +26,11 @@ when service.tier in tiers
 }
 ```
 
-`&&`/`||`/`!` would match Go and filt-rs, which is what host authors write every day. The word forms also pair naturally with `not in`, which would otherwise be `!in` or stay a word while `!` is a symbol, a mix that reads badly.
+`&&`/`||`/`!` would have matched Go and filt-rs, which is what host authors write every day. Words won because they also pair with `not in`, `all in` and the other word operators; with symbols, `not in` would become `!in` or stay a word next to `!`, a mix that reads badly.
 
-Options: keep the words; switch to symbols; accept both and have `sigil fmt` canonicalize to one. Accepting both is the worst of the three for a language that wants one canonical style, so the real choice is between the first two. Current lean: words.
+Accepting both spellings and having `sigil fmt` canonicalize was ruled out, because a language that wants one canonical style shouldn't parse two.
+
+`xor` came with [assertions](#assertions) and follows the textbook truth table: exactly one of two operands is true. It can't be chained, because `a xor b xor c` computes parity, not "exactly one"; the list operators `one in` (exactly one) and `exclusive in` (at most one) cover the n-ary cases. See [Expressions](/reference/expressions/#boolean-operators).
 
 ## Quantifier body extent
 
@@ -80,6 +82,48 @@ when not eligible {
 ```
 
 Allowing it is more general and costs nothing in the evaluator, since each constructor just becomes another candidate. Requiring exactly one decision per block keeps traces simpler, because every block maps to at most one candidate, and it's hard to think of a case two separate `when` blocks can't express. Nested `when` blocks are unaffected either way.
+
+[Collecting kinds](#collecting-kinds) tilt this toward allowing it. Granting a platform member both `write` and `development_environment_writer` under one condition is the natural way to write a role policy, and repeating the condition in a second block is exactly the duplication `when` nesting exists to avoid.
+
+## Assertions
+
+**Blocks: M2, M4**
+
+`assert <condition>, "<reason>"` fails the evaluation loudly when its condition is false, and it's the guardrail mechanism for [collecting kinds](#collecting-kinds), which have no deny that outranks a grant. The proposal is spread across [Policy files](/reference/policy-files/#assert), [Expressions](/reference/expressions/#decision-values-and-outcome) and [Evaluation semantics](/reference/evaluation/#assertions). Still open:
+
+- **Syntax.** The proposal is Python's `assert cond, "reason"`, where the `,` also ends a quantifier body. The reason comes last, unlike a decision constructor's. `assert("reason", cond)` would match constructors but looks like a call.
+- **Dynamic text.** A reason is a literal. A failing assert may still want to say which value was wrong, the way a decision's `detail` field does. An optional third part, `assert cond, "reason", detail: expr`, would do it, and the expression would only be evaluated on failure.
+- **Asserts in kind files.** Today a host protects an assert by putting it in a policy it requires with `policy.Require`, the same way it protects denies. An assert declared in the kind would need no `Require`, but it brings expressions into kind files, which are pure declarations now, and the Go side would have to carry Sigil source in a string to define one. Deferred until `Require` proves too clumsy.
+- **Reason identity.** Whether assert reasons share the `duplicate-reason` lint and metric space with decision reasons, or live on their own. The proposal keeps them apart: `policy_assert_failures_total{reason="sod_customer_dev"}`.
+- **Static checks.** The proposal only rejects the obvious case: one block constructing two decisions that an `exclusive in outcome` assert forbids together, since that assert always fails when the block fires. Anything more would need the solver-style analysis the language otherwise avoids.
+- **Runtime errors first.** A runtime error aborts evaluation and hides every failing assert. That's simple, but an input with both a bad index and a violated invariant then only reports the index.
+
+## Decision values and `outcome`
+
+**Blocks: M3**
+
+An assert that checks what evaluation decided has to name decisions as values: `[customer_data_writer, development_environment_writer] exclusive in outcome`. The proposal makes a bare decision name a value of a closed `decision` type and `outcome` a `list<decision>` only asserts can read (see [Types](/reference/types/#decision)).
+
+That puts decision names into the policy's flat namespace, which costs something. A `let` named `deny` is now a compile error, and adding a decision to a kind can break a policy that already used the name, just as adding an input can (see [Namespaces and imports](#namespaces-and-imports)). The alternatives:
+
+- **String names**, `["customer_data_writer", "development_environment_writer"] exclusive in outcome` with `outcome: list<string>`, and the checker rejecting literals that aren't declared decisions. No namespace change, but the check only works on literals, and a computed string would slip past it.
+- **Qualified names**, `decision.customer_data_writer`. No collision, but verbose where it's used most.
+
+Two more gaps:
+
+- **Payloads.** `outcome` holds decisions, not candidates, so an assert can't read a payload: "no `admin` grant with a `ttl` above 8h" isn't expressible. Something like `all g in outcome.admin: g.ttl <= 8h` would need a per-decision view of the candidates.
+- **Kinds with `precedence`.** There `outcome` is the winner alone. An assert can't see the losing candidates, which is right for "what will the host do", but means an assert can't check, for example, that a guardrail's deny fired at all when a team's approve won.
+
+## Collecting kinds
+
+**Blocks: M4**
+
+A kind that declares `collect all` instead of `precedence` returns every candidate that fired, not one winner: roles a user can hold at the same time, feature flags, labels to attach. See [Kind files](/reference/kind-files/#collect) and [Evaluation semantics](/reference/evaluation/#collecting-kinds). Still open:
+
+- **Spelling.** `collect all` is explicit so that a missing line can't turn a single-winner kind into a multi-grant one. Treating a kind without `precedence` as collecting would be shorter and would make that mistake silent.
+- **Duplicates.** The proposal returns every candidate and leaves it to the host to decide what two `admin` grants with different payloads mean. Deduplicating or merging would bring back the tie-breaking problem from [Ties within one decision](#ties-within-one-decision).
+- **The result type.** The proposal keeps one `Result` with an `Outcome` list for both kinds. A separate type for collecting kinds would make `Match` on a collecting result a compile error instead of a runtime panic.
+- **Precedence tiers.** `precedence suspended > {read, write, admin}` would return every candidate in the highest tier that has any, so a `suspended` decision could wipe all grants as a decision, not as an assert failure. Flat `collect all` is then a single tier. Deferred: not needed for the first collecting kinds, and it can be added later without breaking them.
 
 ## Scoped `let`
 
@@ -161,7 +205,7 @@ Options: keep both as synonyms; drop the single-key form of `has`; or keep both 
 
 The proposed rule gives each policy one flat top-level namespace containing inputs, host functions, params, lets and every name bound by `use`. Any collision is a compile error, and nothing shadows anything, including quantifier variables.
 
-Confirming it closes several questions at once: `use deploy.common.{cleared as actor}` is an error because `actor` is an input, a `let` can't be named `split`, and `any release in ...` can't shadow the `release` input. It also needs one addition: an imported policy is called in the same position as a decision constructor, so importing a policy under a name the kind uses for a decision has to be an error too. The cost is that adding an input to a kind can break an existing policy that already had a `let` or an import of that name, which makes "add an input" less compatible than the [versioning table](/reference/kind-files/) claims. Either the table needs a footnote, or kind-declared names need to live in a namespace policies can't collide with.
+Confirming it closes several questions at once: `use deploy.common.{cleared as actor}` is an error because `actor` is an input, a `let` can't be named `split`, and `any release in ...` can't shadow the `release` input. Decision names are in the namespace too, because [asserts use them as values](#decision-values-and-outcome), so importing a policy under a decision's name or naming a `let` after one is an error. The cost is that adding an input or a decision to a kind can break an existing policy that already had a `let` or an import of that name, which makes "add an input" less compatible than the [versioning table](/reference/kind-files/) claims. Either the table needs a footnote, or kind-declared names need to live in a namespace policies can't collide with.
 
 ## Vacuous `all in`
 
@@ -178,7 +222,7 @@ let cleared =
 
 When the `regions` label is missing, `service.labels["regions"]` is `""`, and Go's `strings.Split("", ",")` returns `[""]`, not an empty list. So a missing label makes `cleared` false, which fails closed. An explicit empty list from some other source would make it vacuously true, which fails open. The same expression shape gives opposite safety properties depending on where the empty value came from. That argues for defining empty-left as false, or at least for a linter warning on every `all in` whose left side can be empty.
 
-Whatever the answer, it has to cover the quantifier too: `all r in actor.roles: r != "admin"` is vacuously true for an empty `roles` list, for the same reason. Defining one as false and not the other would make the two spellings of "every element satisfies" disagree.
+Whatever the answer, it has to cover `exclusive in` and `one in` as well, which follow `all in` and `any in` today: an empty left side makes `exclusive in` true and `one in` false. It also has to cover the quantifier: `all r in actor.roles: r != "admin"` is vacuously true for an empty `roles` list, for the same reason. Defining one as false and not the other would make the two spellings of "every element satisfies" disagree.
 
 ## Ties within one decision
 
@@ -191,6 +235,8 @@ That has a surprising consequence in the canonical example. Take a critical serv
 The alternative is a merge function declared in the kind per payload field, such as the minimum `bake` or the union of `approvers`. That removes the last trace of order dependence, but it raises its own questions: what the merged result's reason is, and which policy the result names.
 
 If earliest-position stays, [Evaluation semantics](/reference/evaluation/) proposes comparing whole call chains element by element, which orders nested invocations too.
+
+[Collecting kinds](#collecting-kinds) don't have this problem, because they return every candidate and pick none.
 
 ## What the result's `Policy` field names
 

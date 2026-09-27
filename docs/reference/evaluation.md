@@ -9,7 +9,7 @@ permalink: /reference/evaluation/
 This page specifies the language as designed. Nothing is implemented yet; see [Open questions](/project/open-questions/).
 :::
 
-Evaluation takes a compiled policy and one input value and produces exactly one decision. The rules on this page are the whole algorithm. For why it works this way, read [Why rule order never matters](/understanding/order-independence/).
+Evaluation takes a compiled policy and one input value and produces an outcome: exactly one decision for a kind with `precedence`, and every decision that fired for a [collecting kind](#collecting-kinds). Asserts then check the outcome and the input. The rules on this page are the whole algorithm. For why it works this way, read [Why rule order never matters](/understanding/order-independence/).
 
 ```mermaid
 flowchart LR
@@ -30,6 +30,8 @@ flowchart LR
 5. If several candidates share the winning decision, the one with the earliest source position wins. For a rule reached through an invocation, the position is its call site first, then its position in the invoked file.
 6. If there are no candidates at all, the result is the kind's `default`.
 
+Rules 4 to 6 apply to kinds with `precedence`. A collecting kind replaces them; see [Collecting kinds](#collecting-kinds). Asserts run after the outcome is known; see [Assertions](#assertions).
+
 There's no `else`, no early return and no fall-through. `when not x` expresses the negative case without implying an order between blocks.
 
 Rule order in a file doesn't change which decision wins. It can only matter in rule 5, when two candidates of the same decision carry different payloads.
@@ -42,6 +44,67 @@ So a policy invoked on line 7 contributes candidates that all sort before a cons
 
 ::: tip Proposed
 Comparing whole call chains element by element is proposed here; the design only fixes that the call site comes first and the callee position second. Replacing positional tie-breaking with merge functions declared in the kind, such as the minimum `bake` or the union of `approvers`, is an [open question](/project/open-questions/).
+:::
+
+## Collecting kinds
+
+A kind that declares [`collect all`](/reference/kind-files/#collect) has no winner. Rules 1 to 3 are unchanged, and the rest change:
+
+- In place of rule 4, the outcome is every candidate, sorted by the kind's declaration order of decisions, then by source position as in [Ordering for ties](#ordering-for-ties).
+- In place of rule 5, candidates aren't merged or deduplicated. If `admin` fires from two branches with different `ttl` payloads, the host gets both and decides what two grants of the same role mean.
+- In place of rule 6, if there are no candidates, the outcome is the kind's `default` if it declares one, and empty otherwise.
+
+Nothing is picked, so nothing is tie-broken, and rule order has no effect at all: the sort only fixes the order the host reads the candidates in. The one place order leaks in a kind with `precedence` doesn't exist here.
+
+```sigil
+policy access.engineering: AccessGrant
+
+use access.guardrails
+
+guardrails()
+
+when "engineering" in actor.groups {
+  read("engineering_member")
+}
+
+when "platform" in actor.groups {
+  write("platform_member")
+  development_environment_writer("platform_member")
+}
+```
+
+For a member of both groups, the outcome is `read("engineering_member")`, `write("platform_member")` and `development_environment_writer("platform_member")`, in that order. The body under `"platform"` holds two constructors, which a collecting kind makes natural; whether that's allowed is still [open](/project/open-questions/#multiple-decisions-per-block).
+
+::: tip Proposed
+Collecting kinds, their ordering and the empty outcome are proposed. See [Open questions](/project/open-questions/#collecting-kinds).
+:::
+
+## Assertions
+
+An [`assert`](/reference/policy-files/#assert) is checked after the outcome is known, so its condition can read `outcome` along with the input:
+
+1. Every block is evaluated and the outcome is picked or collected, as above.
+2. Every assert whose enclosing conditions all hold is checked, independently and in no particular order. Asserts reached through invocations are included, with their call's enclosing conditions added, exactly as for decisions.
+3. If any assert's condition is false, the evaluation fails with an assertion error.
+
+`outcome` is the whole root's outcome, including an assert in an invoked policy. That's what lets a required guardrail policy check what every other policy in the composition granted. It also means an assert can fail because of a rule in a policy it has never seen, which is the point.
+
+Every failing assert is reported, sorted by source position, not just the first one found. Stopping at the first failure would make the error depend on evaluation order.
+
+When an assert fails, `Eval` returns an assertion error and a result whose outcome is the kind's `default` for a kind with `precedence`, and empty for a collecting kind. The host never sees a partial outcome it could act on by mistake. The trace still lists every candidate, and the error names each failing assert by reason and call chain. For an assert over `outcome`, it also names the candidates that made it fail:
+
+```text
+error: assertion "sod_customer_dev" failed
+  granted customer_data_writer            at teams/data.sigil:12:5
+  granted development_environment_writer  at teams/data.sigil:4:1 → access/dev.sigil:30:3
+```
+
+The layout is illustrative; the exact format isn't fixed yet.
+
+Asserts and decisions answer different questions. A decision is an outcome the author expected and the host acts on, such as denying a deploy that hasn't soaked. A failed assert means something is wrong with the policy, the host or the input, and it should reach whoever owns the evaluation as an error. An assert that input from a caller can trip lets that caller fill the host's error metrics, so keep those rare and make them mean it.
+
+::: tip Proposed
+Assertions are proposed. The open parts are listed under [Assertions](/project/open-questions/#assertions).
 :::
 
 ## Invocation
@@ -126,7 +189,7 @@ payments/production.sigil:10:3: error: deploy.guardrails must be invoked uncondi
            Move the call to the top level.
 ```
 
-Every candidate a required policy produces is then always in the candidate set, so a required policy's deny can never be outranked. Protection is explicit: the host decides which policies are guardrails, instead of every composed policy being protected implicitly.
+Every candidate a required policy produces is then always in the candidate set, so a required policy's deny can never be outranked. The same holds for its top-level asserts: they're checked on every evaluation. In a collecting kind, where nothing outranks anything, a required policy's asserts are the only guardrail there is. Protection is explicit: the host decides which policies are guardrails, instead of every composed policy being protected implicitly.
 
 The requirement names a policy, and policies are found by the name in their header, not by file path (see [Bundles and resolution](/reference/policy-files/#bundles-and-resolution)). On its own, the check proves that some policy called `deploy.guardrails` is invoked, not which one. `policy.From` pins a required policy, and everything it imports, to a source the host trusts, and makes a bundle document that claims one of those names a compile error. See [Where required policies come from](/reference/go-api/#where-required-policies-come-from).
 
@@ -158,7 +221,9 @@ Static typing removes most failure modes. What's left:
 
 A missing map key isn't an error; it yields the zero value. An absent optional isn't an error either, because the compiler already forced a `??`.
 
-A runtime error anywhere aborts the evaluation. `Eval` returns the error together with a result holding the kind's default decision, so a host that fails closed can use the result directly. Since every block is evaluated, the outcome doesn't depend on block order: an input that triggers a runtime error always does.
+A runtime error anywhere aborts the evaluation. `Eval` returns the error together with a result holding the kind's default decision, so a host that fails closed can use the result directly. For a collecting kind the result's outcome is empty, even if the kind declares a default, because a default grant on an error would fail open. (proposed)
+
+A runtime error takes priority over failed asserts: once one occurs, `Eval` returns it and doesn't report asserts. An assert whose own condition raises a runtime error reports that runtime error. Since every block is evaluated, the outcome doesn't depend on block order: an input that triggers a runtime error always does.
 
 Work skipped by short-circuiting (`and`, `or`, `??`, quantifiers stopping early, a `when` whose condition is false) never runs and can't raise an error.
 

@@ -87,21 +87,21 @@
       "patterns": [
         {
           "name": "keyword.control.sigil",
-          "match": "\\b(when)\\b"
+          "match": "\\b(when|assert)\\b"
         },
         {
           "name": "keyword.other.sigil",
-          "match": "\\b(policy|module|use|as|param|let|kind|version|type|input|fn|decision|precedence|default)\\b"
+          "match": "\\b(policy|module|use|as|param|let|kind|version|type|input|fn|decision|precedence|collect|default)\\b"
         }
       ]
     },
     "word-operator": {
       "name": "keyword.operator.word.sigil",
-      "match": "\\b(and|or|not|in|all|any|has|like|matches)\\b"
+      "match": "\\b(and|or|xor|not|in|all|any|one|exclusive|has|like|matches)\\b"
     },
     "constant": {
       "name": "constant.language.sigil",
-      "match": "\\b(true|false)\\b"
+      "match": "\\b(true|false|outcome)\\b"
     },
     "type": {
       "name": "support.type.sigil",
