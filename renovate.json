@@ -139,6 +139,16 @@
       "dependencyDashboardApproval": false
     },
     {
+      "description": "Leave the go directive in go.mod alone. It is the minimum language version, not the toolchain; bumping it to a full patch version (1.27 -> 1.27.1) makes it equal to the toolchain directive and go mod tidy then deletes the toolchain line. Renovate tracks the exact version through the toolchain directive instead.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchDepTypes": [
+        "golang"
+      ],
+      "enabled": false
+    },
+    {
       "description": "golangci-lint is pinned in .mise.toml and .custom-gcl.yml; the two must never disagree.",
       "matchDepNames": [
         "golangci-lint"
