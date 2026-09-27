@@ -1,7 +1,8 @@
-// Package check is the type checker. It resolves every name in a policy
-// against the kind and the policy's own declarations, gives every
-// expression a type by the rules in docs/reference/expressions.md and
-// docs/reference/types.md, and reports what doesn't fit with a hint.
+// Package check is the type checker. It turns a kind document into a
+// kind.Kind, resolves every name in a policy against the kind and the
+// policy's own declarations, gives every expression a type by the rules
+// in docs/reference/expressions.md and docs/reference/types.md, and
+// reports what doesn't fit with a hint.
 //
 // The checker records the type of every expression node in an Info, which
 // is what the evaluator compiles from: by the time evaluation starts,
@@ -12,7 +13,6 @@ import (
 	"sort"
 
 	"github.com/spechtlabs/sigil/internal/kind"
-	"github.com/spechtlabs/sigil/internal/suggest"
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
@@ -130,5 +130,5 @@ func (e *Env) Names() []string {
 
 // Closest returns the name in scope most like name, if one is close.
 func (e *Env) Closest(name string) (string, bool) {
-	return suggest.Closest(name, e.Names())
+	return nearest(name, e.Names())
 }

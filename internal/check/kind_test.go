@@ -1,11 +1,11 @@
-package kindfile_test
+package check_test
 
 import (
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/spechtlabs/sigil/internal/kindfile"
+	"github.com/spechtlabs/sigil/internal/check"
 )
 
 const deploy = `kind DeployApproval version 1
@@ -42,10 +42,10 @@ precedence deny > review > approve
 default deny("no_rule_matched")
 `
 
-// TestLoad checks that clean kind files load into the model by printing
+// TestLoadKind checks that clean kind files load into the model by printing
 // the model back as canonical source, and pins the message, hint and
 // position of every error the loader and the model's rules produce.
-func TestLoad(t *testing.T) {
+func TestLoadKind(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
@@ -151,9 +151,11 @@ default d("x")
 		{name: "mutually recursive types", src: "kind K version 1\ntype A { b: B }\ntype B { a: list<A> }\ndecision d(reason: string)\nprecedence d\ndefault d(\"x\")",
 			errs: []string{"2:6: type A is recursive: A -> B -> A", "3:6: type B is recursive: B -> A -> B"}},
 		{name: "map with a list key", src: "kind K version 1\ninput m: map<list<string>, int>\ndecision d(reason: string)\nprecedence d\ndefault d(\"x\")",
-			errs: []string{"2:10: input \"m\": map key type can't be list<string>"}},
+			errs: []string{"2:14: list<string> can't be a map key"}},
 		{name: "map with a struct key", src: "kind K version 1\ntype R { a: int }\ninput m: map<R, int>\ndecision d(reason: string)\nprecedence d\ndefault d(\"x\")",
-			errs: []string{"3:10: input \"m\": map key type can't be R"}},
+			errs: []string{"3:14: R can't be a map key"}},
+		{name: "map with an unknown key type", src: "kind K version 1\ninput m: map<Ticket, int>\ndecision d(reason: string)\nprecedence d\ndefault d(\"x\")",
+			errs: []string{"2:14: unknown type `Ticket`"}},
 
 		// Inputs and functions.
 		{name: "input declared twice", src: "kind K version 1\ninput a: int\ninput a: string\ndecision d(reason: string)\nprecedence d\ndefault d(\"x\")",
@@ -226,7 +228,7 @@ default d("x")
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k, errs := kindfile.Load("k.sigil", []byte(tt.src))
+			k, errs := check.LoadKind("k.sigil", []byte(tt.src))
 			got := make([]string, len(errs))
 			for i, e := range errs {
 				got[i] = e.Pos.String() + ": " + e.Msg
@@ -246,26 +248,26 @@ default d("x")
 			}
 			if tt.want != "" {
 				if k == nil {
-					t.Fatal("Load() returned no kind")
+					t.Fatal("LoadKind() returned no kind")
 				}
 				if got := k.Source(); got != tt.want {
 					t.Errorf("Source() =\n%s\nwant\n%s", got, tt.want)
 				}
 			} else if k != nil {
-				t.Errorf("Load() returned a kind alongside errors")
+				t.Errorf("LoadKind() returned a kind alongside errors")
 			}
 		})
 	}
 }
 
-// TestRoundTrip checks that loading what a kind prints gives the same
+// TestKindRoundTrip checks that loading what a kind prints gives the same
 // kind, which is the property the exporter will be held to.
-func TestRoundTrip(t *testing.T) {
-	first, errs := kindfile.Load("k.sigil", []byte(deploy))
+func TestKindRoundTrip(t *testing.T) {
+	first, errs := check.LoadKind("k.sigil", []byte(deploy))
 	if errs != nil {
 		t.Fatal(errs)
 	}
-	second, errs := kindfile.Load("k.sigil", []byte(first.Source()))
+	second, errs := check.LoadKind("k.sigil", []byte(first.Source()))
 	if errs != nil {
 		t.Fatal(errs)
 	}
@@ -274,9 +276,9 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
-// TestParserTestdata loads the kind documents from the parser's golden
+// TestKindParserTestdata loads the kind documents from the parser's golden
 // inputs, so the two packages agree on what a kind file is.
-func TestParserTestdata(t *testing.T) {
+func TestKindParserTestdata(t *testing.T) {
 	for _, name := range []string{"deploy_approval", "access"} {
 		src, err := os.ReadFile("../parser/testdata/" + name + ".sigil")
 		if err != nil {
@@ -284,7 +286,7 @@ func TestParserTestdata(t *testing.T) {
 		}
 		// access.sigil holds policies after the kind; take the first document.
 		first := strings.SplitN(string(src), "\n---\n", 2)[0]
-		if _, errs := kindfile.Load(name+".sigil", []byte(first)); errs != nil {
+		if _, errs := check.LoadKind(name+".sigil", []byte(first)); errs != nil {
 			t.Errorf("%s: %v", name, errs)
 		}
 	}

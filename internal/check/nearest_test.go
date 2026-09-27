@@ -1,12 +1,8 @@
-package suggest_test
+package check
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/spechtlabs/sigil/internal/suggest"
-)
-
-func TestClosest(t *testing.T) {
+func TestNearest(t *testing.T) {
 	fields := []string{"name", "tier", "owners", "labels"}
 	tests := []struct {
 		name       string
@@ -36,9 +32,9 @@ func TestClosest(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := suggest.Closest(tt.name, tt.candidates)
+			got, ok := nearest(tt.name, tt.candidates)
 			if got != tt.want || ok != tt.ok {
-				t.Errorf("Closest(%q) = %q, %v; want %q, %v", tt.name, got, ok, tt.want, tt.ok)
+				t.Errorf("nearest(%q) = %q, %v; want %q, %v", tt.name, got, ok, tt.want, tt.ok)
 			}
 		})
 	}

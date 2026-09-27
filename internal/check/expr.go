@@ -5,7 +5,6 @@ import (
 	"regexp"
 
 	"github.com/spechtlabs/sigil/internal/ast"
-	"github.com/spechtlabs/sigil/internal/suggest"
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
@@ -565,7 +564,7 @@ func (c *Checker) closestField(s *types.Struct, name string) (string, bool) {
 	for i, f := range s.Fields {
 		names[i] = f.Name
 	}
-	return suggest.Closest(name, names)
+	return nearest(name, names)
 }
 
 // index checks `x[i]`: a map by its key type, or a list by an int.

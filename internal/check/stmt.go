@@ -6,7 +6,6 @@ import (
 	"github.com/spechtlabs/sigil/internal/ast"
 	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/kind"
-	"github.com/spechtlabs/sigil/internal/suggest"
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
@@ -72,7 +71,7 @@ func (c *Checker) params(stmts []ast.Stmt, env *Env) {
 		if !ok {
 			continue
 		}
-		t := c.resolveType(p.Type, env.Kind())
+		t := c.resolveType(p.Type, env.Kind(), false)
 		if opt, isOpt := t.(*types.Optional); isOpt {
 			c.errorf(p.Type, fmt.Sprintf("an optional param is a param with a default; write `param %s: %s = <default>`", p.Name.Name, opt.Elem),
 				"a param can't be optional")
@@ -108,8 +107,12 @@ func (c *Checker) declare(name *ast.Ident, env *Env, b Binding) bool {
 	return ok
 }
 
-// resolveType turns a type expression into a type against the kind.
-func (c *Checker) resolveType(t ast.Type, k *kind.Kind) types.Type {
+// resolveType turns a type expression into a type against k's struct
+// types, for a param or for a declaration in the kind itself, which
+// inKind says. An unknown name or a map key that isn't a scalar is
+// reported here with a hint and becomes types.Invalid, and so does any
+// type built around one; kind.Validate lets types.Invalid pass.
+func (c *Checker) resolveType(t ast.Type, k *kind.Kind, inKind bool) types.Type {
 	switch t := t.(type) {
 	case *ast.NamedType:
 		if b, ok := types.Lookup(t.Name.Name); ok {
@@ -123,25 +126,28 @@ func (c *Checker) resolveType(t ast.Type, k *kind.Kind) types.Type {
 			candidates = append(candidates, s.Name)
 		}
 		help := "types are the built-ins and the struct types the kind declares"
-		if closest, ok := suggest.Closest(t.Name.Name, candidates); ok {
+		if inKind {
+			help = "declare it with `type " + t.Name.Name + " { ... }`, or use a built-in type"
+		}
+		if closest, ok := nearest(t.Name.Name, candidates); ok {
 			help = fmt.Sprintf("did you mean `%s`?", closest)
 		}
 		c.errorf(t, help, "unknown type `%s`", t.Name.Name)
 		return types.Invalid
 	case *ast.OptionalType:
-		elem := c.resolveType(t.Elem, k)
+		elem := c.resolveType(t.Elem, k, inKind)
 		if elem == types.Invalid {
 			return types.Invalid
 		}
 		return &types.Optional{Elem: elem}
 	case *ast.ListType:
-		elem := c.resolveType(t.Elem, k)
+		elem := c.resolveType(t.Elem, k, inKind)
 		if elem == types.Invalid {
 			return types.Invalid
 		}
 		return &types.List{Elem: elem}
 	case *ast.MapType:
-		key, val := c.resolveType(t.Key, k), c.resolveType(t.Value, k)
+		key, val := c.resolveType(t.Key, k, inKind), c.resolveType(t.Value, k, inKind)
 		if key == types.Invalid || val == types.Invalid {
 			return types.Invalid
 		}
@@ -332,5 +338,5 @@ func closestField(d *kind.Decision, name string) (string, bool) {
 	for i, f := range d.Fields {
 		names[i] = f.Name
 	}
-	return suggest.Closest(name, names)
+	return nearest(name, names)
 }

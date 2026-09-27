@@ -7,7 +7,6 @@ import (
 	"github.com/spechtlabs/sigil/internal/ast"
 	"github.com/spechtlabs/sigil/internal/check"
 	"github.com/spechtlabs/sigil/internal/kind"
-	"github.com/spechtlabs/sigil/internal/kindfile"
 	"github.com/spechtlabs/sigil/internal/parser"
 	"github.com/spechtlabs/sigil/internal/types"
 )
@@ -38,7 +37,7 @@ default deny("no_rule_matched")
 
 func loadKind(t *testing.T) *kind.Kind {
 	t.Helper()
-	k, errs := kindfile.Load("test.sigil", []byte(testKind))
+	k, errs := check.LoadKind("test.sigil", []byte(testKind))
 	if errs != nil {
 		t.Fatalf("test kind: %v", errs)
 	}

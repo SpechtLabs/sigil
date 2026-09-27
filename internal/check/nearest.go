@@ -1,15 +1,15 @@
-// Package suggest finds the name an author most likely meant, for the
-// "did you mean" hint on unknown fields, types and names.
-package suggest
+package check
 
 import "strings"
 
-// Closest returns the candidate nearest to name when it's near enough to
-// be a plausible typo, and false otherwise. Distance is Damerau-Levenshtein
-// on the lowercased strings, so a transposition (`teir`) and a case slip
+// nearest finds the name an author most likely meant, for the "did you
+// mean" hint on unknown fields, types and names. It returns the
+// candidate nearest to name when it's near enough to be a plausible
+// typo, and false otherwise. Distance is Damerau-Levenshtein on the
+// lowercased strings, so a transposition (`teir`) and a case slip
 // (`release` for `Release`) each count one; the limit is a third of the
 // name's length, and at least one. Ties go to the earlier candidate.
-func Closest(name string, candidates []string) (string, bool) {
+func nearest(name string, candidates []string) (string, bool) {
 	limit := max(1, len(name)/3)
 	best, bestDist := "", limit+1
 	lower := strings.ToLower(name)
