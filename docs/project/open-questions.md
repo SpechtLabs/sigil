@@ -70,9 +70,9 @@ A related lexer corner: in type position, `map<string, int>= {}` has to split `>
 
 ## Glob syntax for `like`
 
-**Blocks: M3**
+**Settled**
 
-`like` is described as a glob, but no page pins down which glob. The reference proposes only `*` (any run of characters) and `?` (one character), and doesn't yet say whether `*` crosses `/` or `.` the way it does in shell globs versus path globs. Labels such as `platform.example.com/env` make that choice visible: `"platform.*"` matches it only if `*` crosses both. Proposal: `*` matches anything, including separators, because Sigil matches strings, not paths.
+`*` matches any run of characters, including `/` and `.`, and `?` matches one; there are no character classes or escapes. The rest of this entry is the reasoning. `like` is described as a glob, but no page pins down which glob. The reference proposes only `*` (any run of characters) and `?` (one character), and doesn't yet say whether `*` crosses `/` or `.` the way it does in shell globs versus path globs. Labels such as `platform.example.com/env` make that choice visible: `"platform.*"` matches it only if `*` crosses both. Proposal: `*` matches anything, including separators, because Sigil matches strings, not paths.
 
 ## Multiple decisions per block
 
@@ -110,7 +110,9 @@ The syntax is settled and parsed: `assert cond, "reason"`, with the comma ending
 
 ## Decision values and `outcome`
 
-**Blocks: M3**
+**Blocks: M4**
+
+Settled so far: a bare decision name is a value of type `decision` only inside an `assert` condition, like `outcome`; anywhere else it's a compile error pointing at the constructor form. The namespace question below is what's left.
 
 An assert that checks what evaluation decided has to name decisions as values: `[customer_data_writer, development_environment_writer] exclusive in outcome`. The proposal makes a bare decision name a value of a closed `decision` type and `outcome` a `list<decision>` only asserts can read (see [Types](/reference/types/#decision)).
 
@@ -187,7 +189,9 @@ Optional chaining looks like the smallest change that works.
 
 ## Composite values: equality, ordering and recursion
 
-**Blocks: M3**
+**Blocks: M4**
+
+The checker rejects `==` on lists, maps and structs and `<` on strings, so a policy can't depend on either until this settles.
 
 The current design says comparisons are strictly typed but doesn't say which types support which comparisons. Unsettled:
 
@@ -221,7 +225,9 @@ Confirming it closes several questions at once: `use deploy.common.{cleared as a
 
 ## Vacuous `all in`
 
-**Blocks: M3**
+**Blocks: M6** (the linter)
+
+The evaluator keeps the math: an empty left side makes `all in` and `exclusive in` true, `any in` and `one in` false, and `all x in []: ...` true. What's open is whether the linter should warn on a left side that can be empty.
 
 An empty list on the left is a subset of anything, so `[] all in actor.regions` is true. Either keep the math and have the linter warn, or define an empty left side as false and document the exception.
 

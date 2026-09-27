@@ -6,7 +6,7 @@ permalink: /reference/policy-files/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The lexer and parser implement the syntax and kinds are implemented; type checking and evaluation aren't yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. Syntax, kinds, type checking and expression evaluation are implemented; rules and decisions, composition and the CLI aren't yet. See [Open questions](/project/open-questions/).
 :::
 
 A policy opens with a `policy` header, lists its imports, and then contains any number of `param`, `let`, `when` and `assert` statements and policy invocations in any order. Each statement starts with a keyword or with the name of an imported policy followed by `(`, so a policy needs no separators and no significant whitespace.

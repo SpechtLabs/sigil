@@ -28,6 +28,11 @@ timeline:
     description: |
       The language design moves into this documentation site. Nothing is implemented; the docs are
       the specification until M1 closes.
+  - date: 2026-09-28
+    title: Kinds, the type checker and expression evaluation implemented
+    description: |
+      M3 closes: a policy is checked against its kind with a hint for every typo and type
+      mismatch, and its expressions evaluate against the host's Go structs.
   - date: 2026-09-27
     title: Front end implemented
     description: |
@@ -101,7 +106,7 @@ milestones:
           names and the `assert` syntax. Boolean operator spelling is settled: words. Still open:
           glob syntax (M3) and multiple decisions per block (M4); the parser accepts several.
       - title: Published documentation site
-        state: DOING
+        state: DONE
         requirement: SHOULD
         description: |
           The VuePress site, built and deployed from `docs/` on every push to `main`.
@@ -170,11 +175,20 @@ milestones:
           Go field paths and function values for the evaluator, so evaluation never touches
           `reflect`. Panics with every problem at once, like `regexp.MustCompile`.
       - title: Type checker
-        state: TODO
+        state: DONE
         requirement: MUST
+        description: |
+          Every expression gets a type by the operator tables, empty literals take theirs from
+          context, lets are typed in dependency order with cycles reported, and constructors are
+          checked against their decision's payload. Unknown names and fields get a did-you-mean
+          hint. Imports and invocations are reported as unsupported until M5.
       - title: Evaluator over Go structs
-        state: TODO
+        state: DONE
         requirement: MUST
+        description: |
+          A checked expression compiles once into closures that read the host's own Go values in
+          place through the field paths NewKind recorded. Runtime errors point at the expression
+          that failed. Rules, precedence and the trace come with M4.
 
   - title: Policies
     description: |

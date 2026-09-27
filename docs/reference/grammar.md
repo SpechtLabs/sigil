@@ -6,7 +6,7 @@ permalink: /reference/grammar/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The lexer and parser implement the syntax and kinds are implemented; type checking and evaluation aren't yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. Syntax, kinds, type checking and expression evaluation are implemented; rules and decisions, composition and the CLI aren't yet. See [Open questions](/project/open-questions/).
 :::
 
 This is the complete syntax of Sigil source files and the three kinds of document they hold: policies, modules and kinds. A file uses the `.sigil` extension and may hold several documents, and each document's header keyword (`policy`, `module` or `kind`) decides which grammar applies to it. It covers what parses; what type-checks is on the other reference pages. The parser is hand-written: recursive descent for statements and a Pratt parser for expressions. The grammar below is written so that both fall out of it directly, with one token of lookahead everywhere except at the start of a call argument, where the parser peeks at a second token (see [Calls](#calls)).

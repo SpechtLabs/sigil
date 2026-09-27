@@ -6,7 +6,7 @@ permalink: /reference/lexical/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The lexer and parser implement the syntax and kinds are implemented; type checking and evaluation aren't yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. Syntax, kinds, type checking and expression evaluation are implemented; rules and decisions, composition and the CLI aren't yet. See [Open questions](/project/open-questions/).
 :::
 
 Sigil source is UTF-8 text. The lexer turns it into a flat stream of tokens and throws away whitespace, so newlines and indentation carry no meaning anywhere in the language. Comments become tokens of their own, which the parser skips and `sigil fmt` keeps, so formatting a file never loses one. Every statement starts with a keyword or, for a policy invocation, with a name followed by `(`, which is how the parser finds statement boundaries (see [Grammar](/reference/grammar/)).

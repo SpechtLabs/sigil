@@ -6,7 +6,7 @@ permalink: /reference/evaluation/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The lexer and parser implement the syntax and kinds are implemented; type checking and evaluation aren't yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. Syntax, kinds, type checking and expression evaluation are implemented; rules and decisions, composition and the CLI aren't yet. See [Open questions](/project/open-questions/).
 :::
 
 Evaluation takes a compiled policy and one input value and produces an outcome: exactly one decision for a kind with `precedence`, and every decision that fired for a [collecting kind](#collecting-kinds). Asserts then check the outcome and the input. The rules on this page are the whole algorithm. For why it works this way, read [Why rule order never matters](/understanding/order-independence/).

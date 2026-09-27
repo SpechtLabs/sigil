@@ -6,7 +6,7 @@ permalink: /reference/decisions/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The lexer and parser implement the syntax and kinds are implemented; type checking and evaluation aren't yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. Syntax, kinds, type checking and expression evaluation are implemented; rules and decisions, composition and the CLI aren't yet. See [Open questions](/project/open-questions/).
 :::
 
 A decision is the value a policy produces. The kind declares which decisions exist and what data each one carries; a policy builds them with constructors inside `when` bodies.
