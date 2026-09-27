@@ -56,14 +56,16 @@ These words are reserved and can't be used as identifiers.
 
 | Group          | Keywords                                                                          |
 | -------------- | --------------------------------------------------------------------------------- |
-| Policy files   | `policy`, `module`, `use`, `as`, `param`, `let`, `when`                           |
-| Kind files     | `kind`, `version`, `type`, `input`, `fn`, `decision`, `precedence`, `default`     |
-| Operators      | `and`, `or`, `not`, `in`, `all`, `any`, `has`, `like`, `matches`                  |
-| Literals       | `true`, `false`                                                                   |
+| Policy files   | `policy`, `module`, `use`, `as`, `param`, `let`, `when`, `assert`                 |
+| Kind files     | `kind`, `version`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default` |
+| Operators      | `and`, `or`, `xor`, `not`, `in`, `all`, `any`, `one`, `exclusive`, `has`, `like`, `matches` |
+| Values         | `true`, `false`, `outcome`                                                        |
 
 The built-in type names (`bool`, `int`, `float`, `string`, `duration`, `timestamp`, `list`, `map`) aren't keywords. They only mean a type in type position, so a field declared as `duration: duration` is a field named `duration` of type `duration`. A kind can't declare a struct type with one of those names.
 
-Decision names like `deny` or `approve` aren't keywords either. Each kind declares its own.
+Decision names like `deny` or `approve` aren't keywords either. Each kind declares its own, and they're identifiers in the policy's namespace like inputs and lets (see [Identifiers](/reference/policy-files/#identifiers)).
+
+`assert`, `collect`, `xor`, `one`, `exclusive` and `outcome` are proposed together with [assertions and collecting kinds](/project/open-questions/#assertions).
 
 Keywords are allowed as field and payload names, because real Go structs have fields called `kind` or `type`. `service.type` is valid: the token after `.` is always read as a name. The same goes for field declarations in a `type` body, decision fields and named arguments. Top-level names such as inputs, params, lets and imported names must be plain identifiers. (proposed; without it, a Go field tagged `type` or `kind` couldn't be exported to a kind at all.)
 

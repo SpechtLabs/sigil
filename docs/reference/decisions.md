@@ -18,7 +18,7 @@ review("service_owner", approvers: approvers)
 
 ## Constructors, not calls
 
-A decision constructor builds a value the way `Err("...")` does in Rust. Nothing runs, nothing returns early, and later rules still get evaluated. Each constructor that evaluation reaches becomes a candidate, and the host acts on the winning candidate after evaluation finishes. How the winner is picked is on [Evaluation semantics](/reference/evaluation/).
+A decision constructor builds a value the way `Err("...")` does in Rust. Nothing runs, nothing returns early, and later rules still get evaluated. Each constructor that evaluation reaches becomes a candidate. After evaluation finishes, the host acts on the winning candidate, or, for a [collecting kind](/reference/kind-files/#collect), on every candidate. How the outcome is formed is on [Evaluation semantics](/reference/evaluation/).
 
 Constructors may only appear:
 
@@ -26,6 +26,8 @@ Constructors may only appear:
 - in the kind's `default` declaration.
 
 A constructor isn't an expression. It can't be bound with `let`, passed to a function, or compared. The name must be a decision the kind declares; any other name in constructor position is a compile error.
+
+The bare name without parentheses is different: `approve` on its own is a [`decision` value](/reference/types/#decision), which `assert` conditions compare against [`outcome`](/reference/expressions/#decision-values-and-outcome). It names the decision and builds nothing. (proposed)
 
 Whether one `when` body may contain several constructors is an [open question](/project/open-questions/).
 
@@ -39,7 +41,7 @@ decision review(reason: string, approvers: list<string>)
 decision approve(reason: string, bake: duration = 1h)
 ```
 
-A kind file declares the decision's name, its reason, and zero or more payload fields with types and optional defaults. See [Kind files](/reference/kind-files/) for the full declaration rules and for `precedence`, which ranks decisions against each other.
+A kind file declares the decision's name, its reason, and zero or more payload fields with types and optional defaults. See [Kind files](/reference/kind-files/) for the full declaration rules, for `precedence`, which ranks decisions against each other, and for `collect all`, which applies all of them.
 
 ## The reason
 
@@ -120,13 +122,15 @@ When a compile error involves a decision, the message quotes the decision's sign
 
 ## The default decision
 
-The kind names the decision that wins when no rule fires:
+The kind names the decision that applies when no rule fires:
 
 ```sigil
 default deny("no_rule_matched")
 ```
 
 It's a constructor like any other and follows the same rules. Every payload value in it must be a constant, because there's no rule context to evaluate expressions in. (proposed)
+
+A collecting kind may leave the default out; then an evaluation where nothing fires has an empty outcome.
 
 ## What the host gets back
 
@@ -147,3 +151,7 @@ When the host evaluates `payments.production` and the `service_owner` review win
 :::
 
 On the Go side, `Decision[T].Match` gives typed access to the payload. See the [Go API](/reference/go-api/).
+
+### Collecting kinds
+
+A collecting kind returns every candidate, not a winner. The result holds a list of entries, each with the decision, reason, policy and payload fields from the table above, sorted by the kind's declaration order and then by source position. It can be empty. `Decision[T].MatchAll` returns every entry of one decision with typed payloads. (proposed)

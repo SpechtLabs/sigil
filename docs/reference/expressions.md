@@ -9,7 +9,7 @@ permalink: /reference/expressions/
 This page specifies the language as designed. Nothing is implemented yet; see [Open questions](/project/open-questions/).
 :::
 
-Expressions appear in `when` conditions, `let` bindings, param defaults, policy invocation arguments and decision payloads. Every expression has a static type that the compiler knows before evaluation, and nothing converts between types implicitly. The types themselves are on [Types](/reference/types/).
+Expressions appear in `when` conditions, `assert` conditions, `let` bindings, param defaults, policy invocation arguments and decision payloads. Every expression has a static type that the compiler knows before evaluation, and nothing converts between types implicitly. The types themselves are on [Types](/reference/types/).
 
 ## Operator precedence
 
@@ -18,11 +18,13 @@ From lowest to highest:
 | Level | Operators                   | Associativity   | Notes                                                                                     |
 | ----- | --------------------------- | --------------- | ----------------------------------------------------------------------------------------- |
 | 1     | `or`                        | left            | Short-circuits                                                                            |
+| 1     | `xor`                       | none            | Evaluates both sides; doesn't mix with `or` without parentheses                           |
 | 2     | `and`                       | left            | Short-circuits                                                                            |
 | 3     | `not`                       | prefix          | Unary                                                                                     |
 | 4     | `==` `!=` `<` `<=` `>` `>=` | none            | Strictly typed; no implicit coercion                                                      |
 | 4     | `in`, `not in`              | none            | Element in list, key in map, substring in string                                          |
 | 4     | `all in`, `any in`          | none            | List subset and list intersection                                                         |
+| 4     | `one in`, `exclusive in`    | none            | Exactly one, or at most one, element of a list is in another                              |
 | 4     | `has`                       | none            | Map contains all given pairs, or a key                                                    |
 | 4     | `like`, `matches`           | none            | Glob and RE2 regex; the pattern must be a literal                                         |
 | 5     | `??`                        | right           | Default for optional values                                                               |
@@ -37,6 +39,7 @@ A few consequences worth spelling out:
 - `not` binds looser than comparisons, so `not a == b` means `not (a == b)`, and `not "admin" in actor.roles` means `not ("admin" in actor.roles)`. Prefer `"admin" not in actor.roles`.
 - `??` binds tighter than comparisons, so `owner ?? "unknown" == "team-a"` means `(owner ?? "unknown") == "team-a"`.
 - `+` binds tighter than `??`, so `a ?? b + c` means `a ?? (b + c)`.
+- `xor` shares level 1 with `or` but can't be chained or mixed with it. `a xor b xor c` and `a or b xor c` are compile errors; parenthesize to say which grouping you mean.
 
 ::: tip Proposed
 Level-4 operators are non-associative. `a < b < c`, `a == b == c` and `a in b == c` are compile errors; add parentheses to say what you mean. They all share one level, and refusing to chain them avoids a class of misreadings.
@@ -44,11 +47,26 @@ Level-4 operators are non-associative. `a < b < c`, `a == b == c` and `a in b ==
 
 ## Boolean operators
 
-`and`, `or` and `not` take `bool` operands and produce `bool`. There's no truthiness: `when approvers { ... }` is a compile error because `approvers` is a `list<string>`, not a `bool`.
+`and`, `or`, `xor` and `not` take `bool` operands and produce `bool`. There's no truthiness: `when approvers { ... }` is a compile error because `approvers` is a `list<string>`, not a `bool`.
+
+The operators are words, not `&&`, `||` and `!`. Words read better across multi-line conditions and pair with `not in`, `all in` and the other word operators. This is settled; see [Open questions](/project/open-questions/#boolean-operators).
 
 `and` and `or` short-circuit and evaluate left to right. The right operand of `a and b` is never evaluated when `a` is false, which matters for [runtime errors](/reference/evaluation/): a list index or host function call on the right can't fault when the guard on the left fails.
 
-Whether the language spells these `and`/`or`/`not` or `&&`/`||`/`!` is an [open question](/project/open-questions/). These docs use the words.
+`xor` is the textbook exclusive or: true when exactly one of its two operands is true.
+
+| `a`     | `b`     | `a xor b` |
+| ------- | ------- | --------- |
+| `false` | `false` | `false`   |
+| `false` | `true`  | `true`    |
+| `true`  | `false` | `true`    |
+| `true`  | `true`  | `false`   |
+
+```sigil
+release.hotfix xor release.scheduled
+```
+
+It can't short-circuit, because the result always depends on both sides, so both operands are evaluated and either can raise a runtime error. `xor` takes exactly two operands. Chaining it would compute parity (an odd number of true operands), which is almost never what a reader expects from `a xor b xor c`, so it's a compile error; for "exactly one of several" use [`one in`](#list-set-operators). (proposed: the level and the ban on chaining)
 
 ## Comparison
 
@@ -86,21 +104,29 @@ service.tier in ["critical", "standard"]     // list literal
 
 `x not in y` is exactly `not (x in y)`. The parser reads `not in` as a single operator when `not` follows an operand, and as unary `not` when it starts an expression.
 
-## List set operators: `all in` and `any in`
+## List set operators
 
-Both take two lists of the same element type and produce `bool`.
+`all in`, `any in`, `one in` and `exclusive in` take two lists of the same element type and produce `bool`.
 
-| Form          | True when                                         |
-| ------------- | ------------------------------------------------- |
-| `a all in b`  | every element of `a` is in `b` (subset)           |
-| `a any in b`  | at least one element of `a` is in `b` (intersection is non-empty) |
+| Form               | True when                                                         |
+| ------------------ | ----------------------------------------------------------------- |
+| `a all in b`       | every element of `a` is in `b` (subset)                           |
+| `a any in b`       | at least one element of `a` is in `b` (intersection is non-empty) |
+| `a one in b`       | exactly one distinct element of `a` is in `b`                     |
+| `a exclusive in b` | at most one distinct element of `a` is in `b`                     |
 
 ```sigil
 split(service.labels["regions"], ",") all in actor.regions
 actor.teams any in service.owners
+["prod-admin", "prod-auditor"] exclusive in actor.roles
+[read, write, admin] one in outcome
 ```
 
-An empty left side makes `all in` true and `any in` false. The vacuous truth of `[] all in b` is an [open question](/project/open-questions/): either keep the math and have the linter warn, or define an empty left side as false.
+`exclusive in` is mutual exclusion as separation-of-duties rules mean it: holding none of the listed values is fine, holding two is not. `one in` additionally requires one of them to be present. With two elements, `[a, b] one in xs` is `(a in xs) xor (b in xs)`.
+
+Both count distinct elements of `a` that appear in `b`. Repeats don't count twice on either side, so `["x", "x"] exclusive in ["x"]` is true, and so is `["x", "y"] exclusive in ["x", "x"]`. A literal left side with duplicates, or with fewer than two elements, always gives the same answer, and the linter warns about it. (proposed)
+
+An empty left side makes `all in` and `exclusive in` true, and `any in` and `one in` false. The vacuous truth of `[] all in b` is an [open question](/project/open-questions/): either keep the math and have the linter warn, or define an empty left side as false.
 
 ::: tip Split returns a list with one empty string
 Host functions follow their Go implementation. Go's `strings.Split("", ",")` returns `[""]`, not `[]`. So when the `regions` label is missing, `split(service.labels["regions"], ",")` yields `[""]`, and `[""] all in actor.regions` is false. That example fails closed by accident of `split`, not by design; don't rely on it for a different function.
@@ -251,6 +277,25 @@ The quantifier variable follows the no-shadowing rule: naming it after an input,
 ::: tip Proposed
 The "extends as far right as possible" rule and the no-shadowing rule for quantifier variables are proposed. The current design shows quantifiers only in isolation.
 :::
+
+## Decision values and `outcome`
+
+Inside an `assert`, a policy can test what evaluation decided. Two things make that possible:
+
+- A decision's name, used as an operand, is a value of type [`decision`](/reference/types/#decision). `approve` in `approve in outcome` refers to the decision, not to a constructor call; a constructor always has parentheses.
+- `outcome` is a `list<decision>` holding each distinct decision the host will get back, in the kind's declaration order. In a kind with `precedence` it holds exactly one element, the winner or the default. In a [collecting kind](/reference/kind-files/#collect) it holds every decision that fired, or the default if the kind declares one and nothing fired.
+
+```sigil
+assert [customer_data_writer, development_environment_writer] exclusive in outcome,
+  "sod_customer_dev"
+
+assert customer_data_writer not in outcome or actor.clearance == "pii",
+  "pii_needs_clearance"
+```
+
+`outcome` can only appear in an `assert` condition. A `when` condition or a `let` that read it could make a rule depend on its own result: `when admin not in outcome { admin("x") }` would fire exactly when it doesn't. See [Assertions](/reference/evaluation/#assertions) for when asserts run. (proposed)
+
+Decision values can be compared with `==` and `!=` and collected in lists, and nothing else. Reading a payload through `outcome` isn't possible yet; see [Open questions](/project/open-questions/#decision-values-and-outcome).
 
 ## Evaluation order
 

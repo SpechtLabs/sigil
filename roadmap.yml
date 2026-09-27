@@ -91,8 +91,9 @@ milestones:
         state: TODO
         requirement: MUST
         description: |
-          Boolean operator spelling, quantifier body extent, chained comparisons, keywords as field
-          names, glob syntax and multiple decisions per block.
+          Quantifier body extent, chained comparisons, keywords as field names, glob syntax,
+          multiple decisions per block and the `assert` syntax. Boolean operator spelling is
+          settled: words.
       - title: Published documentation site
         state: DOING
         requirement: SHOULD

@@ -36,10 +36,12 @@ Whitespace and comments may appear between any two tokens and are discarded. Non
 ```text
 Ident       ::= [A-Za-z_] [A-Za-z0-9_]* - Keyword
 Keyword     ::= "policy" | "module" | "use" | "as" | "param" | "let" | "when"
+              | "assert"
               | "kind" | "version" | "type" | "input" | "fn" | "decision"
-              | "precedence" | "default"
-              | "and" | "or" | "not" | "in" | "all" | "any" | "has"
-              | "like" | "matches" | "true" | "false"
+              | "precedence" | "collect" | "default"
+              | "and" | "or" | "xor" | "not" | "in" | "all" | "any" | "one"
+              | "exclusive" | "has" | "like" | "matches"
+              | "true" | "false" | "outcome"
 
 Int         ::= [0-9]+
 Float       ::= [0-9]+ "." [0-9]+
@@ -106,7 +108,7 @@ PolicyDoc    ::= PolicyHeader UseStmt* PolicyStmt*
 PolicyHeader ::= "policy" PolicyName ":" Ident
 PolicyName   ::= Ident ( "." Ident )*     /* no whitespace around "." */
 
-PolicyStmt   ::= ParamStmt | LetStmt | WhenStmt | Call
+PolicyStmt   ::= ParamStmt | LetStmt | WhenStmt | AssertStmt | Call
 
 UseStmt      ::= "use" PolicyName ( "as" Ident | "." "{" ImportList "}" )?
 ImportList   ::= ImportItem ( "," ImportItem )* ","?
@@ -115,7 +117,8 @@ ImportItem   ::= Ident ( "as" Ident )?
 ParamStmt    ::= "param" Ident ":" Type ( "=" Expr )?
 LetStmt      ::= "let" Ident "=" Expr
 WhenStmt     ::= "when" Expr "{" RuleItem* "}"
-RuleItem     ::= WhenStmt | Call
+RuleItem     ::= WhenStmt | AssertStmt | Call
+AssertStmt   ::= "assert" Expr "," String
 
 Call         ::= Ident "(" CallArgs? ")"
 CallArgs     ::= Expr ( "," NamedArg )* ","?       /* decision constructor */
@@ -127,6 +130,8 @@ Name         ::= Ident | Keyword          /* field and payload names */
 ```
 
 A `Call` is either a decision constructor or a policy invocation, and the parser doesn't need to know which. The checker decides by the name: a decision of the kind makes it a constructor, whose first argument must be a string literal reason; an imported policy makes it an invocation, whose arguments must all be named. Anything else is a compile error.
+
+An `AssertStmt`'s reason is a plain string literal, never a raw string, like a decision reason. The `,` ends the condition, including a quantifier body that would otherwise run on. See [Assertions](/reference/evaluation/#assertions). (proposed)
 
 `UseStmt`s come before every other statement. A `use` after a `param`, `let`, rule or invocation is a parse error with a hint to move it up.
 
@@ -148,7 +153,7 @@ KindDoc      ::= KindHeader KindStmt*
 KindHeader   ::= "kind" Ident "version" Int
 
 KindStmt     ::= TypeDecl | InputDecl | FnDecl | DecisionDecl
-               | PrecedenceDecl | DefaultDecl
+               | PrecedenceDecl | CollectDecl | DefaultDecl
 
 TypeDecl     ::= "type" Ident "{" FieldDecl* "}"
 FieldDecl    ::= Name ":" Type
@@ -158,10 +163,11 @@ Param        ::= Ident ":" Type
 DecisionDecl ::= "decision" Ident "(" DecisionField ( "," DecisionField )* ","? ")"
 DecisionField ::= Name ":" Type ( "=" Expr )?
 PrecedenceDecl ::= "precedence" Ident ( ">" Ident )*
+CollectDecl  ::= "collect" "all"
 DefaultDecl  ::= "default" Constructor
 ```
 
-That `DecisionDecl` starts with `reason: string`, that `precedence` names every decision once, and that defaults are constants are semantic rules, checked after parsing. See [Kind files](/reference/kind-files/).
+That `DecisionDecl` starts with `reason: string`, that a kind has exactly one of `precedence` and `collect all`, that `precedence` names every decision once, and that defaults are constants are semantic rules, checked after parsing. See [Kind files](/reference/kind-files/).
 
 ## Types
 
@@ -178,7 +184,7 @@ BaseType     ::= "list" "<" Type ">"
 
 ```text
 Expr         ::= OrExpr
-OrExpr       ::= AndExpr ( "or" AndExpr )*
+OrExpr       ::= AndExpr ( ( "or" AndExpr )+ | "xor" AndExpr )?   /* no mixing */
 AndExpr      ::= NotExpr ( "and" NotExpr )*
 NotExpr      ::= "not" NotExpr
                | Quantifier
@@ -187,6 +193,7 @@ Quantifier   ::= ( "any" | "all" ) Ident "in" Coalesce ":" Expr
 RelExpr      ::= Coalesce ( RelOp Coalesce )?          /* non-associative */
 RelOp        ::= "==" | "!=" | "<" | "<=" | ">" | ">="
                | "in" | "not" "in" | "all" "in" | "any" "in"
+               | "one" "in" | "exclusive" "in"
                | "has" | "like" | "matches"
 Coalesce     ::= Additive ( "??" Coalesce )?          /* right-associative */
 Additive     ::= Unary ( ( "+" | "-" ) Unary )*
@@ -194,14 +201,14 @@ Unary        ::= "-" Unary | Postfix
 Postfix      ::= Primary ( "." Name | "[" Expr "]" | "(" Args? ")" )*
 Args         ::= Expr ( "," Expr )* ","?
 
-Primary      ::= Literal | Ident | "(" Expr ")" | ListLit | MapLit
+Primary      ::= Literal | Ident | "outcome" | "(" Expr ")" | ListLit | MapLit
 Literal      ::= "true" | "false" | Int | Float | Duration | String | RawString
 ListLit      ::= "[" ( Expr ( "," Expr )* ","? )? "]"
 MapLit       ::= "{" ( MapEntry ( "," MapEntry )* ","? )? "}"
 MapEntry     ::= Coalesce ":" Expr
 ```
 
-Syntax alone accepts a few things the checker rejects: a call expression on anything but a host function name, a call statement on anything but a decision or an imported policy, a non-literal pattern after `like` or `matches`, a non-literal reason in a constructor, and `.name` on something that isn't a struct or a whole-module import. Leaving those to the checker gives better error messages than a parse failure would.
+Syntax alone accepts a few things the checker rejects: `outcome` outside an `assert` condition, a call expression on anything but a host function name, a call statement on anything but a decision or an imported policy, a non-literal pattern after `like` or `matches`, a non-literal reason in a constructor, and `.name` on something that isn't a struct or a whole-module import. Leaving those to the checker gives better error messages than a parse failure would.
 
 ## Operator precedence
 
@@ -210,11 +217,13 @@ The expression grammar encodes this table, lowest to highest. It matches [Expres
 | Level | Operators                   | Associativity  |
 | ----- | --------------------------- | -------------- |
 | 1     | `or`                        | left           |
+| 1     | `xor`                       | none           |
 | 2     | `and`                       | left           |
 | 3     | `not`                       | prefix         |
 | 4     | `==` `!=` `<` `<=` `>` `>=` | none           |
 | 4     | `in`, `not in`              | none           |
 | 4     | `all in`, `any in`          | none           |
+| 4     | `one in`, `exclusive in`    | none           |
 | 4     | `has`                       | none           |
 | 4     | `like`, `matches`           | none           |
 | 5     | `??`                        | right          |
@@ -222,10 +231,12 @@ The expression grammar encodes this table, lowest to highest. It matches [Expres
 | 7     | `-`                         | prefix         |
 | 8     | `.field` `[key]` `f(args)`  | left (postfix) |
 
+`or` and `xor` share level 1, but `OrExpr` takes either a chain of `or` or a single `xor`, never both, so `a xor b xor c` and `a or b xor c` fail to parse with a hint to add parentheses.
+
 A quantifier sits at level 3 as an alternative to `not`. Its range is parsed at level 5, and its body is a full `Expr`, so the body extends as far right as the enclosing construct allows.
 
 ::: tip Proposed
-Three things in this grammar are proposals rather than settled design: level 4 is non-associative, the quantifier body extends to the right, and keywords are allowed as field names. The next sections explain each.
+Several things in this grammar are proposals rather than settled design: level 4 is non-associative, the quantifier body extends to the right, keywords are allowed as field names, and `assert`, `collect all`, `xor`, `one in`, `exclusive in` and `outcome` are new with [assertions](/project/open-questions/#assertions). The next sections explain the first three.
 :::
 
 ## How the parser decides
@@ -238,6 +249,8 @@ Three things in this grammar are proposals rather than settled design: level 4 i
 - Where an operator is expected (right after a complete operand), `all` or `any` must be followed by `in` and forms the binary operator.
 
 `not` works the same way. At operand position it's unary negation; at operator position it must be followed by `in` and forms `not in`.
+
+`one` and `exclusive` only exist at operator position, followed by `in`. At operand position they're a parse error; there's no `one x in xs: ...` quantifier.
 
 ```sigil
 all r in actor.roles: r != "admin"      // quantifier: `all` at operand position
@@ -258,11 +271,11 @@ any r in actor.roles: r like "sre-*" and eligible
 any r in actor.roles: (r like "sre-*" and eligible)
 ```
 
-It stops at a token that can't continue an expression: `)`, `]`, `}`, `,`, `{` in operator position, or a statement keyword.
+It stops at a token that can't continue an expression: `)`, `]`, `}`, `,`, `{` in operator position, or a statement keyword. The `,` case is what lets `assert all g in grants: g != "root", "no_root"` end its condition before the reason.
 
 ### Statement boundaries
 
-Newlines never end anything. Every top-level statement starts with a keyword (`policy`, `use`, `param`, `let`, `when` in policy files; `module`, `use`, `let` in module files; `kind`, `type`, `input`, `fn`, `decision`, `precedence`, `default` in kind files), or, in a policy file, with an identifier followed by `(`, which is a policy invocation. None of those keywords can continue an expression, and an expression never continues with a bare identifier, so when the parser is inside a `let` expression and meets `let`, `when` or `guardrails(`, the expression is over. A header keyword or a `---` ends the whole document the same way. No other statement starts with an identifier, so the parse stays unambiguous. This is what makes the files safe to indent or join however a text templater likes.
+Newlines never end anything. Every top-level statement starts with a keyword (`policy`, `use`, `param`, `let`, `when`, `assert` in policy files; `module`, `use`, `let` in module files; `kind`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default` in kind files), or, in a policy file, with an identifier followed by `(`, which is a policy invocation. None of those keywords can continue an expression, and an expression never continues with a bare identifier, so when the parser is inside a `let` expression and meets `let`, `when` or `guardrails(`, the expression is over. A header keyword or a `---` ends the whole document the same way. No other statement starts with an identifier, so the parse stays unambiguous. This is what makes the files safe to indent or join however a text templater likes.
 
 ```sigil
 let a = environment == "production" let b = "deployer" in actor.roles guardrails(min_soak: 4h) when a and b { review("service_owner", approvers: approvers) }

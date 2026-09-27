@@ -25,7 +25,7 @@ Two groups of people touch Sigil, and they want different things.
 
 A policy should read like the sentence it encodes. Terse syntax is fine; `when release.soak < min_soak { deny("soak_too_short") }` needs no explanation. Rego-style logic programming, where a rule body is a set of unification constraints and iteration happens implicitly, is the thing we're steering away from. People who've used OPA know the pattern: the policy works, but only two people on the team can change it.
 
-This goal wins most arguments about syntax. It's why the draft uses `and`/`or`/`not` instead of `&&`/`||`/`!` (still an [open question](/project/open-questions/)), why there's no `else`, and why decision payload arguments are named.
+This goal wins most arguments about syntax. It's why the language uses `and`/`or`/`not` instead of `&&`/`||`/`!`, why there's no `else`, and why decision payload arguments are named.
 
 ### Finite and halting by design
 

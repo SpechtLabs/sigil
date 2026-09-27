@@ -68,8 +68,18 @@ var Deploy = policy.NewKind[Input]("DeployApproval",
 | ----------------------------- | ------------------------------------- | ---------------------------------------------------------------------- |
 | `policy.Version(n)`           | `kind DeployApproval version n`       | Contract version, compared by `sigil breaking`                         |
 | `policy.Decisions(d...)`      | `decision ...` and `precedence ...`   | Argument order is precedence, highest first                            |
+| `policy.Collect(d...)`        | `decision ...` and `collect all`      | Instead of `Decisions`: every fired decision applies. Argument order is declaration order (proposed) |
 | `policy.Default(d, reason)`   | `default deny("no_rule_matched")`     | Result when no rule fires; payload fields take their defaults          |
 | `policy.Func(name, fn)`       | `fn split(s: string, sep: string) -> list<string>` | The DSL signature is derived from the Go function's type  |
+
+A kind takes exactly one of `policy.Decisions` and `policy.Collect`; `NewKind` panics on both or neither. A collecting kind may leave out `policy.Default`:
+
+```go
+var Access = policy.NewKind[AccessInput]("AccessGrant",
+	policy.Version(1),
+	policy.Collect(Read, Write, Admin, CustomerDataWriter, DevEnvWriter),
+)
+```
 
 `NewKind` reflects over `Input` once and builds a precomputed accessor per field path, so `Eval` never touches `reflect`. `policy.Func` derives the DSL signature from the Go function's type.
 
@@ -186,7 +196,25 @@ if err != nil {
 }
 ```
 
-On a runtime error (index out of range, integer overflow, a host function returning an error) `Eval` returns the error together with a result holding the kind's default decision. A host that fails closed can use `res` directly.
+On a runtime error (index out of range, integer overflow, a host function returning an error) `Eval` returns the error together with a result holding the kind's default decision, or an empty outcome for a collecting kind. A host that fails closed can use `res` directly.
+
+A failed [assert](/reference/evaluation/#assertions) returns a `*policy.AssertionError` with the same kind of result. Tell it apart from a runtime error with `errors.As`, and count it separately:
+
+```go
+res, err := p.Eval(ctx, input)
+var ae *policy.AssertionError
+switch {
+case errors.As(err, &ae):
+	for _, f := range ae.Failures { // every failing assert, sorted by position
+		assertFailures.WithLabelValues(f.Reason).Inc()
+		log.Error("policy assertion failed", "reason", f.Reason, "at", f.Position)
+	}
+case err != nil:
+	log.Error("policy evaluation failed", "err", err)
+}
+```
+
+Each failure carries the assert's reason, its call chain and, for an assert over `outcome`, the candidates involved. (proposed)
 
 ## Result
 
@@ -196,9 +224,19 @@ type Result struct {
 	Reason   string           // "service_owner"
 	Policy   string           // "payments.production"
 	Payload  map[string]Value // untyped view; use Decision[T].Match for typed
+	Outcome  []Entry          // collecting kinds: every candidate, sorted; may be empty
 	Trace    Trace            // all candidates, conditions for the winning decision
 }
+
+type Entry struct {
+	Decision string
+	Reason   string
+	Policy   string
+	Payload  map[string]Value
+}
 ```
+
+For a kind with `precedence`, `Decision`, `Reason`, `Policy` and `Payload` describe the winner and `Outcome` holds that one entry. For a collecting kind the single fields are empty and `Outcome` holds everything. (proposed; whether one `Result` type should serve both, or a collecting kind should get its own, is open.)
 
 What `Policy` holds is still open. When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, reached through an invocation, so `Policy` could name either one. See [Open questions](/project/open-questions/). `Trace` lists every candidate by policy name, reason and call chain, with each step's file, line, column and document name (for example `payments/production.sigil:14:3 → deploy/production.sigil:16:5`), and records which conditions held for every candidate of the winning decision. See [Evaluation semantics](/reference/evaluation/) for how the winner is picked.
 
@@ -217,6 +255,16 @@ if a, ok := Approve.Match(res); ok {
 ```
 
 `Match` returns `false` if the result is a different decision.
+
+A collecting kind can grant a decision more than once, so it matches with `MatchAll`, which returns every entry of that decision with its reason and typed payload:
+
+```go
+for _, g := range Admin.MatchAll(res) {
+	grantAdmin(g.Payload.TTL, g.Reason) // g.Payload is a typed AdminData
+}
+```
+
+`Match` on a collecting kind's result is a runtime panic, because "the" match isn't defined. (proposed)
 
 ## Dynamic input
 
