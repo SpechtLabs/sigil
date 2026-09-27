@@ -1,6 +1,7 @@
 package types_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spechtlabs/sigil/internal/types"
@@ -33,5 +34,17 @@ func TestLookup(t *testing.T) {
 				t.Errorf("Lookup(%q) = %v, %v; want %v, %v", tt.name, got, ok, tt.want, tt.ok)
 			}
 		})
+	}
+}
+
+func TestScalarNames(t *testing.T) {
+	got := strings.Join(types.ScalarNames(), ", ")
+	if want := "bool, int, float, string, duration, timestamp"; got != want {
+		t.Errorf("ScalarNames() = %q, want %q", got, want)
+	}
+	for _, name := range types.ScalarNames() {
+		if _, ok := types.Lookup(name); !ok {
+			t.Errorf("Lookup(%q) failed for a name ScalarNames returned", name)
+		}
 	}
 }

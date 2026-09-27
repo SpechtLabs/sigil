@@ -364,8 +364,7 @@ func (l *loader) unknownType(name *ast.Ident) {
 	if name == nil {
 		return
 	}
-	candidates := make([]string, 0, 6+len(l.kind.Types))
-	candidates = append(candidates, "bool", "int", "float", "string", "duration", "timestamp")
+	candidates := types.ScalarNames()
 	for _, s := range l.kind.Types {
 		candidates = append(candidates, s.Name)
 	}

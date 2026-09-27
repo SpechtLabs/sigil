@@ -118,7 +118,7 @@ func (c *Checker) resolveType(t ast.Type, k *kind.Kind) types.Type {
 		if s := k.Type(t.Name.Name); s != nil {
 			return s
 		}
-		candidates := []string{"bool", "int", "float", "string", "duration", "timestamp"}
+		candidates := types.ScalarNames()
 		for _, s := range k.Types {
 			candidates = append(candidates, s.Name)
 		}

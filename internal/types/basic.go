@@ -47,6 +47,16 @@ func IsReserved(name string) bool {
 	return name == "list" || name == "map"
 }
 
+// ScalarNames returns the names of the built-in scalar types in
+// declaration order, the candidates for a "did you mean" on a type name.
+func ScalarNames() []string {
+	names := make([]string, 0, Timestamp)
+	for b := Bool; b <= Timestamp; b++ {
+		names = append(names, basicNames[b])
+	}
+	return names
+}
+
 // String returns the type's name.
 func (b Basic) String() string {
 	if int(b) < len(basicNames) {
