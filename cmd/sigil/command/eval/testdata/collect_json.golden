@@ -1,0 +1,63 @@
+{
+  "policy": "grants",
+  "outcome": [
+    {
+      "payload": {
+        "scope": "eng"
+      },
+      "decision": "read",
+      "reason": "member",
+      "policy": "grants",
+      "position": "testdata/grants/grants.sigil:4:3"
+    },
+    {
+      "decision": "write",
+      "reason": "owner",
+      "policy": "grants",
+      "position": "testdata/grants/grants.sigil:8:3"
+    },
+    {
+      "decision": "write",
+      "reason": "oncall",
+      "policy": "grants",
+      "position": "testdata/grants/grants.sigil:12:3"
+    }
+  ],
+  "trace": [
+    {
+      "payload": {
+        "scope": "eng"
+      },
+      "decision": "read",
+      "reason": "member",
+      "policy": "grants",
+      "position": "testdata/grants/grants.sigil:4:3",
+      "conditions": [
+        "\"eng\" in teams"
+      ],
+      "outcome": true
+    },
+    {
+      "decision": "write",
+      "reason": "owner",
+      "policy": "grants",
+      "position": "testdata/grants/grants.sigil:8:3",
+      "conditions": [
+        "\"platform\" in teams"
+      ],
+      "outcome": true
+    },
+    {
+      "decision": "write",
+      "reason": "oncall",
+      "policy": "grants",
+      "position": "testdata/grants/grants.sigil:12:3",
+      "conditions": [
+        "\"oncall\" in teams"
+      ],
+      "outcome": true
+    }
+  ],
+  "collect": true
+}
+--- ok ---

@@ -127,7 +127,7 @@ func (p *parser) parseExpr(minBP int) ast.Expr {
 		if op.assoc == right {
 			rbp = op.bp
 		}
-		p.after = op.op
+		p.after, p.afterPos = op.op, opPos
 		y := p.parseExpr(rbp)
 		x = &ast.BinaryExpr{X: x, Y: y, OpPos: opPos, Op: op.op}
 		p.checkNeighbor(op.op)
@@ -167,17 +167,17 @@ func (p *parser) parsePrefix(minBP int) ast.Expr {
 		p.requireLevel(minBP, bpNot, "`not`")
 		pos := p.tok.Pos
 		p.next()
-		p.after = ast.OpNot
+		p.after, p.afterPos = ast.OpNot, pos
 		return &ast.UnaryExpr{Op: ast.OpNot, OpPos: pos, X: p.parseExpr(bpNot)}
 	case token.Minus:
 		pos := p.tok.Pos
 		p.next()
-		p.after = ast.OpNeg
+		p.after, p.afterPos = ast.OpNeg, pos
 		return &ast.UnaryExpr{Op: ast.OpNeg, OpPos: pos, X: p.parseExpr(bpNeg)}
 	case token.KwPresent:
 		pos := p.tok.Pos
 		p.next()
-		p.after = ast.OpPresent
+		p.after, p.afterPos = ast.OpPresent, pos
 		return &ast.UnaryExpr{Op: ast.OpPresent, OpPos: pos, X: p.parseExpr(bpNeg)}
 	case token.KwAny, token.KwAll:
 		p.requireLevel(minBP, bpNot, "a quantifier")
@@ -351,11 +351,18 @@ func (p *parser) parsePrimary() ast.Expr {
 // parseMap parses `{key: value, ...}` from the opening brace.
 func (p *parser) parseMap() ast.Expr {
 	open := p.tok
+	op, opPos := p.after, p.afterPos
 	p.next()
 	var entries []ast.MapEntry
 	for p.tok.Kind != token.RBrace {
+		if len(entries) == 0 && startsBodyStmt(p.tok.Kind) {
+			p.missingOperand(op, opPos, open)
+		}
 		p.after = ast.OpInvalid
 		key := p.parseExpr(bpCoalesce)
+		if _, call := key.(*ast.CallExpr); call && len(entries) == 0 && p.tok.Kind != token.Colon {
+			p.missingOperand(op, opPos, open)
+		}
 		p.expect(token.Colon, "a map entry is written `key: value`")
 		p.after = ast.OpInvalid
 		value := p.parseExpr(lowest)
@@ -367,4 +374,30 @@ func (p *parser) parseMap() ast.Expr {
 	}
 	closing := p.expectClosing(token.RBrace, open)
 	return &ast.MapLit{Entries: entries, From: open.Pos, To: closing.End}
+}
+
+// missingOperand fails at the operator op, whose right operand is a map
+// literal that looks like a rule's body instead: it starts with a
+// statement keyword, or with a constructor that isn't a key, as in
+// `when release.soak < { deny(x) }`. At the start of an expression, with
+// no operator, it does nothing and the map's own error stands. The brace
+// is kept, so a `when` can parse the rest of its body.
+func (p *parser) missingOperand(op ast.Op, pos token.Pos, brace token.Token) {
+	if op == ast.OpInvalid {
+		return
+	}
+	p.lostBody = &brace
+	end := token.Pos{Offset: pos.Offset + len(op.String()), Line: pos.Line, Column: pos.Column + len(op.String())}
+	p.errorAt(pos, end, fmt.Sprintf("`%s` has no right operand", op),
+		"the `{` after it was read as a map literal; finish the condition before the rule's `{`")
+}
+
+// startsBodyStmt reports whether k starts a statement of a `when` body
+// other than a call.
+func startsBodyStmt(k token.Kind) bool {
+	switch k {
+	case token.KwWhen, token.KwLet, token.KwPub, token.KwAssert:
+		return true
+	}
+	return false
 }

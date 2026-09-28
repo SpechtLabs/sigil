@@ -23,6 +23,13 @@ authors:
     contact: cedric@specht-labs.de
 
 timeline:
+  - date: 2026-09-28
+    title: Tooling I implemented
+    description: |
+      `sigil fmt`, `check` with lints and `sigil.yaml`, `eval`, `test` with `*_test.yaml` files,
+      `export`, and the `policytest` and `cli` packages. The stock binary evaluates against the
+      kind file and fails only when a rule calls a host function; a host builds its own binary with
+      its functions linked in. M6 closes.
   - date: 2026-09-24
     title: Documentation-first design starts
     description: |
@@ -397,31 +404,50 @@ milestones:
       **Done when** a policy repo lints in CI without the host's code.
     deliverables:
       - title: sigil fmt
-        state: TODO
+        state: DONE
         requirement: MUST
-        description: One canonical style, like `gofmt`. A whitespace-insensitive grammar drifts without it.
+        description: |
+          One canonical style, like `gofmt`, that keeps comments and follows the author's line
+          breaks at `and` and `or`. Quantifier bodies whose top level is `and`, `or` or `xor` get
+          parentheses, and `Schema()` prints kinds in the same style.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/cli.md
       - title: Kind export with Schema()
-        state: TODO
+        state: DONE
         requirement: MUST
+        description: |
+          `sigil export` in a host's own binary writes the linked kind's `Schema()`, and
+          `policytest.Schema` fails `go test` when the checked-in kind file is stale.
       - title: sigil check
-        state: TODO
+        state: DONE
         requirement: MUST
+        description: |
+          Type-checks and compiles every document, with a base policy's params left unbound,
+          checks `--require` with `--trusted` and `--policy` roots, and prints diagnostics as text,
+          JSON or YAML. Cost reporting comes with the static cost analysis.
       - title: sigil eval and sigil test
-        state: TODO
+        state: DONE
         requirement: MUST
+        description: |
+          Inputs decode strictly: an unknown key is an error, a missing one is the zero value,
+          durations are Sigil literals in strings. Test cases live in `*_test.yaml` files and
+          expect a decision and reason with payload fields, a whole `collect all` outcome, or the
+          asserts that fail. The stock binary binds every host function to one that fails when
+          called; package `cli` builds a host binary with the real ones.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/cli.md
       - title: Lints
-        state: TODO
+        state: DONE
         requirement: SHOULD
         description: |
-          The lints on the CLI page, reported by `sigil check` as warnings: `unused-import`,
-          `unused-let`, `shadowed-kind-name`, `gated-assert`, `gated-deny`, `duplicate-invocation`,
-          `qualified-imports` and `path-matches-name`, and a way for a
-          repository to promote one to an error. The checker already records the names that
-          `shadowed-kind-name` reports.
+          `unused-import`, `unused-let`, `shadowed-kind-name`, `gated-assert`, `gated-deny`,
+          `duplicate-invocation`, `qualified-imports` and `path-matches-name`, reported by
+          `sigil check`, with levels set per repository in `sigil.yaml`.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/cli.md
       - title: policytest package for go test
-        state: TODO
+        state: DONE
         requirement: SHOULD
+        description: |
+          `policytest.Run` runs the `sigil test` files against a host's kind, with its Go types and
+          real host functions, one subtest per file and per case.
 
   - title: Hardening
     description: |

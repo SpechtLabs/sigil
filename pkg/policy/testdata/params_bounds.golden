@@ -1,5 +1,5 @@
 == compile p ==
-3:1: param min_soak: 30m is below the minimum 1h
+3:1 (p): param min_soak: 30m is below the minimum 1h
   |
 3 | param min_soak: duration = 24h, min: 1h, max: 7d
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

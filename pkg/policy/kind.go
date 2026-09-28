@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/spechtlabs/sigil/internal/contract"
 	"github.com/spechtlabs/sigil/internal/gokind"
 	"github.com/spechtlabs/sigil/internal/kind"
 )
@@ -44,3 +45,11 @@ func (k *Kind[In]) Name() string { return k.kind.Name }
 // checks in so the CLI and other services can type-check against it
 // without importing the host.
 func (k *Kind[In]) Schema() string { return k.kind.Source() }
+
+// Contract is for sigil's own tools, the CLI a host builds with package
+// cli and package policytest: the kind model and its binding to the Go
+// types and functions. Its type is internal to the sigil module, so
+// nothing else can use it.
+func (k *Kind[In]) Contract() *contract.Kind {
+	return &contract.Kind{Model: k.kind, Binding: k.binding}
+}

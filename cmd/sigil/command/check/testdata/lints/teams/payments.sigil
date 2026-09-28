@@ -1,0 +1,20 @@
+policy teams.payments: DeployApproval@1
+
+use deploy.guardrails
+use deploy.production
+use deploy.common.{cleared, eligible}
+
+let unused_tier = service.tier
+let critical = service.tier == "critical"
+
+when critical {
+  guardrails()
+}
+
+production(approvers: ["a", "b"])
+
+production(approvers: ["a", "b"])
+
+when cleared and not critical {
+  approve(payments_sre)
+}

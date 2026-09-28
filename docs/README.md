@@ -98,9 +98,11 @@ decision deny {
   soak_too_short
   no_rule_matched
 }
+
 decision review(approvers: list<string>) {
   service_owner
 }
+
 decision approve(bake: duration = 1h) {
   release_manager
   payments_sre
@@ -108,7 +110,9 @@ decision approve(bake: duration = 1h) {
 
 collect one
 precedence deny > review > approve
+precedence deny: not_eligible > soak_too_short > no_rule_matched
 precedence approve: release_manager > payments_sre
+
 default deny(no_rule_matched)
 ```
 

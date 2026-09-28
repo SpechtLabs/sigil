@@ -3,7 +3,7 @@ package policy
 import (
 	"context"
 
-	"github.com/spechtlabs/sigil/internal/eval"
+	"github.com/spechtlabs/sigil/internal/result"
 )
 
 // Eval evaluates the policy against one input and returns the result
@@ -18,119 +18,84 @@ import (
 // returns its error with the default result, without evaluating.
 func (p *Policy[In]) Eval(ctx context.Context, input In) (*Result, error) {
 	if err := ctx.Err(); err != nil {
-		return p.fallback(nil), err //nolint:errorwrap,humaneerror // returned as is, so errors.Is(err, context.Canceled) holds
+		res, _ := convert(result.Fallback(p.prog, nil))
+		return res, err //nolint:errorwrap,humaneerror // returned as is, so errors.Is(err, context.Canceled) holds
 	}
-	out, rerr := p.prog.Eval(&input)
-	if rerr != nil {
-		return p.fallback(nil), &RuntimeError{Message: rerr.Msg, Policy: p.name, Position: position(rerr.File, p.name, rerr.Pos)}
-	}
-	res := p.result(out)
-	if out.Conflict != nil {
-		ce := &ConflictError{Message: out.Conflict.Msg, Policy: p.name}
-		for _, c := range out.Conflict.Candidates {
-			ce.Candidates = append(ce.Candidates, p.candidate(c, true))
-		}
-		return p.fallback(res.Trace.Candidates), ce
-	}
-	if len(out.Failed) == 0 {
-		return res, nil
-	}
-	ae := &AssertionError{}
-	for _, fl := range out.Failed {
-		a := fl.Assert
-		f := AssertFailure{Reason: a.Reason, Policy: a.Policy, Position: position(a.File, a.Policy, a.Pos), CallChain: sites(a.Chain)}
-		if a.ReadsOutcome {
-			f.Outcome = p.outcomeCandidates(out)
-		}
-		if fl.Err != nil {
-			f.Cause = &RuntimeError{Message: fl.Err.Msg, Policy: p.name, Position: position(fl.Err.File, a.Policy, fl.Err.Pos)}
-		}
-		ae.Failures = append(ae.Failures, f)
-	}
-	return p.fallback(res.Trace.Candidates), ae
+	return convert(result.Evaluate(p.prog, &input))
 }
 
-// result builds the Result for an outcome. Conditions are recorded for
-// the candidates of the decisions in the outcome.
-func (p *Policy[In]) result(out *eval.Outcome) *Result {
-	res := p.empty()
-	winning := map[string]bool{}
-	for _, c := range out.Top {
-		winning[c.Decision.Name] = true
+// convert turns an evaluation into the public Result and the error that
+// comes with it.
+func convert(r *result.Result) (*Result, error) {
+	res := &Result{Policy: r.Policy, collect: r.Collect, ranked: r.Ranked}
+	for _, c := range r.Trace {
+		res.Trace.Candidates = append(res.Trace.Candidates, candidate(c))
 	}
-	for _, c := range out.Candidates {
-		res.Trace.Candidates = append(res.Trace.Candidates, p.candidate(c, winning[c.Decision.Name]))
-	}
-	for _, c := range out.Top {
-		res.Outcome = append(res.Outcome, p.entry(c))
-	}
-	if len(res.Outcome) == 0 && p.prog.Default() != nil {
-		res.Outcome = []Entry{p.entry(p.prog.Default())}
+	for _, e := range r.Outcome {
+		res.Outcome = append(res.Outcome, entry(e))
 	}
 	if !res.collect && len(res.Outcome) == 1 {
 		e := res.Outcome[0]
 		res.Decision, res.Reason, res.Payload = e.Decision, e.Reason, e.Payload
 	}
-	return res
-}
-
-// empty is a result with no outcome yet.
-func (p *Policy[In]) empty() *Result {
-	return &Result{Policy: p.name, collect: p.prog.Collect(), ranked: p.prog.Ranked()}
-}
-
-// fallback is the result Eval returns with an error: the kind's default,
-// or an empty outcome for a collecting kind, with the given trace.
-func (p *Policy[In]) fallback(trace []Candidate) *Result {
-	res := p.empty()
-	res.Trace = Trace{Candidates: trace}
-	if res.collect {
-		return res
+	if r.Failure == nil {
+		return res, nil
 	}
-	e := p.entry(p.prog.Default())
-	res.Decision, res.Reason, res.Payload = e.Decision, e.Reason, e.Payload
-	res.Outcome = []Entry{e}
-	return res
+	return res, failure(r.Policy, r.Failure)
 }
 
-// outcomeCandidates returns the candidates that formed the outcome an
-// assert read: everything at the top rank.
-func (p *Policy[In]) outcomeCandidates(out *eval.Outcome) []Candidate {
-	cs := make([]Candidate, 0, len(out.Top))
-	for _, c := range out.Top {
-		cs = append(cs, p.candidate(c, true))
+// failure converts why an evaluation failed into its error type.
+func failure(policy string, f *result.Failure) error {
+	switch {
+	case f.Runtime != nil:
+		return runtimeError(policy, f.Runtime)
+	case f.Conflict != nil:
+		ce := &ConflictError{Message: f.Conflict.Msg, Policy: policy}
+		for _, c := range f.Conflict.Candidates {
+			ce.Candidates = append(ce.Candidates, candidate(c))
+		}
+		return ce
 	}
-	return cs
+	ae := &AssertionError{}
+	for _, a := range f.Asserts {
+		af := AssertFailure{Reason: a.Reason, Policy: a.Policy, Position: Position(a.Position), CallChain: positions(a.Chain)}
+		for _, c := range a.Outcome {
+			af.Outcome = append(af.Outcome, candidate(c))
+		}
+		if a.Cause != nil {
+			af.Cause = runtimeError(policy, a.Cause)
+		}
+		ae.Failures = append(ae.Failures, af)
+	}
+	return ae
 }
 
-func (p *Policy[In]) entry(c *eval.Candidate) Entry {
-	e := Entry{Decision: c.Decision.Name, Reason: c.Reason, Policy: c.Policy, Payload: c.Payload, Position: position(c.File, c.Policy, c.Pos)}
-	if c.Typed.IsValid() {
-		e.typed = c.Typed.Interface()
-	}
-	return e
+func runtimeError(policy string, r *result.Runtime) *RuntimeError {
+	return &RuntimeError{Message: r.Msg, Policy: policy, Position: Position(r.Position)}
 }
 
-func (p *Policy[In]) candidate(c *eval.Candidate, withConds bool) Candidate {
-	out := Candidate{Decision: c.Decision.Name, Reason: c.Reason, Policy: c.Policy, Payload: c.Payload, Position: position(c.File, c.Policy, c.Pos), CallChain: sites(c.Chain)}
-	if !withConds {
-		return out
-	}
-	out.Conditions = make([]Condition, 0, len(c.Conds))
-	for _, cond := range c.Conds {
-		out.Conditions = append(out.Conditions, Condition{Text: cond.Text, Position: position(c.File, c.Policy, cond.Pos)})
+func entry(e result.Entry) Entry {
+	return Entry{Decision: e.Decision, Reason: e.Reason, Policy: e.Policy, Payload: e.Payload, Position: Position(e.Position), typed: e.Typed}
+}
+
+func candidate(c result.Candidate) Candidate {
+	out := Candidate{Decision: c.Decision, Reason: c.Reason, Policy: c.Policy, Payload: c.Payload, Position: Position(c.Position), CallChain: positions(c.Chain)}
+	if c.Conditions != nil {
+		out.Conditions = make([]Condition, len(c.Conditions))
+		for i, cond := range c.Conditions {
+			out.Conditions[i] = Condition{Text: cond.Text, Position: Position(cond.Position)}
+		}
 	}
 	return out
 }
 
-// sites converts a call chain.
-func sites(chain []eval.Site) []Position {
-	if len(chain) == 0 {
+func positions(ps []result.Position) []Position {
+	if len(ps) == 0 {
 		return nil
 	}
-	out := make([]Position, len(chain))
-	for i, s := range chain {
-		out[i] = position(s.File, s.Policy, s.Pos)
+	out := make([]Position, len(ps))
+	for i, p := range ps {
+		out[i] = Position(p)
 	}
 	return out
 }

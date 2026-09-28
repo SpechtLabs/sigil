@@ -6,7 +6,7 @@ permalink: /reference/grammar/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, only `sigil explain` exists. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, `fmt`, `check`, `eval`, `explain`, `test` and `export` exist. See [Open questions](/project/open-questions/).
 :::
 
 This is the complete syntax of Sigil source files and the three kinds of document they hold: policies, modules and kinds. A file uses the `.sigil` extension and may hold several documents, and each document's header keyword (`policy`, `module` or `kind`) decides which grammar applies to it. It covers what parses; what type-checks is on the other reference pages. The parser is hand-written: recursive descent for statements and a Pratt parser for expressions. The grammar below is written so that both fall out of it directly, with one token of lookahead everywhere except at the start of a call argument, where the parser peeks at a second token (see [Calls](#calls)).
@@ -76,7 +76,7 @@ A header keyword only starts a document at top-level statement position: outside
 kind JIT_Approval version 1
 
 type Resource {
-  kind: string        // field declaration inside a type body
+  kind: string // field declaration inside a type body
   policy: string
   labels: map<string, string>
 }
@@ -86,6 +86,7 @@ input resource: Resource
 decision review(approvers: list<string>) {
   service_owner
 }
+
 decision deny {
   not_eligible
   soak_too_short
@@ -94,13 +95,14 @@ decision deny {
 
 collect one
 precedence deny > review
+
 default deny(no_rule_matched)
 
 ---
 
 policy jit.sandbox: JIT_Approval@1
 
-when resource.kind == "kube_cluster"      // field access after `.`
+when resource.kind == "kube_cluster" // field access after `.`
   and resource.policy != "" {
   review(cluster_access, approvers: ["sre-leads"])
 }

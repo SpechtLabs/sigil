@@ -1,0 +1,12 @@
+kind DeployApproval version 2
+
+input environment: string
+
+decision deny {
+  no_rule_matched
+}
+
+collect one
+precedence deny
+
+default deny(no_rule_matched)

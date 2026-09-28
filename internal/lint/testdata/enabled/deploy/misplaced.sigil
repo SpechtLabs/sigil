@@ -1,0 +1,7 @@
+policy deploy.production: DeployApproval@1
+
+use deploy.common.{owns}
+
+when owns {
+  approve(release_manager)
+}

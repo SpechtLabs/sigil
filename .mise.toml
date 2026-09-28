@@ -63,9 +63,21 @@ description = "Check that go.mod and go.sum are tidy"
 run = "go mod tidy -diff"
 
 [tasks.lint]
-description = "Lint the module with golangci-lint and the golint-sl plugin"
-depends = ["lint-build"]
+description = "Lint the module with golangci-lint and the golint-sl plugin, and check that every .sigil file is formatted"
+depends = ["lint-build", "sigil-fmt"]
 run = "./custom-gcl run ./..."
+
+# The parser's and the formatter's test inputs are unformatted on purpose,
+# and errors_check.sigil doesn't parse on purpose; every other .sigil file,
+# tracked or new, must be in sigil fmt's canonical style.
+[tasks.sigil-fmt]
+description = "Check that every .sigil file in the repository is formatted"
+run = """
+git ls-files --cached --others --exclude-standard -z -- '*.sigil' \
+  ':!:internal/parser/testdata' ':!:internal/format/testdata' \
+  ':!:pkg/policy/testdata/errors_check.sigil' \
+  | xargs -0 go run ./cmd/sigil fmt --check
+"""
 
 [tasks.yaml-lint]
 description = "Lint every YAML file in the repository"

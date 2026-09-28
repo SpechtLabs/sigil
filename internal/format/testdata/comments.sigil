@@ -1,0 +1,41 @@
+// Leading comment above the first document.
+
+// A second paragraph of it.
+policy deploy.gate: DeployApproval@1 // trailing the header
+use deploy.common                            // qualified: common.cleared
+use deploy.common.{owns_service as owner}    // renamed: owner
+
+
+
+param min_soak: duration = 24h // how long a release bakes
+// Comment above a let.
+let cleared =
+  // Above the first operand.
+  split(service.labels["regions"], ",") all in actor.regions // trailing the operand
+  // Above the continuation.
+  and owner
+
+when cleared { // after the brace
+  // Above the rule.
+  deny(soak_too_short) // trailing the rule
+
+  // Before the closing brace.
+}
+
+when release.soak < 1h  // a short soak
+  and not release.hotfix {
+  review(service_owner,
+    approvers: [
+      "a", // first
+      "b",
+      // before the bracket
+    ])
+}
+// Between the last rule and the separator.
+---
+// Right after the separator.
+
+module deploy.common: DeployApproval@1
+pub let x = 1
+// At the end of the file.
+

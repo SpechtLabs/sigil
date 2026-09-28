@@ -12,6 +12,7 @@ import (
 	"github.com/spechtlabs/sigil/cmd/sigil/command/check"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/eval"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/explain"
+	"github.com/spechtlabs/sigil/cmd/sigil/command/export"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/format"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/gen"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/lsp"
@@ -68,12 +69,25 @@ sigil eval --kind deploy_approval.sigil --input release.json deploy/production.s
 
 	addToGroup(cmd, groupPolicy.ID,
 		format.NewCommand(),
-		check.NewCommand(),
-		eval.NewCommand(),
-		explain.NewCommand(),
-		test.NewCommand(),
+		check.NewCommand(
+			check.WithOutput(&outputFormat),
+			check.WithKinds(o.kinds),
+		),
+		eval.NewCommand(
+			eval.WithOutput(&outputFormat),
+			eval.WithKinds(o.kinds),
+		),
+		explain.NewCommand(
+			explain.WithOutput(&outputFormat),
+			explain.WithKinds(o.kinds),
+		),
+		test.NewCommand(
+			test.WithOutput(&outputFormat),
+			test.WithKinds(o.kinds),
+		),
 	)
 	addToGroup(cmd, groupKind.ID,
+		export.NewCommand(export.WithKinds(o.kinds)),
 		breaking.NewCommand(),
 		gen.NewCommand(),
 	)

@@ -1,0 +1,44 @@
+{
+  "payload": {
+    "scopes": [
+      "*"
+    ],
+    "ttl": "8h"
+  },
+  "policy": "access.main",
+  "decision": "allow",
+  "reason": "admin",
+  "outcome": [
+    {
+      "payload": {
+        "scopes": [
+          "*"
+        ],
+        "ttl": "8h"
+      },
+      "decision": "allow",
+      "reason": "admin",
+      "policy": "access.main",
+      "position": "testdata/access/main.sigil:6:3"
+    }
+  ],
+  "trace": [
+    {
+      "payload": {
+        "scopes": [
+          "*"
+        ],
+        "ttl": "8h"
+      },
+      "decision": "allow",
+      "reason": "admin",
+      "policy": "access.main",
+      "position": "testdata/access/main.sigil:6:3",
+      "conditions": [
+        "user.admin"
+      ],
+      "outcome": true
+    }
+  ]
+}
+--- ok ---

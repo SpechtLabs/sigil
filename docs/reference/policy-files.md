@@ -6,7 +6,7 @@ permalink: /reference/policy-files/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, only `sigil explain` exists. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, `fmt`, `check`, `eval`, `explain`, `test` and `export` exist. See [Open questions](/project/open-questions/).
 :::
 
 A policy opens with a `policy` header, lists its imports, and then contains any number of `param`, `let`, `when` and `assert` statements and policy invocations in any order. Each statement starts with a keyword or with the name of an imported policy followed by `(`, so a policy needs no separators and no significant whitespace.

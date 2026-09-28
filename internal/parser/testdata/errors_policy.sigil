@@ -34,6 +34,15 @@ when cleared {
   approve(fine, bake: 15m)
 }
 
+// A condition that stops short: the rule's `{` reads as a map literal,
+// so the error points at the operator with no right operand.
+when release.soak < {
+  deny(soak_too_short)
+}
+when release.hotfix and {
+  let x = 1
+}
+
 // The separator glued into arithmetic. It ends the document, so this
 // case comes last.
 let tight = min_soak---1h

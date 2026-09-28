@@ -1,0 +1,8 @@
+policy team.main: DeployApproval@1
+
+use deploy.guardrails
+
+// Required by the host, which rejects a gated call itself.
+when environment == "production" {
+  guardrails()
+}

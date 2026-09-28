@@ -1,0 +1,5 @@
+policy teams.payments: DeployApproval@1
+
+use deploy.guardrails
+
+guardrails(min_soak: 10m)

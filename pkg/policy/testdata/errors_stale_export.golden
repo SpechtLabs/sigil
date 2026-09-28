@@ -1,6 +1,6 @@
 == compile p ==
-7:1: kind DeployApproval has precedence but no collect
-  |
-7 | precedence deny
-  | ^^^^^^^^^^^^^^^
-  = help: declare `collect one` to return the highest-ranked decision
+15:1: kind DeployApproval has precedence but no collect
+   |
+15 | precedence deny
+   | ^^^^^^^^^^^^^^^
+   = help: declare `collect one` to return the highest-ranked decision

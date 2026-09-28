@@ -1,0 +1,9 @@
+policy deploy.guardrails: DeployApproval@1
+
+use deploy.common.{eligible}
+
+when not eligible {
+  deny(not_eligible)
+}
+
+assert("named_actor", actor.name != "")

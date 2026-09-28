@@ -1,0 +1,3 @@
+--- error ---
+no policy matches "access.nope"
+advice: the bundle defines: access.main

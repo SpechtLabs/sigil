@@ -6,7 +6,7 @@ permalink: /reference/types/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, only `sigil explain` exists. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, `fmt`, `check`, `eval`, `explain`, `test` and `export` exist. See [Open questions](/project/open-questions/).
 :::
 
 Sigil is statically typed. The compiler knows the type of every input, param, let and expression before a policy runs, and it checks them against the kind the policy implements. Nothing converts implicitly: an `int` never becomes a `float`, a `string` never becomes a `duration`, and a `?T` never becomes a `T` without `??`.

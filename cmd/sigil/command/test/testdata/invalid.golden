@@ -1,0 +1,11 @@
+FAIL  testdata/invalid/main_test.yaml
+      testdata/invalid/main_test.yaml:3: case "unknown decision": the kind has no decision "allwo" (did you mean "allow"? declared: deny, allow)
+      testdata/invalid/main_test.yaml:8: case "no reason": expected allow has no reason (asserting the reason catches a decision made for the wrong reason; allow declares: admin, team_member)
+      testdata/invalid/main_test.yaml:12: case "unknown reason and field": decision allow has no reason "admn" (did you mean "admin"? declared: admin, team_member)
+      testdata/invalid/main_test.yaml:19: case "outcome on a collect one kind": outcome is for collect all kinds, and Access collects one (a collect one kind decides once; expect `decision:` and `reason:`)
+      testdata/invalid/main_test.yaml:23: case "two inputs": case needs exactly one of input and input_file (give the input inline with `input:`, or name a JSON file with `input_file:`)
+      testdata/invalid/main_test.yaml:28: case "no reason": case "no reason" is defined twice (the first is on line 8; give each case its own name)
+      testdata/invalid/main_test.yaml:28: case "no reason": asserts is empty (name the reasons of the asserts that should fail)
+--- error ---
+1 of 1 test files couldn't run
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

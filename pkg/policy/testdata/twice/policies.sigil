@@ -16,4 +16,5 @@ policy payments.regions: DeployApproval@1
 use deploy.regional
 
 regional(region: "eu-1", approvers: ["eu-leads"])
+
 regional(region: "us-1", approvers: ["us-leads"])

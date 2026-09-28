@@ -1,5 +1,5 @@
 == compile payments.production ==
-payments.sigil:7:22: min_soak: 0s is below the minimum 1h
+payments.sigil:7:22 (payments.production): min_soak: 0s is below the minimum 1h
   |
 7 | guardrails(min_soak: 0s)
   |                      ^^

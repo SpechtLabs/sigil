@@ -179,6 +179,10 @@ var goldenCases = map[string]func(t *testing.T, src, dir string) string{
 		{"an index out of range", eligible},
 		{"an index out of range in a payload", with(func(in *Input) { in.Actor.Roles = []string{"a", "b", "c", "d"} })},
 	}),
+	// A runtime error in an imported let points at the module, and one in
+	// an invoked policy's condition at that policy, never at the root.
+	"runtime_import": run(Deploy, "p", nil, []scenario[Input]{{"an index out of range in an imported let", eligible}}),
+	"runtime_invoke": run(Deploy, "p", nil, []scenario[Input]{{"an index out of range in an invoked policy", eligible}}),
 	"kind_export":    run(Deploy, "p", nil, []scenario[Input]{{"compiles against a matching export", eligible}}),
 	"params_type":    run(Deploy, "p", []policy.LoadOption{policy.Params{"min_soak": 4}}, nil),
 	"params_go_type": run(Deploy, "p", []policy.LoadOption{policy.Params{"min_soak": int32(4)}}, nil),

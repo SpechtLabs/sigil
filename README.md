@@ -2,7 +2,7 @@
 
 A small, statically typed policy language for Go hosts.
 
-![Status: composition works](https://img.shields.io/badge/status-composition%20works-yellow)
+![Status: tooling works](https://img.shields.io/badge/status-tooling%20works-yellow)
 ![Language: Go](https://img.shields.io/badge/host-Go-00ADD8?logo=go&logoColor=white)
 [![Go Reference](https://pkg.go.dev/badge/github.com/spechtlabs/sigil.svg)](https://pkg.go.dev/github.com/spechtlabs/sigil)
 
@@ -11,7 +11,7 @@ A small, statically typed policy language for Go hosts.
 Sigil lets engineers write rules that evaluate host-provided input to a typed decision such as `approve`, `deny` or `review`. Every decision carries a reason and a payload, every policy is type-checked against a contract the host defines in Go, and every evaluation is guaranteed to halt. It ships as an importable Go library, in the spirit of [filt-rs](https://github.com/SierraSoftworks/filters), and it's meant to replace the YAML rule engines with label-selector matchers that teams keep rebuilding.
 
 > [!IMPORTANT]
-> Sigil is being designed documentation-first. **The language is implemented through composition: a bundle of policies and modules loads from an `fs.FS`, imports and invocations resolve, required guardrails are enforced, and a policy evaluates to a decision with its trace through `pkg/policy`. Of the CLI, `sigil explain` exists; the rest is not.** The [documentation](./docs) is the specification, and it'll change as the [open questions](./docs/project/open-questions.md) get settled. Feedback on the language design is the most useful contribution right now; please [open an issue](https://github.com/SpechtLabs/sigil/issues).
+> Sigil is being designed documentation-first. **The language is implemented through composition: a bundle of policies and modules loads from an `fs.FS`, imports and invocations resolve, required guardrails are enforced, and a policy evaluates to a decision with its trace through `pkg/policy`. The `sigil` CLI formats, checks, lints, evaluates, explains and tests policies from the exported kind file, and a host builds its own `sigil` binary to evaluate with its real host functions; the editor tooling is not there yet.** The [documentation](./docs) is the specification, and it'll change as the [open questions](./docs/project/open-questions.md) get settled. Feedback on the language design is the most useful contribution right now; please [open an issue](https://github.com/SpechtLabs/sigil/issues).
 
 ## What it looks like
 
@@ -26,12 +26,14 @@ type Release {
   soak: duration
   hotfix: bool
 }
+
 type Service {
   name: string
   tier: string
   owners: list<string>
   labels: map<string, string>
 }
+
 type Actor {
   name: string
   teams: list<string>
@@ -51,9 +53,11 @@ decision deny {
   soak_too_short
   no_rule_matched
 }
+
 decision review(approvers: list<string>) {
   service_owner
 }
+
 decision approve(bake: duration = 1h) {
   release_manager
   payments_sre
@@ -61,7 +65,9 @@ decision approve(bake: duration = 1h) {
 
 collect one
 precedence deny > review > approve
+precedence deny: not_eligible > soak_too_short > no_rule_matched
 precedence approve: release_manager > payments_sre
+
 default deny(no_rule_matched)
 ```
 
@@ -246,7 +252,7 @@ mise run docs-dev
 
 ## Roadmap
 
-Documentation came first. The hand-written parser (recursive descent for statements, Pratt parsing for expressions) is in, under `internal/`, and so are `NewKind`, `Compile` and `Eval` in `pkg/policy`, the type checker and the evaluator, and `Load` with `Require` and `From`. Tooling is next.
+Documentation came first. The hand-written parser (recursive descent for statements, Pratt parsing for expressions) is in, under `internal/`, and so are `NewKind`, `Compile` and `Eval` in `pkg/policy`, the type checker and the evaluator, `Load` with `Require` and `From`, and the CLI a policy repository runs in CI. Hardening is next.
 
 | Milestone | Scope | State |
 | --- | --- | --- |
@@ -255,7 +261,7 @@ Documentation came first. The hand-written parser (recursive descent for stateme
 | M3 Types | `NewKind` reflection, type checker, evaluator over Go structs | Done |
 | M4 Policies | `when`, decision constructors, precedence, default, trace | Done |
 | M5 Composition | `param`, `let`, modules and imports, policy invocation, `Require`, bundle loader, cycle detection, `sigil explain` | Done |
-| M6 Tooling I | `sigil fmt`, kind export, `sigil check`, `sigil eval`, `sigil test` | Planned |
+| M6 Tooling I | `sigil fmt`, kind export, `sigil check` with lints, `sigil eval`, `sigil test`, `policytest` | Done |
 | M7 Hardening | `LoadKind`, round-trip property tests, parser fuzzing, cost analysis | Planned |
 | M8 Tooling II | `sigil lsp`, `sigil gen go`, `sigil breaking` | Planned |
 

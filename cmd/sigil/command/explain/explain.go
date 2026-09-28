@@ -5,24 +5,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"path"
-	"regexp"
 	"strings"
 
 	"github.com/sierrasoftworks/humane-errors-go"
 	"github.com/spf13/cobra"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/internal/bundle"
-	"github.com/spechtlabs/sigil/internal/check"
 	"github.com/spechtlabs/sigil/internal/eval"
 )
 
 // NewCommand returns the explain command.
 func NewCommand(opts ...Option) *cobra.Command {
-	o := &options{}
+	format := output.Text
+	o := &options{output: &format}
 	for _, opt := range opts {
 		opt(o)
 	}
@@ -59,19 +59,15 @@ sigil explain --kind deploy_approval.sigil policies.sigil`,
 			kindFile, _ := cmd.Flags().GetString("kind")
 			pattern, _ := cmd.Flags().GetString("policy")
 			recursive, _ := cmd.Flags().GetBool("recursive")
-			format := output.Text
-			if f := cmd.Flags().Lookup("output"); f != nil {
-				format = output.Format(f.Value.String())
-			}
-			return run(cmd.OutOrStdout(), cmd.InOrStdin(), kindFile, pattern, recursive, args, format)
+			src := project.Sources{Paths: args, Recursive: recursive, Stdin: cmd.InOrStdin()}
+			return run(cmd.OutOrStdout(), o, kindFile, pattern, src)
 		},
 	}
 
-	cmd.Flags().StringP("kind", "k", "", "Kind file the policy is written against (required)")
+	cmd.Flags().StringP("kind", "k", "", "Kind file the policy is written against; optional in a binary with the kind linked in")
 	cmd.Flags().StringP("policy", "p", "", "Name or pattern of the policies to explain; every policy in the bundle when omitted")
 	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories of directory arguments too")
 	// These only fail for an undefined flag, which the tests would catch.
-	_ = cmd.MarkFlagRequired("kind")
 	_ = cmd.MarkFlagFilename("kind", "sigil")
 	_ = cmd.RegisterFlagCompletionFunc("policy", cobra.NoFileCompletions)
 
@@ -81,41 +77,37 @@ sigil explain --kind deploy_approval.sigil policies.sigil`,
 // Explanation is one policy flattened: every rule and assert it can
 // reach, with the conditions and call chain of each.
 type Explanation struct {
-	Policy    string  `json:"policy"`
-	Documents int     `json:"documents"`
-	Rules     []Entry `json:"rules"`
+	Policy    string  `json:"policy" yaml:"policy"`
+	Documents int     `json:"documents" yaml:"documents"`
+	Rules     []Entry `json:"rules" yaml:"rules"`
 }
 
 // Entry is one rule or assert of an explanation.
 type Entry struct {
-	Kind       string   `json:"kind"` // "decision" or "assert"
-	Decision   string   `json:"decision,omitempty"`
-	Reason     string   `json:"reason"`
-	Phase      string   `json:"phase,omitempty"` // input or outcome, for an assert
-	Chain      []string `json:"chain"`           // policy:line, outermost call first, the rule last
-	Conditions []string `json:"conditions"`      // every `when` on the way, outermost first
-	Check      string   `json:"check,omitempty"` // an assert's own condition
-	Payload    []string `json:"payload,omitempty"`
+	Kind       string   `json:"kind" yaml:"kind"` // "decision" or "assert"
+	Decision   string   `json:"decision,omitempty" yaml:"decision,omitempty"`
+	Reason     string   `json:"reason" yaml:"reason"`
+	Phase      string   `json:"phase,omitempty" yaml:"phase,omitempty"` // input or outcome, for an assert
+	Chain      []string `json:"chain" yaml:"chain"`                     // policy:line, outermost call first, the rule last
+	Conditions []string `json:"conditions" yaml:"conditions"`           // every `when` on the way, outermost first
+	Check      string   `json:"check,omitempty" yaml:"check,omitempty"` // an assert's own condition
+	Payload    []string `json:"payload,omitempty" yaml:"payload,omitempty"`
 }
 
-func run(out io.Writer, stdin io.Reader, kindFile, pattern string, recursive bool, paths []string, format output.Format) error {
-	src, err := os.ReadFile(kindFile) //nolint:gosec // the path comes from the command line, which is the point
+func run(out io.Writer, o *options, kindFile, pattern string, src project.Sources) humane.Error {
+	k, err := project.LoadKind(kindFile, o.kinds)
 	if err != nil {
-		return humane.Wrap(err, "the kind file couldn't be read", "pass the exported kind file with --kind")
+		return err
 	}
-	k, errs := check.LoadKind(kindFile, src)
-	if errs != nil {
-		return humane.New(errs.Error(), "fix the kind file, or regenerate it from the host's Schema()")
-	}
-	b := bundle.New(k)
-	if err := b.LoadPaths(paths, recursive, stdin); err != nil {
+	b, err := k.Bundle(src)
+	if err != nil {
 		return err
 	}
 	b.Check()
 	if errs := b.Errors(); errs != nil {
 		return humane.New(b.Render(errs), "fix the documents above; explain needs a bundle that checks")
 	}
-	roots, serr := select_(b.Policies(), pattern)
+	roots, serr := selectRoots(b.Policies(), pattern)
 	if serr != nil {
 		return serr
 	}
@@ -127,13 +119,22 @@ func run(out io.Writer, stdin io.Reader, kindFile, pattern string, recursive boo
 		}
 		explanations = append(explanations, explain(prog))
 	}
-	switch format {
+	var werr error
+	switch *o.output {
 	case output.JSON:
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
-		return enc.Encode(explanations)
+		werr = enc.Encode(explanations)
 	case output.YAML:
-		return humane.New("YAML output isn't supported by explain yet", "use -o text or -o json")
+		enc := yaml.NewEncoder(out)
+		enc.SetIndent(2)
+		werr = enc.Encode(explanations)
+	}
+	if werr != nil {
+		return humane.Wrap(werr, "the explanation couldn't be written", "check where the output is going")
+	}
+	if *o.output != output.Text {
+		return nil
 	}
 	var text strings.Builder
 	for i, e := range explanations {
@@ -148,26 +149,16 @@ func run(out io.Writer, stdin io.Reader, kindFile, pattern string, recursive boo
 	return nil
 }
 
-// select_ picks the policies to explain: every one, the one named, or
-// the ones matching a pattern, where `*` matches any run of characters.
-func select_(policies []string, pattern string) ([]string, error) {
+// selectRoots picks the policies to explain: every one, the one named,
+// or the ones matching a pattern, where `*` matches any run of characters.
+func selectRoots(policies []string, pattern string) ([]string, humane.Error) {
 	if pattern == "" {
 		if len(policies) == 0 {
 			return nil, humane.New("the bundle holds no policies", "name a file or directory that holds one")
 		}
 		return policies, nil
 	}
-	re := regexp.MustCompile("^" + strings.ReplaceAll(regexp.QuoteMeta(pattern), `\*`, ".*") + "$")
-	var out []string
-	for _, p := range policies {
-		if re.MatchString(p) {
-			out = append(out, p)
-		}
-	}
-	if len(out) == 0 {
-		return nil, humane.New(fmt.Sprintf("no policy matches %q", pattern), "the bundle defines: "+strings.Join(policies, ", "))
-	}
-	return out, nil
+	return project.Match(policies, []string{pattern})
 }
 
 // Entry kinds.

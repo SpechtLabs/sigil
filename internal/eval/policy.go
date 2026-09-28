@@ -135,7 +135,7 @@ func (r *run) frame(inst *instance) *Frame {
 	}
 	f := newFrame(r.input, inst.scope)
 	f.run = r
-	f.file = inst.file
+	f.file, f.doc = inst.file, inst.name
 	f.Outcome = r.outcome
 	r.frames[inst] = f
 	return f
@@ -179,7 +179,7 @@ func fireIn(r *Rule, f *Frame) *Candidate {
 	var c *Candidate
 	if err := catch(func() { c = fire(r, f) }); err != nil {
 		if err.File == "" {
-			err.File = r.File
+			err.File, err.Doc = r.File, r.Policy
 		}
 		panic(err) //nolint:nopanic // a rule's runtime error unwinds to Eval, which returns it
 	}
@@ -280,7 +280,7 @@ func (p *Policy) walk(f *Frame, r *run, nodes []*node, ph phase) {
 func (p *Policy) enter(f *Frame, r *run, b *block, ph phase) {
 	held, err := f.cond(b)
 	if err != nil && err.File == "" {
-		err.File = f.file
+		err.File, err.Doc = f.file, f.doc
 	}
 	switch {
 	case err != nil && ph == phaseRules:
@@ -302,7 +302,7 @@ func (r *run) check(f *Frame, a *Assert) {
 	held := false
 	if err := catch(func() { held = Bool(a.cond(f)) }); err != nil {
 		if err.File == "" {
-			err.File = a.File
+			err.File, err.Doc = a.File, a.Policy
 		}
 		r.failed = append(r.failed, Failure{Assert: a, Err: err})
 		return
@@ -320,7 +320,7 @@ func (r *run) failures() []Failure {
 	})
 	for _, fl := range r.failed {
 		if fl.Err != nil && fl.Err.File == "" {
-			fl.Err.File = fl.Assert.File
+			fl.Err.File, fl.Err.Doc = fl.Assert.File, fl.Assert.Policy
 		}
 	}
 	return r.failed

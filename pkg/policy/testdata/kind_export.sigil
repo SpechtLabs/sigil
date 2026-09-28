@@ -4,12 +4,14 @@ type Release {
   soak: duration
   hotfix: bool
 }
+
 type Service {
   name: string
   tier: string
   owners: list<string>
   labels: map<string, string>
 }
+
 type Actor {
   name: string
   teams: list<string>
@@ -24,12 +26,32 @@ input environment: string
 
 fn split(string, string) -> list<string>
 
-decision deny { a no_rule_matched never b not_eligible soak_too_short x }
-decision review(approvers: list<string>) { b a service_owner }
-decision approve(bake: duration = 1h) { owned a release_manager payments_sre }
+decision deny {
+  a
+  no_rule_matched
+  never
+  b
+  not_eligible
+  soak_too_short
+  x
+}
+
+decision review(approvers: list<string>) {
+  b
+  a
+  service_owner
+}
+
+decision approve(bake: duration = 1h) {
+  owned
+  a
+  release_manager
+  payments_sre
+}
 
 collect one
 precedence deny > review > approve
+
 default deny(no_rule_matched)
 
 ---
@@ -37,9 +59,12 @@ default deny(no_rule_matched)
 // A kind document for another kind is ignored.
 kind Other version 1
 
-decision x { x }
+decision x {
+  x
+}
 
 precedence x
+
 default x(x)
 
 ---

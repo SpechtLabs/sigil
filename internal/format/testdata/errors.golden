@@ -1,0 +1,7 @@
+== diagnostics ==
+
+errors.sigil:3:19: `<` has no right operand
+  |
+3 | when release.soak < {
+  |                   ^
+  = help: the `{` after it was read as a map literal; finish the condition before the rule's `{`

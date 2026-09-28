@@ -1,4 +1,4 @@
-policy errors.rules: DeployApproval [1:1-39:21]
+policy errors.rules: DeployApproval [1:1-48:21]
   use deploy.common.{cleared} [6:1-6:28]
   param min_soak: duration = 24h [3:1-3:31]
   when cleared { [9:1-12:2]
@@ -16,7 +16,12 @@ policy errors.rules: DeployApproval [1:1-39:21]
   when cleared { [33:1-35:2]
     approve(fine, bake: 15m) [34:3-34:27]
   }
-  let tight = min_soak [39:1-39:21]
+  when <error> { [39:1-41:2]
+  }
+  when <error> { [42:1-44:2]
+    let x = 1 [43:3-43:12]
+  }
+  let tight = min_soak [48:1-48:21]
 
 == diagnostics ==
 
@@ -56,8 +61,20 @@ errors_policy.sigil:29:17: expected a named argument, found `"extra"`
    |                 ^^^^^^^
    = help: after the reason, every argument is written `name: value`, like `approvers: ["payments-leads"]`
 
-errors_policy.sigil:39:21: `---` separates documents and can't appear inside an expression
+errors_policy.sigil:39:19: `<` has no right operand
    |
-39 | let tight = min_soak---1h
+39 | when release.soak < {
+   |                   ^
+   = help: the `{` after it was read as a map literal; finish the condition before the rule's `{`
+
+errors_policy.sigil:42:21: `and` has no right operand
+   |
+42 | when release.hotfix and {
+   |                     ^^^
+   = help: the `{` after it was read as a map literal; finish the condition before the rule's `{`
+
+errors_policy.sigil:48:21: `---` separates documents and can't appear inside an expression
+   |
+48 | let tight = min_soak---1h
    |                     ^^^
    = help: if you meant arithmetic, put spaces between the minus signs

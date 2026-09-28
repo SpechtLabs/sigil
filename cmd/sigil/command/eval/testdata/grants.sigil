@@ -1,0 +1,14 @@
+kind Grants version 1
+
+input teams: list<string>
+
+decision read(scope: string = "all") {
+  member
+}
+
+decision write {
+  owner
+  oncall
+}
+
+collect all

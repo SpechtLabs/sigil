@@ -1,0 +1,37 @@
+policy: access.main
+cases:
+  - name: admins get eight hours
+    input:
+      user: {name: ada, admin: true}
+    expect:
+      decision: allow
+      reason: admin
+      payload:
+        ttl: 8h
+        scopes: ["*"]
+  - name: platform members get the default ttl
+    input_file: testdata/member.json
+    expect:
+      decision: allow
+      reason: team_member
+      payload:
+        ttl: 1h
+  - name: old requests are denied
+    input:
+      user: {name: ada, admin: true}
+      age: 31d
+    expect:
+      decision: deny
+      reason: too_old
+  - name: nobody gets the default
+    input:
+      user: {name: bob}
+      labels: {tier: 1}
+    expect:
+      decision: deny
+      reason: no_rule_matched
+  - name: an unnamed user fails the assert
+    input:
+      user: {name: ""}
+    expect:
+      asserts: [named_user]

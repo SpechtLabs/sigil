@@ -1,0 +1,5 @@
+module deploy.common: DeployApproval@1
+
+pub let owns = actor.teams any in service.owners
+pub let critical = service.tier == "critical"
+pub let hotfix = release.hotfix

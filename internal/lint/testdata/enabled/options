@@ -1,0 +1,2 @@
+level qualified-imports warn
+level path-matches-name warn

@@ -1,0 +1,29 @@
+kind DeployApproval version 3 ,accepts:2
+type Release { soak: duration hotfix: bool
+  ticket: ?string }
+type Resource {
+  kind: string        // field named like a keyword
+  policy: string
+  labels: map<string,list<string>>
+}
+
+type Empty {}
+input release : Release
+input environment: string
+fn split( string,string ) -> list<string>
+fn now() -> timestamp
+decision deny { not_eligible soak_too_short
+  no_rule_matched }
+decision review(approvers: list<string>) {
+  service_owner
+}
+decision approve(
+  bake: duration = 1h, note: string = "") {
+  release_manager
+  payments_sre
+}
+collect   one
+precedence deny>review >approve
+precedence approve : release_manager > payments_sre
+exclusive approve.release_manager ,approve.payments_sre
+default deny( no_rule_matched )

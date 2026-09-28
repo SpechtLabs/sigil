@@ -1,0 +1,6 @@
+FAIL  testdata/nopolicy/main_test.yaml
+      bundle has no policy access.nope
+        = help: the bundle defines: access.main
+--- error ---
+1 of 1 test files couldn't run
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

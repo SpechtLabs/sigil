@@ -1,0 +1,13 @@
+warn path-matches-name (deploy.production)
+deploy/misplaced.sigil:1:8 (deploy.production): deploy.production is in deploy/misplaced.sigil, not in a file named after it
+  |
+1 | policy deploy.production: DeployApproval@1
+  |        ^^^^^^^^^^^^^^^^^
+  = help: move it to deploy/production.sigil, or rename it to match its file
+
+warn qualified-imports (deploy.production)
+deploy/misplaced.sigil:3:1 (deploy.production): selective import of deploy.common
+  |
+3 | use deploy.common.{owns}
+  | ^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: import the whole document, `use deploy.common`, and qualify each name, `common.owns`

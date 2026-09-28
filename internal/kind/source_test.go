@@ -15,12 +15,14 @@ type Release {
   soak: duration
   hotfix: bool
 }
+
 type Service {
   name: string
   tier: string
   owners: list<string>
   labels: map<string, string>
 }
+
 type Actor {
   name: string
   teams: list<string>
@@ -40,10 +42,12 @@ decision deny {
   soak_too_short
   no_rule_matched
 }
+
 decision review(approvers: list<string>) {
   service_owner
   everyone
 }
+
 decision approve(bake: duration = 1h) {
   release_manager
   payments_sre
@@ -52,6 +56,7 @@ decision approve(bake: duration = 1h) {
 
 collect one
 precedence deny > review > approve
+
 default deny(no_rule_matched)
 `
 		if got := deploy().Source(); got != want {
@@ -73,16 +78,20 @@ input actor: Actor
 decision read {
   member
 }
+
 decision write {
   member
 }
+
 decision admin(ttl: duration = 8h) {
   member
   everyone
 }
+
 decision customer_data_writer {
   member
 }
+
 decision development_environment_writer {
   member
 }

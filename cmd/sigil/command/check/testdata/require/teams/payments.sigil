@@ -1,0 +1,8 @@
+policy teams.payments: DeployApproval@1
+
+use deploy.guardrails
+use deploy.production
+
+guardrails()
+
+production(approvers: ["payments-leads"])

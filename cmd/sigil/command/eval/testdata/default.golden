@@ -1,0 +1,4 @@
+access.main: deny no_rule_matched (the kind's default)
+
+trace: no rule fired
+--- ok ---

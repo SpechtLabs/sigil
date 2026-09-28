@@ -1,0 +1,13 @@
+kind Roles version 1
+
+input user: string
+
+decision read {
+  member
+}
+
+decision write {
+  owner
+}
+
+collect all

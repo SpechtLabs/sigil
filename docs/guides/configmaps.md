@@ -9,10 +9,6 @@ This guide shows how to ship policies to a service running on Kubernetes as a Co
 
 It builds on the `deploy.*` and `payments.production` documents from the [tour](/getting-started/tour/). The service is a deploy gate that loads `payments.production` and requires `deploy.guardrails`.
 
-::: info Partly planned
-The Go API on this page exists: `Load`, `MapFS`, `Require` and `From`. The CLI commands other than `sigil explain` are planned; see [CLI & editor tooling](/reference/cli/) and the [Go API](/reference/go-api/).
-:::
-
 ## Why files are only containers
 
 A ConfigMap is a flat map from keys to strings, and a key can't contain `/`. A layout such as `deploy/common.sigil` can't survive the trip into one. That's why Sigil resolves `use deploy.common` by the name in each document's header rather than by file path: the loader reads every document in every file it's given, and indexes them by name. Whether the documents arrive as one key per file, one key per team or one key for everything, they resolve the same way. The rules are in [Bundles and resolution](/reference/policy-files/#bundles-and-resolution).

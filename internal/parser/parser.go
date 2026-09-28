@@ -24,9 +24,13 @@ import (
 type parser struct {
 	file string
 	lex  *lexer.Lexer
-	buf  []token.Token // tokens already read past tok, comments removed
-	errs diag.ErrorList
-	tok  token.Token // the current token
+	// lostBody is the `{` of a rule body that a condition missing its
+	// last operand read as a map literal, for parseWhen to resume the
+	// body from. See missingOperand.
+	lostBody *token.Token
+	buf      []token.Token // tokens already read past tok, comments removed
+	errs     diag.ErrorList
+	tok      token.Token // the current token
 	// lastSync is the offset where sync last stopped, so a statement that
 	// fails at its first token isn't retried forever. See sync.
 	lastSync int
@@ -35,6 +39,8 @@ type parser struct {
 	// OpInvalid at the start of an expression. Prefix forms that bind looser
 	// than that operator use it to name the operator in their error.
 	after ast.Op
+	// afterPos is where the operator in after starts.
+	afterPos token.Pos
 }
 
 // bailout is the panic value that abandons a parse after an error, the way

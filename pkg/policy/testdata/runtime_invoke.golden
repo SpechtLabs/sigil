@@ -1,0 +1,12 @@
+== compile p ==
+ok
+
+== an index out of range in an invoked policy ==
+decision  deny
+reason    no_rule_matched
+policy    p
+payload   (none)
+error     policies.sigil:3:6 (q): index 3 out of range for a list of 1
+
+candidates
+  (none)

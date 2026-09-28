@@ -16,6 +16,7 @@ type Frame struct {
 	Outcome Value // list<decision> for assert conditions; set by the policy evaluator
 	run     *run  // the evaluation this frame belongs to, nil for a bare frame
 	file    string
+	doc     string // the instance's document name, for runtime errors
 	slots   []Value
 	lets    []Value // a let's value once evaluated, by let index
 	done    []bool  // whether lets[i] has been evaluated in this frame

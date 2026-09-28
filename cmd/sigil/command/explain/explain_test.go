@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files under testdata")
@@ -36,7 +37,12 @@ func TestExplain(t *testing.T) {
 				kind = "nope.sigil"
 			}
 			var out bytes.Buffer
-			err := run(&out, strings.NewReader(""), kind, tt.pattern, true, tt.paths, tt.format)
+			format := tt.format
+			if format == "" {
+				format = output.Text
+			}
+			src := project.Sources{Paths: tt.paths, Recursive: true, Stdin: strings.NewReader("")}
+			err := run(&out, &options{output: &format}, kind, tt.pattern, src)
 			if tt.err != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.err) {
 					t.Fatalf("run() error = %v, want %q", err, tt.err)
@@ -53,9 +59,9 @@ func TestExplain(t *testing.T) {
 				}
 				return
 			}
-			want, err := os.ReadFile(golden)
-			if err != nil {
-				t.Fatalf("%v (run with -update to create it)", err)
+			want, rerr := os.ReadFile(golden)
+			if rerr != nil {
+				t.Fatalf("%v (run with -update to create it)", rerr)
 			}
 			if out.String() != string(want) {
 				t.Errorf("output differs from %s (run with -update to accept):\n--- got ---\n%s\n--- want ---\n%s", golden, out.String(), want)

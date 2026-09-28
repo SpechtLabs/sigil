@@ -1,0 +1,53 @@
+[
+  {
+    "severity": "warning",
+    "lint": "unused-import",
+    "file": "testdata/lints/teams/payments.sigil",
+    "document": "teams.payments",
+    "message": "eligible is imported from deploy.common but never used",
+    "help": "remove it from the import list",
+    "line": 5,
+    "column": 29
+  },
+  {
+    "severity": "warning",
+    "lint": "unused-let",
+    "file": "testdata/lints/teams/payments.sigil",
+    "document": "teams.payments",
+    "message": "let unused_tier is never read",
+    "help": "remove the let, or read it; a private let can't be imported",
+    "line": 7,
+    "column": 5
+  },
+  {
+    "severity": "warning",
+    "lint": "gated-assert",
+    "file": "testdata/lints/teams/payments.sigil",
+    "document": "teams.payments",
+    "message": "deploy.guardrails holds asserts and is invoked under `when`",
+    "help": "its asserts only run while the condition holds; invoke it at the top level, or have the host require it",
+    "line": 11,
+    "column": 3
+  },
+  {
+    "severity": "warning",
+    "lint": "gated-deny",
+    "file": "testdata/lints/teams/payments.sigil",
+    "document": "teams.payments",
+    "message": "deploy.guardrails holds deny rules and is invoked under `when`",
+    "help": "its deny rules only fire while the condition holds; invoke it at the top level, or have the host require it",
+    "line": 11,
+    "column": 3
+  },
+  {
+    "severity": "warning",
+    "lint": "duplicate-invocation",
+    "file": "testdata/lints/teams/payments.sigil",
+    "document": "teams.payments",
+    "message": "deploy.production is invoked twice with the same arguments",
+    "help": "the first is on line 14; every rule it holds already fires once, so remove one, or change its arguments",
+    "line": 16,
+    "column": 1
+  }
+]
+--- ok ---

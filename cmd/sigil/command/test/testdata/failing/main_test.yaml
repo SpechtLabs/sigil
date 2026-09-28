@@ -1,0 +1,34 @@
+policy: access.main
+cases:
+  - name: wrong reason
+    input:
+      user: {name: ada, admin: true}
+    expect:
+      decision: allow
+      reason: team_member
+  - name: wrong payload
+    input:
+      user: {name: ada, admin: true}
+    expect:
+      decision: allow
+      reason: admin
+      payload:
+        ttl: 1h
+  - name: vault needs the owner function
+    input:
+      user: {name: ada}
+      resource: vault
+    expect:
+      decision: allow
+      reason: team_member
+  - name: typo in the input
+    input:
+      user: {name: ada, amdin: true}
+    expect:
+      decision: allow
+      reason: admin
+  - name: expected an assert
+    input:
+      user: {name: ada}
+    expect:
+      asserts: [named_user]

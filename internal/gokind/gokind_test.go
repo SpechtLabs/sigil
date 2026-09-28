@@ -50,12 +50,14 @@ type Release {
   soak: duration
   hotfix: bool
 }
+
 type Service {
   name: string
   tier: string
   owners: list<string>
   labels: map<string, string>
 }
+
 type Actor {
   name: string
   teams: list<string>
@@ -73,10 +75,12 @@ fn split(string, string) -> list<string>
 decision deny {
   no_rule_matched
 }
+
 decision review(approvers: list<string>) {
   service_owner
   everyone
 }
+
 decision approve(bake: duration = 1h) {
   release_manager
   payments_sre
@@ -84,6 +88,7 @@ decision approve(bake: duration = 1h) {
 
 collect one
 precedence deny > review > approve
+
 default deny(no_rule_matched)
 `
 
@@ -220,7 +225,7 @@ func TestBuild(t *testing.T) {
 		{name: "all scalars", mutate: func(o *gokind.Options) { o.Input = typeOf[AllScalars]() },
 			want: "input b: bool\ninput i: int\ninput i6: int\ninput f: float\ninput s: string\ninput d: duration\ninput t: timestamp\n"},
 		{name: "composite types", mutate: func(o *gokind.Options) { o.Input = typeOf[Composite]() },
-			want: "type AllScalars {\n  b: bool\n  i: int\n  i6: int\n  f: float\n  s: string\n  d: duration\n  t: timestamp\n}\ntype Release {\n  soak: duration\n  hotfix: bool\n}\n\n" +
+			want: "type AllScalars {\n  b: bool\n  i: int\n  i6: int\n  f: float\n  s: string\n  d: duration\n  t: timestamp\n}\n\ntype Release {\n  soak: duration\n  hotfix: bool\n}\n\n" +
 				"input matrix: list<list<string>>\ninput lookup: map<int, list<string>>\ninput by_time: map<timestamp, int>\ninput maybe: ?string\ninput nested: ?AllScalars\ninput deep: map<string, ?Release>\n"},
 		{name: "keyword field names", mutate: func(o *gokind.Options) { o.Input = typeOf[HasKeyword]() },
 			want: "type Keyword {\n  type: string\n  kind: string\n}\n\ninput resource: Keyword\n"},
@@ -230,7 +235,7 @@ func TestBuild(t *testing.T) {
 		{name: "defaults of every shape", mutate: func(o *gokind.Options) {
 			o.Decisions = []gokind.Decision{{Name: "d", Payload: typeOf[Defaults](), Reasons: []string{"x"}}}
 			o.Default = &gokind.Default{Decision: "d", Reason: "x"}
-		}, want: "decision d(bake: duration = 1h30m, tags: list<string> = [\"a\", \"b\"], limit: int = -3, tiers: map<string, int> = {\"a\": 1}, ratio: float = 0.75, flag: bool = true, opt: ?string = \"x\") {\n  x\n}\n\ncollect one\nprecedence d\ndefault d(x)\n"},
+		}, want: "decision d(bake: duration = 1h30m, tags: list<string> = [\"a\", \"b\"], limit: int = -3, tiers: map<string, int> = {\"a\": 1}, ratio: float = 0.75, flag: bool = true, opt: ?string = \"x\") {\n  x\n}\n\ncollect one\nprecedence d\n\ndefault d(x)\n"},
 		{name: "collecting kind", mutate: func(o *gokind.Options) {
 			o.Collect = true
 			o.Default = nil

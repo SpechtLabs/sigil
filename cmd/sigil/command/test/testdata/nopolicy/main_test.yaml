@@ -1,0 +1,7 @@
+policy: access.nope
+cases:
+  - name: never runs
+    input: {user: {name: ada}}
+    expect:
+      decision: allow
+      reason: admin

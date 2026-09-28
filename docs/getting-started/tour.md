@@ -18,12 +18,14 @@ type Release {
   soak: duration
   hotfix: bool
 }
+
 type Service {
   name: string
   tier: string
   owners: list<string>
   labels: map<string, string>
 }
+
 type Actor {
   name: string
   teams: list<string>
@@ -43,9 +45,11 @@ decision deny {
   soak_too_short
   no_rule_matched
 }
+
 decision review(approvers: list<string>) {
   service_owner
 }
+
 decision approve(bake: duration = 1h) {
   release_manager
   payments_sre
@@ -53,7 +57,9 @@ decision approve(bake: duration = 1h) {
 
 collect one
 precedence deny > review > approve
+precedence deny: not_eligible > soak_too_short > no_rule_matched
 precedence approve: release_manager > payments_sre
+
 default deny(no_rule_matched)
 ```
 
@@ -200,43 +206,43 @@ p, err := Deploy.Load(policies, "payments.production",
 
 With calls to two other files, it helps to see the policy flattened. `sigil explain` inlines every invocation and pushes its gates down into each rule:
 
-::: info Illustrative output
-The `sigil eval` and `sigil explain` blocks on this page show the planned output format. The CLI isn't implemented yet, so treat them as a picture of what the tools will return, not as a transcript.
+::: info Real output
+The `sigil explain` block below is what the CLI prints for these files.
 :::
 
 ```text
 $ sigil explain --kind deploy_approval.sigil --policy payments.production deploy/ payments/
-payments.production: 7 rules from 3 policies
+payments.production: 7 rules from 4 policies
 
-deny     not_eligible      payments:7 → guardrails:8
+deny     not_eligible      payments.production:7 → guardrails:8
          not eligible
 
-deny     soak_too_short    payments:7 → guardrails:12
+deny     soak_too_short    payments.production:7 → guardrails:12
          release.soak < 4h and not release.hotfix
 
-approve  release_manager   payments:10 → production:11
+approve  release_manager   payments.production:10 → deploy.production:11
          service.labels["compliance"] == "pci"
          and cleared
          and service.tier == "critical" and "release_manager" in actor.roles
 
-review   service_owner     payments:10 → production:16
+review   service_owner     payments.production:10 → deploy.production:16
          service.labels["compliance"] == "pci"
          and cleared
          and service.tier in ["standard", "internal"] and owns_service
          approvers = ["payments-leads", "security-leads"]
 
-approve  release_manager   payments:14 → production:11
+approve  release_manager   payments.production:14 → deploy.production:11
          service.labels["compliance"] != "pci"
          and cleared
          and service.tier == "critical" and "release_manager" in actor.roles
 
-review   service_owner     payments:14 → production:16
+review   service_owner     payments.production:14 → deploy.production:16
          service.labels["compliance"] != "pci"
          and cleared
          and service.tier in ["standard", "internal"] and owns_service
          approvers = ["payments-leads"]
 
-approve  payments_sre      payments:18
+approve  payments_sre      payments.production:18
          cleared and "payments-sre" in actor.teams
          bake = 15m
 ```
@@ -284,14 +290,17 @@ The actors below all hold the `deployer` role and are cleared for `["eu-1", "eu-
 Six hours is over the team's four-hour `min_soak`, so `soak_too_short` doesn't fire. The service has no `compliance` label, so the second `production(...)` call applies. The service tier is `standard`, which is in the default `tiers`, and the actor is on `payments`, which owns the service, so that call produces a review. The actor is also on `payments-sre`, so the team rule produces an approval.
 
 ```text
-decision  review
-reason    service_owner
-policy    payments.production
-payload   approvers = ["payments-leads"]
+payments.production: review service_owner
+  approvers = ["payments-leads"]
 
-candidates
-  review   service_owner     payments/production.sigil:14:3 → deploy/production.sigil:16:5
+trace: 2 candidates
+* review   service_owner     payments/production.sigil:14:3 → deploy/production.sigil:16:5
+           service.labels["compliance"] != "pci"
+           and cleared
+           and service.tier in ["standard", "internal"] and owns_service
+           approvers = ["payments-leads"]
   approve  payments_sre      payments/production.sigil:18:3
+           bake = 15m
 ```
 
 Review wins because it ranks above approve. The payments team's fast path doesn't fire over the platform's review; it only helps when the platform's policies stay silent. The `approvers` payload comes from the argument the team passed, and the trace shows the call chain that produced the candidate: the call on line 14 of the team file, then the rule on line 16 of `deploy/production.sigil`.
@@ -301,15 +310,15 @@ Review wins because it ranks above approve. The payments team's fast path doesn'
 Change `"soak"` to `"2h"` and a third candidate appears:
 
 ```text
-decision  deny
-reason    soak_too_short
-policy    payments.production
-payload   (none)
+payments.production: deny soak_too_short
 
-candidates
-  deny     soak_too_short    payments/production.sigil:7:1 → deploy/guardrails.sigil:12:3
+trace: 3 candidates
+* deny     soak_too_short    payments/production.sigil:7:1 → deploy/guardrails.sigil:12:3
+           release.soak < 4h and not release.hotfix
   review   service_owner     payments/production.sigil:14:3 → deploy/production.sigil:16:5
+           approvers = ["payments-leads"]
   approve  payments_sre      payments/production.sigil:18:3
+           bake = 15m
 ```
 
 The team's approval is still a candidate, and it still loses. This is the guarantee required guardrails give you: a deny from `deploy.guardrails` survives whatever a team adds on top. (The team did move the threshold, by binding `min_soak` to four hours; params aren't covered by that guarantee. [Per-team policies](/guides/team-policies/) has more on that.)
@@ -333,13 +342,9 @@ Now the actor is a developer from another team, outside the service's owners and
 The service is still eligible and the soak is long enough, so neither guardrail fires. `cleared` is true, but the tier isn't `critical` and the actor doesn't own the service, so nothing `deploy.production` contributes fires. The team rule needs `payments-sre`, which the actor isn't on.
 
 ```text
-decision  deny
-reason    no_rule_matched
-policy    payments.production
-payload   (none)
+payments.production: deny no_rule_matched (the kind's default)
 
-candidates
-  (none)
+trace: no rule fired
 ```
 
 With no candidates, the kind's `default` applies. Note the difference from the previous case: the default isn't protected the way an explicit deny is. Had the actor been on `payments-sre`, the team's approval would have been the only candidate and would have won. That's on purpose; it's how teams add approvals of their own.
@@ -348,17 +353,21 @@ With no candidates, the kind's `default` applies. Note the difference from the p
 Suppose the service is `critical`, and the actor is a release manager who is also on `payments-sre`. The review rule doesn't apply, because `critical` isn't in `tiers`, but two approvals fire:
 
 ```text
-decision  approve
-reason    release_manager
-policy    payments.production
-payload   bake = 1h
+payments.production: approve release_manager
+  bake = 1h
 
-candidates
-  approve  release_manager   payments/production.sigil:14:3 → deploy/production.sigil:11:5
+trace: 2 candidates
+* approve  release_manager   payments/production.sigil:14:3 → deploy/production.sigil:11:5
+           service.labels["compliance"] != "pci"
+           and cleared
+           and service.tier == "critical" and "release_manager" in actor.roles
+           bake = 1h
   approve  payments_sre      payments/production.sigil:18:3
+           cleared and "payments-sre" in actor.teams
+           bake = 15m
 ```
 
-Precedence over decisions can't separate two `approve` candidates, so the kind ranks their reasons: `precedence approve: release_manager > payments_sre`. The release manager's approval wins with a bake of one hour (the kind's default), even though the team's own rule asked for 15 minutes, and it would win the same way if the team rule were written above the call. If the platform team would rather hand both approvals to the host, the kind says `collect all` instead and the host picks in Go. See [Resolution](/reference/evaluation/#resolution).
+Precedence over decisions can't separate two `approve` candidates, so the kind ranks their reasons: `precedence approve: release_manager > payments_sre`. `precedence deny: ...` does the same for denies, so a deploy that is both ineligible and too fresh is denied as `not_eligible`. The release manager's approval wins with a bake of one hour (the kind's default), even though the team's own rule asked for 15 minutes, and it would win the same way if the team rule were written above the call. If the platform team would rather hand both approvals to the host, the kind says `collect all` instead and the host picks in Go. See [Resolution](/reference/evaluation/#resolution).
 :::
 
 ## What to read next

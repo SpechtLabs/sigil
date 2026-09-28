@@ -1,0 +1,167 @@
+package format
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+const (
+	messy = "policy a: K@1\nwhen x==1{deny( r )}\n"
+	tidy  = "policy a: K@1\n\nwhen x == 1 { deny(r) }\n"
+)
+
+// TestRun runs fmt over a temporary tree in every mode.
+func TestRun(t *testing.T) {
+	tests := []struct {
+		name  string
+		files map[string]string // relative path to contents
+		paths []string          // relative to the tree; nil formats the tree's root
+		stdin string
+		mode  mode
+		out   string            // with every path relative to the tree
+		after map[string]string // files expected after the run; nil means unchanged
+		err   string
+	}{
+		{
+			name:  "print a file",
+			files: map[string]string{"a.sigil": messy},
+			paths: []string{"a.sigil"},
+			out:   tidy,
+		},
+		{
+			name:  "print stdin",
+			paths: []string{"-"},
+			stdin: messy,
+			out:   tidy,
+		},
+		{
+			name: "directories recurse and skip dot entries and other files",
+			files: map[string]string{
+				"b.sigil":         tidy,
+				"sub/a.sigil":     messy,
+				".hidden/x.sigil": messy,
+				".x.sigil":        messy,
+				"notes.txt":       "not sigil",
+			},
+			paths: []string{"."},
+			out:   tidy + tidy,
+		},
+		{
+			name:  "no paths formats the current directory",
+			files: map[string]string{"a.sigil": messy},
+			out:   tidy,
+		},
+		{
+			name:  "check lists unformatted files and fails",
+			files: map[string]string{"a.sigil": messy, "b.sigil": tidy, "c/d.sigil": messy},
+			paths: []string{"."},
+			mode:  modeCheck,
+			out:   "a.sigil\nc/d.sigil\n",
+			err:   "2 files are not formatted",
+		},
+		{
+			name:  "check passes on formatted files",
+			files: map[string]string{"a.sigil": tidy},
+			paths: []string{"."},
+			mode:  modeCheck,
+		},
+		{
+			name:  "check names stdin",
+			paths: []string{"-"},
+			stdin: messy,
+			mode:  modeCheck,
+			out:   "<stdin>\n",
+			err:   "1 file is not formatted",
+		},
+		{
+			name:  "write rewrites only changed files",
+			files: map[string]string{"a.sigil": messy, "b.sigil": tidy},
+			paths: []string{"."},
+			mode:  modeWrite,
+			after: map[string]string{"a.sigil": tidy, "b.sigil": tidy},
+		},
+		{
+			name:  "write refuses stdin",
+			paths: []string{"-"},
+			mode:  modeWrite,
+			err:   "--write can't write back to stdin",
+		},
+		{
+			name:  "a file that doesn't parse is reported and left alone",
+			files: map[string]string{"a.sigil": "policy a: K@1\nlet = 1\n", "b.sigil": messy},
+			paths: []string{"."},
+			mode:  modeWrite,
+			after: map[string]string{"a.sigil": "policy a: K@1\nlet = 1\n", "b.sigil": tidy},
+			err:   "a.sigil:2:5: expected a name after `let`",
+		},
+		{
+			name:  "a missing path",
+			paths: []string{"nope.sigil"},
+			err:   "nope.sigil can't be read",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for name, src := range tt.files {
+				p := filepath.Join(dir, name)
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte(src), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Chdir(dir)
+
+			var out bytes.Buffer
+			err := run(&out, strings.NewReader(tt.stdin), tt.paths, tt.mode)
+			switch {
+			case tt.err == "" && err != nil:
+				t.Fatalf("run: %v", err)
+			case tt.err != "" && (err == nil || !strings.Contains(err.Error(), tt.err)):
+				t.Fatalf("run() error = %v, want %q", err, tt.err)
+			}
+			if out.String() != tt.out {
+				t.Errorf("output:\n%s\nwant:\n%s", out.String(), tt.out)
+			}
+			after := tt.after
+			if after == nil {
+				after = tt.files
+			}
+			for name, want := range after {
+				got, err := os.ReadFile(filepath.Join(dir, name))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(got) != want {
+					t.Errorf("%s:\n%s\nwant:\n%s", name, got, want)
+				}
+			}
+		})
+	}
+}
+
+// TestRewriteKeepsMode checks that --write keeps a file's permissions.
+func TestRewriteKeepsMode(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "a.sigil")
+	if err := os.WriteFile(p, []byte(messy), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(&bytes.Buffer{}, strings.NewReader(""), []string{p}, modeWrite); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o640 {
+		t.Errorf("mode = %v, want 0640", got)
+	}
+}

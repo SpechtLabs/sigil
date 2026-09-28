@@ -6,7 +6,7 @@ permalink: /reference/kind-files/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, only `sigil explain` exists. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, `fmt`, `check`, `eval`, `explain`, `test` and `export` exist. See [Open questions](/project/open-questions/).
 :::
 
 A kind is the contract between a Go host and the policies it evaluates. It declares what input looks like, which host functions exist, which decisions a policy can produce, and whether one of them wins or all of them apply. Every policy names exactly one kind in its header and gets type-checked against it.
@@ -33,12 +33,14 @@ type Release {
   soak: duration
   hotfix: bool
 }
+
 type Service {
   name: string
   tier: string
   owners: list<string>
   labels: map<string, string>
 }
+
 type Actor {
   name: string
   teams: list<string>
@@ -58,9 +60,11 @@ decision deny {
   soak_too_short
   no_rule_matched
 }
+
 decision review(approvers: list<string>) {
   service_owner
 }
+
 decision approve(bake: duration = 1h) {
   release_manager
   payments_sre
@@ -68,7 +72,9 @@ decision approve(bake: duration = 1h) {
 
 collect one
 precedence deny > review > approve
+precedence deny: not_eligible > soak_too_short > no_rule_matched
 precedence approve: release_manager > payments_sre
+
 default deny(no_rule_matched)
 ```
 
@@ -90,6 +96,9 @@ default deny(no_rule_matched)
 
 ```sigil
 kind DeployApproval version 1
+
+---
+
 kind DeployApproval version 3, accepts: 2
 ```
 
@@ -223,15 +232,19 @@ input actor: Actor
 decision read {
   engineering_member
 }
+
 decision write {
   platform_member
 }
+
 decision admin(ttl: duration = 8h) {
   oncall
 }
+
 decision customer_data_writer {
   data_engineer
 }
+
 decision development_environment_writer {
   platform_member
 }

@@ -1,0 +1,121 @@
+package check
+
+import (
+	"bytes"
+	"flag"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/sierrasoftworks/humane-errors-go"
+
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
+)
+
+var update = flag.Bool("update", false, "rewrite the golden files under testdata")
+
+// TestCheck runs check over the testdata bundles and compares what it
+// prints, and the error it fails with, with the golden files.
+func TestCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   string // under testdata/config; defaults.yaml when empty
+		format   output.Format
+		paths    []string
+		trusted  []string
+		patterns []string
+		requires []string
+	}{
+		{name: "lints", paths: []string{"testdata/lints"}},
+		{name: "lints_strict", config: "strict.yaml", paths: []string{"testdata/lints"}},
+		{name: "lints_json", format: output.JSON, paths: []string{"testdata/lints"}},
+		{name: "errors", paths: []string{"testdata/errors"}},
+		{name: "errors_yaml", format: output.YAML, paths: []string{"testdata/errors"}},
+		{name: "compile", paths: []string{"testdata/compile"}},
+		{name: "stale_kind", paths: []string{"testdata/stale"}},
+		{name: "config_typo", config: "typo.yaml", paths: []string{"testdata/lints"}},
+		{name: "require_ok", paths: []string{"testdata/require"}, trusted: []string{"testdata/lints/deploy"}, patterns: []string{"teams.*"}, requires: []string{"deploy.guardrails"}},
+		{name: "require_gated", paths: []string{"testdata/lints/teams"}, trusted: []string{"testdata/lints/deploy"}, patterns: []string{"teams.payments"}, requires: []string{"deploy.guardrails"}},
+		{name: "require_roots", paths: []string{"testdata/lints"}, requires: []string{"deploy.guardrails"}},
+		{name: "require_no_match", paths: []string{"testdata/lints"}, patterns: []string{"nope.*"}, requires: []string{"deploy.guardrails"}},
+		{name: "trusted_collision", paths: []string{"testdata/lints"}, trusted: []string{"testdata/lints/deploy"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			format := tt.format
+			if format == "" {
+				format = output.Text
+			}
+			config := tt.config
+			if config == "" {
+				config = "defaults.yaml"
+			}
+			var out bytes.Buffer
+			src := project.Sources{Paths: tt.paths, Trusted: tt.trusted, Recursive: true, Stdin: strings.NewReader("")}
+			err := run(&out, &options{output: &format}, filepath.Join("testdata", "config", config), filepath.Join("testdata", "deploy_approval.sigil"), src, tt.patterns, tt.requires)
+			golden(t, tt.name, render(out.String(), err))
+		})
+	}
+}
+
+// TestConfigDiscovery checks that without --config, check reads the
+// nearest sigil.yaml at or above the working directory.
+func TestConfigDiscovery(t *testing.T) {
+	dir := t.TempDir()
+	kind, err := os.ReadFile(filepath.Join("testdata", "deploy_approval.sigil"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := "policy p: DeployApproval@1\n\nlet unused = 1\n"
+	files := map[string]string{
+		"deploy_approval.sigil": string(kind),
+		"sigil.yaml":            "lints:\n  unused-let: error\n",
+		"sub/p.sigil":           policy,
+	}
+	for name, src := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(filepath.Join(dir, "sub"))
+	format := output.Text
+	herr := run(&bytes.Buffer{}, &options{output: &format}, "", filepath.Join("..", "deploy_approval.sigil"), project.Sources{Paths: []string{"."}}, nil, nil)
+	if herr == nil || !strings.Contains(herr.Error(), "let unused is never read [unused-let]") {
+		t.Fatalf("run() = %v, want the unused-let lint as an error", herr)
+	}
+}
+
+// render joins what the command printed and the error it returned.
+func render(out string, err humane.Error) string {
+	if err == nil {
+		return out + "--- ok ---\n"
+	}
+	s := out + "--- error ---\n" + err.Error() + "\n"
+	for _, a := range err.Advice() {
+		s += "advice: " + a + "\n"
+	}
+	return s
+}
+
+func golden(t *testing.T, name, got string) {
+	t.Helper()
+	path := filepath.Join("testdata", name+".golden")
+	if *update {
+		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%v (run with -update to create it)", err)
+	}
+	if got != string(want) {
+		t.Errorf("output differs from %s (run with -update to accept):\n--- got ---\n%s\n--- want ---\n%s", path, got, want)
+	}
+}
