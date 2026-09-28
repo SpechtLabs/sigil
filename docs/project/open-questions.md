@@ -115,12 +115,6 @@ The workaround is a `when` per case, as the PCI split in the canonical example d
 
 A policy may invoke the same policy more than once with different arguments, for example `deploy.regional` once for `eu-1` and once for `us-1`. Each call is a separate instantiation, and each candidate records its call chain, so the trace can tell the instances apart; that part is implemented. One problem remains, because composition is a union: any rule the invoked policy doesn't scope fires for every call. If `deploy.regional` had `when not in_scope { deny(out_of_region) }`, the `eu-1` call would deny every deploy the `us-1` call was meant to review. Policies meant to be invoked more than once have to scope every rule to their own params, or callers have to gate each call, and nothing enforces either. A lint for unscoped denies in a policy that's invoked twice could.
 
-## Direct or transitive requirement
-
-**Settled**
-
-Transitive. `policy.Require("deploy.guardrails")` passes when the root reaches `deploy.guardrails` through top-level invocations only, at any depth, so a shared "team baseline" policy that invokes the guardrails and the approvals can itself be invoked by a team. A gated call anywhere on the path is reported at that call. Direct would have been easier to read in the team file, and `sigil explain` gives that view back: the chain of every rule starts in the root.
-
 ## Host-layered bases
 
 **Blocks: nothing yet**
