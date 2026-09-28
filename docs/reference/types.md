@@ -26,7 +26,7 @@ Sigil is statically typed. The compiler knows the type of every input, param, le
 | `?T`           | none           | absent         | Optional, from Go pointer fields. Unwrapped with `??`; an optional struct is read with `?.` |
 | Struct types   | none           | all fields zero | Declared in the kind, reached with `.field`                             |
 | Ordered types  | none           | none           | Opaque, declared in the kind, ordered by the host (proposed)             |
-| `decision`     | `approve`      | none           | A decision's name as a value; only useful in `assert` (proposed)         |
+| `decision`     | `approve`      | none           | A decision's name as a value; only useful in `assert`                    |
 
 Zero values matter in one place: a missing map key. `service.labels["absent"]` is `""`, and indexing a missing key in a `map<string, int>` gives `0`.
 

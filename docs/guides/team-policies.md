@@ -108,7 +108,7 @@ p, err := Deploy.Load(teamFS, "payments.production",
 A team document that claims `deploy.guardrails` or `deploy.common` is then a compile error. [Policies in a ConfigMap](/guides/configmaps/#protect-the-guardrails) shows the full setup.
 
 ::: info Planned API
-The Go API is planned, not implemented. See the [Go API reference](/reference/go-api/) for the full sketch.
+`Require` and `From` are planned and come with composition. See the [Go API reference](/reference/go-api/) for what exists today.
 :::
 
 ## Bind params from Go instead

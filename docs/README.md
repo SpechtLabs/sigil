@@ -367,5 +367,5 @@ What the `[1]` to `[4]` markers point at:
 :::
 
 ::: warning Design phase
-Sigil is being designed documentation-first. The front end, kind definition, the type checker and expression evaluation are implemented; rules and decisions, composition and the CLI are not. These pages **are** the specification, and they will change as the [open questions](/project/open-questions/) get answered. If something reads wrong, [open an issue](https://github.com/SpechtLabs/sigil/issues).
+Sigil is being designed documentation-first. The front end, kind definition, the type checker and the evaluator are implemented; composition and the CLI are not. These pages **are** the specification, and they will change as the [open questions](/project/open-questions/) get answered. If something reads wrong, [open an issue](https://github.com/SpechtLabs/sigil/issues).
 :::

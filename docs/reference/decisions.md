@@ -28,9 +28,9 @@ Constructors may only appear:
 
 A constructor isn't an expression. It can't be bound with `let`, passed to a function, or compared. The name must be a decision the kind declares; any other name in constructor position is a compile error.
 
-The bare name without parentheses is different: `approve` on its own is a [`decision` value](/reference/types/#decision), which `assert` conditions compare against [`outcome`](/reference/expressions/#decision-values-and-outcome). It names the decision and builds nothing. (proposed)
+The bare name without parentheses is different: `approve` on its own is a [`decision` value](/reference/types/#decision), which `assert` conditions compare against [`outcome`](/reference/expressions/#decision-values-and-outcome). It names the decision and builds nothing.
 
-A `when` body may contain several constructors; each becomes its own candidate. See [Multiple decisions per block](/project/open-questions/#multiple-decisions-per-block) for why.
+A `when` body may contain several constructors; each becomes its own candidate. That's what keeps a [collecting kind](#collecting-kinds) readable: granting both `write` and `development_environment_writer` under one condition doesn't need the condition repeated in a second block.
 
 ## Declaring decisions
 
@@ -158,7 +158,7 @@ When several candidates survive [resolution](/reference/evaluation/#resolution),
 
 The trace identifies each rule by policy name, reason and source position, so the language needs no separate syntax for naming rules, and two branches with the same reason stay distinguishable. For a rule reached through invocations, the position is the full call chain, for example `payments/production.sigil:14:3 → deploy/production.sigil:16:5`. When nothing fires, the result holds the kind's default and the trace lists no candidates.
 
-When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, which the team policy invokes. The result's `Policy` names the policy the host evaluated, `payments.production`, and the outcome entry and every trace candidate name the policy whose rule they came from, `deploy.production`, along with the call chain. See [What the result's `Policy` field names](/project/open-questions/#what-the-result-s-policy-field-names).
+When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, which the team policy invokes. The result's `Policy` names the policy the host evaluated, `payments.production`, and the outcome entry and every trace candidate name the policy whose rule they came from, `deploy.production`, along with the call chain.
 
 On the Go side, `Decision[T].Match` gives typed access to the payload. See the [Go API](/reference/go-api/).
 

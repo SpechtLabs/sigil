@@ -8,7 +8,7 @@ permalink: /understanding/design-goals/
 Sigil exists because teams keep rebuilding the same thing: a YAML rule engine with label-selector matchers, a handful of ad-hoc operators, and a Go evaluator that nobody wants to own. Each one starts small and ends up with its own quirks around missing keys, list matching and precedence. Sigil replaces that recurring project with one small language, typed against a contract the host application defines, shipped as an importable Go library in the spirit of [filt-rs](https://github.com/SierraSoftworks/filters).
 
 ::: info Design phase
-The front end, kind definition, the type checker and expression evaluation are implemented so far; rules and decisions, composition and the CLI are not. These pages are the specification, and the goals below are what every later decision gets measured against.
+The front end, kind definition, the type checker and the evaluator are implemented so far; composition and the CLI are not. These pages are the specification, and the goals below are what every later decision gets measured against.
 :::
 
 ## Who it's for

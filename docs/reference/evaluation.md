@@ -52,7 +52,7 @@ A conflict makes `Eval` return a `*ConflictError` naming the candidates on each 
 The design goal behind these steps is that no candidate is ever merged, changed or invented. What the host gets is always something a rule produced, with its reason and position intact, and the only questions the language answers are which candidates count and whether they can stand together. Anything else, such as taking the shortest `bake` of two approvals, is the host's decision over `MatchAll`, in code that can be tested.
 
 ::: tip Implemented
-Fold, `exclusive`, reason ranking and the count rule replace the earlier positional tie-break, and the evaluator implements them. They settle [Ties within one decision](/project/open-questions/#ties-within-one-decision).
+Fold, `exclusive`, reason ranking and the count rule replace the earlier positional tie-break, and the evaluator implements them.
 :::
 
 ## Collecting kinds
@@ -123,7 +123,7 @@ The layout is illustrative; the exact format isn't fixed yet.
 Asserts and decisions answer different questions. A decision is an outcome the author expected and the host acts on, such as denying a deploy that hasn't soaked. A failed assert means something is wrong with the policy, the host or the input, and it should reach whoever owns the evaluation as an error. An assert that input from a caller can trip lets that caller fill the host's error metrics, so keep those rare and make them mean it.
 
 ::: tip Implemented as proposed
-Assertions are implemented as described here: every reached assert is checked after the outcome is known, every failure is reported, and `Eval` returns an `*AssertionError` with the default result. The open parts are listed under [Assertions](/project/open-questions/#assertions).
+Assertions are implemented as described here: input asserts run before any rule and outcome asserts once the outcome exists, every failure of the failing phase is reported, and `Eval` returns an `*AssertionError` with the default result. The open parts are listed under [Assertions](/project/open-questions/#assertions).
 :::
 
 ## Invocation

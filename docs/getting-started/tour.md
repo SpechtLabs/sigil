@@ -201,7 +201,7 @@ p, err := Deploy.Load(policies, "payments.production",
 With calls to two other files, it helps to see the policy flattened. `sigil explain` inlines every invocation and pushes its gates down into each rule:
 
 ::: info Illustrative output
-The `sigil eval` and `sigil explain` blocks on this page show the planned output format. Nothing is implemented yet, so treat them as a picture of what the tools will return, not as a transcript.
+The `sigil eval` and `sigil explain` blocks on this page show the planned output format. The CLI isn't implemented yet, so treat them as a picture of what the tools will return, not as a transcript.
 :::
 
 ```text
