@@ -15,8 +15,8 @@ import (
 	"github.com/sierrasoftworks/humane-errors-go"
 	"github.com/spf13/cobra"
 
+	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
 	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/format"
 )

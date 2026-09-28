@@ -44,7 +44,7 @@ jobs:
       - name: Discover packages with fuzz targets
         id: discover
         run: |
-          packages=$(bash scripts/fuzz.sh --list | awk '{print $1}' | sort -u | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().splitlines()))')
+          packages=$(go run ./cmd/devtool fuzz list --packages -o json)
           echo "packages=$packages" >> "$GITHUB_OUTPUT"
 
   fuzz:
@@ -55,10 +55,11 @@ jobs:
       fail-fast: false
       matrix:
         package: ${{ fromJSON(needs.targets.outputs.packages) }}
+    # devtool reads each fuzz run flag from FUZZ_<FLAG>.
     env:
-      FUZZTIME: ${{ inputs.duration || '60m' }}
-      FUZZTIMEOUT: 90m
-      FUZZPARALLEL: "2"
+      FUZZ_TIME: ${{ inputs.duration || '60m' }}
+      FUZZ_TIMEOUT: 90m
+      FUZZ_CPU: "2"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -80,13 +81,19 @@ jobs:
           restore-keys: |
             fuzz-${{ runner.os }}-${{ strategy.job-index }}-${{ hashFiles('go.mod') }}-
 
+      # --verbose keeps go test's output in the job log too; fuzz-results/
+      # holds it with the summary and the tested commit.
       - name: Fuzz package
         env:
-          FUZZ_PACKAGE: ${{ matrix.package }}
+          PACKAGE: ${{ matrix.package }}
+        run: go run ./cmd/devtool fuzz run --verbose "$PACKAGE"
+
+      - name: Publish results in job summary
+        if: always()
         run: |
-          git rev-parse HEAD | tee fuzz.log
-          go version | tee -a fuzz.log
-          bash scripts/fuzz.sh "$FUZZ_PACKAGE" 2>&1 | tee -a fuzz.log
+          if test -f fuzz-results/summary.md; then
+            cat fuzz-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Keep logs and regression inputs
         if: always()
@@ -94,7 +101,7 @@ jobs:
         with:
           name: fuzz-${{ strategy.job-index }}
           path: |
-            fuzz.log
+            fuzz-results/
             **/testdata/fuzz/**
 
   report:
@@ -115,10 +122,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: go
+
       - name: Open or update failure issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGETS_RESULT: ${{ needs.targets.result }}
-          FUZZ_RESULT: ${{ needs.fuzz.result }}
-          FUZZTIME: ${{ inputs.duration || '60m' }}
-        run: bash scripts/report-fuzz-failure.sh
+          JOBS_RESULT: ${{ needs.fuzz.result }}
+          DURATION: ${{ inputs.duration || '60m' }}
+        run: >-
+          go run ./cmd/devtool fuzz report
+          --targets-result "$TARGETS_RESULT"
+          --fuzz-result "$JOBS_RESULT"
+          --time "$DURATION"

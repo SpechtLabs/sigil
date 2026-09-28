@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
+	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/result"

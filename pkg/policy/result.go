@@ -60,7 +60,7 @@ type Condition struct {
 // Location renders the candidate's whole call chain and position, for
 // example `payments/production.sigil:14:3 → deploy/production.sigil:16:5`.
 func (c Candidate) Location() string {
-	return chain(append(append([]Position(nil), c.CallChain...), c.Position))
+	return chain(c.CallChain, c.Position)
 }
 
 // String renders the candidate on one line, as a trace prints it.

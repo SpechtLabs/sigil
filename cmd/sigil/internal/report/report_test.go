@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
+	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 )
 
 func theme() pretty.Theme {

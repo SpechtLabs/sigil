@@ -1,6 +1,8 @@
 package policy
 
 import (
+	"strings"
+
 	"github.com/spechtlabs/sigil/internal/result"
 	"github.com/spechtlabs/sigil/internal/token"
 )
@@ -31,11 +33,14 @@ func position(file, doc string, p token.Pos) Position {
 	return Position{File: file, Document: doc, Line: p.Line, Column: p.Column}
 }
 
-// chain formats a call chain: the positions joined by arrows.
-func chain(ps []Position) string {
-	rs := make([]result.Position, len(ps))
-	for i, p := range ps {
-		rs[i] = result.Position(p)
+// chain formats a call chain followed by the final position, without copying
+// the caller's positions into temporary slices.
+func chain(ps []Position, end Position) string {
+	var b strings.Builder
+	for _, p := range ps {
+		b.WriteString(p.String())
+		b.WriteString(" → ")
 	}
-	return result.Chain(rs)
+	b.WriteString(end.String())
+	return b.String()
 }

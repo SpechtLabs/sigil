@@ -1,13 +1,14 @@
 # .mise.toml — local tooling, exact pins (repo convention)
 #
-# The tasks below are the single definition of how sigil is built and checked.
-# CI calls exactly these, so a green `mise run check` locally means a green
-# pipeline. Renovate keeps every pin in this file current.
+# The tasks below define how sigil is built and checked. CI uses these tasks;
+# benchmark comparisons additionally set BENCH_BASELINE. Renovate keeps every
+# pin in this file current.
 
 [tools]
 # Keep in lockstep with the toolchain directive in go.mod; Renovate bumps both
 # together. The go directive (minimum language version) is bumped by hand.
 go = "1.27.1"
+"go:golang.org/x/perf/cmd/benchstat" = "v0.0.0-20260908200009-22c9c6c9d4da"
 "go:golang.org/x/tools/gopls" = "0.23.0"
 "go:github.com/go-delve/delve/cmd/dlv" = "1.27.2"
 
@@ -48,9 +49,27 @@ run = "go run -buildvcs=true ./cmd/sigil/"
 description = "Run the test suite with race detector and coverage"
 run = "go test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.txt ./..."
 
+# `mise run devtool -- <command>` runs any devtool command, e.g.
+# `mise run devtool -- bench list` or `mise run devtool -- fuzz run --help`.
+# Arguments after -- reach the bench and fuzz tasks too.
+#
+# Every flag of a bench or fuzz command can also be set as BENCH_<FLAG> or
+# FUZZ_<FLAG>, e.g. BENCH_BASELINE=main or FUZZ_TIME=1m.
+[tasks.devtool]
+description = "Run the repository's development CLI (benchmarks and fuzzing)"
+run = "go run ./cmd/devtool"
+
+[tasks.bench]
+description = "Measure every benchmark; --baseline (BENCH_BASELINE) compares with a revision and gates regressions above 10%"
+run = "go run ./cmd/devtool bench run"
+
+[tasks.bench-smoke]
+description = "Run every Go benchmark once to check workload correctness"
+run = "go run ./cmd/devtool bench run --no-baseline --count 1 --time 1x"
+
 [tasks.fuzz]
-description = "Fuzz every target; FUZZTIME sets the duration per target (default 10s)"
-run = "bash scripts/fuzz.sh"
+description = "Fuzz every target; --time (FUZZ_TIME) sets the time per target (default 10s)"
+run = "go run ./cmd/devtool fuzz run"
 
 # `mise run fmt` rewrites everything that has a canonical form; `mise run
 # lint` checks the same things without touching a file. The steps run in
@@ -137,14 +156,6 @@ run = "yamllint --strict ."
 description = "Lint the GitHub Actions workflows"
 run = "actionlint"
 
-[tasks.shell-lint]
-description = "Lint the fuzz runner and issue reporter"
-run = "shellcheck scripts/*.sh"
-
-[tasks.workflow-test]
-description = "Test automated fuzz failure reporting without contacting GitHub"
-run = "python3 -B -m unittest discover -s scripts -p '*_test.py'"
-
 [tasks.release-check]
 description = "Validate the GoReleaser config"
 run = "goreleaser check"
@@ -160,10 +171,9 @@ depends = [
   "mod-tidy",
   "test",
   "fuzz",
+  "bench-smoke",
   "yaml-lint",
   "actionlint",
-  "shell-lint",
-  "workflow-test",
   "release-check",
 ]
 

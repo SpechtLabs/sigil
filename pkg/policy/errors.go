@@ -97,7 +97,7 @@ func (e *AssertionError) Error() string {
 
 // Location renders the failure's call chain and position.
 func (f AssertFailure) Location() string {
-	return chain(append(append([]Position(nil), f.CallChain...), f.Position))
+	return chain(f.CallChain, f.Position)
 }
 
 func strconvQuote(s string) string { return `"` + s + `"` }

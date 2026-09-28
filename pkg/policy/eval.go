@@ -28,6 +28,12 @@ func (p *Policy[In]) Eval(ctx context.Context, input In) (*Result, error) {
 // comes with it.
 func convert(r *result.Result) (*Result, error) {
 	res := &Result{Policy: r.Policy, collect: r.Collect, ranked: r.Ranked}
+	if len(r.Trace) > 0 {
+		res.Trace.Candidates = make([]Candidate, 0, len(r.Trace))
+	}
+	if len(r.Outcome) > 0 {
+		res.Outcome = make([]Entry, 0, len(r.Outcome))
+	}
 	for _, c := range r.Trace {
 		res.Trace.Candidates = append(res.Trace.Candidates, candidate(c))
 	}
@@ -50,15 +56,18 @@ func failure(policy string, f *result.Failure) error {
 	case f.Runtime != nil:
 		return runtimeError(policy, f.Runtime)
 	case f.Conflict != nil:
-		ce := &ConflictError{Message: f.Conflict.Msg, Policy: policy}
+		ce := &ConflictError{Message: f.Conflict.Msg, Policy: policy, Candidates: make([]Candidate, 0, len(f.Conflict.Candidates))}
 		for _, c := range f.Conflict.Candidates {
 			ce.Candidates = append(ce.Candidates, candidate(c))
 		}
 		return ce
 	}
-	ae := &AssertionError{}
+	ae := &AssertionError{Failures: make([]AssertFailure, 0, len(f.Asserts))}
 	for _, a := range f.Asserts {
 		af := AssertFailure{Reason: a.Reason, Policy: a.Policy, Position: Position(a.Position), CallChain: positions(a.Chain)}
+		if len(a.Outcome) > 0 {
+			af.Outcome = make([]Candidate, 0, len(a.Outcome))
+		}
 		for _, c := range a.Outcome {
 			af.Outcome = append(af.Outcome, candidate(c))
 		}

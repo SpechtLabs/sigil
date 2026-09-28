@@ -88,8 +88,6 @@ jobs:
         run: |
           echo "::add-matcher::.github/actionlint-matcher.json"
           mise run actionlint
-          mise run shell-lint
-          mise run workflow-test
 
   test:
     name: Unit Tests
@@ -171,6 +169,7 @@ jobs:
       - lint
       - test
       - fuzz
+      - benchmark
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -197,10 +196,11 @@ jobs:
     name: Fuzz smoke tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # devtool reads each fuzz run flag from FUZZ_<FLAG>.
     env:
-      FUZZTIME: 5s
-      FUZZTIMEOUT: 1m
-      FUZZPARALLEL: "2"
+      FUZZ_TIME: 5s
+      FUZZ_TIMEOUT: 1m
+      FUZZ_CPU: "2"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -214,10 +214,68 @@ jobs:
         timeout-minutes: 5
         run: mise run fuzz
 
-      - name: Keep failing inputs
+      - name: Publish results in job summary
+        if: always()
+        run: |
+          if test -f fuzz-results/summary.md; then
+            cat fuzz-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep the log and failing inputs
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fuzz-regressions
-          path: '**/testdata/fuzz/**'
+          path: |
+            fuzz-results/
+            **/testdata/fuzz/**
           if-no-files-found: ignore
+
+  benchmark:
+    name: Benchmark regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # devtool reads each bench run flag from BENCH_<FLAG>. PRs compare the
+      # tested merge result with its base; release and manual runs compare the
+      # checked-out commit with its parent.
+      BENCH_BASELINE: ${{ github.event.pull_request.base.sha || 'HEAD^' }}
+      BENCH_COUNT: "10"
+      BENCH_TIME: 200ms
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: go go:golang.org/x/perf/cmd/benchstat
+
+      # The regression gate's own tests need benchstat, which only this job
+      # installs; the unit test job skips them.
+      - name: Test regression detection with benchstat
+        run: go test ./cmd/devtool/command/bench/
+
+      # Build both revisions first, then alternate sample order on this one
+      # runner. The current benchmark files and fixtures run against both.
+      - name: Compare performance with base
+        run: mise run bench
+
+      - name: Publish comparison in job summary
+        if: always()
+        run: |
+          if test -f benchmark-results/summary.md; then
+            cat benchmark-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Benchmark comparison did not complete; inspect the run logs and artifacts.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep benchmark measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmarks
+          path: benchmark-results/
+          if-no-files-found: warn

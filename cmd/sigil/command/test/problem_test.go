@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
+	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 )
 
 func TestProblem(t *testing.T) {

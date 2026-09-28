@@ -3,7 +3,7 @@ package version
 import (
 	"runtime/debug"
 
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
+	"github.com/spechtlabs/sigil/cmd/internal/output"
 )
 
 // Option configures the version command.

@@ -10,9 +10,9 @@ import (
 	"github.com/sierrasoftworks/humane-errors-go"
 	"github.com/spf13/cobra"
 
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
+	"github.com/spechtlabs/sigil/cmd/internal/pretty"
+	"github.com/spechtlabs/sigil/cmd/internal/usage"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/usage"
 )
 
 // NewCommand returns the export command.

@@ -1,9 +1,10 @@
 package eval
 
 import (
+	stdcmp "cmp"
 	"fmt"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/spechtlabs/sigil/internal/diag"
@@ -19,13 +20,14 @@ import (
 // A Policy is immutable once compiled and safe for concurrent use; every
 // evaluation gets its own frames.
 type Policy struct {
-	kind   *kind.Kind
-	root   *instance
-	def    *Candidate // the kind's default, nil for a collecting kind without one
-	ranks  map[string]int
-	Name   string // the root document's name
-	File   string
-	static bool
+	kind    *kind.Kind
+	root    *instance
+	def     *Candidate // the kind's default, nil for a collecting kind without one
+	ranks   map[string]int
+	Name    string // the root document's name
+	File    string
+	nframes int // frame slots assigned to instances at compile time
+	static  bool
 }
 
 // Outcome is the result of one evaluation. Candidates is every
@@ -60,9 +62,9 @@ type Requirement struct {
 }
 
 // run is the mutable state of one evaluation: the frames of every
-// instance reached, keyed by instance, and what the phases collected.
+// instance reached, indexed by its compiled slot, and what the phases collected.
 type run struct {
-	frames  map[*instance]*Frame
+	frames  []*Frame
 	input   Value
 	outcome Value
 	cands   []*Candidate
@@ -94,7 +96,7 @@ func (p *Policy) Eval(input any) (*Outcome, *diag.Error) {
 	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
-	r := &run{frames: map[*instance]*Frame{}, input: v}
+	r := &run{frames: make([]*Frame, p.nframes), input: v}
 	f := r.frame(p.root)
 
 	p.walk(f, r, p.root.body, phaseInput)
@@ -105,15 +107,14 @@ func (p *Policy) Eval(input any) (*Outcome, *diag.Error) {
 	if err := catch(func() { p.walk(f, r, p.root.body, phaseRules) }); err != nil {
 		return nil, err
 	}
-	sort.SliceStable(r.cands, func(i, j int) bool {
-		a, b := r.cands[i], r.cands[j]
+	slices.SortStableFunc(r.cands, func(a, b *Candidate) int {
 		if a.rank != b.rank {
-			return a.rank < b.rank
+			return stdcmp.Compare(a.rank, b.rank)
 		}
 		if a.rrank != b.rrank {
-			return a.rrank < b.rrank
+			return stdcmp.Compare(a.rrank, b.rrank)
 		}
-		return before(a.Rule, b.Rule)
+		return compareAt(a.Chain, a.Pos, b.Chain, b.Pos)
 	})
 	out := &Outcome{Candidates: r.cands}
 	out.Top, out.Conflict = p.resolve(r.cands)
@@ -130,14 +131,14 @@ func (p *Policy) Eval(input any) (*Outcome, *diag.Error) {
 // frame returns the instance's frame in this evaluation, creating it on
 // first use.
 func (r *run) frame(inst *instance) *Frame {
-	if f, ok := r.frames[inst]; ok {
+	if f := r.frames[inst.index]; f != nil {
 		return f
 	}
 	f := newFrame(r.input, inst.scope)
 	f.run = r
 	f.file, f.doc = inst.file, inst.name
 	f.Outcome = r.outcome
-	r.frames[inst] = f
+	r.frames[inst.index] = f
 	return f
 }
 
@@ -146,7 +147,9 @@ func (r *run) frame(inst *instance) *Frame {
 func (r *run) setOutcome(v Value) {
 	r.outcome = v
 	for _, f := range r.frames {
-		f.Outcome = v
+		if f != nil {
+			f.Outcome = v
+		}
 	}
 }
 
@@ -315,8 +318,8 @@ func (r *run) check(f *Frame, a *Assert) {
 // failures returns the failures so far, sorted by position, with the
 // file set on every runtime error.
 func (r *run) failures() []Failure {
-	sort.SliceStable(r.failed, func(i, j int) bool {
-		return beforeAt(r.failed[i].Assert.Chain, r.failed[i].Assert.Pos, r.failed[j].Assert.Chain, r.failed[j].Assert.Pos)
+	slices.SortStableFunc(r.failed, func(a, b Failure) int {
+		return compareAt(a.Assert.Chain, a.Assert.Pos, b.Assert.Chain, b.Assert.Pos)
 	})
 	for _, fl := range r.failed {
 		if fl.Err != nil && fl.Err.File == "" {
@@ -326,32 +329,29 @@ func (r *run) failures() []Failure {
 	return r.failed
 }
 
-// before orders two rules by their call chain, then their position: the
-// call site in the evaluated file first, then the position in the
-// invoked file, element by element.
-func before(a, b *Rule) bool { return beforeAt(a.Chain, a.Pos, b.Chain, b.Pos) }
-
-func beforeAt(ca []Site, pa token.Pos, cb []Site, pb token.Pos) bool {
+// compareAt orders call chains by each invocation's position, followed by
+// the constructor or assert position in the invoked file.
+func compareAt(ca []Site, pa token.Pos, cb []Site, pb token.Pos) int {
 	for i := 0; i < len(ca) && i < len(cb); i++ {
-		if ca[i].Pos != cb[i].Pos {
-			return posBefore(ca[i].Pos, cb[i].Pos)
+		if n := comparePos(ca[i].Pos, cb[i].Pos); n != 0 {
+			return n
 		}
 	}
 	switch {
 	case len(ca) < len(cb):
-		return posBefore(pa, cb[len(ca)].Pos)
+		return comparePos(pa, cb[len(ca)].Pos)
 	case len(ca) > len(cb):
-		return posBefore(ca[len(cb)].Pos, pb)
+		return comparePos(ca[len(cb)].Pos, pb)
 	}
-	return posBefore(pa, pb)
+	return comparePos(pa, pb)
 }
 
-// posBefore orders two positions in one file: by line, then column.
-func posBefore(a, b token.Pos) bool {
-	if a.Line != b.Line {
-		return a.Line < b.Line
+// comparePos orders two positions in one file by line, then column.
+func comparePos(a, b token.Pos) int {
+	if n := stdcmp.Compare(a.Line, b.Line); n != 0 {
+		return n
 	}
-	return a.Column < b.Column
+	return stdcmp.Compare(a.Column, b.Column)
 }
 
 // Requirement reports how the root reaches the policy called name.

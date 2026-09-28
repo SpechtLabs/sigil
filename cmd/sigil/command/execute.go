@@ -8,11 +8,10 @@ import (
 
 	"charm.land/fang/v2"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/usage"
+	"github.com/spechtlabs/sigil/cmd/internal/output"
+	"github.com/spechtlabs/sigil/cmd/internal/pretty"
+	"github.com/spechtlabs/sigil/cmd/internal/usage"
 )
 
 // Execute runs cmd on args, os.Args without the program name when nil,
@@ -27,7 +26,7 @@ func Execute(ctx context.Context, cmd *cobra.Command, args []string) int {
 	// --color must take effect before anything is written, including the
 	// help that cobra prints while it's still parsing flags, so it's read
 	// ahead of the real parse.
-	colorMode(args).Apply()
+	output.ColorFromArgs(args).Apply()
 
 	// `sigil version` is the single source of version information, so
 	// fang's --version flag is off.
@@ -43,16 +42,4 @@ func Execute(ctx context.Context, cmd *cobra.Command, args []string) int {
 		return 1
 	}
 	return 0
-}
-
-// colorMode reads --color from args, ignoring everything else.
-func colorMode(args []string) output.Color {
-	mode := output.ColorAuto
-	fs := pflag.NewFlagSet("color", pflag.ContinueOnError)
-	fs.ParseErrorsAllowlist.UnknownFlags = true
-	fs.SetOutput(io.Discard)
-	fs.Var(&mode, "color", "")
-	// A parse error means the real parse reports it; the mode stays auto.
-	_ = fs.Parse(args)
-	return mode
 }

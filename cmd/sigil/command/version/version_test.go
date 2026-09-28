@@ -5,7 +5,7 @@ import (
 	"runtime/debug"
 	"testing"
 
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
+	"github.com/spechtlabs/sigil/cmd/internal/output"
 )
 
 var testBuildInfo = &debug.BuildInfo{
