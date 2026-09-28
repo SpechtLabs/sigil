@@ -5,8 +5,8 @@ createTime: 2026/09/24 22:30:00
 permalink: /reference/go-api/
 ---
 
-::: warning Planned API
-Defining a kind exists: `NewKind`, `Decision`, `None`, the `With` options and `Schema()`. Loading, compiling and evaluating policies don't yet. The rest of this page describes the API as designed, so the language reference has a concrete host to point at; names and signatures may still change before the first release.
+::: warning Partly implemented
+Defining a kind exists: `NewKind`, `Decision`, `None`, the `With` options and `Schema()`. So do `Compile`, `Params`, `Eval`, `Result`, `Match` and `MatchAll`, and the `*CompileError`, `*RuntimeError` and `*AssertionError` types. `Load`, `Require`, `From`, `MapFS`, `LoadKind` and `Resolver` don't yet; they come with composition and the tooling milestones. The rest of this page describes the API as designed, so the language reference has a concrete host to point at; names and signatures may still change before the first release.
 :::
 
 The API mirrors `regexp`: define a kind once at package level, compile policies once, and evaluate them many times from any goroutine. Everything lives in package `policy`, import path `github.com/spechtlabs/sigil/pkg/policy`.
@@ -120,7 +120,17 @@ p, err := Deploy.Load(policies, "deploy.gate",
 )
 ```
 
-`Compile` does the same as `Load` for a single source string, `Deploy.Compile(src, "payments.production", opts...)`. The source is a one-file bundle: it may hold several documents, and imports resolve among them. A compiled policy is immutable and safe for concurrent use. A host can't load a module; `Load` on a module's name returns an error saying it has no rules.
+`Compile` does the same as `Load` for a single source string, `Deploy.Compile(src, "payments.production", opts...)`. The source is a one-file bundle: it may hold several documents, and imports resolve among them. Every document is checked, so a broken document fails the compile even when the root never uses it. A compiled policy is immutable and safe for concurrent use. A host can't load a module; `Load` on a module's name returns an error saying it has no rules.
+
+A compile error is a `*policy.CompileError` holding every diagnostic, each with its position, the document it's in and a fix hint. Its message quotes the offending lines the way the CLI does:
+
+```text
+2:14: unknown field "teir" on type Service
+  |
+2 | when service.teir == "x" { deny("a") }
+  |              ^^^^
+  = help: did you mean "tier"? Service declares: name, tier, owners, labels
+```
 
 ### Bundles and ConfigMaps
 
@@ -153,7 +163,7 @@ p, err := Deploy.Load(policy.MapFS(cm.Data), "payments.production",
 
 ### Positions in errors and traces
 
-Every compile error and every trace entry carries the file, line and column, plus the name of the document it's in. In text form the name follows the position in parentheses, `policies.sigil:42:5 (payments.production)`, which stays readable when forty documents share one key. The document name is left out of text output when it adds nothing, that is when the file holds only that document and its path matches the name, so `deploy/production.sigil:16:5` stays as it is. (proposed) The Go values always carry both.
+Every compile error and every trace entry carries the file, line and column, plus the name of the document it's in, as a `policy.Position`. In text form the name follows the position in parentheses, `policies.sigil:42:5 (payments.production)`, which stays readable when forty documents share one key. The document name is left out of text output when it adds nothing, that is when the file's path matches the name, so `deploy/production.sigil:16:5` stays as it is. The Go values always carry both. A policy compiled from a string has no file, so its positions read `4:3 (payments.production)`.
 
 ### Required policies
 
@@ -198,7 +208,7 @@ if err != nil {
 }
 ```
 
-On a runtime error (index out of range, integer overflow, a host function returning an error) `Eval` returns the error together with a result holding the kind's default decision, or an empty outcome for a collecting kind. A host that fails closed can use `res` directly.
+On a runtime error (index out of range, integer overflow, a host function returning an error) `Eval` returns a `*policy.RuntimeError`, which names the policy and the position of the expression that failed, together with a result holding the kind's default decision, or an empty outcome for a collecting kind. A host that fails closed can use `res` directly. A context that's already done returns its error the same way, without evaluating.
 
 A failed [assert](/reference/evaluation/#assertions) returns a `*policy.AssertionError` with the same kind of result. It lists every assert that failed in the phase that stopped evaluation, input or outcome, including asserts whose own condition raised a runtime error. Tell it apart from a runtime error with `errors.As`, and count it separately:
 
@@ -216,31 +226,46 @@ case err != nil:
 }
 ```
 
-Each failure carries the assert's reason, its call chain, the runtime error if its condition raised one and, for an outcome assert, the candidates involved. (proposed)
+Each failure carries the assert's reason, the policy it's in, its position and call chain, the runtime error if its condition raised one and, for an outcome assert, the candidates that formed the outcome it read. The result that comes with the error holds the kind's default, and its trace lists every candidate the rules produced: none when an input assert failed.
 
 ## Result
 
 ```go
 type Result struct {
-	Decision string           // "review"
-	Reason   string           // "service_owner"
-	Policy   string           // "payments.production"
-	Payload  map[string]Value // untyped view; use Decision[T].Match for typed
-	Outcome  []Entry          // collecting kinds: every candidate, sorted; may be empty
-	Trace    Trace            // all candidates, conditions for the winning decision
+	Decision string         // "review"
+	Reason   string         // "service_owner"
+	Policy   string         // "payments.production": the policy the host evaluated
+	Payload  map[string]any // untyped view; use Decision[T].Match for typed
+	Outcome  []Entry        // the winner, or for a collecting kind every candidate, sorted; may be empty
+	Trace    Trace          // all candidates, with conditions for the winning decision
 }
 
 type Entry struct {
 	Decision string
 	Reason   string
-	Policy   string
-	Payload  map[string]Value
+	Policy   string         // the policy whose rule produced it; empty for the kind's default
+	Payload  map[string]any
+	Position Position       // of the constructor; unknown for the default
+}
+
+type Trace struct {
+	Candidates []Candidate // sorted by precedence (or declaration order) and then position
+}
+
+type Candidate struct {
+	Decision   string
+	Reason     string
+	Policy     string
+	Payload    map[string]any
+	Position   Position    // of the constructor in its policy
+	CallChain  []Position  // the invocations it was reached through, outermost first
+	Conditions []Condition // the `when` conditions that held; only for candidates of the winning decision
 }
 ```
 
-For a kind with `precedence`, `Decision`, `Reason`, `Policy` and `Payload` describe the winner and `Outcome` holds that one entry. For a collecting kind the single fields are empty and `Outcome` holds everything. (proposed; whether one `Result` type should serve both, or a collecting kind should get its own, is open.)
+For a kind with `precedence`, `Decision`, `Reason`, `Policy` and `Payload` describe the winner and `Outcome` holds that one entry. For a collecting kind the single fields are empty and `Outcome` holds everything. One `Result` type serves both; whether a collecting kind should get its own is still [open](/project/open-questions/#collecting-kinds).
 
-What `Policy` holds is still open. When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, reached through an invocation, so `Policy` could name either one. See [Open questions](/project/open-questions/). `Trace` lists every candidate by policy name, reason and call chain, with each step's file, line, column and document name (for example `payments/production.sigil:14:3 → deploy/production.sigil:16:5`), and records which conditions held for every candidate of the winning decision. See [Evaluation semantics](/reference/evaluation/) for how the winner is picked.
+`Policy` on the result names the policy the host evaluated. When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, reached through an invocation, so the entry and the trace candidate name `deploy.production` instead, and their call chain says how it was reached. `Trace` lists every candidate by policy name, reason and call chain, with each step's file, line, column and document name (for example `payments/production.sigil:14:3 → deploy/production.sigil:16:5`), and records which conditions held for every candidate of the winning decision; `Candidate.Location()` renders the chain. See [Evaluation semantics](/reference/evaluation/) for how the winner is picked.
 
 ## Typed matching
 
@@ -266,7 +291,7 @@ for _, g := range Admin.MatchAll(res) {
 }
 ```
 
-`Match` on a collecting kind's result is a runtime panic, because "the" match isn't defined. (proposed)
+`Match` on a collecting kind's result is a runtime panic, because "the" match isn't defined.
 
 ## Dynamic input
 

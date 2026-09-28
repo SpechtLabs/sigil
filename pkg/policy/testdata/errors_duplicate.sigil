@@ -1,0 +1,13 @@
+policy p: DeployApproval@1
+
+when true {
+  deny("a")
+}
+
+---
+
+policy p: DeployApproval@1
+
+when true {
+  deny("b")
+}

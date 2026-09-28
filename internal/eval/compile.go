@@ -8,9 +8,28 @@ import (
 	"time"
 
 	"github.com/spechtlabs/sigil/internal/ast"
+	"github.com/spechtlabs/sigil/internal/check"
 	"github.com/spechtlabs/sigil/internal/constant"
+	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/types"
 )
+
+type compiler struct {
+	info  *check.Info
+	scope *Scope
+}
+
+// Compile turns x, checked into info, into an Expr. It fails only when
+// info doesn't cover x, which means x wasn't checked or didn't check.
+func Compile(x ast.Expr, info *check.Info, scope *Scope) (Expr, *diag.Error) {
+	c := &compiler{info: info, scope: scope}
+	var e Expr
+	err := catch(func() { e = c.expr(x) })
+	if err != nil {
+		return nil, err
+	}
+	return e, nil
+}
 
 // expr compiles x. Every case reads the checked types it needs up front
 // and returns a closure that does only the work of that operator.
@@ -58,9 +77,23 @@ func constExpr(v any) Expr {
 	return func(*Frame) Value { return val }
 }
 
-// ident compiles a name: an input read through its field index, or a
-// slot the frame binds. Decision names are their own string.
+// ident compiles a name: a param's constant, a let evaluated on first
+// use, a slot the frame binds, or an input read through its field index.
+// Decision names are their own string.
 func (c *compiler) ident(x *ast.Ident) Expr {
+	if v, ok := c.scope.consts[x.Name]; ok {
+		return func(*Frame) Value { return v }
+	}
+	if i, ok := c.scope.names[x.Name]; ok {
+		s := c.scope
+		return func(f *Frame) Value {
+			if !f.done[i] {
+				f.lets[i] = s.lets[i](f)
+				f.done[i] = true
+			}
+			return f.lets[i]
+		}
+	}
 	if slot, ok := c.scope.slots[x.Name]; ok {
 		return func(f *Frame) Value { return f.slots[slot] }
 	}
@@ -602,6 +635,44 @@ func (c *compiler) quant(x *ast.QuantExpr) Expr {
 	}
 }
 
-// Bool is a convenience for tests and the policy evaluator: the bool a
-// condition evaluated to.
-func Bool(v Value) bool { return norm(v).Bool() }
+// typeOf returns the checked type of x, or throws when there is none.
+func (c *compiler) typeOf(x ast.Expr) types.Type {
+	t := c.info.TypeOf(x)
+	if t == nil || t == types.Invalid {
+		throwf(x, "expression `%s` wasn't checked; compile only checked expressions", ast.Sprint(x))
+	}
+	return t
+}
+
+// zero returns the zero value of a Sigil type, as a missing map key
+// yields. Struct types need their Go type, from the binding.
+func (c *compiler) zero(t types.Type) Value {
+	switch t := t.(type) {
+	case types.Basic:
+		switch t {
+		case types.Bool:
+			return reflect.ValueOf(false)
+		case types.Int:
+			return reflect.ValueOf(int64(0))
+		case types.Float:
+			return reflect.ValueOf(0.0)
+		case types.String, types.Decision:
+			return reflect.ValueOf("")
+		case types.Duration:
+			return reflect.ValueOf(time.Duration(0))
+		case types.Timestamp:
+			return reflect.Zero(timeType)
+		}
+	case *types.List:
+		return reflect.ValueOf([]any{})
+	case *types.Map:
+		return reflect.ValueOf(map[any]any{})
+	case *types.Struct:
+		if gt, ok := c.scope.binding.Structs[t.Name]; ok {
+			return reflect.Zero(gt)
+		}
+	case *types.Optional:
+		return Value{}
+	}
+	return Value{}
+}

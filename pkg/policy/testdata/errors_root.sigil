@@ -1,0 +1,12 @@
+// The root q isn't here: the error lists the policies that are.
+policy p: DeployApproval@1
+
+when true {
+  deny("a")
+}
+
+---
+
+module m: DeployApproval@1
+
+let a = true

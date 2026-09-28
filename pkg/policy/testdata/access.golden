@@ -1,0 +1,50 @@
+== compile access.engineering ==
+ok
+
+== an engineer ==
+outcome
+  read     engineering_member (none)
+
+candidates
+  read     engineering_member 6:3 (access.engineering)
+           "engineering" in actor.teams
+
+== a platform engineer on call ==
+outcome
+  read     engineering_member (none)
+  write    platform_member    (none)
+  admin    platform_member    ttl: 1h0m0s
+  admin    oncall             ttl: 8h0m0s
+
+candidates
+  read     engineering_member 6:3 (access.engineering)
+           "engineering" in actor.teams
+  write    platform_member    10:3 (access.engineering)
+           "platform" in actor.teams
+  admin    platform_member    11:3 (access.engineering)  ttl: 1h0m0s
+           "platform" in actor.teams
+  admin    oncall             15:3 (access.engineering)  ttl: 8h0m0s
+           "oncall" in actor.roles
+
+== a platform engineer off call fails the separation assert ==
+outcome
+  (none)
+error     assertion "sod_read_admin" failed at 18:1 (access.engineering)
+          sod_read_admin: read engineering_member at 6:3 (access.engineering)
+          sod_read_admin: write platform_member at 10:3 (access.engineering)
+          sod_read_admin: admin platform_member at 11:3 (access.engineering) {ttl: 1h0m0s}
+
+candidates
+  read     engineering_member 6:3 (access.engineering)
+           "engineering" in actor.teams
+  write    platform_member    10:3 (access.engineering)
+           "platform" in actor.teams
+  admin    platform_member    11:3 (access.engineering)  ttl: 1h0m0s
+           "platform" in actor.teams
+
+== nobody ==
+outcome
+  (none)
+
+candidates
+  (none)

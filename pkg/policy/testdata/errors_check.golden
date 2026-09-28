@@ -1,0 +1,15 @@
+== compile p ==
+5:14: unknown field "teir" on type Service
+  |
+5 | when service.teir == "x" {
+  |              ^^^^
+  = help: did you mean "tier"? Service declares: name, tier, owners, labels
+15:1: expected `:`, found `}`
+   |
+15 | }
+   | ^
+   = help: a map entry is written `key: value`
+21:6: expected bool, found int
+   |
+21 | when 1 {
+   |      ^

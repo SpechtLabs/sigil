@@ -1,0 +1,23 @@
+// A typo in the root, a parse error in a second policy and a type error
+// in a third: every document is checked and every problem reported.
+policy p: DeployApproval@1
+
+when service.teir == "x" {
+  deny("a")
+}
+
+---
+
+policy q: DeployApproval@1
+
+when service.tier == {
+  deny("a")
+}
+
+---
+
+policy r: DeployApproval@1
+
+when 1 {
+  deny("a")
+}

@@ -1,0 +1,87 @@
+== compile payments.production ==
+ok
+
+== the team rule fires alone ==
+decision  approve
+reason    payments_sre
+policy    payments.production
+payload   bake: 15m0s
+
+candidates
+  approve  payments_sre       40:3 (payments.production)  bake: 15m0s
+           cleared and "payments-sre" in actor.teams
+
+== a guardrail deny outranks the team's approve ==
+decision  deny
+reason    soak_too_short
+policy    payments.production
+payload   (none)
+
+candidates
+  deny     soak_too_short     24:3 (payments.production)
+           release.soak < min_soak and not release.hotfix
+  approve  payments_sre       40:3 (payments.production)  bake: 15m0s
+
+== a hotfix skips the soak ==
+decision  approve
+reason    payments_sre
+policy    payments.production
+payload   bake: 15m0s
+
+candidates
+  approve  payments_sre       40:3 (payments.production)  bake: 15m0s
+           cleared and "payments-sre" in actor.teams
+
+== review with the bound approvers ==
+decision  review
+reason    service_owner
+policy    payments.production
+payload   approvers: [payments-leads]
+
+candidates
+  review   service_owner      35:5 (payments.production)  approvers: [payments-leads]
+           cleared
+           service.tier in tiers and owns_service
+
+== a tie goes to the earliest constructor ==
+decision  approve
+reason    release_manager
+policy    payments.production
+payload   bake: 1h0m0s
+
+candidates
+  approve  release_manager    30:5 (payments.production)  bake: 1h0m0s
+           cleared
+           service.tier == "critical" and "release_manager" in actor.roles
+  approve  payments_sre       40:3 (payments.production)  bake: 15m0s
+           cleared and "payments-sre" in actor.teams
+
+== not eligible ==
+decision  deny
+reason    not_eligible
+policy    payments.production
+payload   (none)
+
+candidates
+  deny     not_eligible       20:3 (payments.production)
+           not eligible
+  approve  payments_sre       40:3 (payments.production)  bake: 15m0s
+
+== nothing fires ==
+decision  deny
+reason    no_rule_matched
+policy    payments.production
+payload   (none)
+
+candidates
+  (none)
+
+== a negative soak fails the assert ==
+decision  deny
+reason    no_rule_matched
+policy    payments.production
+payload   (none)
+error     assertion "negative_soak" failed at 43:1 (payments.production)
+
+candidates
+  (none)

@@ -6,7 +6,7 @@ permalink: /reference/policy-files/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. Syntax, kinds, type checking and expression evaluation are implemented; rules and decisions, composition and the CLI aren't yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. Syntax, kinds, type checking, rules, decisions, asserts and the evaluation trace are implemented; composition (imports and invocation) and the CLI aren't yet. See [Open questions](/project/open-questions/).
 :::
 
 A policy opens with a `policy` header, lists its imports, and then contains any number of `param`, `let`, `when` and `assert` statements and policy invocations in any order. Each statement starts with a keyword or with the name of an imported policy followed by `(`, so a policy needs no separators and no significant whitespace.
@@ -198,7 +198,7 @@ The body contains nested `when` blocks, [scoped lets](#scoped-lets), [decision c
 
 There's no `else`. Write `when not x { ... }` instead. A nested `when` fires only if every enclosing condition holds, which makes nesting a conjunction. The full rules live on [Evaluation semantics](/reference/evaluation/).
 
-Whether a single body may contain more than one decision constructor is an [open question](/project/open-questions/). The examples in these docs use one constructor per body.
+A body may contain more than one decision constructor; each one that's reached becomes its own candidate. The examples in these docs mostly use one constructor per body, which keeps traces easy to read.
 
 ## `assert`
 

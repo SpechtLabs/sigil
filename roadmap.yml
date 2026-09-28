@@ -10,8 +10,8 @@ title: Roadmap
 description: |
   Sigil is built in milestones, each with a concrete exit criterion. The Go API comes first and the
   kind grammar last, because only tooling parses kind files: the defining host builds its kind from
-  Go structs and never reads one. At M4 the language can replace an existing YAML rule set, such as a
-  production deploy gate, which is its first real workload.
+  Go structs and never reads one. From M4 a host can compile a policy and evaluate it to a decision
+  with its trace, which is the first real workload.
 
   Documentation comes first, on purpose. Syntax is cheap to change in a Markdown file and expensive
   to change once policies exist in the wild, and writing the reference pages has already surfaced
@@ -36,6 +36,11 @@ timeline:
       `present`, scalar-only equality, and host-ordered types for versions. Everything the
       implemented milestones cover lands in the parser, checker and evaluator; the rest is
       tracked below.
+  - date: 2026-09-28
+    title: Rules, decisions and the trace implemented
+    description: |
+      `when` blocks, constructors, precedence, the default, asserts and collecting kinds
+      evaluate, and `Compile`, `Eval`, `Result` and `Match` land in `pkg/policy`. M4 closes.
   - date: 2026-09-28
     title: Kinds, the type checker and expression evaluation implemented
     description: |
@@ -115,8 +120,8 @@ milestones:
           scoped lets and `pub let`, optional chaining with `?.` and `present`, param bounds as
           `, min: value, max: value`, `has` as the only map-key test, and kind version pins
           (`Kind@N` with `accepts` on the kind). Boolean operator
-          spelling is settled: words. Still open: glob syntax (M3) and multiple decisions per
-          block (M4); the parser accepts several.
+          spelling is settled: words. Settled with the evaluator: several decisions per block are
+          allowed. Still open: glob syntax.
       - title: Published documentation site
         state: DONE
         requirement: SHOULD
@@ -228,38 +233,46 @@ milestones:
 
   - title: Policies
     description: |
-      The first milestone with a user. Porting a YAML rule set that runs in production today and passing
-      its test cases is the test of whether the language can replace what it's meant to replace.
+      The first milestone with a user: a host compiles a policy against its kind and evaluates it to a
+      decision it can act on, with a trace that says why.
 
-      **Done when** an existing YAML rule set, such as a production deploy gate, is ported and its test cases pass.
+      **Done when** the deploy gate from the README compiles and evaluates through the Go API, and
+      golden tests pin the outcome and trace for every rule on the evaluation page.
     deliverables:
       - title: when blocks and decision constructors
-        state: TODO
+        state: DONE
         requirement: MUST
+        description: |
+          Blocks compile into closures; a nested block's condition only runs while the enclosing
+          ones hold, each constructor reached becomes a candidate with its payload evaluated into
+          the host's Go struct, and lets evaluate at most once per evaluation, on first use.
       - title: Precedence and default
-        state: TODO
+        state: DONE
         requirement: MUST
         description: |
           A `collect one` kind returns its highest-ranked candidate, or the default when nothing
           fires.
       - title: Collecting kinds
-        state: TODO
+        state: DONE
         requirement: MUST
         description: |
           A `collect all` kind returns every candidate that fired, sorted by the kind's declaration
           order, and an empty outcome on a runtime error. `outcome` holds every distinct decision.
+          `Decision[T].MatchAll` reads the grants of one decision with typed payloads.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/evaluation.md
       - title: Assertions
-        state: TODO
+        state: DONE
         requirement: MUST
         description: |
           Input asserts, whose condition doesn't read `outcome`, run before any rule; outcome
           asserts run once the outcome exists. A failing phase ends the evaluation with a
           `*policy.AssertionError` listing every failure of that phase, and an assert whose own
-          condition raises a runtime error counts as failed.
+          condition, or an enclosing condition, raises a runtime error counts as failed with the
+          error attached. Each `when` condition is evaluated once per evaluation, whichever
+          phases need it.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/evaluation.md
       - title: Scoped lets at evaluation
-        state: TODO
+        state: DONE
         requirement: MUST
         description: |
           A `let` inside a `when` body is evaluated lazily, at most once per evaluation, and only
@@ -270,16 +283,24 @@ milestones:
         description: |
           `policy.WithOrdered[*semver.Version]("Version")` and `type Version ordered` give a Go
           type with `Compare(T) int` the ordinary comparison operators, printed through
-          `MarshalText` or `String`. Deploy gates often compare versions, so the port below is
-          likely to need it. Nothing else blocks it: kinds, the checker and the evaluator exist.
+          `MarshalText` or `String`. Deploy gates often compare versions, so the first real host
+          is likely to need it. Nothing else blocks it: kinds, the checker and the evaluator exist.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/types.md
       - title: Evaluation trace
-        state: TODO
+        state: DONE
         requirement: MUST
-        description: Every candidate, and for each candidate of the winning decision, which conditions held.
-      - title: Port a real YAML rule set
-        state: TODO
+        description: |
+          Every candidate, and for each candidate of the winning decision, which conditions held.
+          `Result.Policy` names the evaluated policy; each candidate names the policy its rule
+          is in, with a call chain ready for invocations.
+      - title: Go API for compiling and evaluating
+        state: DONE
         requirement: MUST
+        description: |
+          `Compile` over a one-file bundle with every document checked, `Params` type-checked
+          against the declarations, `Eval` with typed `*CompileError`, `*RuntimeError` and
+          `*AssertionError`, and `Match` and `MatchAll` for typed payloads. `Load` over an
+          `fs.FS` comes with the bundle loader.
 
   - title: Composition
     description: |
@@ -292,12 +313,13 @@ milestones:
       condition, and the host rejects it when a required guardrail is gated.
     deliverables:
       - title: param and let
-        state: TODO
+        state: DOING
         requirement: MUST
         description: |
           Params bound by invocation or by `policy.Params`, each value checked against the
-          param's `min` and `max` when the policy compiles or loads. Declaring bounds and
-          checking them against the default already works.
+          param's type and its `min` and `max` when the policy compiles or loads. The
+          `policy.Params` side works, and lets evaluate lazily; binding params from an
+          invocation is what's left.
       - title: Modules and imports
         state: TODO
         requirement: MUST

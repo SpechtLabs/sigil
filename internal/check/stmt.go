@@ -104,6 +104,7 @@ func (c *Checker) params(stmts []ast.Stmt, env *Env) {
 			t = types.Invalid
 		}
 		c.declare(p.Name, env, Binding{Entity: Param, Type: t})
+		c.info.Params[p] = t
 		if t == types.Invalid {
 			continue
 		}

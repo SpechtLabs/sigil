@@ -15,11 +15,11 @@ If you have an opinion on any of these, [open an issue](https://github.com/Spech
 
 ## Multiple decisions per block
 
-**Blocks: M4**
+**Settled**
 
-The parser accepts several constructors in one body, so this is the checker's decision.
+A `when` body may contain several decision constructors. Each one that's reached becomes its own candidate, and the trace lists them separately by position. The evaluator implements it, and it's what makes a collecting kind readable, as the last paragraph explains.
 
-Should a `when` body be allowed to contain several decision constructors?
+The question was whether a `when` body should be allowed to contain several decision constructors:
 
 ```sigil
 when not eligible {
@@ -34,9 +34,9 @@ Allowing it is more general and costs nothing in the evaluator, since each const
 
 ## Assertions
 
-**Blocks: M4**
+**Blocks: M5, M6** (the remaining points)
 
-`assert("<reason>", <condition>)` fails the evaluation loudly when its condition is false, and it's the guardrail mechanism for [collecting kinds](#collecting-kinds), which have no deny that outranks a grant. The syntax and when each assert is checked are settled; see [Policy files](/reference/policy-files/#assert), [Expressions](/reference/expressions/#decision-values-and-outcome) and [Evaluation semantics](/reference/evaluation/#assertions). Still open:
+`assert("<reason>", <condition>)` fails the evaluation loudly when its condition is false, and it's the guardrail mechanism for [collecting kinds](#collecting-kinds), which have no deny that outranks a grant. The syntax and when each assert is checked are settled and implemented: input asserts run before any rule, outcome asserts once the outcome exists, and a failing phase ends the evaluation with an `*AssertionError` listing every failure of that phase. See [Policy files](/reference/policy-files/#assert), [Expressions](/reference/expressions/#decision-values-and-outcome) and [Evaluation semantics](/reference/evaluation/#assertions). Still open:
 
 - **Dynamic text.** A reason is a literal. A failing assert may still want to say which value was wrong, the way a decision's `detail` field does. A named argument, `assert("reason", cond, detail: expr)`, would do it the way constructors do, and the expression would only be evaluated on failure. Today an assert takes the reason and the condition only.
 - **Asserts in kind files.** Today a host protects an assert by putting it in a policy it requires with `policy.Require`, the same way it protects denies. An assert declared in the kind would need no `Require`, but it brings expressions into kind files, which are pure declarations now, and the Go side would have to carry Sigil source in a string to define one. Deferred until `Require` proves too clumsy.
@@ -45,7 +45,9 @@ Allowing it is more general and costs nothing in the evaluator, since each const
 
 ## Decision values and `outcome`
 
-**Blocks: M4**
+**Blocks: M5** (the namespace question)
+
+Settled so far, and implemented: a bare decision name is a value of type `decision` only inside an `assert` condition, like `outcome`; anywhere else it's a compile error pointing at the constructor form. The namespace question below is what's left.
 
 An assert that checks what evaluation decided has to name decisions as values: `[customer_data_writer, development_environment_writer] exclusive in outcome`. The proposal makes a bare decision name a value of a closed `decision` type and `outcome` a `list<decision>` only asserts can read (see [Types](/reference/types/#decision)).
 
@@ -61,9 +63,9 @@ Two more gaps:
 
 ## Collecting kinds
 
-**Blocks: M4**
+**Blocks: M6** (the remaining points)
 
-A kind that declares `collect all` returns every candidate that fired, not one winner: roles a user can hold at the same time, feature flags, labels to attach. The spelling is settled; see [Kind files](/reference/kind-files/#collect) and [Evaluation semantics](/reference/evaluation/#collecting-kinds). Still open:
+A kind that declares `collect all` returns every candidate that fired, not one winner: roles a user can hold at the same time, feature flags, labels to attach. The spelling is settled, and the evaluator implements them as proposed, with one `Result` type and `MatchAll`; see [Kind files](/reference/kind-files/#collect) and [Evaluation semantics](/reference/evaluation/#collecting-kinds). Still open:
 
 - **Duplicates.** The proposal returns every candidate and leaves it to the host to decide what two `admin` grants with different payloads mean. Deduplicating or merging would bring back the tie-breaking problem from [Ties within one decision](#ties-within-one-decision).
 - **The result type.** The proposal keeps one `Result` with an `Outcome` list for both kinds. A separate type for collecting kinds would make `Match` on a collecting result a compile error instead of a runtime panic.
@@ -103,9 +105,9 @@ Whatever the answer, it has to cover `exclusive in` and `one in` as well, which 
 
 ## Ties within one decision
 
-**Blocks: M4**
+**Blocks: M5** (whether to replace positional tie-breaking before composition makes it visible)
 
-The MVP picks the earliest source position when several candidates share the winning decision. A candidate reached through an invocation takes its call site's position first, then its position in the invoked file. See [Why rule order never matters](/understanding/order-independence/).
+The evaluator picks the earliest source position when several candidates share the winning decision, as the MVP rule below says. A candidate reached through an invocation takes its call site's position first, then its position in the invoked file. See [Why rule order never matters](/understanding/order-independence/).
 
 That has a surprising consequence in the canonical example. Take a critical service and an actor who is a release manager and also in the `payments-sre` team. `deploy.production`'s `approve("release_manager")` (bake 1h, the kind's default) and the team's `approve("payments_sre", bake: 15m)` both fire. The team file calls `production(...)` above its own rule, so the release manager's approval wins: the team asked for a 15-minute bake and the deploy gets an hour. Moving the team rule above the call would flip the result, which is exactly the kind of order dependence the rest of the language avoids.
 
@@ -117,9 +119,11 @@ If earliest-position stays, [Evaluation semantics](/reference/evaluation/) propo
 
 ## What the result's `Policy` field names
 
-**Blocks: M4**
+**Settled**
 
-The current design describes the `Policy` field of `Result` as "the name of the policy that produced it", and that phrase has two readings. When the host evaluates `payments.production` and the `service_owner` review wins, is `Policy` the evaluated policy (`payments.production`) or the policy whose rule won (`deploy.production`, reached through an invocation)? Those are two different fields. The illustrative `sigil eval` output in these docs shows the evaluated policy on top and each candidate's call chain in the trace, which carries both. The open part is which one the top-level field should hold, and whether the other deserves its own field.
+Both. `Result.Policy` names the policy the host evaluated, `payments.production`, because that's the one the host asked about and the one its metrics are keyed on. The outcome's `Entry.Policy` and every trace `Candidate.Policy` name the policy whose rule produced them, `deploy.production` for the `service_owner` review, with the call chain saying how it was reached.
+
+The design had described the `Policy` field of `Result` as "the name of the policy that produced it", and that phrase has two readings: the evaluated policy or the policy whose rule won. They're two different fields, and the [Go API](/reference/go-api/#result) now has both.
 
 ## Cost of nested quantifiers
 
@@ -201,9 +205,9 @@ Options: hosts build their own `sigil` binary with their functions linked in (a 
 
 ## Document names in text output
 
-**Blocks: M4, M6**
+**Blocks: M6**
 
-Every diagnostic and trace entry carries the document name alongside file, line and column. The proposed text format adds it in parentheses, `policies.sigil:42:5 (payments.production)`, and leaves it out when the file holds only that document and its path matches the name, so the common repository layout keeps short positions. The alternative is to always print it, which is uniform but doubles the length of every position in a one-document-per-file repository.
+Every diagnostic and trace entry carries the document name alongside file, line and column, as a `policy.Position`. Its text form adds the name in parentheses, `policies.sigil:42:5 (payments.production)`, and leaves it out when the file's path matches the name, so the common repository layout keeps short positions. What's left for the CLI is whether the "file holds only that document" half of the rule matters in practice, and whether the CLI should always print the name instead, which is uniform but doubles the length of every position in a one-document-per-file repository.
 
 ## Non-Go evaluators
 

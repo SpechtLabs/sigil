@@ -1,0 +1,9 @@
+policy p: DeployApproval@1
+
+when actor.roles[3] == "x" {
+  approve("a")
+}
+
+when true {
+  review("b", approvers: [split(actor.roles[3], ",")[9]])
+}

@@ -6,7 +6,7 @@ permalink: /reference/decisions/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. Syntax, kinds, type checking and expression evaluation are implemented; rules and decisions, composition and the CLI aren't yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. Syntax, kinds, type checking, rules, decisions, asserts and the evaluation trace are implemented; composition (imports and invocation) and the CLI aren't yet. See [Open questions](/project/open-questions/).
 :::
 
 A decision is the value a policy produces. The kind declares which decisions exist and what data each one carries; a policy builds them with constructors inside `when` bodies.
@@ -29,7 +29,7 @@ A constructor isn't an expression. It can't be bound with `let`, passed to a fun
 
 The bare name without parentheses is different: `approve` on its own is a [`decision` value](/reference/types/#decision), which `assert` conditions compare against [`outcome`](/reference/expressions/#decision-values-and-outcome). It names the decision and builds nothing. (proposed)
 
-Whether one `when` body may contain several constructors is an [open question](/project/open-questions/).
+A `when` body may contain several constructors; each becomes its own candidate. See [Multiple decisions per block](/project/open-questions/#multiple-decisions-per-block) for why.
 
 ## Declaring decisions
 
@@ -107,7 +107,7 @@ Everything after the reason is the payload.
 - Named arguments can appear in any order.
 - Field types, defaults and required-ness come from the kind. A field with a default may be left out; a field without one must be passed.
 - A payload key the kind doesn't declare is a compile error, and so is a value of the wrong type.
-- Passing the same key twice is a compile error. (proposed)
+- Passing the same key twice is a compile error.
 - Values are ordinary [expressions](/reference/expressions/) over inputs, params, lets and imported lets, evaluated when the rule fires. A payload expression that hits a runtime error makes `Eval` return that error.
 
 ```text
@@ -128,7 +128,7 @@ The kind names the decision that applies when no rule fires:
 default deny("no_rule_matched")
 ```
 
-It's a constructor like any other and follows the same rules. Every payload value in it must be a constant, because there's no rule context to evaluate expressions in. (proposed)
+It's a constructor like any other and follows the same rules. Every payload value in it must be a constant, because there's no rule context to evaluate expressions in.
 
 A collecting kind may leave the default out; then an evaluation where nothing fires has an empty outcome.
 
@@ -140,18 +140,16 @@ After evaluation, the host receives a result describing the winner:
 | -------- | -------------------- | -------------------------------------------------------- |
 | Decision | `review`             | Name of the winning decision                             |
 | Reason   | `service_owner`      | Its reason literal                                       |
-| Policy   | `payments.production` | The policy that produced it (see the note below)        |
+| Policy   | `payments.production` | The policy the host evaluated (see the note below)      |
 | Payload  | `approvers: [...]`   | The typed payload, with defaults filled in               |
 | Trace    |                      | Every candidate, and for each one sharing the winner's decision, which conditions held |
 
 The trace identifies each rule by policy name, reason and source position, so the language needs no separate syntax for naming rules, and two branches with the same reason stay distinguishable. For a rule reached through invocations, the position is the full call chain, for example `payments/production.sigil:14:3 → deploy/production.sigil:16:5`. When nothing fires, the result holds the kind's default and the trace lists no candidates.
 
-::: warning Unspecified
-When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, which the team policy invokes. It's unsettled whether `Policy` names the policy the host evaluated (`payments.production`) or the policy whose rule won (`deploy.production`). The trace carries each candidate's call chain either way.
-:::
+When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, which the team policy invokes. The result's `Policy` names the policy the host evaluated, `payments.production`, and the outcome entry and every trace candidate name the policy whose rule they came from, `deploy.production`, along with the call chain. See [What the result's `Policy` field names](/project/open-questions/#what-the-result-s-policy-field-names).
 
 On the Go side, `Decision[T].Match` gives typed access to the payload. See the [Go API](/reference/go-api/).
 
 ### Collecting kinds
 
-A collecting kind returns every candidate, not a winner. The result holds a list of entries, each with the decision, reason, policy and payload fields from the table above, sorted by the kind's declaration order and then by source position. It can be empty. `Decision[T].MatchAll` returns every entry of one decision with typed payloads. (proposed)
+A collecting kind returns every candidate, not a winner. The result holds a list of entries, each with the decision, reason, policy and payload fields from the table above, sorted by the kind's declaration order and then by source position. It can be empty. `Decision[T].MatchAll` returns every entry of one decision with typed payloads.

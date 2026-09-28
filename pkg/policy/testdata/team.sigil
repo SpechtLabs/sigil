@@ -1,0 +1,43 @@
+// The README's team policy with its imports inlined, since composition
+// comes with the next milestone.
+policy payments.production: DeployApproval@1
+
+param approvers: list<string>
+param min_soak: duration = 24h
+param tiers: list<string> = ["standard", "internal"]
+
+let owns_service = actor.teams any in service.owners
+let cleared = split(service.labels["regions"], ",") all in actor.regions
+let eligible =
+  "deployer" in actor.roles
+  and environment == "production"
+  and service.labels has {
+    "app.kubernetes.io/managed-by": "argocd",
+    "platform.example.com/lifecycle": "ga",
+  }
+
+when not eligible {
+  deny("not_eligible")
+}
+
+when release.soak < min_soak and not release.hotfix {
+  deny("soak_too_short")
+}
+
+when cleared {
+  when service.tier == "critical"
+    and "release_manager" in actor.roles {
+    approve("release_manager")
+  }
+
+  when service.tier in tiers
+    and owns_service {
+    review("service_owner", approvers: approvers)
+  }
+}
+
+when cleared and "payments-sre" in actor.teams {
+  approve("payments_sre", bake: 15m)
+}
+
+assert("negative_soak", release.soak >= 0s)

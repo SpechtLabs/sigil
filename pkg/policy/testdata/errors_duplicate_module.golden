@@ -1,0 +1,6 @@
+== compile p ==
+7:8: module m is defined twice
+  |
+7 | module m: DeployApproval@1
+  |        ^
+  = help: first defined at 1:1; documents resolve by name, so each name has one definition

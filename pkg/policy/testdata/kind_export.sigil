@@ -1,0 +1,51 @@
+kind DeployApproval version 1
+
+type Release {
+  soak: duration
+  hotfix: bool
+}
+type Service {
+  name: string
+  tier: string
+  owners: list<string>
+  labels: map<string, string>
+}
+type Actor {
+  name: string
+  teams: list<string>
+  roles: list<string>
+  regions: list<string>
+}
+
+input release: Release
+input service: Service
+input actor: Actor
+input environment: string
+
+fn split(string, string) -> list<string>
+
+decision deny(reason: string)
+decision review(reason: string, approvers: list<string>)
+decision approve(reason: string, bake: duration = 1h)
+
+collect one
+precedence deny > review > approve
+default deny("no_rule_matched")
+
+---
+
+// A kind document for another kind is ignored.
+kind Other version 1
+
+decision x(reason: string)
+
+precedence x
+default x("x")
+
+---
+
+policy p: DeployApproval@1
+
+when true {
+  approve("a")
+}

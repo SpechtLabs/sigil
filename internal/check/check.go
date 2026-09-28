@@ -9,26 +9,6 @@ import (
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
-// Info holds what the checker learned: the type of every expression, the
-// lets in dependency order, and the decision each constructor builds.
-type Info struct {
-	Types        map[ast.Expr]types.Type
-	Constructors map[*ast.CallStmt]*kind.Decision
-	Lets         []*ast.LetStmt // in an order where every let follows the lets it reads
-	// Shadows are the document's names that take the name of an input,
-	// host function or decision the kind added after the document's pin.
-	// The shadowed-kind-name lint reports them.
-	Shadows []*ast.Ident
-}
-
-// TypeOf returns the recorded type of x, or nil when x wasn't checked.
-func (i *Info) TypeOf(x ast.Expr) types.Type {
-	if i == nil {
-		return nil
-	}
-	return i.Types[x]
-}
-
 // Checker checks expressions and statements of one file and collects
 // what it finds.
 type Checker struct {
@@ -44,6 +24,7 @@ type Checker struct {
 func New(file string) *Checker {
 	return &Checker{file: file, info: &Info{
 		Types:        map[ast.Expr]types.Type{},
+		Params:       map[*ast.ParamStmt]types.Type{},
 		Constructors: map[*ast.CallStmt]*kind.Decision{},
 	}}
 }
@@ -58,13 +39,6 @@ func (c *Checker) Errors() diag.ErrorList {
 	}
 	c.errs.Sort()
 	return c.errs
-}
-
-// errorf records a diagnostic covering at.
-func (c *Checker) errorf(at ast.Node, help, format string, args ...any) {
-	c.errs = append(c.errs, &diag.Error{
-		File: c.file, Msg: fmt.Sprintf(format, args...), Help: help, Pos: at.Pos(), End: at.End(),
-	})
 }
 
 // Expr checks x in env and returns its type, or types.Invalid after
@@ -97,6 +71,13 @@ func (c *Checker) ExprAs(x ast.Expr, env *Env, want types.Type) types.Type {
 		return types.Invalid
 	}
 	return t
+}
+
+// errorf records a diagnostic covering at.
+func (c *Checker) errorf(at ast.Node, help, format string, args ...any) {
+	c.errs = append(c.errs, &diag.Error{
+		File: c.file, Msg: fmt.Sprintf(format, args...), Help: help, Pos: at.Pos(), End: at.End(),
+	})
 }
 
 // mismatch reports a value of the wrong type, with a hint for the
@@ -227,7 +208,8 @@ func describe(t types.Type) string {
 	return t.String()
 }
 
-func isNumber(t types.Type) bool   { return t == types.Int || t == types.Float }
+func isNumber(t types.Type) bool { return t == types.Int || t == types.Float }
+
 func isOptional(t types.Type) bool { _, ok := t.(*types.Optional); return ok }
 
 // elemOf returns the type inside an optional, or t itself.
