@@ -84,6 +84,7 @@ decision deny(reason: string)
 decision review(reason: string, approvers: list<string>)
 decision approve(reason: string, bake: duration = 1h)
 
+collect one
 precedence deny > review > approve
 default deny("no_rule_matched")
 `

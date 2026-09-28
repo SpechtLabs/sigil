@@ -25,8 +25,8 @@ errors_module.sigil:9:1: a module can't contain `when`
 
 errors_module.sigil:13:1: a module can't contain `assert`
    |
-13 | assert owns_service, "no_asserts_either"
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 | assert("no_asserts_either", owns_service)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: a module holds only imports and lets; rules, params and invocations belong in a policy
 
 errors_module.sigil:15:1: a module can't contain an invocation

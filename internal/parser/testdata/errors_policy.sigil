@@ -5,9 +5,9 @@ param min_soak: duration = 24h
 // A `use` after another statement.
 use deploy.common.{cleared}
 
-// `let` inside a body.
+// `pub` on a let inside a body; the let is kept.
 when cleared {
-  let tmp = release.soak
+  pub let tmp = release.soak
   deny("tmp")
 }
 

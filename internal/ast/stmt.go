@@ -102,30 +102,36 @@ type ImportItem struct {
 	Alias *Ident
 }
 
-// ParamStmt is `param name: type` with an optional `= default`.
+// ParamStmt is `param name: type` with an optional `= default`, then
+// optional `, min: value` and `, max: value` bounds.
 type ParamStmt struct {
 	Name    *Ident
 	Type    Type
 	Default Expr // nil when the param is required
+	Min     Expr // nil without a lower bound
+	Max     Expr // nil without an upper bound
 	Span
 }
 
-// LetStmt is `let name = value`.
+// LetStmt is `let name = value`, or `pub let name = value` for a let
+// other documents may import. The span starts at `pub` when it's there.
 type LetStmt struct {
 	Name  *Ident
 	Value Expr
 	Span
+	Pub bool
 }
 
-// WhenStmt is `when cond { body }`. The body holds WhenStmt, AssertStmt and
-// CallStmt nodes. The span runs from `when` to just after `}`.
+// WhenStmt is `when cond { body }`. The body holds WhenStmt, LetStmt,
+// AssertStmt and CallStmt nodes. The span runs from `when` to just after `}`.
 type WhenStmt struct {
 	Cond Expr
 	Body []Stmt
 	Span
 }
 
-// AssertStmt is `assert cond, "reason"`.
+// AssertStmt is `assert("reason", cond)`. The span runs from `assert` to
+// just after `)`.
 type AssertStmt struct {
 	Cond   Expr
 	Reason *StringLit
@@ -219,8 +225,9 @@ type PrecedenceDecl struct {
 	Span
 }
 
-// CollectDecl is `collect all`.
+// CollectDecl is `collect one` or `collect all`.
 type CollectDecl struct {
+	All bool // `collect all`; false is `collect one`
 	Span
 }
 

@@ -67,10 +67,11 @@ var Deploy = policy.NewKind[Input]("DeployApproval",
 | Option                        | Kind file equivalent                  | Notes                                                                  |
 | ----------------------------- | ------------------------------------- | ---------------------------------------------------------------------- |
 | `policy.WithVersion(n)`           | `kind DeployApproval version n`       | Contract version, compared by `sigil breaking`                         |
-| `policy.WithDecisions(d...)`      | `decision ...` and `precedence ...`   | Argument order is precedence, highest first                            |
+| `policy.WithDecisions(d...)`      | `decision ...`, `collect one` and `precedence ...` | Argument order is precedence, highest first               |
 | `policy.WithCollect(d...)`        | `decision ...` and `collect all`      | Instead of `Decisions`: every fired decision applies. Argument order is declaration order (proposed) |
 | `policy.WithDefault(d, reason)`   | `default deny("no_rule_matched")`     | Result when no rule fires; payload fields take their defaults          |
 | `policy.WithFunc(name, fn)`   | `fn split(string, string) -> list<string>` | The DSL signature is derived from the Go function's type |
+| `policy.WithOrdered[T](name)` | `type Version ordered`                | Registers a [host-ordered type](/reference/types/#host-ordered-types). `T` needs `Compare(T) int`, and `MarshalText` or `String` (proposed) |
 
 Options that take several values add up, so `policy.WithDecisions(Deny, Review)` and `policy.WithDecisions(Deny), policy.WithDecisions(Review)` declare the same kind, in the same order. A kind takes `policy.WithDecisions` or `policy.WithCollect`, never both and never neither; `NewKind` panics otherwise. A collecting kind may leave out `policy.WithDefault`:
 
@@ -83,7 +84,7 @@ var Access = policy.NewKind[AccessInput]("AccessGrant",
 
 `NewKind` reflects over `Input` once and builds a precomputed accessor per field path, so `Eval` never touches `reflect`. `policy.Func` derives the DSL signature from the Go function's type.
 
-The types `NewKind` accepts are listed in [Kind files](/reference/kind-files/). Anything else (channels, funcs, interfaces, map keys that aren't scalars, unexported tagged fields) makes `NewKind` panic at init. That's deliberate: a kind that exists can always be exported, which is what makes the round trip `Import(Export(k)) == k` hold.
+The types `NewKind` accepts are listed in [Kind files](/reference/kind-files/). Anything else (channels, funcs, interfaces, pointers to slices or maps, map keys that aren't scalars, unexported tagged fields) makes `NewKind` panic at init. That's deliberate: a kind that exists can always be exported, which is what makes the round trip `Import(Export(k)) == k` hold.
 
 ## Loading and evaluating
 
@@ -182,7 +183,7 @@ Without `From`, the required policy is looked up in the bundle like any other do
 Pinning by content, as in `policy.Require("deploy.guardrails", policy.Digest("sha256:…"))`, is the lighter alternative that was considered. It needs no second source, but every guardrail change then needs a host release to update the digest, and a digest over one document says nothing about the modules it imports, so the digest would have to cover the whole import closure. `From` covers both with one rule.
 
 ::: warning Unspecified
-Whether a requirement may be met through a chain of other policies ("transitive") or must be met by a call in the root file itself ("direct") is an [open question](/project/open-questions/). The check above describes the transitive reading. So is letting `Require` bound a required policy's params, for example `policy.Require("deploy.guardrails", policy.Min("min_soak", time.Hour))`.
+Whether a requirement may be met through a chain of other policies ("transitive") or must be met by a call in the root file itself ("direct") is an [open question](/project/open-questions/). The check above describes the transitive reading. A required policy bounds its own params with [`min` and `max`](/reference/policy-files/#bounds); `Require` takes no bounds of its own.
 :::
 
 ### Evaluating
@@ -198,7 +199,7 @@ if err != nil {
 
 On a runtime error (index out of range, integer overflow, a host function returning an error) `Eval` returns the error together with a result holding the kind's default decision, or an empty outcome for a collecting kind. A host that fails closed can use `res` directly.
 
-A failed [assert](/reference/evaluation/#assertions) returns a `*policy.AssertionError` with the same kind of result. Tell it apart from a runtime error with `errors.As`, and count it separately:
+A failed [assert](/reference/evaluation/#assertions) returns a `*policy.AssertionError` with the same kind of result. It lists every assert that failed in the phase that stopped evaluation, input or outcome, including asserts whose own condition raised a runtime error. Tell it apart from a runtime error with `errors.As`, and count it separately:
 
 ```go
 res, err := p.Eval(ctx, input)
@@ -214,7 +215,7 @@ case err != nil:
 }
 ```
 
-Each failure carries the assert's reason, its call chain and, for an assert over `outcome`, the candidates involved. (proposed)
+Each failure carries the assert's reason, its call chain, the runtime error if its condition raised one and, for an outcome assert, the candidates involved. (proposed)
 
 ## Result
 

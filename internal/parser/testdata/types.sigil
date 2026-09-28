@@ -15,6 +15,7 @@ fn now() -> timestamp
 
 decision allow(reason: string, weights: map<string, int> = {}, tags: list<string> = [],)
 
+collect one
 precedence allow
 default allow("none")
 

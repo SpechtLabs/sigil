@@ -140,8 +140,14 @@ func canonical(t types.Type, v Value) any {
 
 func (c *compiler) unary(x *ast.UnaryExpr) Expr {
 	operand := c.expr(x.X)
-	if x.Op == ast.OpNot {
+	switch x.Op {
+	case ast.OpNot:
 		return func(f *Frame) Value { return reflect.ValueOf(!norm(operand(f)).Bool()) }
+	case ast.OpPresent:
+		return func(f *Frame) Value {
+			v := norm(operand(f))
+			return reflect.ValueOf(v.IsValid() && !v.IsNil())
+		}
 	}
 	switch c.typeOf(x) {
 	case types.Int:
@@ -427,29 +433,104 @@ func (c *compiler) arith(x *ast.BinaryExpr) Expr {
 	}
 }
 
-// selector compiles a field read through the index path the binding
-// recorded for the struct type.
-func (c *compiler) selector(x *ast.SelectorExpr) Expr {
-	base := c.expr(x.X)
-	s := c.typeOf(x.X).(*types.Struct)
-	idx, ok := c.scope.binding.Fields[s.Name+"."+x.Sel.Name]
-	if !ok {
-		throwf(x.Sel, "no binding for field %s.%s", s.Name, x.Sel.Name)
+// selector compiles `x.name` or `x?.name`, the end of a chain.
+func (c *compiler) selector(x *ast.SelectorExpr) Expr { return c.chain(x) }
+
+// index compiles `x[i]`, the end of a chain.
+func (c *compiler) index(x *ast.IndexExpr) Expr { return c.chain(x) }
+
+// chain compiles the end of an optional chain: a run of `.name`,
+// `?.name` and `[index]` that no parentheses break. Without a `?.` it's
+// its last link's value. With one it's optional: absent when a `?.` found
+// its operand absent, and otherwise a pointer to the value, which is how
+// an optional is represented and what `??` unwraps. A last link that is
+// optional itself is a pointer already and stays one.
+func (c *compiler) chain(x ast.Expr) Expr {
+	l := c.link(x)
+	if !optionalChain(x) {
+		return func(f *Frame) Value {
+			v, _ := l(f)
+			return v
+		}
 	}
-	return func(f *Frame) Value { return norm(base(f)).FieldByIndex(idx) }
+	return func(f *Frame) Value {
+		v, ok := l(f)
+		if !ok {
+			return Value{}
+		}
+		return optional(v)
+	}
 }
 
-// index compiles `m[k]`, which yields the value type's zero for a missing
-// key, and `xs[i]`, which fails on an index out of range.
-func (c *compiler) index(x *ast.IndexExpr) Expr {
-	base, key := c.expr(x.X), c.expr(x.Index)
+// link compiles one link of a chain. It returns false once a `?.` has
+// found its operand absent, and every later link passes that on without
+// running, so nothing after it can fail.
+func (c *compiler) link(x ast.Expr) func(*Frame) (Value, bool) {
+	switch x := x.(type) {
+	case *ast.SelectorExpr:
+		base := c.linkBase(x.X)
+		t := c.typeOf(x.X)
+		if opt, ok := t.(*types.Optional); ok && x.Optional {
+			t = opt.Elem
+		}
+		s := t.(*types.Struct)
+		idx, ok := c.scope.binding.Fields[s.Name+"."+x.Sel.Name]
+		if !ok {
+			throwf(x.Sel, "no binding for field %s.%s", s.Name, x.Sel.Name)
+		}
+		if x.Optional {
+			return func(f *Frame) (Value, bool) {
+				v, ok := base(f)
+				if v = norm(v); !ok || !v.IsValid() || v.IsNil() {
+					return Value{}, false
+				}
+				return v.Elem().FieldByIndex(idx), true
+			}
+		}
+		return func(f *Frame) (Value, bool) {
+			v, ok := base(f)
+			if !ok {
+				return Value{}, false
+			}
+			return norm(v).FieldByIndex(idx), true
+		}
+	case *ast.IndexExpr:
+		base, get := c.linkBase(x.X), c.indexer(x)
+		return func(f *Frame) (Value, bool) {
+			v, ok := base(f)
+			if !ok {
+				return Value{}, false
+			}
+			return get(f, v), true
+		}
+	}
+	e := c.expr(x)
+	return func(f *Frame) (Value, bool) { return e(f), true }
+}
+
+// linkBase compiles the operand of a link: the previous link of the same
+// chain, or any other expression.
+func (c *compiler) linkBase(x ast.Expr) func(*Frame) (Value, bool) {
+	switch x.(type) {
+	case *ast.SelectorExpr, *ast.IndexExpr:
+		return c.link(x)
+	}
+	e := c.expr(x)
+	return func(f *Frame) (Value, bool) { return e(f), true }
+}
+
+// indexer compiles the lookup of `m[k]` on a base value, which yields the
+// value type's zero for a missing key, and of `xs[i]`, which fails on an
+// index out of range.
+func (c *compiler) indexer(x *ast.IndexExpr) func(*Frame, Value) Value {
+	key := c.expr(x.Index)
 	switch t := c.typeOf(x.X).(type) {
 	case *types.Map:
 		// A missing key yields the zero value: the Go map's own when it's
 		// typed, the Sigil type's canonical one for a literal's map[any]any.
 		zero := c.zero(t.Value)
-		return func(f *Frame) Value {
-			m := norm(base(f))
+		return func(f *Frame, base Value) Value {
+			m := norm(base)
 			if v := mapGet(m, key(f)); v.IsValid() {
 				return v
 			}
@@ -459,8 +540,8 @@ func (c *compiler) index(x *ast.IndexExpr) Expr {
 			return zero
 		}
 	default:
-		return func(f *Frame) Value {
-			list, i := norm(base(f)), norm(key(f)).Int()
+		return func(f *Frame, base Value) Value {
+			list, i := norm(base), norm(key(f)).Int()
 			n := 0
 			if list.IsValid() {
 				n = list.Len()

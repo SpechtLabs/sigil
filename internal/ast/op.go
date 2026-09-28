@@ -37,7 +37,8 @@ const (
 
 	OpAdd
 	OpSub
-	OpNeg // prefix
+	OpNeg     // prefix
+	OpPresent // prefix
 
 	OpAny // quantifier
 	OpAll // quantifier
@@ -67,6 +68,7 @@ var opNames = [...]string{
 	OpAdd:         "+",
 	OpSub:         "-",
 	OpNeg:         "-",
+	OpPresent:     "present",
 	OpAny:         "any",
 	OpAll:         "all",
 }

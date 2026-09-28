@@ -42,6 +42,7 @@ decision deny(reason: string)
 decision review(reason: string, approvers: list<string>)
 decision approve(reason: string, bake: duration = 1h)
 
+collect one
 precedence deny > review > approve
 default deny("no_rule_matched")
 ```
@@ -53,7 +54,7 @@ Reading top to bottom:
 - `input` lists the top-level names a policy can read: `release`, `service`, `actor` and `environment`. An input doesn't have to be a struct; `environment` is a plain string. Nothing else exists in a policy's scope unless the policy declares it.
 - `fn split(...)` is a host function. Its implementation is Go's `strings.Split`; the kind only carries the signature, so the type checker knows it takes two strings and returns a list.
 - The three `decision` lines are the only outcomes a policy can produce. Each one takes a `reason` first, then named payload fields. `approve` has a `bake`, how long the rollout sits in canary before it's promoted, which defaults to one hour.
-- `precedence deny > review > approve` says who wins when several rules fire. A single deny beats any number of approvals.
+- `collect one` says the host gets one decision back, and `precedence deny > review > approve` says which one wins when several rules fire. A single deny beats any number of approvals.
 - `default` is the answer when no rule fires at all. This kind fails closed.
 
 ## The platform's files
@@ -65,10 +66,10 @@ The platform team owns three files under `deploy/`. They split along the lines S
 ```sigil
 module deploy.common: DeployApproval
 
-let owns_service = actor.teams any in service.owners
-let cleared =
+pub let owns_service = actor.teams any in service.owners
+pub let cleared =
   split(service.labels["regions"], ",") all in actor.regions
-let eligible =
+pub let eligible =
   "deployer" in actor.roles
   and environment == "production"
   and service.labels has {
@@ -79,7 +80,7 @@ let eligible =
 
 `module deploy.common: DeployApproval` names the module and the kind its expressions are checked against. Other files find it by that name, not by its path; the convention is still to keep `deploy.common` at `deploy/common.sigil`, and a file can hold several documents if that suits you better (see [Bundles and resolution](/reference/policy-files/#bundles-and-resolution)). A module holds `let`s and nothing else, no rules and no params, so importing from it can never change a decision by itself.
 
-A `let` names an expression so rules can refer to it. Lets live at the top level only, and they're evaluated against the same input as everything else.
+A `let` names an expression so rules can refer to it, and it's evaluated against the same input as everything else. `pub` lets other files import it; a `let` without `pub` stays private to its file. A `let` can also sit inside a `when` body, where only that body sees it.
 
 - `owns_service` uses `any in`, the intersection operator: it's true when the actor is on at least one of the teams that own the service.
 - `cleared` splits a comma-separated label into a list and checks that every element appears in the actor's regions, so the actor has to be cleared for every region the service runs in. `all in` is the subset operator. Note the index syntax `service.labels["regions"]`: identifiers can't contain `.` or `/`, so label keys always go through `[...]`.

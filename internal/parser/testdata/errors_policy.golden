@@ -2,6 +2,7 @@ policy errors.rules: DeployApproval [1:1-39:21]
   use deploy.common.{cleared} [6:1-6:28]
   param min_soak: duration = 24h [3:1-3:31]
   when cleared { [9:1-12:2]
+    pub let tmp = release.soak [10:3-10:29]
     deny("tmp") [11:3-11:14]
   }
   when <error> { [15:1-17:2]
@@ -25,11 +26,11 @@ errors_policy.sigil:6:1: `use` must come before every other statement
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = help: move it up, right after the header
 
-errors_policy.sigil:10:3: expected a decision constructor, invocation, `when` or `assert`, found `let`
+errors_policy.sigil:10:3: a let inside a `when` body can't be `pub`
    |
-10 |   let tmp = release.soak
+10 |   pub let tmp = release.soak
    |   ^^^
-   = help: `let` is only allowed at the top level; move it outside the `when` block
+   = help: only top-level lets can be exported; remove `pub`
 
 errors_policy.sigil:15:30: `<` can't follow `<`: comparisons don't chain
    |

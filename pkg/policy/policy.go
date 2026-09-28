@@ -54,7 +54,8 @@ func WithVersion(n int) Option {
 	return func(o *gokind.Options) { o.Version = n }
 }
 
-// WithDecisions declares decisions in precedence order, highest first.
+// WithDecisions declares the decisions of a `collect one` kind in
+// precedence order, highest first.
 // Calls add up: WithDecisions(a, b) and WithDecisions(a), WithDecisions(b)
 // declare the same kind. A kind uses WithDecisions or WithCollect, not
 // both.
@@ -65,7 +66,7 @@ func WithDecisions(ds ...DecisionRef) Option {
 	}
 }
 
-// WithCollect declares decisions of a collecting kind, where every fired
+// WithCollect declares the decisions of a `collect all` kind, where every fired
 // decision applies, in declaration order. Calls add up, like
 // WithDecisions.
 func WithCollect(ds ...DecisionRef) Option {

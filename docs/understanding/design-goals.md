@@ -63,6 +63,6 @@ OPA and Cedar solve a different problem: one central authorization service answe
 
 ## When goals conflict
 
-They do, occasionally. Readability and strictness pull against each other when a type error would be more precise but less friendly; the answer there is better error messages, not looser types. Composability and safety pull against each other with params, since a team can lower a base policy's `min_soak`. That one is unresolved and sits under "Pinned params on required policies" in the [open questions](/project/open-questions/).
+They do, occasionally. Readability and strictness pull against each other when a type error would be more precise but less friendly; the answer there is better error messages, not looser types. Composability and safety pull against each other with params, since a team could lower a base policy's `min_soak`. [Bounds](/reference/policy-files/#bounds) on the param settle that for numbers and durations; lists such as `approvers` are still open under "Pinned params on required policies" in the [open questions](/project/open-questions/).
 
 When in doubt, the order is: halting first, then strictness, then readability, then everything else. A policy that's pleasant to read but silently fails open is worse than one that's a bit verbose.

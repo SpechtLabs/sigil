@@ -68,7 +68,7 @@ func (p *parser) noHeader(sep token.Token, afterSep bool) {
 func startsOperand(t token.Token) bool {
 	switch t.Kind {
 	case token.Ident, token.Int, token.Float, token.Duration, token.String, token.RawString,
-		token.KwTrue, token.KwFalse, token.KwOutcome, token.LParen, token.LBracket, token.LBrace, token.Minus:
+		token.KwTrue, token.KwFalse, token.KwOutcome, token.KwPresent, token.LParen, token.LBracket, token.LBrace, token.Minus:
 		return true
 	}
 	return false
@@ -160,7 +160,7 @@ func (p *parser) parseModuleStmt(doc *ast.ModuleDoc) ast.Stmt {
 		}
 		doc.Uses = append(doc.Uses, u)
 		return u
-	case token.KwLet:
+	case token.KwLet, token.KwPub:
 		l := p.parseLet()
 		doc.Lets = append(doc.Lets, l)
 		return l
@@ -258,7 +258,7 @@ func (p *parser) syncDoc() {
 func (p *parser) syncTop() {
 	p.sync(func(t token.Token) bool {
 		switch t.Kind {
-		case token.KwUse, token.KwParam, token.KwLet, token.KwWhen, token.KwAssert, token.Separator:
+		case token.KwUse, token.KwParam, token.KwLet, token.KwPub, token.KwWhen, token.KwAssert, token.Separator:
 			return true
 		case token.Ident:
 			return p.peek().Kind == token.LParen
@@ -274,7 +274,7 @@ func (p *parser) syncBody() {
 	p.sync(func(t token.Token) bool {
 		switch t.Kind {
 		case token.KwWhen, token.KwAssert, token.RBrace,
-			token.KwUse, token.KwParam, token.KwLet, token.Separator:
+			token.KwUse, token.KwParam, token.KwLet, token.KwPub, token.Separator:
 			return true
 		case token.Ident:
 			return p.peek().Kind == token.LParen

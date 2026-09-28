@@ -21,6 +21,13 @@ type (
 		Hotfix  bool          `policy:"hotfix"`
 		Ticket  *string       `policy:"ticket"`
 		BuiltAt time.Time     `policy:"built_at"`
+		Parent  *Commit       `policy:"parent"`
+	}
+	Commit struct {
+		ID       int     `policy:"id"`
+		Author   Actor   `policy:"author"`
+		MergedBy *Actor  `policy:"merged_by"`
+		Note     *string `policy:"note"`
 	}
 	Service struct {
 		Name   string            `policy:"name"`
@@ -55,7 +62,8 @@ var (
 	now   = built.Add(3 * time.Hour)
 	chg   = "CHG-1042"
 	input = Input{
-		Release: Release{Soak: 26 * time.Hour, Hotfix: false, Ticket: &chg, BuiltAt: built},
+		Release: Release{Soak: 26 * time.Hour, Hotfix: false, Ticket: &chg, BuiltAt: built,
+			Parent: &Commit{ID: 42, Author: Actor{Name: "bob", Roles: []string{"dev"}}}},
 		Service: Service{
 			Name: "payments-api", Tier: "critical", Owners: []string{"payments", "platform"},
 			Labels: map[string]string{"team": "payments", "regions": "eu-1,us-1", "compliance": "pci"},
@@ -238,6 +246,16 @@ func TestEval(t *testing.T) {
 
 		// Optionals.
 		{src: `release.ticket ?? "none"`, want: "CHG-1042"},
+		{src: "release.parent?.id ?? 0", want: 42},
+		{src: "present release.ticket", want: true},
+		{src: "present release.parent?.author", want: true},
+		{src: "present release.parent?.merged_by", want: false},
+		{src: "present release.parent?.note", want: false},
+		{src: `release.parent?.author.name ?? ""`, want: "bob"},
+		{src: `release.parent?.author.roles[0] ?? ""`, want: "dev"},
+		{src: `release.parent?.merged_by?.name ?? "nobody"`, want: "nobody"},
+		{src: `release.parent?.note ?? "none"`, want: "none"},
+		{src: `release.parent?.author.roles[5] ?? ""`, err: "index 5 out of range for a list of 1", span: "1:1-1:32"},
 		{src: `release.ticket ?? "none" == "CHG-1042"`, want: true},
 
 		// Arithmetic.
@@ -339,6 +357,25 @@ func TestAbsentOptional(t *testing.T) {
 	v, err := eval.Run(e, f)
 	if err != nil || v.Interface() != "none" {
 		t.Fatalf("absent optional: %v, %v", v, err)
+	}
+}
+
+func TestAbsentChain(t *testing.T) {
+	noParent := input
+	noParent.Release.Parent = nil
+	for src, want := range map[string]any{
+		"release.parent?.id ?? 0":                     int64(0),
+		`release.parent?.author.roles[5] ?? "none"`:   "none",
+		`release.parent?.merged_by?.name ?? "nobody"`: "nobody",
+		"present release.parent":                      false,
+		"present release.parent?.author":              false,
+	} {
+		e, f := setup(t, src, false)
+		f.Input = reflect.ValueOf(noParent)
+		v, err := eval.Run(e, f)
+		if err != nil || v.Interface() != want {
+			t.Errorf("%s: %v, %v; want %v", src, v, err, want)
+		}
 	}
 }
 

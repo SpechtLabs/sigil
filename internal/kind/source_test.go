@@ -39,6 +39,7 @@ decision deny(reason: string)
 decision review(reason: string, approvers: list<string>)
 decision approve(reason: string, bake: duration = 1h)
 
+collect one
 precedence deny > review > approve
 default deny("no_rule_matched")
 `
@@ -90,7 +91,7 @@ collect all
 	})
 
 	t.Run("empty kind", func(t *testing.T) {
-		k := &kind.Kind{Name: "Empty", Version: 2, Collect: true}
+		k := &kind.Kind{Name: "Empty", Version: 2, Collect: kind.CollectAll}
 		if got, want := k.Source(), "kind Empty version 2\n\ncollect all\n"; got != want {
 			t.Errorf("Source() = %q, want %q", got, want)
 		}

@@ -137,10 +137,12 @@ type BinaryExpr struct {
 }
 
 // SelectorExpr is a field access `x.name`, or a qualified name such as
-// `common.cleared`.
+// `common.cleared`. Optional marks `x?.name`, which reads the field of an
+// optional struct and makes the rest of the chain absent when x is.
 type SelectorExpr struct {
-	X   Expr
-	Sel *Ident
+	X        Expr
+	Sel      *Ident
+	Optional bool
 }
 
 // IndexExpr is `x[i]`. Rbrack is the position just after `]`.

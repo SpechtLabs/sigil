@@ -1,6 +1,7 @@
 package constant
 
 import (
+	"cmp"
 	"fmt"
 	"sort"
 	"strings"
@@ -128,6 +129,21 @@ func FormatDuration(d time.Duration) string {
 		fmt.Fprintf(&b, "+%dns", d)
 	}
 	return b.String()
+}
+
+// Compare orders two constants of one ordered type with a literal, int64,
+// float64 or time.Duration: negative when a is less than b, zero when
+// they're equal, positive when a is greater. Anything else is equal.
+func Compare(a, b any) int { //nolint:emptyinterface // constants are typed by their Sigil type; see Conforms
+	switch a := a.(type) {
+	case int64:
+		return cmp.Compare(a, b.(int64))
+	case float64:
+		return cmp.Compare(a, b.(float64))
+	case time.Duration:
+		return cmp.Compare(a, b.(time.Duration))
+	}
+	return 0
 }
 
 // formatMap renders the entries sorted by their formatted key, so the

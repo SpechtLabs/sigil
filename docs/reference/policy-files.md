@@ -21,10 +21,10 @@ A `.sigil` file holds one or more documents, each a policy, a module or a kind. 
 | ---------------------------------- | ----------------------- | ----------------------------------------------------------------------- |
 | `policy <name>: <Kind>`            | first statement         | Names the policy and the kind it implements                             |
 | `use <path>`                       | after the header        | Imports names from another policy or module. Never adds rules by itself |
-| `param <name>: <type> [= <expr>]`  | top level               | Typed input set at instantiation. No default means required             |
-| `let <name> = <expr>`              | top level               | Named, reusable expression                                              |
+| `param <name>: <type> [= <expr>] [, min: <expr>] [, max: <expr>]` | top level | Typed input set at instantiation. No default means required; bounds limit what a caller may bind |
+| `[pub] let <name> = <expr>`        | top level or nested     | Named, reusable expression. `pub` lets other documents import it; only at the top level |
 | `when <expr> { ... }`              | top level or nested     | Rule block. Body holds nested `when` blocks, decisions, asserts and invocations |
-| `assert <expr>, "<reason>"`        | top level or nested     | Condition that must hold, or evaluation fails with an assertion error   |
+| `assert("<reason>", <expr>)`       | top level or nested     | Condition that must hold, or evaluation fails with an assertion error   |
 | `<policy>(<param>: <expr>, ...)`   | top level or nested     | Invokes an imported policy, adding its rules with its params bound      |
 
 Kind files use a different set of statements; see [Kind files](/reference/kind-files/).
@@ -64,15 +64,14 @@ use deploy.common.{owns_service as owner}     // selective with alias
 
 ### Importing from a policy
 
-A policy's `let`s can be imported too, but only if they don't depend on a param, directly or through other `let`s. A param has no value outside an invocation, so a param-dependent `let` means nothing in the importing document. Suppose `deploy.guardrails` declared `let soak_ok = release.soak >= min_soak or release.hotfix`. The compiler tracks the dependency and names the param:
+A policy's `pub let`s can be imported too, the same way as a module's. A `pub let` in a policy can't depend on a param, directly or through other `let`s: a param has no value outside an invocation, so a param-dependent `let` would mean nothing in the importing document. The compiler tracks the dependency and reports it where the `let` is declared, not where someone imports it:
 
 ```text
-payments/production.sigil:5:24: error: cannot import `soak_ok` from deploy.guardrails
+deploy/guardrails.sigil:5:9: error: let `soak_ok` can't be `pub`: it reads param `min_soak`
   |
-5 | use deploy.guardrails.{soak_ok}
-  |                        ^^^^^^^
-  = help: it reads param `min_soak`, which has no value outside an invocation.
-          Move it to a module, or compare against the value directly.
+5 | pub let soak_ok = release.soak >= min_soak or release.hotfix
+  |         ^^^^^^^
+  = help: a param has no value outside an invocation; move the let to a module, or drop `pub`
 ```
 
 In practice this pushes shared matchers into modules, which is where they belong.
@@ -96,6 +95,29 @@ A param is a typed value supplied when the policy gets instantiated. It has a na
 
 Params are bound in one of two ways, both type-checked at compile time: by another policy that [invokes](#policy-invocation) this one, or by the Go host through `policy.Params` when it compiles or loads the policy. See the [Go API](/reference/go-api/).
 
+### Bounds
+
+```sigil
+param min_soak: duration = 24h, min: 1h, max: 48h
+```
+
+`min` and `max` limit the values a caller may bind. A guardrail uses them so that a team invoking it can adjust a threshold but can't switch the rule off: `guardrails(min_soak: 0s)` is a compile error.
+
+- Bounds apply to `int`, `float` and `duration` params. Each is optional, both are inclusive, and they may come in either order.
+- A bound is a constant of the param's type, like a default. `min` can't be above `max`, and the default must lie between them.
+- Invocation arguments are constants, so every bound is checked when the policy compiles, at the argument that breaks it. A value bound from Go through `policy.Params` is checked by `Load`. Nothing is left to evaluation time, so a bad value never fails an evaluation.
+- `min` and `max` are names in a named-argument position, not keywords, so a kind can still declare `fn max(int, int) -> int`.
+
+```text
+teams/payments.sigil:5:22: error: min_soak: 0s is below the minimum 1h
+  |
+5 | guardrails(min_soak: 0s)
+  |                      ^^
+  = help: deploy.guardrails declares `param min_soak: duration = 24h, min: 1h, max: 48h`
+```
+
+The declaration checks are implemented; checking invocation arguments and `policy.Params` against the bounds comes with invocation in the composition milestone. Bounds are only as trustworthy as the file that declares them: for a required guardrail, [`policy.From`](/reference/go-api/#where-required-policies-come-from) loads that file from a source the host trusts.
+
 ::: tip Proposed
 The ban on optional (`?T`) param types is proposed here; nothing else in the design settles it.
 :::
@@ -110,10 +132,41 @@ let cleared =
 
 A `let` binds a name to an expression. The compiler infers the type from the expression; there's no annotation. The expression can use inputs, params, host functions, other lets and imported lets (`cleared`, or `common.cleared` through a whole-module import).
 
-- `let` is only allowed at the top level of a file. Block-scoped bindings are an [open question](/project/open-questions/).
+- A top-level `let` is visible in the whole document. A `let` inside a `when` body is visible in that body and the blocks nested in it, and nowhere else, not even in the `when`'s own condition. See [Scoped lets](#scoped-lets).
+- A `let` is private to its document unless it's declared `pub let`. Only a `pub let` can be imported. See [Exporting lets](#exporting-lets).
 - Lets must form a directed acyclic graph. `let a = b` together with `let b = a` is a compile error, and so is any longer cycle.
 - A let is a name for an expression, not a mutable variable. It can't be reassigned, and binding the same name twice is a compile error.
-- The order of `let` statements in a file doesn't matter; a let may refer to one declared further down.
+- The order of `let` statements in a file doesn't matter; a let may refer to one declared further down. The same holds inside a `when` body.
+
+### Scoped lets
+
+```sigil
+when active {
+  let sre = any r in actor.roles: r like "sre-*"
+  when sre and release.hotfix { approve("sre_hotfix") }
+  when sre and not release.hotfix { review("sre_change", approvers: approvers) }
+}
+```
+
+A `let` inside a body names a sub-expression that several nested blocks share, without making it visible to the rest of the document.
+
+- It can read everything its body can: inputs, params, top-level lets, imports, and the lets of every enclosing body.
+- It can't shadow anything. Its name can't be taken by an input, host function, decision, param, import or any other `let` in the document, including a `let` in an unrelated `when` body. Names are unique per document so that a trace and [`sigil explain`](/reference/cli/#sigil-explain) can name every `let` without saying which block it came from.
+- It can't be `pub`. Nothing outside its body can see it, so there's nothing to export.
+- It's only evaluated when its body is reached, so it can rely on the enclosing conditions: in `when len(xs) > 0 { let first = xs[0] ... }` the index can't fail. See [Evaluation semantics](/reference/evaluation/#lets).
+
+### Exporting lets
+
+```sigil
+module deploy.common: DeployApproval
+
+pub let cleared = split(service.labels["regions"], ",") all in actor.regions and not restricted
+let restricted = "restricted" in service.labels
+```
+
+`pub let` makes a top-level `let` importable. A `let` without `pub` is private: other lets and rules in the same document can use it, and a `use` that names it is a compile error. The rule is the same for modules and policies, so a module author can refactor private helpers without breaking an importer, and a policy never exports something by accident.
+
+Because a private `let` has no readers outside its document, one that nothing reads is a lint warning; see [`unused-let`](/reference/cli/#lints).
 
 ## `when`
 
@@ -133,7 +186,7 @@ when cleared {
 
 A `when` block has a condition and a body in braces. The condition must have type `bool`; anything else is a compile error, so there's no truthiness.
 
-The body contains nested `when` blocks, [decision constructors](/reference/decisions/), [asserts](#assert) and [policy invocations](#policy-invocation), and nothing else. There's no `let`, no `use` and no bare expression inside a body.
+The body contains nested `when` blocks, [scoped lets](#scoped-lets), [decision constructors](/reference/decisions/), [asserts](#assert) and [policy invocations](#policy-invocation), and nothing else. There's no `param`, no `use` and no bare expression inside a body.
 
 There's no `else`. Write `when not x { ... }` instead. A nested `when` fires only if every enclosing condition holds, which makes nesting a conjunction. The full rules live on [Evaluation semantics](/reference/evaluation/).
 
@@ -142,24 +195,25 @@ Whether a single body may contain more than one decision constructor is an [open
 ## `assert`
 
 ```sigil
-assert release.soak >= 0s, "negative_soak"
+assert("negative_soak", release.soak >= 0s)
 
 when service.tier == "critical" {
-  assert "team" in service.labels, "critical_needs_team_label"
+  assert("critical_needs_team_label", "team" in service.labels)
 }
 
-assert [customer_data_writer, development_environment_writer] exclusive in outcome,
-  "sod_customer_dev"
+assert("sod_customer_dev",
+  [customer_data_writer, development_environment_writer] exclusive in outcome)
 ```
 
 An assert states something that must be true whenever it's reached. If its condition is false, evaluation fails: `Eval` returns an assertion error, and the host records it as an error, not as a decision. Use a decision for an outcome you expect, such as denying a deploy that hasn't soaked, and an assert for a state that means the policy, the host or the input is wrong.
 
 - The condition must have type `bool`. It can read inputs, params, lets and imported lets, and, unlike any other expression, [`outcome`](/reference/expressions/#decision-values-and-outcome), the decisions evaluation produced.
-- The reason is a string literal and follows the same rules as a [decision reason](/reference/decisions/#the-reason): it's a stable identifier for metrics and grep, and dynamic text isn't allowed.
+- The reason comes first, as in a [decision constructor](/reference/decisions/), and follows the same rules as a [decision reason](/reference/decisions/#the-reason): it's a string literal, a stable identifier for metrics and grep, and dynamic text isn't allowed. `assert(cond, "reason")` is a parse error that says so.
 - An assert may appear at the top level or inside a `when` body. Inside a body it's only checked when every enclosing condition holds, the same conjunction rule as for decisions. An assert in an invoked policy gets the invocation's enclosing conditions too.
 - An assert never produces a candidate and never changes the outcome. It can only fail the evaluation.
+- An assert whose condition reads `outcome` is an outcome assert and is checked once the outcome exists. Every other assert is an input assert and is checked before any rule runs, so it works as a precondition. The checker decides which from the condition; there's no keyword for it.
 
-`xor`, `one in` and `exclusive in` exist mostly for asserts. `exclusive in` over `outcome` is how a [collecting kind](/reference/kind-files/#collect) keeps two decisions from being granted together. When and in what order asserts run, and what the host gets back when one fails, is on [Evaluation semantics](/reference/evaluation/#assertions).
+`xor`, `one in` and `exclusive in` exist mostly for asserts. `exclusive in` over `outcome` is how a [collecting kind](/reference/kind-files/#collecting-kinds) keeps two decisions from being granted together. The two phases in detail, and what the host gets back when one fails, is on [Evaluation semantics](/reference/evaluation/#assertions).
 
 ::: tip Proposed
 The `assert` statement, its syntax and its semantics are proposed. The open parts are listed under [Assertions](/project/open-questions/#assertions).
@@ -201,10 +255,10 @@ A module is a file of shared, typed matchers. It has no rules and no params, so 
 ```sigil
 module deploy.common: DeployApproval
 
-let owns_service = actor.teams any in service.owners
-let cleared =
+pub let owns_service = actor.teams any in service.owners
+pub let cleared =
   split(service.labels["regions"], ",") all in actor.regions
-let eligible =
+pub let eligible =
   "deployer" in actor.roles
   and environment == "production"
   and service.labels has {
@@ -216,7 +270,7 @@ let eligible =
 - The header names the kind, because the `let`s read inputs and have to type-check against them.
 - A module may contain `use` and `let` statements only. `param`, `when`, `assert`, decision constructors and invocations are compile errors.
 - A module may `use` other modules.
-- Every `let` in a module is exported. Whether modules need private helpers is an [open question](/project/open-questions/).
+- Only `pub let`s are exported. A module's other lets are private helpers for its own `pub let`s.
 - A host can't load or evaluate a module; it has no rules to evaluate.
 
 ## Bundles and resolution
@@ -228,7 +282,7 @@ A file holds one or more documents. A document is a policy, a module or a kind, 
 ```sigil
 module deploy.common: DeployApproval
 
-let cleared =
+pub let cleared =
   split(service.labels["regions"], ",") all in actor.regions
 
 ---
@@ -295,7 +349,7 @@ The prefix rule for multi-document files is proposed here. The lint itself follo
 Each policy and module has one flat top-level namespace containing:
 
 - the kind's inputs, host functions and decisions,
-- the document's own params and lets,
+- the document's own params and lets, including the lets inside `when` bodies,
 - every name bound by a `use`.
 
 Any collision between two of these is a compile error, and nothing shadows anything. A `param` named `release` in a kind that declares `input release` fails to compile, and so does a quantifier variable named `approvers` in a policy that has a param by that name.

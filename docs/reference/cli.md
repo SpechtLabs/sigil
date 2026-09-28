@@ -106,7 +106,7 @@ approve  payments_sre      payments:18
 ...
 ```
 
-Each entry names the decision, the reason and the call chain that reaches the rule, then the rule's full condition. Asserts appear as entries too, marked `assert` in the decision column, with the condition under which they're checked and the condition they check: every `when` around every call on the chain, joined with `and`. Params show as their bound values, which is why invocation arguments can't depend on inputs. `let`s stay by name, so a condition reads the way its author wrote it.
+Each entry names the decision, the reason and the call chain that reaches the rule, then the rule's full condition. Asserts appear as entries too, marked `assert` in the decision column and `input` or `outcome` after the reason, so a reader can tell which ones run before the rules, with the condition under which they're checked and the condition they check: every `when` around every call on the chain, joined with `and`. Params show as their bound values, which is why invocation arguments can't depend on inputs. `let`s stay by name, so a condition reads the way its author wrote it.
 
 With `--input`, the output also marks which rules fired and which candidate won. Like `eval`, that needs bound functions; without `--input`, `explain` needs only the kind file.
 
@@ -136,7 +136,7 @@ sigil breaking old/deploy_approval.sigil deploy_approval.sigil
 
 Imports and invocations get their own support:
 
-- Completion after `use deploy.common.{` lists the module's exported `let`s. Path-first imports are what make this work: the editor knows the file before you type the names.
+- Completion after `use deploy.common.{` lists the module's `pub let`s. Path-first imports are what make this work: the editor knows the file before you type the names.
 - Go-to-definition works across imports and into invoked policies.
 - A code lens on each invocation summarizes what it contributes, for example "production: 1 approve, 1 review, gated by compliance != pci".
 - Hovering an invocation shows its flattened rules, the same view as `sigil explain`, scoped to that call.
@@ -148,6 +148,7 @@ Imports and invocations get their own support:
 | Lint | Default | Fires when |
 | --- | --- | --- |
 | `unused-import` | warn | A `use` binds a name nothing references |
+| `unused-let` | warn | A `let` that isn't `pub` is never read. Only private lets can be checked, because a `pub let` may have importers in other files (proposed) |
 | `gated-assert` | warn | A policy that contains asserts is invoked inside `when` and isn't required. Its asserts only run while the gate holds (proposed) |
 | `gated-deny` | warn | A policy that contains denies is invoked inside `when` and isn't required by `--require` or the host. That may be intended, but it's the pattern that silently switches denies off |
 | `duplicate-invocation` | warn | The same policy is invoked twice with identical arguments |

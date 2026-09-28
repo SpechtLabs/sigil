@@ -14,6 +14,7 @@ input resource: Resource
 decision review(reason: string, approvers: list<string>, kind: string = "")
 decision deny(reason: string)
 
+collect one
 precedence deny > review
 default deny("no_rule_matched")
 
@@ -30,6 +31,6 @@ when resource.kind == "kube_cluster"      // field access after `.`
 // Extra separators and comments between documents are fine.
 module jit.common: JIT_Approval
 
-let is_cluster = resource.kind == "kube_cluster"
+pub let is_cluster = resource.kind == "kube_cluster"
 
 ---

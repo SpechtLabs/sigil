@@ -252,11 +252,14 @@ func (l *kindLoader) collect(d *ast.CollectDecl) {
 	if d == nil {
 		return
 	}
-	if l.once(&l.collectAt, d, "collect all") {
+	if l.once(&l.collectAt, d, "collect") {
 		return
 	}
 	l.set("collect", d)
-	l.kind.Collect = true
+	l.kind.Collect = kind.CollectOne
+	if d.All {
+		l.kind.Collect = kind.CollectAll
+	}
 }
 
 // once reports and skips a second declaration of something a kind has one

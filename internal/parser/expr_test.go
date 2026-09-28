@@ -90,6 +90,13 @@ func TestParseExpr(t *testing.T) {
 
 		// Postfix forms.
 		{"a.b.c", "a.b.c"},
+		{"a?.b.c", "a?.b.c"},
+		{"present release?.parent and x", "((present release?.parent) and x)"},
+		{"not present release.ticket", "(not (present release.ticket))"},
+		{"present a.b[0] == c", "((present a.b[0]) == c)"},
+		{"a?.b?.c[0]", "a?.b?.c[0]"},
+		{"release?.soak ?? 5m < 1h", "((release?.soak ?? 5m) < 1h)"},
+		{"release?.type", "release?.type"},
 		{"service.type", "service.type"},
 		{"resource.kind == \"x\"", "(resource.kind == \"x\")"},
 		{"a[0][1]", "a[0][1]"},

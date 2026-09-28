@@ -57,7 +57,7 @@ Comment     ::= "//" [^#xA]*
 Separator   ::= "---"
 ```
 
-The lexer takes the longest match. A run of digits followed directly by a unit is a `Duration`; `ms` wins over `m` followed by `s`. A number followed directly by any other letter is a lexical error. `??`, `==`, `!=`, `<=`, `>=`, `->` and `---` are single tokens.
+The lexer takes the longest match. A run of digits followed directly by a unit is a `Duration`; `ms` wins over `m` followed by `s`. A number followed directly by any other letter is a lexical error. `??`, `?.`, `==`, `!=`, `<=`, `>=`, `->` and `---` are single tokens. A float needs digits on both sides of its point, so `?.` never splits into `?` and a number.
 
 `Ident` excludes keywords, but field names don't: see `Name` below.
 
@@ -86,6 +86,7 @@ input resource: Resource
 decision review(reason: string, approvers: list<string>)
 decision deny(reason: string)
 
+collect one
 precedence deny > review
 default deny("no_rule_matched")
 
@@ -114,11 +115,12 @@ UseStmt      ::= "use" PolicyName ( "as" Ident | "." "{" ImportList "}" )?
 ImportList   ::= ImportItem ( "," ImportItem )* ","?
 ImportItem   ::= Ident ( "as" Ident )?
 
-ParamStmt    ::= "param" Ident ":" Type ( "=" Expr )?
-LetStmt      ::= "let" Ident "=" Expr
+ParamStmt    ::= "param" Ident ":" Type ( "=" Expr )? ( "," Bound )*
+Bound        ::= ( "min" | "max" ) ":" Expr     /* identifiers, not keywords */
+LetStmt      ::= "pub"? "let" Ident "=" Expr
 WhenStmt     ::= "when" Expr "{" RuleItem* "}"
-RuleItem     ::= WhenStmt | AssertStmt | Call
-AssertStmt   ::= "assert" Expr "," String
+RuleItem     ::= WhenStmt | LetStmt | AssertStmt | Call
+AssertStmt   ::= "assert" "(" String "," Expr ","? ")"
 
 Call         ::= Ident "(" CallArgs? ")"
 CallArgs     ::= Expr ( "," NamedArg )* ","?       /* decision constructor */
@@ -131,7 +133,9 @@ Name         ::= Ident | Keyword          /* field and payload names */
 
 A `Call` is either a decision constructor or a policy invocation, and the parser doesn't need to know which. The checker decides by the name: a decision of the kind makes it a constructor, whose first argument must be a string literal reason; an imported policy makes it an invocation, whose arguments must all be named. Anything else is a compile error.
 
-An `AssertStmt`'s reason is a plain string literal, never a raw string, like a decision reason. The `,` ends the condition, including a quantifier body that would otherwise run on. See [Assertions](/reference/evaluation/#assertions). (proposed)
+A `LetStmt` in a `RuleItem` is a scoped let and can't be `pub`; the parser reports a `pub` there and keeps the let, so its uses still resolve. That scoped let names are unique per document, and that a `pub let` in a policy can't read a param, are checked after parsing. See [Scoped lets](/reference/policy-files/#scoped-lets). (proposed)
+
+An `AssertStmt` takes the reason first, like a decision constructor, and the reason is a plain string literal, never a raw string. The `)` ends the condition, including a quantifier body that would otherwise run on. An assert takes nothing else: no named arguments. See [Assertions](/reference/evaluation/#assertions). (proposed)
 
 `UseStmt`s come before every other statement. A `use` after a `param`, `let`, rule or invocation is a parse error with a hint to move it up.
 
@@ -155,18 +159,18 @@ KindHeader   ::= "kind" Ident "version" Int
 KindStmt     ::= TypeDecl | InputDecl | FnDecl | DecisionDecl
                | PrecedenceDecl | CollectDecl | DefaultDecl
 
-TypeDecl     ::= "type" Ident "{" FieldDecl* "}"
+TypeDecl     ::= "type" Ident ( "{" FieldDecl* "}" | "ordered" )   /* "ordered" is proposed */
 FieldDecl    ::= Name ":" Type
 InputDecl    ::= "input" Ident ":" Type
 FnDecl       ::= "fn" Ident "(" ( Type ( "," Type )* ","? )? ")" "->" Type
 DecisionDecl ::= "decision" Ident "(" DecisionField ( "," DecisionField )* ","? ")"
 DecisionField ::= Name ":" Type ( "=" Expr )?
 PrecedenceDecl ::= "precedence" Ident ( ">" Ident )*
-CollectDecl  ::= "collect" "all"
+CollectDecl  ::= "collect" ( "one" | "all" )
 DefaultDecl  ::= "default" Constructor
 ```
 
-That `DecisionDecl` starts with `reason: string`, that a kind has exactly one of `precedence` and `collect all`, that `precedence` names every decision once, and that defaults are constants are semantic rules, checked after parsing. See [Kind files](/reference/kind-files/).
+That `DecisionDecl` starts with `reason: string`, that a kind declares `collect` once, that `collect one` comes with a `precedence` and `collect all` without one, that `precedence` names every decision once, and that defaults are constants are semantic rules, checked after parsing. See [Kind files](/reference/kind-files/).
 
 ## Types
 
@@ -196,8 +200,8 @@ RelOp        ::= "==" | "!=" | "<" | "<=" | ">" | ">="
                | "has" | "like" | "matches"
 Coalesce     ::= Additive ( "??" Coalesce )?          /* right-associative */
 Additive     ::= Unary ( ( "+" | "-" ) Unary )*
-Unary        ::= "-" Unary | Postfix
-Postfix      ::= Primary ( "." Name | "[" Expr "]" | "(" Args? ")" )*
+Unary        ::= ( "-" | "present" ) Unary | Postfix
+Postfix      ::= Primary ( "." Name | "?." Name | "[" Expr "]" | "(" Args? ")" )*
 Args         ::= Expr ( "," Expr )* ","?
 
 Primary      ::= Literal | Ident | "outcome" | "(" Expr ")" | ListLit | MapLit
@@ -227,8 +231,8 @@ The expression grammar encodes this table, lowest to highest. It matches [Expres
 | 4     | `like`, `matches`           | none           |
 | 5     | `??`                        | right          |
 | 6     | `+` `-`                     | left           |
-| 7     | `-`                         | prefix         |
-| 8     | `.field` `[key]` `f(args)`  | left (postfix) |
+| 7     | `-`, `present`              | prefix         |
+| 8     | `.field` `?.field` `[key]` `f(args)` | left (postfix) |
 
 `or` and `xor` share level 1, but `OrExpr` takes either a chain of `or` or a single `xor`, never both, so `a xor b xor c` and `a or b xor c` fail to parse with a hint to add parentheses.
 
@@ -270,11 +274,11 @@ any r in actor.roles: r like "sre-*" and eligible
 any r in actor.roles: (r like "sre-*" and eligible)
 ```
 
-It stops at a token that can't continue an expression: `)`, `]`, `}`, `,`, `{` in operator position, or a statement keyword. The `,` case is what lets `assert all g in grants: g != "root", "no_root"` end its condition before the reason.
+It stops at a token that can't continue an expression: `)`, `]`, `}`, `,`, `{` in operator position, or a statement keyword. So in `assert("no_root", all g in grants: g != "root")` the body ends at `)`, and in a list literal or an argument list it ends at the next `,`.
 
 ### Statement boundaries
 
-Newlines never end anything. Every top-level statement starts with a keyword (`policy`, `use`, `param`, `let`, `when`, `assert` in policy files; `module`, `use`, `let` in module files; `kind`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default` in kind files), or, in a policy file, with an identifier followed by `(`, which is a policy invocation. None of those keywords can continue an expression, and an expression never continues with a bare identifier, so when the parser is inside a `let` expression and meets `let`, `when` or `guardrails(`, the expression is over. A header keyword or a `---` ends the whole document the same way. No other statement starts with an identifier, so the parse stays unambiguous. This is what makes the files safe to indent or join however a text templater likes.
+Newlines never end anything. Every top-level statement starts with a keyword (`policy`, `use`, `param`, `let`, `pub`, `when`, `assert` in policy files; `module`, `use`, `let`, `pub` in module files; `kind`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default` in kind files), or, in a policy file, with an identifier followed by `(`, which is a policy invocation. None of those keywords can continue an expression, and an expression never continues with a bare identifier, so when the parser is inside a `let` expression and meets `let`, `when` or `guardrails(`, the expression is over. A header keyword or a `---` ends the whole document the same way. No other statement starts with an identifier, so the parse stays unambiguous. This is what makes the files safe to indent or join however a text templater likes.
 
 ```sigil
 let a = environment == "production" let b = "deployer" in actor.roles guardrails(min_soak: 4h) when a and b { review("service_owner", approvers: approvers) }
@@ -304,11 +308,11 @@ A Go host can tag a field with any name, and Kubernetes-shaped data often has a 
 A parse error reports the file, line and column, what the parser expected, and a fix when one is obvious:
 
 ```text
-deploy/production.sigil:9:3: error: expected a decision constructor, invocation or `when`, found `let`
+deploy/production.sigil:9:3: error: expected a decision constructor, invocation, `when`, `let` or `assert`, found `param`
   |
-9 |   let tmp = release.soak
-  |   ^^^
-  = help: `let` is only allowed at the top level; move it outside the `when` block
+9 |   param tmp: duration
+  |   ^^^^^
+  = help: `param` is only allowed at the top level; move it outside the `when` block
 ```
 
 This is the plain-text layout the parser produces, and what its golden tests pin. The CLI adds color on a terminal.

@@ -59,6 +59,12 @@ func TestValidate(t *testing.T) {
 		{name: "field of nested optional", mutate: func(k *kind.Kind) {
 			k.Types[0].Fields[0].Type = &types.Optional{Elem: &types.Optional{Elem: types.String}}
 		}, want: []string{`type Release, field "soak": optional types don't nest`}},
+		{name: "field of optional list", mutate: func(k *kind.Kind) {
+			k.Types[0].Fields[0].Type = &types.Optional{Elem: strList}
+		}, want: []string{`type Release, field "soak": a list can't be optional`}, help: "use `list<T>`; an absent list already reads as an empty one"},
+		{name: "field of optional map", mutate: func(k *kind.Kind) {
+			k.Types[0].Fields[0].Type = &types.Optional{Elem: &types.Map{Key: types.String, Value: types.Int}}
+		}, want: []string{`type Release, field "soak": a map can't be optional`}, help: "use `map<K, V>`; an absent map already reads as an empty one"},
 		{name: "field of decision type", mutate: func(k *kind.Kind) {
 			k.Types[0].Fields[0].Type = &types.List{Elem: types.Decision}
 		}, want: []string{`type Release, field "soak": type can't be decision`}},
@@ -128,7 +134,7 @@ func TestValidate(t *testing.T) {
 			k.Decisions = nil
 			k.Precedence = nil
 			k.Default = nil
-		}, want: []string{"kind DeployApproval declares no decisions", "kind DeployApproval has neither precedence nor collect all", "kind DeployApproval has no default decision"}},
+		}, want: []string{"kind DeployApproval declares no decisions", "kind DeployApproval collects one decision but has no precedence", "kind DeployApproval has no default decision"}},
 		{name: "decision name is a keyword", mutate: func(k *kind.Kind) {
 			k.Decisions[0].Name = "default"
 			k.Precedence[0] = "default"
@@ -162,10 +168,14 @@ func TestValidate(t *testing.T) {
 		}, want: []string{`decision review, field "approvers": default ["a", 1] is not a list<string>`}},
 
 		// Resolution.
-		{name: "both precedence and collect", mutate: func(k *kind.Kind) { k.Collect = true },
+		{name: "both precedence and collect", mutate: func(k *kind.Kind) { k.Collect = kind.CollectAll },
 			want: []string{"kind DeployApproval has both precedence and collect all"}},
-		{name: "neither precedence nor collect", mutate: func(k *kind.Kind) { k.Precedence = nil },
-			want: []string{"kind DeployApproval has neither precedence nor collect all"}, help: "rank the decisions with `precedence`, or declare `collect all`"},
+		{name: "no collect", mutate: func(k *kind.Kind) { k.Collect = kind.CollectUnset; k.Precedence = nil },
+			want: []string{"kind DeployApproval doesn't declare how many decisions it returns"}, help: "declare `collect one` with a `precedence`, or `collect all`"},
+		{name: "precedence without collect", mutate: func(k *kind.Kind) { k.Collect = kind.CollectUnset },
+			want: []string{"kind DeployApproval has precedence but no collect"}},
+		{name: "collect one without precedence", mutate: func(k *kind.Kind) { k.Precedence = nil },
+			want: []string{"kind DeployApproval collects one decision but has no precedence"}},
 		{name: "precedence misses a decision", mutate: func(k *kind.Kind) { k.Precedence = []string{"deny", "review"} },
 			want: []string{`precedence doesn't name decision "approve"`}, help: "list every decision exactly once, highest first"},
 		{name: "precedence names a decision twice", mutate: func(k *kind.Kind) { k.Precedence = []string{"deny", "review", "approve", "deny"} },

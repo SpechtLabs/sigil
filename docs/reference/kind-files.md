@@ -57,6 +57,7 @@ decision deny(reason: string)
 decision review(reason: string, approvers: list<string>)
 decision approve(reason: string, bake: duration = 1h)
 
+collect one
 precedence deny > review > approve
 default deny("no_rule_matched")
 ```
@@ -70,8 +71,8 @@ default deny("no_rule_matched")
 | `input`      | `input release: Release`                                   | Top-level names policies can read        |
 | `fn`         | `fn split(string, string) -> list<string>`         | Host function signatures                 |
 | `decision`   | `decision review(reason: string, approvers: list<string>)` | Decision constructors and payload schema |
-| `precedence` | `precedence deny > review > approve`                       | Conflict resolution order                |
-| `collect`    | `collect all`                                              | Every fired decision applies (instead of `precedence`) |
+| `collect`    | `collect one` or `collect all`                             | One winner, or every decision that fired |
+| `precedence` | `precedence deny > review > approve`                       | Ranks decisions for `collect one`        |
 | `default`    | `default deny("no_rule_matched")`                          | Result when nothing fires; optional with `collect all` |
 
 ### `kind`
@@ -94,6 +95,8 @@ type Service {
 ```
 
 Declares a struct type with named, typed fields. Fields are written `name: type` with no separator between them; the parser finds the next field by its `name:` prefix. Field names must be unique within a type. A field's type may be any [type](/reference/types/), including another struct type and an optional `?T`.
+
+`type Version ordered` declares a [host-ordered type](/reference/types/#host-ordered-types) instead: opaque, with no fields, ordered by the Go type's `Compare(T) int` method. `NewKind` requires the method, so the kind file never declares it as an `fn`. (proposed)
 
 Struct types must not be recursive, directly or through other types. Go allows `type Node struct { Next *Node }`, but policies can't loop, so a recursive type could only ever be read to a fixed depth; `NewKind` and the kind loader reject one, naming the cycle.
 
@@ -131,21 +134,37 @@ Declares a decision constructor and its payload schema.
 
 How policies call these is on [Decisions](/reference/decisions/).
 
+### `collect`
+
+```sigil
+collect one
+precedence deny > review > approve
+```
+
+```sigil
+collect all
+```
+
+Declares how many decisions the host gets back. Every kind declares it, so a reader knows the shape of the result from one line, and leaving out a line can't silently switch a kind from one winner to many.
+
+|               | without `precedence`                        | with `precedence`                         |
+| ------------- | ------------------------------------------- | ----------------------------------------- |
+| `collect one` | Error: nothing picks the winner             | One winner, the highest-ranked candidate  |
+| `collect all` | Every candidate that fired                  | Reserved (proposed; a compile error today) |
+
+`collect one` without `precedence` is an error because the only thing left to pick a winner by would be source position, and choosing between different decisions by position would make rule order matter. `collect all` with `precedence` is reserved for returning every candidate of the top-ranked decision; see [Open questions](/project/open-questions/#collecting-kinds).
+
 ### `precedence`
 
 ```sigil
 precedence deny > review > approve
 ```
 
-Ranks decisions from highest to lowest. When candidates of different decisions compete, the highest-ranked one wins. The declaration must name every declared decision exactly once, which makes precedence a total order. The Go side derives precedence from the order of `policy.WithDecisions(...)`, which is always total.
+Ranks decisions from highest to lowest for a `collect one` kind. When candidates of different decisions compete, the highest-ranked one wins. The declaration must name every declared decision exactly once, which makes precedence a total order. The Go side derives precedence from the order of `policy.WithDecisions(...)`, which is always total.
 
-### `collect`
+### Collecting kinds
 
-```sigil
-collect all
-```
-
-Declares a collecting kind: instead of one winner, the host gets every candidate that fired. A kind has either `precedence` or `collect all`, never both and never neither, so leaving out a line can't silently switch a kind from one winner to many.
+A `collect all` kind is a collecting kind: instead of one winner, the host gets every candidate that fired.
 
 Collecting fits decisions that combine instead of competing, such as roles a user can hold at the same time:
 
@@ -174,8 +193,8 @@ A policy for this kind grants each role in its own `when` block, and several can
 ```sigil
 policy access.guardrails: AccessGrant
 
-assert [customer_data_writer, development_environment_writer] exclusive in outcome,
-  "sod_customer_dev"
+assert("sod_customer_dev",
+  [customer_data_writer, development_environment_writer] exclusive in outcome)
 ```
 
 How the candidates are ordered and returned is on [Evaluation semantics](/reference/evaluation/#collecting-kinds).
@@ -188,7 +207,7 @@ default deny("no_rule_matched")
 
 The result when no rule fires. It's a decision constructor with a literal reason, and every payload value must be a constant.
 
-A kind with `precedence` must declare a default. A collecting kind may leave it out, and then an evaluation where nothing fires returns no decisions at all.
+A `collect one` kind must declare a default. A collecting kind may leave it out, and then an evaluation where nothing fires returns no decisions at all.
 
 ## Validity rules
 
@@ -199,9 +218,9 @@ A kind is valid when:
 - no struct type is recursive,
 - inputs and host functions share one namespace and every name in it is unique,
 - every decision declares `reason: string` first,
-- exactly one of `precedence` and `collect all` is declared,
-- `precedence`, if declared, lists every decision exactly once,
-- `default` is declared if `precedence` is, and constructs a declared decision with a literal reason and constant payload values that satisfy its schema.
+- `collect` is declared once, as `collect one` or `collect all`,
+- `precedence` is declared with `collect one` and not with `collect all`, and lists every decision exactly once,
+- `default` is declared if the kind is `collect one`, and constructs a declared decision with a literal reason and constant payload values that satisfy its schema.
 
 `NewKind` enforces these rules on the Go side and panics at init if they fail, so a kind that exists can always be exported.
 
@@ -217,9 +236,11 @@ A kind is valid when:
 | `[]T`                      | `list<T>`        |
 | `map[K]T`, scalar `K`      | `map<K, T>`      |
 | `*T`                       | `?T`             |
+| `*[]T`, `*map[K]T`         | rejected         |
 | struct with `policy:` tags | `type`           |
+| type registered with `policy.WithOrdered[T](name)` | `type name ordered` (proposed) |
 
-`NewKind` rejects anything else: channels, funcs, interfaces, map keys that aren't scalars, unexported fields. That strictness is what makes the round trip safe. `Import(Export(k))` must equal `k`, and that's a property test in the suite.
+`NewKind` rejects anything else: channels, funcs, interfaces, pointers to slices, maps or pointers, map keys that aren't scalars, unexported fields. That strictness is what makes the round trip safe. `Import(Export(k))` must equal `k`, and that's a property test in the suite.
 
 Payload structs map to decision fields the same way. A default comes from the struct tag:
 
@@ -231,9 +252,7 @@ type ApproveData struct {
 
 The reason is implicit on every decision and never appears in a payload struct.
 
-::: warning Open question
-`*Struct` maps to `?Struct`, which a policy can't currently unwrap because struct types have no literal. Whether `NewKind` should reject pointer-to-struct fields or the language should grow optional chaining is an [open question](/project/open-questions/).
-:::
+`*Struct` maps to `?Struct`, whose fields a policy reads with [optional chaining](/reference/expressions/#optional-chaining): `release?.soak ?? 0s`. A pointer to a slice or a map is rejected, and so are `?list<T>` and `?map<K, V>` in a kind file: a nil slice or map already reads as empty, so an optional one would add a second way to say "nothing" that policies couldn't tell apart.
 
 ## Host functions across the boundary
 
@@ -257,7 +276,7 @@ The exported kind carries a version, and `sigil breaking old/deploy_approval.sig
 | Change a type                                  | Breaking                                                       |
 | Add a payload field without a default          | Breaking                                                       |
 | Reorder `precedence` or change `default`       | Breaking in behaviour, even though every policy still compiles |
-| Switch between `precedence` and `collect all`  | Breaking                                                       |
+| Switch between `collect one` and `collect all` | Breaking                                                       |
 
 ::: warning Adding an input or function can collide
 Inputs, host functions, params, lets and imported names share one flat namespace per policy, with no shadowing (see [Policy files](/reference/policy-files/)). A new `input approvers` therefore breaks every policy that already declares `param approvers`. `sigil breaking` only sees the two kind files, so it can't catch this; `sigil check` against the new kind can. Decision names share that namespace, because asserts use them as values, so a new decision collides the same way. (proposed)

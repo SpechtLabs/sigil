@@ -112,13 +112,23 @@ func (d *dumper) stmt(s Stmt) {
 	case *UseStmt:
 		d.use(s)
 	case *ParamStmt:
+		line := "param " + s.Name.Name + ": " + TypeString(s.Type)
 		if s.Default != nil {
-			d.linef("param %s: %s = %s %s", s.Name.Name, TypeString(s.Type), Sprint(s.Default), spanOf(s))
-		} else {
-			d.linef("param %s: %s %s", s.Name.Name, TypeString(s.Type), spanOf(s))
+			line += " = " + Sprint(s.Default)
 		}
+		if s.Min != nil {
+			line += ", min: " + Sprint(s.Min)
+		}
+		if s.Max != nil {
+			line += ", max: " + Sprint(s.Max)
+		}
+		d.linef("%s %s", line, spanOf(s))
 	case *LetStmt:
-		d.linef("let %s = %s %s", s.Name.Name, Sprint(s.Value), spanOf(s))
+		pub := ""
+		if s.Pub {
+			pub = "pub "
+		}
+		d.linef("%slet %s = %s %s", pub, s.Name.Name, Sprint(s.Value), spanOf(s))
 	case *WhenStmt:
 		d.linef("when %s { %s", Sprint(s.Cond), spanOf(s))
 		d.indent++
@@ -128,7 +138,7 @@ func (d *dumper) stmt(s Stmt) {
 		d.indent--
 		d.linef("}")
 	case *AssertStmt:
-		d.linef("assert %s, %s %s", Sprint(s.Cond), s.Reason.Text, spanOf(s))
+		d.linef("assert(%s, %s) %s", s.Reason.Text, Sprint(s.Cond), spanOf(s))
 	case *CallStmt:
 		d.linef("%s %s", callString(s), spanOf(s))
 	default:
@@ -183,7 +193,11 @@ func (d *dumper) decl(decl Decl) {
 		}
 		d.linef("precedence %s %s", strings.Join(names, " > "), spanOf(decl))
 	case *CollectDecl:
-		d.linef("collect all %s", spanOf(decl))
+		mode := "one"
+		if decl.All {
+			mode = "all"
+		}
+		d.linef("collect %s %s", mode, spanOf(decl))
 	case *DefaultDecl:
 		d.linef("default %s %s", callString(decl.Call), spanOf(decl))
 	default:

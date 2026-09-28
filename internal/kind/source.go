@@ -48,9 +48,13 @@ func (k *Kind) Source() string {
 	}
 
 	b.WriteString("\n")
-	if k.Collect {
+	switch k.Collect {
+	case CollectOne:
+		b.WriteString("collect one\n")
+	case CollectAll:
 		b.WriteString("collect all\n")
-	} else {
+	}
+	if len(k.Precedence) > 0 {
 		b.WriteString("precedence " + strings.Join(k.Precedence, " > ") + "\n")
 	}
 	if k.Default != nil {

@@ -110,8 +110,8 @@ func (e *Env) Declare(name string, b Binding) (Binding, bool) {
 	return b, true
 }
 
-// Child returns a nested scope, for a quantifier body. It inherits
-// InAssert.
+// Child returns a nested scope, for a `when` body's lets or a quantifier
+// body. It inherits InAssert.
 func (e *Env) Child() *Env {
 	return &Env{kind: e.kind, parent: e, names: map[string]Binding{}, InAssert: e.InAssert}
 }

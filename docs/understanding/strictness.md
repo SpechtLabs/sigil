@@ -71,7 +71,7 @@ when (release.ticket ?? "") == "" {
 
 This is the one place Sigil makes the author think about absence explicitly. It's there because a Go pointer is the host saying "nil is meaningful for this field", and the language shouldn't paper over that.
 
-It doesn't yet work for optional structs, since there's no struct literal to put on the right of `??`. That gap is in the [open questions](/project/open-questions/).
+An optional struct has no literal to put on the right of `??`, so its fields are read with [optional chaining](/reference/expressions/#optional-chaining): `release?.soak ?? 0s`. The absence is still explicit, in the `?.` and in the `??` that ends it.
 
 ## Runtime errors fail closed
 

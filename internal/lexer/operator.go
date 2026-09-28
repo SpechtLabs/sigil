@@ -42,6 +42,8 @@ func pair(c, next byte) token.Kind {
 		return token.GtEq
 	case c == '?' && next == '?':
 		return token.Coalesce
+	case c == '?' && next == '.':
+		return token.OptDot
 	case c == '-' && next == '>':
 		return token.Arrow
 	}
