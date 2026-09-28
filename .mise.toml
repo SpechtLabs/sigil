@@ -52,7 +52,17 @@ run = "go test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.tx
 # a custom binary (./custom-gcl). Rebuilds only when .custom-gcl.yml changes.
 [tasks.lint-build]
 description = "Build the custom-gcl binary with the golint-sl plugin baked in"
-run = "golangci-lint custom"
+# The build downloads golangci-lint's whole dependency tree, and the module
+# proxy sometimes resets the HTTP/2 stream partway through. Modules already
+# downloaded stay in the cache, so a retry picks up where it failed.
+run = """
+for attempt in 1 2 3; do
+  golangci-lint custom && exit 0
+  echo "golangci-lint custom failed (attempt $attempt of 3)" >&2
+  sleep 10
+done
+exit 1
+"""
 sources = [".custom-gcl.yml"]
 outputs = ["custom-gcl"]
 
