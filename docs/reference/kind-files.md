@@ -53,13 +53,23 @@ input environment: string
 
 fn split(string, string) -> list<string>
 
-decision deny(reason: string)
-decision review(reason: string, approvers: list<string>)
-decision approve(reason: string, bake: duration = 1h)
+decision deny {
+  not_eligible
+  soak_too_short
+  no_rule_matched
+}
+decision review(approvers: list<string>) {
+  service_owner
+}
+decision approve(bake: duration = 1h) {
+  release_manager
+  payments_sre
+}
 
 collect one
 precedence deny > review > approve
-default deny("no_rule_matched")
+precedence approve: release_manager > payments_sre
+default deny(no_rule_matched)
 ```
 
 ## Declarations
@@ -70,10 +80,11 @@ default deny("no_rule_matched")
 | `type`       | `type Release { soak: duration }`                          | Struct types reachable from inputs       |
 | `input`      | `input release: Release`                                   | Top-level names policies can read        |
 | `fn`         | `fn split(string, string) -> list<string>`         | Host function signatures                 |
-| `decision`   | `decision review(reason: string, approvers: list<string>)` | Decision constructors and payload schema |
+| `decision`   | `decision review(approvers: list<string>) { service_owner }` | Decision constructors: payload schema and reasons |
 | `collect`    | `collect one` or `collect all`                             | One winner, or every decision that fired |
 | `precedence` | `precedence deny > review > approve`                       | Ranks decisions for `collect one`        |
-| `default`    | `default deny("no_rule_matched")`                          | Result when nothing fires; optional with `collect all` |
+| `exclusive`  | `exclusive grant_a, grant_b`             | Outcomes that can't fire together              |
+| `default`    | `default deny(no_rule_matched)`                          | Result when nothing fires; optional with `collect all` |
 
 ### `kind`
 
@@ -122,16 +133,24 @@ Host functions must be pure and deterministic. The Go implementation may return 
 ### `decision`
 
 ```sigil
-decision review(reason: string, approvers: list<string>)
-decision approve(reason: string, bake: duration = 1h)
+decision review(approvers: list<string>) {
+  service_owner
+}
+decision approve(bake: duration = 1h) {
+  release_manager
+  payments_sre
+}
 ```
 
-Declares a decision constructor and its payload schema.
+Declares a decision constructor: its payload schema in parentheses, and the reasons it can be constructed with in the block.
 
-- The first parameter must be `reason: string`. A decision without it is rejected.
-- Every other parameter is a payload field with a type and an optional default. A field without a default is required at every call site.
-- Defaults must be constants.
-- Field names must be unique within a decision.
+- The block lists the decision's reasons, one identifier per line, at least one. A constructor names one of them, `approve(payments_sre, bake: 15m)`, and any other name is a compile error with a did-you-mean hint.
+- Reasons are scoped to their decision. `deny` and `approve` may both declare `release_manager`; they're two names, `deny.release_manager` and `approve.release_manager`.
+- The block is a set. Its order means nothing; ranking reasons is a separate declaration, the [scoped `precedence`](#precedence).
+- Every parameter is a payload field with a type and an optional default. A field without a default is required at every call site. Defaults must be constants, and field names must be unique within a decision.
+- A decision with no payload leaves the parentheses out.
+
+Declaring reasons in the kind is what makes a reason a compile-time name instead of a string: a typo in a reason can't create a new metric series, `sigil breaking` sees a removed reason, and asserts and `exclusive` can name a reason. The cost is that a new reason is a kind change, like a new decision. See [Reasons declared in the kind](/project/open-questions/#reasons-declared-in-the-kind).
 
 How policies call these is on [Decisions](/reference/decisions/).
 
@@ -146,22 +165,43 @@ precedence deny > review > approve
 collect all
 ```
 
-Declares how many decisions the host gets back. Every kind declares it, so a reader knows the shape of the result from one line, and leaving out a line can't silently switch a kind from one winner to many.
+Declares how many candidates the host gets back. Every kind declares it, so a reader knows the shape of the result from one line, and leaving out a line can't silently switch a kind from one winner to many.
 
-|               | without `precedence`                        | with `precedence`                         |
-| ------------- | ------------------------------------------- | ----------------------------------------- |
-| `collect one` | Error: nothing picks the winner             | One winner, the highest-ranked candidate  |
-| `collect all` | Every candidate that fired                  | Reserved (proposed; a compile error today) |
+|               | without `precedence`                        | with `precedence`                                              |
+| ------------- | ------------------------------------------- | -------------------------------------------------------------- |
+| `collect one` | Error: nothing picks the winner             | One winner: the top-ranked candidate, or a conflict error when several share the top rank |
+| `collect all` | Every candidate that fired                  | Every candidate at the top rank                                |
 
-`collect one` without `precedence` is an error because the only thing left to pick a winner by would be source position, and choosing between different decisions by position would make rule order matter. `collect all` with `precedence` is reserved for returning every candidate of the top-ranked decision; see [Open questions](/project/open-questions/#collecting-kinds).
+`collect one` without `precedence` is an error because the only thing left to pick a winner by would be source position, and choosing between different decisions by position would make rule order matter. `collect` and `precedence` are independent: `precedence` ranks, and `collect` says how many candidates of the top rank come back. How the top rank is formed, and what happens when it holds more than one candidate, is on [Evaluation semantics](/reference/evaluation/#resolution).
 
 ### `precedence`
 
 ```sigil
 precedence deny > review > approve
+precedence approve: release_manager > payments_sre
 ```
 
-Ranks decisions from highest to lowest for a `collect one` kind. When candidates of different decisions compete, the highest-ranked one wins. The declaration must name every declared decision exactly once, which makes precedence a total order. The Go side derives precedence from the order of `policy.WithDecisions(...)`, which is always total.
+The first form ranks decisions from highest to lowest. It must name every declared decision exactly once, which makes it a total order, and it's required with `collect one`. The Go side derives it from the order of `policy.WithDecisions(...)`, which is always total.
+
+The second form ranks the reasons of one decision, and is optional. It comes into play only when candidates of the same decision compete, and it must name every reason of that decision exactly once. A decision without one has unranked reasons, which is fine wherever ties between them can't matter, and a [conflict](/reference/evaluation/#resolution) under `collect one` where they can.
+
+Reasons of different decisions never rank against each other. `deny > approve.release_manager > review` isn't a valid declaration: the decision line says which decision the host gets, and the reason line says which candidate of it, so the story "flip `deny` above `review` when the rules are trusted" stays one line about decisions.
+
+### `exclusive`
+
+```sigil
+exclusive grant_a, grant_b
+exclusive approve.release_manager, approve.lgtm
+```
+
+Declares that at most one of the listed outcomes may fire in one evaluation. Candidates from two of them together are a conflict, the evaluation fails with a `*ConflictError`, and the host gets the default. It's the same relation `exclusive in` tests over `outcome`, declared by the host in the kind, where no `when` can gate it and no policy has to be required to carry it.
+
+- Each entry is a decision, matching any of its reasons, or a decision with one reason.
+- A set names at least two entries. A kind may declare any number of sets, and one outcome may appear in several.
+- The check happens before ranking, so an exclusive pair is a conflict even when a third decision outranks both. A contradiction between two rules doesn't stop being one because a deny happened to fire too.
+- It works the same under `collect one` and `collect all`. In a `collect all` kind it replaces the pattern of an `exclusive in outcome` assert in a required policy; that assert still works, but it belongs to a policy author, and this line belongs to the host.
+
+In `collect one`, the relative rank of an exclusive pair is unobservable, since they never both survive to be ranked. `precedence` still has to list them; a lint can point out that the order between them never matters.
 
 ### Collecting kinds
 
@@ -180,11 +220,21 @@ type Actor {
 
 input actor: Actor
 
-decision read(reason: string)
-decision write(reason: string)
-decision admin(reason: string, ttl: duration = 8h)
-decision customer_data_writer(reason: string)
-decision development_environment_writer(reason: string)
+decision read {
+  engineering_member
+}
+decision write {
+  platform_member
+}
+decision admin(ttl: duration = 8h) {
+  oncall
+}
+decision customer_data_writer {
+  data_engineer
+}
+decision development_environment_writer {
+  platform_member
+}
 
 collect all
 ```
@@ -203,10 +253,10 @@ How the candidates are ordered and returned is on [Evaluation semantics](/refere
 ### `default`
 
 ```sigil
-default deny("no_rule_matched")
+default deny(no_rule_matched)
 ```
 
-The result when no rule fires. It's a decision constructor with a literal reason, and every payload value must be a constant.
+The result when no rule fires. It's a decision constructor with one of the decision's declared reasons, and every payload value must be a constant.
 
 A `collect one` kind must declare a default. A collecting kind may leave it out, and then an evaluation where nothing fires returns no decisions at all.
 
@@ -219,10 +269,11 @@ A kind is valid when:
 - every type referenced anywhere is a built-in type or a declared struct type,
 - no struct type is recursive,
 - inputs and host functions share one namespace and every name in it is unique,
-- every decision declares `reason: string` first,
+- every decision declares at least one reason, and a reason is unique within its decision,
 - `collect` is declared once, as `collect one` or `collect all`,
-- `precedence` is declared with `collect one` and not with `collect all`, and lists every decision exactly once,
-- `default` is declared if the kind is `collect one`, and constructs a declared decision with a literal reason and constant payload values that satisfy its schema.
+- `precedence` over decisions is declared with `collect one` and lists every decision exactly once; a scoped `precedence` names a declared decision, appears at most once per decision and lists every reason of that decision exactly once,
+- every `exclusive` set names at least two declared decisions or reasons,
+- `default` is declared if the kind is `collect one`, and constructs a declared decision with one of its reasons and constant payload values that satisfy its schema.
 
 `NewKind` enforces these rules on the Go side and panics at init if they fail, so a kind that exists can always be exported.
 
@@ -293,12 +344,12 @@ The host never keeps old kinds around. Its whole cost is two numbers, set with `
 
 | Change                                         | Effect                                                         |
 | ---------------------------------------------- | -------------------------------------------------------------- |
-| Add an input, type field, function or decision | Compatible                                                     |
+| Add an input, type field, function, decision or reason | Compatible                                             |
 | Add a payload field with a default             | Compatible                                                     |
 | Remove or rename anything                      | Breaking                                                       |
 | Change a type                                  | Breaking                                                       |
 | Add a payload field without a default          | Breaking                                                       |
-| Reorder `precedence` or change `default`       | Breaking in behaviour, even though every policy still compiles |
+| Reorder `precedence`, add or reorder a scoped `precedence`, add an `exclusive` set, or change `default` | Breaking in behaviour, even though every policy still compiles |
 | Switch between `collect one` and `collect all` | Breaking                                                       |
 
 A breaking change that the type checker catches, such as a removed field, would fail the affected policies anyway; raising `accepts` turns a scattered set of type errors into one clear message per document. For a change that still compiles, such as a reordered `precedence`, raising `accepts` is the only thing that stops old policies from silently meaning something new.

@@ -82,20 +82,23 @@ type ApproveData struct {
 The regenerated kind changes in one line:
 
 ```diff
--decision approve(reason: string, bake: duration = 1h)
-+decision approve(reason: string, bake: duration = 1h, notify: bool = false)
+-decision approve(bake: duration = 1h) {
++decision approve(bake: duration = 1h, notify: bool = false) {
+   release_manager
+   payments_sre
+ }
 ```
 
-Every existing `approve("release_manager")` still compiles and gets `notify = false`. Policies that want the new behaviour opt in with `approve("release_manager", notify: true)`.
+Every existing `approve(release_manager)` still compiles and gets `notify = false`. Policies that want the new behaviour opt in with `approve(release_manager, notify: true)`.
 
 Leave the default off and every existing call site breaks:
 
 ```text
 payments/production.sigil:18:3: error: decision approve is missing required payload field "notify"
    |
-18 |   approve("payments_sre", bake: 15m)
+18 |   approve(payments_sre, bake: 15m)
    |   ^^^^^^^
-  = note: DeployApproval declares: decision approve(reason: string, bake: duration = 1h, notify: bool)
+  = note: DeployApproval declares: decision approve(bake: duration = 1h, notify: bool) { release_manager, payments_sre }
 ```
 
 Sometimes that's what you want, because every policy author should make a conscious choice. Then treat it as a breaking change and follow the steps below.
@@ -113,7 +116,7 @@ Swap review and approve in the `DeployApproval` kind:
 
 Every policy compiles. But the service-owner deploy from the [tour](/getting-started/tour/#a-service-owner-ships-after-six-hours-of-soak), which produced a review from `deploy.production` and an approval from the payments team, now resolves to `approve`. The payments team's SRE fast path suddenly bypasses review, and no compiler told anyone.
 
-Changing `default deny("no_rule_matched")` to `default review("no_rule_matched", approvers: [...])` is the same kind of change: every deploy that no rule covered used to be refused and now lands in a human's queue.
+Changing `default deny(no_rule_matched)` to `default review(no_rule_matched, approvers: [...])` is the same kind of change: every deploy that no rule covered used to be refused and now lands in a human's queue.
 
 Test cases catch these, because they pin decisions rather than types. So does `sigil breaking`, which treats both changes as breaking on purpose and asks you to raise `accepts`. That's what makes these changes safe to ship: every policy written against the old order stops loading until its team has looked at the new one.
 

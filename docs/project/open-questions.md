@@ -23,8 +23,8 @@ The question was whether a `when` body should be allowed to contain several deci
 
 ```sigil
 when not eligible {
-  deny("not_eligible")
-  deny("audit_flag")
+  deny(not_eligible)
+  deny(audit_flag)
 }
 ```
 
@@ -39,9 +39,9 @@ Allowing it is more general and costs nothing in the evaluator, since each const
 `assert("<reason>", <condition>)` fails the evaluation loudly when its condition is false, and it's the guardrail mechanism for [collecting kinds](#collecting-kinds), which have no deny that outranks a grant. The syntax and when each assert is checked are settled and implemented: input asserts run before any rule, outcome asserts once the outcome exists, and a failing phase ends the evaluation with an `*AssertionError` listing every failure of that phase. See [Policy files](/reference/policy-files/#assert), [Expressions](/reference/expressions/#decision-values-and-outcome) and [Evaluation semantics](/reference/evaluation/#assertions). Still open:
 
 - **Dynamic text.** A reason is a literal. A failing assert may still want to say which value was wrong, the way a decision's `detail` field does. A named argument, `assert("reason", cond, detail: expr)`, would do it the way constructors do, and the expression would only be evaluated on failure. Today an assert takes the reason and the condition only.
-- **Asserts in kind files.** Today a host protects an assert by putting it in a policy it requires with `policy.Require`, the same way it protects denies. An assert declared in the kind would need no `Require`, but it brings expressions into kind files, which are pure declarations now, and the Go side would have to carry Sigil source in a string to define one. Deferred until `Require` proves too clumsy.
+- **Asserts in kind files.** Today a host protects an assert by putting it in a policy it requires with `policy.Require`, the same way it protects denies. An assert declared in the kind would need no `Require`, but it brings expressions into kind files, which are pure declarations now, and the Go side would have to carry Sigil source in a string to define one. The one invariant that needs no expression, mutual exclusion of outcomes, is now a kind declaration, [`exclusive`](/reference/kind-files/#exclusive). Anything richer stays deferred until `Require` proves too clumsy.
 - **Reason identity.** Whether assert reasons share the `duplicate-reason` lint and metric space with decision reasons, or live on their own. The proposal keeps them apart: `policy_assert_failures_total{reason="sod_customer_dev"}`.
-- **Static checks.** The proposal only rejects the obvious case: one block constructing two decisions that an `exclusive in outcome` assert forbids together, since that assert always fails when the block fires. Anything more would need the solver-style analysis the language otherwise avoids.
+- **Static checks.** The proposal only rejects the obvious case: one block constructing two outcomes an `exclusive` set or an `exclusive in outcome` assert forbids together, since that always conflicts when the block fires. Anything more would need the solver-style analysis the language otherwise avoids.
 
 ## Decision values and `outcome`
 
@@ -59,7 +59,7 @@ That puts decision names into the policy's flat namespace, which costs something
 Two more gaps:
 
 - **Payloads.** `outcome` holds decisions, not candidates, so an assert can't read a payload: "no `admin` grant with a `ttl` above 8h" isn't expressible. Something like `all g in outcome.admin: g.ttl <= 8h` would need a per-decision view of the candidates.
-- **Kinds with `precedence`.** There `outcome` is the winner alone. An assert can't see the losing candidates, which is right for "what will the host do", but means an assert can't check, for example, that a guardrail's deny fired at all when a team's approve won.
+- **Kinds with `precedence`.** There `outcome` is the winner alone. An assert can't see the losing candidates, which is right for "what will the host do", but means an assert can't check, for example, that a guardrail's deny fired at all when a team's approve won. Contradictions between candidates are the kind's business now, through [`exclusive`](/reference/kind-files/#exclusive), which sees every candidate.
 
 ## Collecting kinds
 
@@ -67,9 +67,10 @@ Two more gaps:
 
 A kind that declares `collect all` returns every candidate that fired, not one winner: roles a user can hold at the same time, feature flags, labels to attach. The spelling is settled, and the evaluator implements them as proposed, with one `Result` type and `MatchAll`; see [Kind files](/reference/kind-files/#collect) and [Evaluation semantics](/reference/evaluation/#collecting-kinds). Still open:
 
-- **Duplicates.** The proposal returns every candidate and leaves it to the host to decide what two `admin` grants with different payloads mean. Deduplicating or merging would bring back the tie-breaking problem from [Ties within one decision](#ties-within-one-decision).
 - **The result type.** The proposal keeps one `Result` with an `Outcome` list for both kinds. A separate type for collecting kinds would make `Match` on a collecting result a compile error instead of a runtime panic.
-- **`collect all` with `precedence`.** Reserved: a compile error today. The intended meaning keeps the two lines independent: `precedence` ranks, and `collect` says how many candidates of the top rank come back. `collect all` with `precedence deny > review > approve` would return every candidate of the highest-ranked decision that fired, so two `review`s with different approvers both reach the host instead of one winning by source position (see [Ties within one decision](#ties-within-one-decision)).
+
+Settled: duplicates are folded only when they're equal in decision, reason and payload, and otherwise every candidate is returned. `collect all` with `precedence` returns every candidate at the top rank; the two lines are independent, and the [resolution rule](/reference/evaluation/#resolution) says how the top rank is formed.
+
 - **Precedence tiers.** `precedence suspended > {read, write, admin}` would rank groups of decisions. With `collect all` it would return every candidate in the highest tier that has any, so a `suspended` decision could wipe all grants as a decision, not as an assert failure, and when nothing is suspended every grant comes back. Plain `collect all` without `precedence` is then a single tier. Tiers are what make the reserved combination useful for roles, which is why the two should be designed together. Neither is needed for the first collecting kinds, and both can be added later without breaking them.
 
 ## Pinned params on required policies
@@ -105,17 +106,13 @@ Whatever the answer, it has to cover `exclusive in` and `one in` as well, which 
 
 ## Ties within one decision
 
-**Blocks: M5** (whether to replace positional tie-breaking before composition makes it visible)
+**Settled**
 
-The evaluator picks the earliest source position when several candidates share the winning decision, as the MVP rule below says. A candidate reached through an invocation takes its call site's position first, then its position in the invoked file. See [Why rule order never matters](/understanding/order-independence/).
+No position is consulted. Resolution is fold, check `exclusive`, rank, count (see [Resolution](/reference/evaluation/#resolution)): equal candidates are one outcome, candidates of one decision rank by the decision's declared reason order, and whatever is left at the top rank is either returned whole (`collect all`) or has to be exactly one candidate (`collect one`, else a conflict error). Nothing merges, so the result is always something a rule produced, and "conservative" choices such as the shorter `bake` belong to the host over `MatchAll`.
 
-That has a surprising consequence in the canonical example. Take a critical service and an actor who is a release manager and also in the `payments-sre` team. `deploy.production`'s `approve("release_manager")` (bake 1h, the kind's default) and the team's `approve("payments_sre", bake: 15m)` both fire. The team file calls `production(...)` above its own rule, so the release manager's approval wins: the team asked for a 15-minute bake and the deploy gets an hour. Moving the team rule above the call would flip the result, which is exactly the kind of order dependence the rest of the language avoids.
+The earlier rule picked the earliest source position, which was the last order dependence in the language. Merge functions in the kind were the alternative; they were rejected because a merged candidate has no reason and no position, and because a tie-breaker runs implicitly, outside every policy, the trace and every tool that has no host binary.
 
-The alternative is a merge function declared in the kind per payload field, such as the minimum `bake` or the union of `approvers`. That removes the last trace of order dependence, but it raises its own questions: what the merged result's reason is, and which policy the result names.
-
-If earliest-position stays, [Evaluation semantics](/reference/evaluation/) proposes comparing whole call chains element by element, which orders nested invocations too.
-
-[Collecting kinds](#collecting-kinds) don't have this problem, because they return every candidate and pick none.
+The evaluator still implements the positional rule until declared reasons land; see the [roadmap](/project/roadmap/).
 
 ## What the result's `Policy` field names
 
@@ -133,9 +130,19 @@ An earlier draft of this design called evaluation cost linear in policy size tim
 
 ## One reason on different decisions
 
-**Blocks: M5, M6**
+**Settled**
 
-The same reason on *different* decisions, `deny("release_manager")` in one place and `approve("release_manager")` in another, is legal (see [Decisions](/reference/decisions/)). A metric keyed on reason alone would mix them, so the proposal treats decision plus reason as the identity and has the linter warn. Unsettled: whether that warning should also fire when the two sides sit in different policies, one invoking the other, which means a team has to know every reason in every policy it invokes to avoid it.
+Reasons are scoped to their decision, so `deny.release_manager` and `approve.release_manager` are two names and nothing is shared or mixed. The `duplicate-reason` lint is gone with it; a metric keyed on decision and reason was always the identity.
+
+## Reasons declared in the kind
+
+**Blocks: M4** (the evaluator change), and the M1 pages it touches
+
+Reasons are declared per decision in the kind, in a block, and constructors name one of them (see [Kind files](/reference/kind-files/#decision)). The reasoning is on the [Decisions](/reference/decisions/#the-reason) page: a typo can't create a metric series, `sigil breaking` sees a removed reason, and asserts and `exclusive` can name a reason. What's open:
+
+- **Authority.** A new reason is now a kind change, like a new decision. That moves a decision teams used to make on their own to the host. The trade is accepted for the same reason inputs and decisions are the host's: the kind is the contract. An escape hatch for undeclared reasons was considered and rejected, because it gives the typo bug back.
+- **Assert reasons.** They stay string literals, because an assert belongs to its policy and the kind has no say in it. Whether they should be declared too, for the same metric reasons, is open; nothing in the design needs it.
+- **Unranked reasons in `collect one`.** Allowed, and a conflict when two of them fire. A lint could flag unranked reasons whose branches can overlap, but that's the solver-style analysis the language avoids, so it would only catch identical conditions.
 
 ## Checking a base policy on its own
 
@@ -155,7 +162,7 @@ The workaround is a `when` per case, as the PCI split in the canonical example d
 
 **Blocks: M5**
 
-A policy may invoke the same policy more than once with different arguments, for example `deploy.regional` once for `eu-1` and once for `us-1`. Each call is a separate instantiation, and each candidate records its call chain, so the trace can tell the instances apart. One problem remains, because composition is a union: any rule the invoked policy doesn't scope fires for every call. If `deploy.regional` had `when not in_scope { deny("out_of_region") }`, the `eu-1` call would deny every deploy the `us-1` call was meant to review. Policies meant to be invoked more than once have to scope every rule to their own params, or callers have to gate each call, and nothing enforces either. A lint for unscoped denies in a policy that's invoked twice could.
+A policy may invoke the same policy more than once with different arguments, for example `deploy.regional` once for `eu-1` and once for `us-1`. Each call is a separate instantiation, and each candidate records its call chain, so the trace can tell the instances apart. One problem remains, because composition is a union: any rule the invoked policy doesn't scope fires for every call. If `deploy.regional` had `when not in_scope { deny(out_of_region) }`, the `eu-1` call would deny every deploy the `us-1` call was meant to review. Policies meant to be invoked more than once have to scope every rule to their own params, or callers have to gate each call, and nothing enforces either. A lint for unscoped denies in a policy that's invoked twice could.
 
 ## Direct or transitive requirement
 

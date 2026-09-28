@@ -220,7 +220,7 @@ Optional chaining can't tell an absent struct from a present one whose field is 
 `present x` is `true` when the optional `x` holds a value and `false` when it's absent. It tells absence apart from a zero value, which `??` can't:
 
 ```sigil
-when not present release { deny("no_release") }
+when not present release { deny(no_release) }
 when present release.ticket { ... }                 // an empty ticket is present
 when present release.parent?.merged_by { ... }      // any optional, including a chain
 ```
@@ -316,20 +316,22 @@ Both rules, the body extending as far right as possible and no shadowing, are im
 
 Inside an `assert`, a policy can test what evaluation decided. Two things make that possible:
 
-- A decision's name, used as an operand, is a value of type [`decision`](/reference/types/#decision). `approve` in `approve in outcome` refers to the decision, not to a constructor call; a constructor always has parentheses. Like `outcome`, a bare decision name is only a value inside an `assert` condition: `when deny == approve` has nothing to say, so it's a compile error that points at the constructor form.
-- `outcome` is a `list<decision>` holding each distinct decision the host will get back, in the kind's declaration order. In a kind with `precedence` it holds exactly one element, the winner or the default. In a [collecting kind](/reference/kind-files/#collecting-kinds) it holds every decision that fired, or the default if the kind declares one and nothing fired.
+- A decision's name, used as an operand, is a value of type [`decision`](/reference/types/#decision), and so is a decision with one of its reasons: `approve` matches an approve with any reason, `approve.release_manager` that reason only. A constructor always has parentheses, so `approve in outcome` can't be mistaken for a call. Like `outcome`, a decision value is only a value inside an `assert` condition: `when deny == approve` has nothing to say, so it's a compile error that points at the constructor form.
+- `outcome` is a `list<decision>` holding each distinct decision and reason the host will get back, in the kind's declaration order. In a `collect one` kind it holds exactly one element, the winner or the default. In a [collecting kind](/reference/kind-files/#collecting-kinds) it holds every outcome that fired, or the default if the kind declares one and nothing fired.
 
 ```sigil
 assert("sod_customer_dev",
   [customer_data_writer, development_environment_writer] exclusive in outcome)
 
-assert("pii_needs_clearance",
-  customer_data_writer not in outcome or actor.clearance == "pii")
+assert("rm_needs_ticket",
+  approve.release_manager not in outcome or present release.ticket)
 ```
 
-`outcome` can only appear in an `assert` condition. A `when` condition or a `let` that read it could make a rule depend on its own result: `when admin not in outcome { admin("x") }` would fire exactly when it doesn't. See [Assertions](/reference/evaluation/#assertions) for when asserts run.
+Membership over `outcome` matches rather than compares: a bare decision is in `outcome` when any of its reasons is, and a qualified one only when that reason is. `==` and `!=` between two decision values are exact, so `approve == approve.lgtm` is false.
 
-Decision values can be compared with `==` and `!=` and collected in lists, and nothing else. Reading a payload through `outcome` isn't possible yet; see [Open questions](/project/open-questions/#decision-values-and-outcome).
+`outcome` can only appear in an `assert` condition. A `when` condition or a `let` that read it could make a rule depend on its own result: `when admin not in outcome { admin(x) }` would fire exactly when it doesn't. See [Assertions](/reference/evaluation/#assertions) for when asserts run.
+
+Decision values can be compared with `==` and `!=`, tested with `in` and the list operators, and collected in lists, and nothing else. Reading a payload through `outcome` isn't possible; see [Open questions](/project/open-questions/#decision-values-and-outcome).
 
 ## Evaluation order
 

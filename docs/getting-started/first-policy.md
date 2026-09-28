@@ -82,7 +82,7 @@ candidates
 
 :::
 
-No rule fired, so the kind's `default deny("no_rule_matched")` applies. That's your safety net for everything that follows: a deploy nobody wrote a rule for gets denied.
+No rule fired, so the kind's `default deny(no_rule_matched)` applies. That's your safety net for everything that follows: a deploy nobody wrote a rule for gets denied.
 
 ## Step 2: one deny rule
 
@@ -92,7 +92,7 @@ Require releases to soak in staging for a day before they reach production, unle
 policy deploy.production: DeployApproval@1
 
 when release.soak < 24h and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 ```
 
@@ -131,11 +131,11 @@ let eligible =
   }
 
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 
 when release.soak < 24h and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 ```
 
@@ -193,11 +193,11 @@ param min_soak: duration = 24h
 // let eligible = ... unchanged
 
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 ```
 
@@ -226,22 +226,22 @@ let eligible =
   }
 
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 
 when cleared {
   when service.tier == "critical"
     and "release_manager" in actor.roles {
-    approve("release_manager")
+    approve(release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review("service_owner", approver: approvers)
+    review(service_owner, approver: approvers)
   }
 }
 ```
@@ -252,9 +252,9 @@ when cleared {
 $ sigil check --kind deploy_approval.sigil deploy/production.sigil
 deploy/production.sigil:34:29: error: decision review has no payload field "approver"
    |
-34 |     review("service_owner", approver: approvers)
+34 |     review(service_owner, approver: approvers)
    |                             ^^^^^^^^
-   = note: DeployApproval declares: decision review(reason: string, approvers: list<string>)
+   = note: DeployApproval declares: decision review(approvers: list<string>) { service_owner }
    = help: did you mean "approvers"?
 ```
 
@@ -266,7 +266,7 @@ Some notes on what you just wrote:
 
 - The outer `when cleared` has no decision of its own. It only scopes the two rules inside it: a nested rule fires only when every enclosing condition holds.
 - `split` is the host function declared in the kind. `all in` checks that every region listed on the service appears in the actor's regions, and `any in` in `owns_service` checks that the actor's teams and the service's owners overlap.
-- `approve("release_manager")` passes no payload, so `bake` takes the kind's default of `1h`. Writing `approve("release_manager", bake: 2h)` would override it.
+- `approve(release_manager)` passes no payload, so `bake` takes the kind's default of `1h`. Writing `approve(release_manager, bake: 2h)` would override it.
 - `approvers` has no default, so it's required. That matters in the next step.
 
 ## Step 6: invoke it from a team policy
@@ -300,7 +300,7 @@ production(
 )
 
 when "payments-sre" in actor.teams {
-  approve("payments_sre", bake: 15m)
+  approve(payments_sre, bake: 15m)
 }
 ```
 
@@ -369,11 +369,11 @@ use deploy.common.{eligible}
 param min_soak: duration = 24h
 
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 ```
 
@@ -390,12 +390,12 @@ param tiers: list<string> = ["standard", "internal"]
 when cleared {
   when service.tier == "critical"
     and "release_manager" in actor.roles {
-    approve("release_manager")
+    approve(release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review("service_owner", approvers: approvers)
+    review(service_owner, approvers: approvers)
   }
 }
 ```
@@ -436,7 +436,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve("payments_sre", bake: 15m)
+  approve(payments_sre, bake: 15m)
 }
 ```
 

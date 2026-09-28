@@ -122,6 +122,16 @@ milestones:
           (`Kind@N` with `accepts` on the kind). Boolean operator
           spelling is settled: words. Settled with the evaluator: several decisions per block are
           allowed. Still open: glob syntax.
+      - title: Declared reasons, exclusive and the resolution rule
+        state: DOING
+        requirement: MUST
+        description: |
+          Reasons are declared per decision in the kind and constructors name them, so a typo is a
+          compile error and asserts and `exclusive` can name a reason. `exclusive` declares
+          outcomes that can't fire together, `precedence approve: a > b` ranks one decision's
+          reasons, and resolution is fold, check exclusive, rank, count: no position is read and
+          nothing merges. Written up; the evaluator change is an M4 deliverable.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/evaluation.md
       - title: Published documentation site
         state: DONE
         requirement: SHOULD
@@ -293,6 +303,15 @@ milestones:
           Every candidate, and for each candidate of the winning decision, which conditions held.
           `Result.Policy` names the evaluated policy; each candidate names the policy its rule
           is in, with a call chain ready for invocations.
+      - title: Declared reasons and the resolution rule
+        state: TODO
+        requirement: MUST
+        description: |
+          Reason blocks in kind files and `NewDecision` with reasons, bare-name reasons in
+          constructors and the default, `exclusive` and scoped `precedence`, and resolution as
+          fold, check exclusive, rank, count with `*ConflictError`. Replaces the positional
+          tie-break the evaluator has today.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/evaluation.md
       - title: Go API for compiling and evaluating
         state: DONE
         requirement: MUST
@@ -385,7 +404,7 @@ milestones:
         description: |
           The lints on the CLI page, reported by `sigil check` as warnings: `unused-import`,
           `unused-let`, `shadowed-kind-name`, `gated-assert`, `gated-deny`, `duplicate-invocation`,
-          `duplicate-reason`, `qualified-imports` and `path-matches-name`, and a way for a
+          `qualified-imports` and `path-matches-name`, and a way for a
           repository to promote one to an error. The checker already records the names that
           `shadowed-kind-name` reports.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/cli.md

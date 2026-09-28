@@ -135,6 +135,8 @@ deploy_approval.sigil: breaking: precedence changed
   - deny > review > approve
   + deny > approve > review
   = help: raise `accepts` to 4, so policies pinned to older versions are reviewed before they load
+deploy_approval.sigil: breaking: decision deny lost reason `no_release`
+  = help: policies that construct deny(no_release) no longer compile; raise `accepts` to 4
 ```
 
 ## Language server
@@ -160,7 +162,6 @@ Imports and invocations get their own support:
 | `gated-assert` | warn | A policy that contains asserts is invoked inside `when` and isn't required. Its asserts only run while the gate holds (proposed) |
 | `gated-deny` | warn | A policy that contains denies is invoked inside `when` and isn't required by `--require` or the host. That may be intended, but it's the pattern that silently switches denies off |
 | `duplicate-invocation` | warn | The same policy is invoked twice with identical arguments |
-| `duplicate-reason` | warn | One policy uses the same reason twice (see [Decisions](/reference/decisions/)) |
 | `qualified-imports` | off | A selective import is used. For teams that want Go-style provenance at every use site |
 | `path-matches-name` | off | A file holds a document whose name doesn't match the file's path (see [File names](/reference/policy-files/#file-names)). Repositories that protect required policies with CODEOWNERS should promote it to an error |
 

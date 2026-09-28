@@ -151,8 +151,8 @@ A `let` binds a name to an expression. The compiler infers the type from the exp
 ```sigil
 when active {
   let sre = any r in actor.roles: r like "sre-*"
-  when sre and release.hotfix { approve("sre_hotfix") }
-  when sre and not release.hotfix { review("sre_change", approvers: approvers) }
+  when sre and release.hotfix { approve(sre_hotfix) }
+  when sre and not release.hotfix { review(sre_change, approvers: approvers) }
 }
 ```
 
@@ -182,12 +182,12 @@ Because a private `let` has no readers outside its document, one that nothing re
 when cleared {
   when service.tier == "critical"
     and "release_manager" in actor.roles {
-    approve("release_manager")
+    approve(release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review("service_owner", approvers: approvers)
+    review(service_owner, approvers: approvers)
   }
 }
 ```
@@ -216,7 +216,7 @@ assert("sod_customer_dev",
 An assert states something that must be true whenever it's reached. If its condition is false, evaluation fails: `Eval` returns an assertion error, and the host records it as an error, not as a decision. Use a decision for an outcome you expect, such as denying a deploy that hasn't soaked, and an assert for a state that means the policy, the host or the input is wrong.
 
 - The condition must have type `bool`. It can read inputs, params, lets and imported lets, and, unlike any other expression, [`outcome`](/reference/expressions/#decision-values-and-outcome), the decisions evaluation produced.
-- The reason comes first, as in a [decision constructor](/reference/decisions/), and follows the same rules as a [decision reason](/reference/decisions/#the-reason): it's a string literal, a stable identifier for metrics and grep, and dynamic text isn't allowed. `assert(cond, "reason")` is a parse error that says so.
+- The reason comes first, as in a [decision constructor](/reference/decisions/). Unlike a decision reason it's a string literal, not a name the kind declares, because an assert belongs to its policy and the kind has no say in it; it's still a stable identifier for metrics and grep, and dynamic text isn't allowed. `assert(cond, "reason")` is a parse error that says so.
 - An assert may appear at the top level or inside a `when` body. Inside a body it's only checked when every enclosing condition holds, the same conjunction rule as for decisions. An assert in an invoked policy gets the invocation's enclosing conditions too.
 - An assert never produces a candidate and never changes the outcome. It can only fail the evaluation.
 - An assert whose condition reads `outcome` is an outcome assert and is checked once the outcome exists. Every other assert is an input assert and is checked before any rule runs, so it works as a precondition. The checker decides which from the condition; there's no keyword for it.
@@ -300,7 +300,7 @@ policy deploy.guardrails: DeployApproval@1
 param min_soak: duration = 24h
 
 when release.soak < min_soak and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 ```
 
@@ -364,7 +364,7 @@ Any collision between two of these is a compile error, and nothing shadows anyth
 
 There's one exception, and it only exists so that adding a name to a kind never breaks a policy. When a document pinned below the kind's current version collides with an input, host function or decision, the kind must have added that name after the document was written, because the collision would have been an error at the pinned version. The document's own name wins, the kind's new name is out of reach in that document, and the `shadowed-kind-name` lint says so. The same collision in a document pinned to the current version is an error. Collisions between two of the document's own names are always errors.
 
-Decision names are part of that namespace, because a bare decision name is a [value](/reference/types/#decision) in `assert` conditions. A let called `deny` in a kind that declares `decision deny` is a compile error, and so is an import whose bound name is a decision: rename it with `as`. (proposed; an earlier draft kept decisions in a namespace of their own, which only worked while they appeared in constructor position alone. See [Open questions](/project/open-questions/#decision-values-and-outcome).)
+Decision names are part of that namespace, because a bare decision name is a [value](/reference/types/#decision) in `assert` conditions. A let called `deny` in a kind that declares `decision deny` is a compile error, and so is an import whose bound name is a decision: rename it with `as`. Reasons aren't in the namespace: they only appear after a decision's name, as `approve.release_manager`, or in a constructor's first slot, so a reason may share its name with anything. (proposed; an earlier draft kept decisions in a namespace of their own, which only worked while they appeared in constructor position alone. See [Open questions](/project/open-questions/#decision-values-and-outcome).)
 
 ::: tip Proposed
 The single flat namespace and the no-shadowing rule are proposed here to close a gap in the current design. The goal is that any name in a policy has exactly one meaning, which you can find without knowing scoping rules.
@@ -392,6 +392,6 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve("payments_sre", bake: 15m)
+  approve(payments_sre, bake: 15m)
 }
 ```
