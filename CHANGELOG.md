@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/SpechtLabs/sigil/compare/v0.2.0...v0.2.1) (2026-09-28)
+
+
+### Features
+
+* **release:** publish sigil to the homebrew tap ([#42](https://github.com/SpechtLabs/sigil/issues/42)) ([0dbacdc](https://github.com/SpechtLabs/sigil/commit/0dbacdc88ebfd39e727134cda3472f8c7d8b48e5))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/spf13/pflag to v1.0.10 ([#40](https://github.com/SpechtLabs/sigil/issues/40)) ([566f8eb](https://github.com/SpechtLabs/sigil/commit/566f8eb602b7418eccd1c5864812399782891399))
+
 ## [0.2.0](https://github.com/SpechtLabs/sigil/compare/v0.1.1...v0.2.0) (2026-09-28)
 
 
