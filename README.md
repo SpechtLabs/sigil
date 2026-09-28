@@ -215,11 +215,19 @@ The library is a Go module; hosts import `github.com/spechtlabs/sigil/pkg/policy
 go get github.com/spechtlabs/sigil@latest
 ```
 
-The `sigil` CLI installs with Go, or comes prebuilt for Linux and macOS on amd64 and arm64 from the [releases](https://github.com/SpechtLabs/sigil/releases):
+Install the `sigil` CLI with Homebrew from the [Specht Labs tap](https://github.com/SpechtLabs/homebrew-tap):
+
+```sh
+brew install --cask spechtlabs/tap/sigil
+```
+
+Or install it with Go:
 
 ```sh
 go install github.com/spechtlabs/sigil/cmd/sigil@latest
 ```
+
+Prebuilt archives for Linux and macOS on amd64 and arm64 are also available from the [releases](https://github.com/SpechtLabs/sigil/releases).
 
 Every release after v0.1.0 signs `checksums.txt` with a keyless [cosign](https://docs.sigstore.dev/) signature from the release workflow. Verify the checksums, then the archive against them:
 

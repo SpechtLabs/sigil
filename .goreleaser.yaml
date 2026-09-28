@@ -30,6 +30,34 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+# Publish to SpechtLabs/homebrew-tap using HOMEBREW_TAP_GITHUB_TOKEN, a
+# repository or organization Actions secret with Contents: read and write
+# access to the tap. The default GITHUB_TOKEN only has access to this repo.
+homebrew_casks:
+  - name: sigil
+    ids:
+      - sigil
+    repository:
+      owner: SpechtLabs
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/SpechtLabs/sigil"
+    description: "A small, statically typed policy language for Go hosts"
+    skip_upload: auto
+    commit_author:
+      name: goreleaser-bot
+      email: bot@specht-labs.de
+    # Sigil is not Apple-notarized. Remove quarantine from the installed binary
+    # so Gatekeeper allows it to run, as with the other CLIs in the tap.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/sigil"]
+          end
+
 # release-please writes the changelog and creates the GitHub release; GoReleaser
 # only attaches the artifacts to it.
 changelog:
