@@ -37,7 +37,7 @@ Both `run` commands look alike too. A box shows what the run is about to do, the
 
 ## Measure performance
 
-Benchmarks use Go's `testing.B` framework. Run them from the repository root:
+Benchmarks use Go's `testing.B` framework. [Performance](/reference/performance/) lists what they measure on one machine. Run them from the repository root:
 
 ```sh
 # Run every workload once to check that it works; no performance gate.
