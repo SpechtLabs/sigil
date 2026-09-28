@@ -56,6 +56,12 @@ run = "golangci-lint custom"
 sources = [".custom-gcl.yml"]
 outputs = ["custom-gcl"]
 
+# GoReleaser builds the tagged tree as it is, so an untidy go.mod has to fail
+# CI rather than be fixed up at release time.
+[tasks.mod-tidy]
+description = "Check that go.mod and go.sum are tidy"
+run = "go mod tidy -diff"
+
 [tasks.lint]
 description = "Lint the module with golangci-lint and the golint-sl plugin"
 depends = ["lint-build"]
@@ -79,7 +85,7 @@ run = "goreleaser build --snapshot --clean"
 
 [tasks.check]
 description = "The definition of done: every gate CI runs on the Go code"
-depends = ["lint", "test", "yaml-lint", "actionlint", "release-check"]
+depends = ["lint", "mod-tidy", "test", "yaml-lint", "actionlint", "release-check"]
 
 [tasks.update-gha]
 description = "Pin GitHub Actions to commit SHAs (Renovate keeps them current afterwards)"

@@ -116,6 +116,11 @@ jobs:
         with:
           install_args: go goreleaser
 
+      # GoReleaser builds the tagged tree unchanged, so go.mod must be tidy
+      # before it's ever tagged.
+      - name: Check go.mod is tidy
+        run: mise run mod-tidy
+
       - name: Validate GoReleaser config
         run: mise run release-check
 
