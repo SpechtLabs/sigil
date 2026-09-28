@@ -16,6 +16,7 @@ var singles = [256]token.Kind{
 	'<': token.Lt,
 	'>': token.Gt,
 	'?': token.Question,
+	'@': token.At,
 	'-': token.Minus,
 	'+': token.Plus,
 	'.': token.Dot,

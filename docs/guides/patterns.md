@@ -179,7 +179,7 @@ when not eligible {
 Define a matcher once as a `let` in a module and import it wherever it's needed:
 
 ```sigil
-module deploy.common: DeployApproval
+module deploy.common: DeployApproval@1
 
 pub let cleared =
   split(service.labels["regions"], ",") all in actor.regions

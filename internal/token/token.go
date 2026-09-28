@@ -50,6 +50,7 @@ const (
 	Coalesce  // ??
 	Question  // ?
 	OptDot    // ?.
+	At        // @
 	Dot       // .
 	Comma     // ,
 	Colon     // :
@@ -136,6 +137,7 @@ var names = [...]string{
 	Coalesce:  "??",
 	Question:  "?",
 	OptDot:    "?.",
+	At:        "@",
 	Dot:       ".",
 	Comma:     ",",
 	Colon:     ":",

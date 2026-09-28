@@ -26,7 +26,7 @@ Keeping denies out of the approvals policy matters. A team is allowed to invoke 
 Turn every value a team might reasonably want to change into a `param`. Give it a default when there's a sensible one; leave the default off when every team has to decide for itself.
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 use deploy.common.{cleared, owns_service}
 
@@ -43,7 +43,7 @@ Anything you don't make a param is fixed for every team. In the platform's files
 A team that wants to tune params, add rules, or both, writes its own policy file. It imports the platform's policies with `use` and invokes them:
 
 ```sigil
-policy payments.production: DeployApproval
+policy payments.production: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production
@@ -116,7 +116,7 @@ The Go API is planned, not implemented. See the [Go API reference](/reference/go
 If a team only needs different param values and no rules of its own, it doesn't need a policy file at all. The platform writes one policy that composes the guardrails and the approvals and passes its own params through:
 
 ```sigil
-policy deploy.gate: DeployApproval
+policy deploy.gate: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production
@@ -180,7 +180,7 @@ Only `pub let`s can be imported, and a policy can mark its own lets `pub` too, a
 A policy can invoke the same policy more than once with different arguments, for example once per region. Take a policy that gates deploys touching one region:
 
 ```sigil
-policy deploy.regional: DeployApproval
+policy deploy.regional: DeployApproval@1
 
 param region: string
 param approvers: list<string>
@@ -195,7 +195,7 @@ when in_scope and "deployer" in actor.roles {
 A team invokes it for two regions:
 
 ```sigil
-policy payments.regions: DeployApproval
+policy payments.regions: DeployApproval@1
 
 use deploy.guardrails
 use deploy.regional

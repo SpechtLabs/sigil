@@ -370,10 +370,13 @@ func (c *Checker) membership(x *ast.BinaryExpr, env *Env) types.Type {
 			return types.Invalid
 		}
 	case *types.Map:
-		if untyped(l) || !types.Identical(l, rt.Key) {
-			c.errorf(x, "", "`%s` needs the map's key type, found %s in %s", x.Op, describe(l), rt)
-			return types.Invalid
+		// A map key is tested with `has` only, so there's one way to write it.
+		help := fmt.Sprintf("write `%s has %s`", ast.Sprint(x.Y), ast.Sprint(x.X))
+		if x.Op == ast.OpNotIn {
+			help = fmt.Sprintf("write `not %s has %s`", ast.Sprint(x.Y), ast.Sprint(x.X))
 		}
+		c.errorf(x, help, "`%s` doesn't apply to a map; a key is tested with `has`", x.Op)
+		return types.Invalid
 	default:
 		if r == types.String {
 			if l != types.String {
@@ -764,10 +767,15 @@ func (c *Checker) quant(x *ast.QuantExpr, env *Env) types.Type {
 	}
 
 	inner := env.Child()
-	if prev, ok := inner.Declare(x.Var.Name, Binding{Entity: QuantVar, Type: l.Elem}); !ok {
-		c.errorf(x.Var, "nothing shadows anything; pick a name that isn't in use",
-			"`%s` is already the name of %s %s", x.Var.Name, article(prev.Entity), prev.Entity)
-		return types.Invalid
+	b := Binding{Entity: QuantVar, Type: l.Elem}
+	if prev, ok := inner.Declare(x.Var.Name, b); !ok {
+		if !c.keeps(prev) {
+			c.errorf(x.Var, "nothing shadows anything; pick a name that isn't in use",
+				"`%s` is already the name of %s %s", x.Var.Name, article(prev.Entity), prev.Entity)
+			return types.Invalid
+		}
+		inner.Bind(x.Var.Name, b)
+		c.info.Shadows = append(c.info.Shadows, x.Var)
 	}
 	c.record(x.Var, l.Elem)
 	if c.ExprAs(x.Body, inner, types.Bool) == types.Invalid {

@@ -15,7 +15,7 @@ import (
 // Imports and invocations belong to the composition milestone and are
 // reported as unsupported for now.
 func (c *Checker) Policy(doc *ast.PolicyDoc, k *kind.Kind) {
-	if doc == nil || !c.checkKind(doc.Kind, k) {
+	if doc == nil || !c.checkKind(doc.Kind, doc.Pin, k) {
 		return
 	}
 	env := NewEnv(k)
@@ -40,7 +40,7 @@ func (c *Checker) Policy(doc *ast.PolicyDoc, k *kind.Kind) {
 
 // Module checks a module document against k. A module holds only lets.
 func (c *Checker) Module(doc *ast.ModuleDoc, k *kind.Kind) {
-	if doc == nil || !c.checkKind(doc.Kind, k) {
+	if doc == nil || !c.checkKind(doc.Kind, doc.Pin, k) {
 		return
 	}
 	env := NewEnv(k)
@@ -50,8 +50,10 @@ func (c *Checker) Module(doc *ast.ModuleDoc, k *kind.Kind) {
 	c.lets(doc.Lets, env)
 }
 
-// checkKind reports a document written for another kind.
-func (c *Checker) checkKind(name *ast.Ident, k *kind.Kind) bool {
+// checkKind reports a document written for another kind, and a pin the
+// kind doesn't accept. A bad pin doesn't stop the check: the rest of the
+// document is still checked against the kind the host has.
+func (c *Checker) checkKind(name *ast.Ident, pin *ast.IntLit, k *kind.Kind) bool {
 	if k == nil || name == nil {
 		return false
 	}
@@ -59,6 +61,20 @@ func (c *Checker) checkKind(name *ast.Ident, k *kind.Kind) bool {
 		c.errorf(name, fmt.Sprintf("this document can only be checked against kind %s", name.Name),
 			"document is for kind %s, not %s", name.Name, k.Name)
 		return false
+	}
+	c.older = false
+	switch {
+	case pin == nil:
+		c.errorf(name, fmt.Sprintf("pin the kind version the document was written against, like `%s@%d`", k.Name, k.Version),
+			"`%s` needs a version", k.Name)
+	case int(pin.Value) > k.Version:
+		c.errorf(pin, "the host's kind is older than the document; upgrade the host, or check the document against this version and lower the pin",
+			"%s@%d is newer than the kind, which is at version %d", k.Name, pin.Value, k.Version)
+	case int(pin.Value) < k.Oldest():
+		c.errorf(pin, fmt.Sprintf("review the document against the kind's changes since version %d, then raise the pin", pin.Value),
+			"%s@%d is no longer accepted; the kind accepts version %d and later", k.Name, pin.Value, k.Oldest())
+	default:
+		c.older = int(pin.Value) < k.Version
 	}
 	return true
 }
@@ -146,14 +162,33 @@ func isDecisionList(t types.Type) bool {
 }
 
 // declare binds name in env, reporting a collision with what already
-// holds the name.
+// holds the name. See keeps for the one collision that isn't an error.
 func (c *Checker) declare(name *ast.Ident, env *Env, b Binding) bool {
 	prev, ok := env.Declare(name.Name, b)
-	if !ok {
+	switch {
+	case ok:
+	case c.keeps(prev):
+		env.Bind(name.Name, b)
+		c.info.Shadows = append(c.info.Shadows, name)
+		return true
+	default:
 		c.errorf(name, "every name in a document means one thing; rename one of them",
 			"`%s` is already the name of %s %s", name.Name, article(prev.Entity), prev.Entity)
 	}
 	return ok
+}
+
+// keeps reports whether a document name may take the name prev holds. A
+// document pinned to an older kind version compiled against that version,
+// where any collision was an error, so a kind input, host function or
+// decision it collides with must have been added since. The document keeps
+// its own name, and adding a name to a kind never breaks a policy.
+func (c *Checker) keeps(prev Binding) bool {
+	switch prev.Entity {
+	case Input, Function, DecisionName:
+		return c.older
+	}
+	return false
 }
 
 // resolveType turns a type expression into a type against k's struct

@@ -92,7 +92,7 @@ default deny("no_rule_matched")
 
 ---
 
-policy jit.sandbox: JIT_Approval
+policy jit.sandbox: JIT_Approval@1
 
 when resource.kind == "kube_cluster"      // field access after `.`
   and resource.policy != "" {
@@ -106,7 +106,7 @@ The first `type` body is the case to watch: `kind:` sits at the start of a line,
 
 ```text
 PolicyDoc    ::= PolicyHeader UseStmt* PolicyStmt*
-PolicyHeader ::= "policy" PolicyName ":" Ident
+PolicyHeader ::= "policy" PolicyName ":" Ident "@" Int
 PolicyName   ::= Ident ( "." Ident )*     /* no whitespace around "." */
 
 PolicyStmt   ::= ParamStmt | LetStmt | WhenStmt | AssertStmt | Call
@@ -145,7 +145,7 @@ In `use deploy.common.{cleared}`, the `.` before `{` follows the last path segme
 
 ```text
 ModuleDoc    ::= ModuleHeader UseStmt* LetStmt*
-ModuleHeader ::= "module" PolicyName ":" Ident
+ModuleHeader ::= "module" PolicyName ":" Ident "@" Int
 ```
 
 A module contains nothing but imports and `let`s. A `param`, `when` or call in a module is a parse error with a hint that it belongs in a policy.
@@ -154,7 +154,7 @@ A module contains nothing but imports and `let`s. A `param`, `when` or call in a
 
 ```text
 KindDoc      ::= KindHeader KindStmt*
-KindHeader   ::= "kind" Ident "version" Int
+KindHeader   ::= "kind" Ident "version" Int ( "," "accepts" ":" Int )?   /* "accepts" is an identifier */
 
 KindStmt     ::= TypeDecl | InputDecl | FnDecl | DecisionDecl
                | PrecedenceDecl | CollectDecl | DefaultDecl

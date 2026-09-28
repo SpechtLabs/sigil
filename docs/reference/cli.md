@@ -124,10 +124,17 @@ A test case for a collecting kind lists every expected decision and reason, and 
 
 ## `sigil breaking`
 
-Compares two versions of a kind file and flags changes that would break existing policies, modeled on `buf breaking`. The compatibility rules are in [Kind files](/reference/kind-files/), and [Evolve a kind safely](/guides/evolve-a-kind/) walks through using it in CI.
+Compares two versions of a kind file and flags changes that would break existing policies, modeled on `buf breaking`. It also checks the two numbers in the kind header: it fails when the contract changed but `version` didn't, and when a change is breaking but `accepts` wasn't raised to the new version. The compatibility rules are in [Kind files](/reference/kind-files/#versioning), and [Evolve a kind safely](/guides/evolve-a-kind/) walks through using it in CI.
 
 ```text
 sigil breaking old/deploy_approval.sigil deploy_approval.sigil
+```
+
+```text
+deploy_approval.sigil: breaking: precedence changed
+  - deny > review > approve
+  + deny > approve > review
+  = help: raise `accepts` to 4, so policies pinned to older versions are reviewed before they load
 ```
 
 ## Language server
@@ -148,6 +155,7 @@ Imports and invocations get their own support:
 | Lint | Default | Fires when |
 | --- | --- | --- |
 | `unused-import` | warn | A `use` binds a name nothing references |
+| `shadowed-kind-name` | warn | A document pinned to an older kind version keeps a name the kind has since given to an input, host function or decision. Rename it and raise the pin (see [Versioning](/reference/kind-files/#adding-a-name-never-breaks-a-policy)) |
 | `unused-let` | warn | A `let` that isn't `pub` is never read. Only private lets can be checked, because a `pub let` may have importers in other files (proposed) |
 | `gated-assert` | warn | A policy that contains asserts is invoked inside `when` and isn't required. Its asserts only run while the gate holds (proposed) |
 | `gated-deny` | warn | A policy that contains denies is invoked inside `when` and isn't required by `--require` or the host. That may be intended, but it's the pattern that silently switches denies off |

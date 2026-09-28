@@ -102,6 +102,7 @@ func TestKindString(t *testing.T) {
 		{NotEq, "!="},
 		{Coalesce, "??"},
 		{OptDot, "?."},
+		{At, "@"},
 		{Arrow, "->"},
 		{Separator, "---"},
 		{LBrace, "{"},

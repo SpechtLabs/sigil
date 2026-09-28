@@ -48,7 +48,7 @@ func (d *dumper) doc(doc Doc) {
 	}
 	switch doc := doc.(type) {
 	case *PolicyDoc:
-		d.linef("policy %s: %s %s", doc.Name, doc.Kind.Name, spanOf(doc))
+		d.linef("policy %s: %s%s %s", doc.Name, doc.Kind.Name, pin(doc.Pin), spanOf(doc))
 		d.indent++
 		for _, u := range doc.Uses {
 			d.use(u)
@@ -58,7 +58,7 @@ func (d *dumper) doc(doc Doc) {
 		}
 		d.indent--
 	case *ModuleDoc:
-		d.linef("module %s: %s %s", doc.Name, doc.Kind.Name, spanOf(doc))
+		d.linef("module %s: %s%s %s", doc.Name, doc.Kind.Name, pin(doc.Pin), spanOf(doc))
 		d.indent++
 		for _, u := range doc.Uses {
 			d.use(u)
@@ -68,7 +68,11 @@ func (d *dumper) doc(doc Doc) {
 		}
 		d.indent--
 	case *KindDoc:
-		d.linef("kind %s version %s %s", doc.Name.Name, doc.Version.Text, spanOf(doc))
+		accepts := ""
+		if doc.Accepts != nil {
+			accepts = ", accepts: " + doc.Accepts.Text
+		}
+		d.linef("kind %s version %s%s %s", doc.Name.Name, doc.Version.Text, accepts, spanOf(doc))
 		d.indent++
 		for _, decl := range doc.Decls {
 			d.decl(decl)
@@ -231,4 +235,12 @@ func TypeString(t Type) string {
 		return "<nil>"
 	}
 	return fmt.Sprintf("<%T>", t)
+}
+
+// pin renders a document header's `@N`, or nothing when it has none.
+func pin(n *IntLit) string {
+	if n == nil {
+		return ""
+	}
+	return "@" + n.Text
 }

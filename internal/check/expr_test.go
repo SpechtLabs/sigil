@@ -117,10 +117,10 @@ func TestExpr(t *testing.T) {
 		// Membership and list operators.
 		{src: `"deployer" in actor.roles`, want: "bool"},
 		{src: `"admin" not in actor.roles`, want: "bool"},
-		{src: `"regions" in service.labels`, want: "bool"},
+		{src: `service.labels has "regions"`, want: "bool"},
 		{src: `"payments" in service.name`, want: "bool"},
 		{src: `service.tier in ["critical", "standard"]`, want: "bool"},
-		{src: "3 in service.by_id", want: "bool"},
+		{src: "service.by_id has 3", want: "bool"},
 		{src: "actor.teams any in service.owners", want: "bool"},
 		{src: "split(service.labels[\"regions\"], \",\") all in actor.regions", want: "bool"},
 		{src: "[deny, approve] one in outcome", assert: true, want: "bool"},
@@ -260,7 +260,8 @@ func TestExpr(t *testing.T) {
 
 		// Membership rules.
 		{src: "1 in actor.roles", msg: "`in` needs an element of the list's type, found int in list<string>", span: "1:1-1:17"},
-		{src: `1 in service.labels`, msg: "`in` needs the map's key type, found int in map<string, string>", span: "1:1-1:20"},
+		{src: `"team" in service.labels`, msg: "`in` doesn't apply to a map; a key is tested with `has`", help: "write `service.labels has \"team\"`", span: "1:1-1:25"},
+		{src: `"team" not in service.labels`, msg: "`not in` doesn't apply to a map; a key is tested with `has`", help: "write `not service.labels has \"team\"`", span: "1:1-1:29"},
 		{src: `1 in service.name`, msg: "`in` needs a string on the left of a string, found int", help: "`in` on a string tests for a substring", span: "1:1-1:18"},
 		{src: `"a" in count`, msg: "`in` needs a list, map or string on the right, found int", span: "1:8-1:13"},
 		{src: `"a" in release.ticket`, msg: "`in` needs a list, map or string on the right, found ?string", help: "unwrap it with `??`, like `release.ticket ?? <default>`", span: "1:8-1:22"},

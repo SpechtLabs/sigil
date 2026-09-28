@@ -242,8 +242,6 @@ func (c *compiler) membership(x *ast.BinaryExpr) Expr {
 	case *types.List:
 		elem := rt.Elem
 		test = func(a, b Value) bool { return contains(elem, b, a) }
-	case *types.Map:
-		test = func(a, b Value) bool { return mapGet(b, a).IsValid() }
 	default:
 		test = func(a, b Value) bool { return strings.Contains(norm(b).String(), norm(a).String()) }
 	}

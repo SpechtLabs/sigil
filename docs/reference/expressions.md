@@ -22,7 +22,7 @@ From lowest to highest:
 | 2     | `and`                       | left            | Short-circuits                                                                            |
 | 3     | `not`                       | prefix          | Unary                                                                                     |
 | 4     | `==` `!=` `<` `<=` `>` `>=` | none            | Strictly typed; no implicit coercion                                                      |
-| 4     | `in`, `not in`              | none            | Element in list, key in map, substring in string                                          |
+| 4     | `in`, `not in`              | none            | Element in list, substring in string                                                      |
 | 4     | `all in`, `any in`          | none            | List subset and list intersection                                                         |
 | 4     | `one in`, `exclusive in`    | none            | Exactly one, or at most one, element of a list is in another                              |
 | 4     | `has`                       | none            | Map contains all given pairs, or a key                                                    |
@@ -87,20 +87,20 @@ Strings aren't ordered. Byte-wise order is well defined, but it makes `"v10" < "
 
 ## Membership: `in` and `not in`
 
-`in` has three meanings, picked by the type of the right-hand side:
+`in` has two meanings, picked by the type of the right-hand side:
 
 | Form                 | Left type | Right type    | True when                         |
 | -------------------- | --------- | ------------- | --------------------------------- |
 | `x in xs`            | `T`       | `list<T>`     | `xs` contains an element equal to `x` |
-| `k in m`             | `K`       | `map<K, V>`   | `m` has key `k`                   |
 | `s in t`             | `string`  | `string`      | `s` is a substring of `t`         |
 
 ```sigil
 "deployer" in actor.roles                    // list element
-"regions" in service.labels                  // map key
 "payments" in service.name                   // substring
 service.tier in ["critical", "standard"]     // list literal
 ```
+
+A map key is tested with [`has`](#map-containment-has), never with `in`, so there's one way to write it. `"env" in service.labels` is a compile error that suggests `service.labels has "env"`.
 
 `x not in y` is exactly `not (x in y)`. The parser reads `not in` as a single operator when `not` follows an operand, and as unary `not` when it starts an expression.
 
@@ -152,7 +152,7 @@ service.labels has "app.kubernetes.io/managed-by"
 
 The right-hand map doesn't have to be a literal. An empty right-hand map makes `has` true.
 
-`m has "k"` and `"k" in m` mean the same thing. Keeping both forms, or letting `sigil fmt` rewrite one into the other, is an [open question](/project/open-questions/).
+`m has k` is the only way to test for a key. `in` doesn't apply to maps, and `not in` doesn't either: write `not m has k`, which reads the same way because `not` binds looser than `has`.
 
 ## Pattern matching: `like` and `matches`
 

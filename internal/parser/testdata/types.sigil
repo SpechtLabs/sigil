@@ -21,7 +21,7 @@ default allow("none")
 
 ---
 
-policy shapes.demo: Shapes
+policy shapes.demo: Shapes@1
 
 param m: map<string, int>= {}
 param names: list<string>= ["a"]

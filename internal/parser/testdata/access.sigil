@@ -18,7 +18,7 @@ collect all
 
 ---
 
-policy access.guardrails: AccessGrant
+policy access.guardrails: AccessGrant@1
 
 assert("sod_customer_dev",
   [customer_data_writer, development_environment_writer] exclusive in outcome)
@@ -31,7 +31,7 @@ assert("no_root", all g in actor.groups: g != "root")
 
 ---
 
-policy access.platform: AccessGrant
+policy access.platform: AccessGrant@1
 
 use access.guardrails
 

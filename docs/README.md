@@ -105,7 +105,7 @@ default deny("no_rule_matched")
 A platform team writes rules against it. Each `when` block that holds produces a candidate decision, and the highest-precedence candidate wins. Denies go in a guardrails policy:
 
 ```sigil
-policy deploy.guardrails: DeployApproval
+policy deploy.guardrails: DeployApproval@1
 
 param min_soak: duration = 24h
 
@@ -117,7 +117,7 @@ when release.soak < min_soak and not release.hotfix {
 Approvals and reviews go in another:
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 param approvers: list<string>
 
@@ -129,7 +129,7 @@ when actor.teams any in service.owners {
 A product team imports both with `use` and invokes them like decision constructors, with its own values. Inside a `when`, an invocation's rules only apply where the condition holds. The team adds its own approval, which can never override the `soak_too_short` deny:
 
 ```sigil
-policy payments.production: DeployApproval
+policy payments.production: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production
@@ -162,7 +162,7 @@ Here's the full deploy gate twice: once in Sigil, and once for the kind of YAML 
 The platform team's shared matchers:
 
 ```sigil title="deploy/common.sigil"
-module deploy.common: DeployApproval
+module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
 pub let cleared = split(service.labels["regions"], ",") all in actor.regions
@@ -177,7 +177,7 @@ pub let eligible = "deployer" in actor.roles
 The guardrails, which the host requires every team policy to invoke:
 
 ```sigil title="deploy/guardrails.sigil"
-policy deploy.guardrails: DeployApproval
+policy deploy.guardrails: DeployApproval@1
 
 use deploy.common.{eligible}
 
@@ -195,7 +195,7 @@ when release.soak < min_soak and not release.hotfix {
 The approvals and reviews:
 
 ```sigil title="deploy/production.sigil"
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 use deploy.common.{cleared, owns_service}
 
@@ -218,7 +218,7 @@ when cleared {
 The payments team's policy, which invokes both with its own values:
 
 ```sigil title="payments/production.sigil"
-policy payments.production: DeployApproval
+policy payments.production: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production

@@ -1,4 +1,4 @@
-policy payments.production: DeployApproval
+policy payments.production: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production

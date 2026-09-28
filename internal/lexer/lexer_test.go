@@ -455,8 +455,8 @@ func TestLexErrors(t *testing.T) {
 
 		// Anything else.
 		{
-			name: "at sign", src: "@", want: []tok{{token.Illegal, "@"}},
-			msg: "unexpected character `@`", pos: "1:1-1:2",
+			name: "dollar sign", src: "$", want: []tok{{token.Illegal, "$"}},
+			msg: "unexpected character `$`", pos: "1:1-1:2",
 		},
 		{
 			name: "non-ascii letter", src: "é", want: []tok{{token.Illegal, "é"}},
@@ -504,10 +504,10 @@ func TestLexErrors(t *testing.T) {
 // TestLexRecovers checks that an error doesn't hide the tokens after it and
 // that every error is reported.
 func TestLexRecovers(t *testing.T) {
-	got, errs := lex(t, "a @ b # c\n\"unterminated\n1h1h d")
+	got, errs := lex(t, "a $ b # c\n\"unterminated\n1h1h d")
 	checkTokens(t, got, []tok{
 		{token.Ident, "a"},
-		{token.Illegal, "@"},
+		{token.Illegal, "$"},
 		{token.Ident, "b"},
 		{token.Illegal, "#"},
 		{token.Ident, "c"},
@@ -520,7 +520,7 @@ func TestLexRecovers(t *testing.T) {
 		msgs = append(msgs, e.Error())
 	}
 	want := []string{
-		"1:3: unexpected character `@`",
+		"1:3: unexpected character `$`",
 		"1:7: unexpected character `#`",
 		"2:1: unterminated string literal",
 		"3:1: unit `h` appears twice in `1h1h`",

@@ -13,7 +13,11 @@ import (
 // round trip is the property the exporter is tested by.
 func (k *Kind) Source() string {
 	var b strings.Builder
-	b.WriteString("kind " + k.Name + " version " + strconv.Itoa(k.Version) + "\n")
+	b.WriteString("kind " + k.Name + " version " + strconv.Itoa(k.Version))
+	if k.Accepts > 1 {
+		b.WriteString(", accepts: " + strconv.Itoa(k.Accepts))
+	}
+	b.WriteString("\n")
 
 	if len(k.Types) > 0 {
 		b.WriteString("\n")

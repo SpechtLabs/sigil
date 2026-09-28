@@ -112,8 +112,9 @@ milestones:
         description: |
           Settled with the parser: quantifier body extent, chained comparisons, keywords as field
           names, `assert("reason", cond)` with the reason first, `collect one` and `collect all`,
-          scoped lets and `pub let`, optional chaining with `?.` and `present`, and param bounds
-          as `, min: value, max: value`. Boolean operator
+          scoped lets and `pub let`, optional chaining with `?.` and `present`, param bounds as
+          `, min: value, max: value`, `has` as the only map-key test, and kind version pins
+          (`Kind@N` with `accepts` on the kind). Boolean operator
           spelling is settled: words. Still open: glob syntax (M3) and multiple decisions per
           block (M4); the parser accepts several.
       - title: Published documentation site
@@ -361,9 +362,10 @@ milestones:
         requirement: SHOULD
         description: |
           The lints on the CLI page, reported by `sigil check` as warnings: `unused-import`,
-          `unused-let`, `gated-assert`, `gated-deny`, `duplicate-invocation`, `duplicate-reason`,
-          `qualified-imports` and `path-matches-name`, and a way for a repository to promote one
-          to an error.
+          `unused-let`, `shadowed-kind-name`, `gated-assert`, `gated-deny`, `duplicate-invocation`,
+          `duplicate-reason`, `qualified-imports` and `path-matches-name`, and a way for a
+          repository to promote one to an error. The checker already records the names that
+          `shadowed-kind-name` reports.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/cli.md
       - title: policytest package for go test
         state: TODO
@@ -408,4 +410,6 @@ milestones:
       - title: sigil breaking
         state: TODO
         requirement: MUST
-        description: Flags incompatible kind changes in CI, modeled on `buf breaking`.
+        description: |
+          Flags incompatible kind changes in CI, modeled on `buf breaking`, and checks the kind
+          header: every change bumps `version`, and a breaking change raises `accepts`.

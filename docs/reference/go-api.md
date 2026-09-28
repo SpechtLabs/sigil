@@ -66,7 +66,8 @@ var Deploy = policy.NewKind[Input]("DeployApproval",
 
 | Option                        | Kind file equivalent                  | Notes                                                                  |
 | ----------------------------- | ------------------------------------- | ---------------------------------------------------------------------- |
-| `policy.WithVersion(n)`           | `kind DeployApproval version n`       | Contract version, compared by `sigil breaking`                         |
+| `policy.WithVersion(n)`           | `kind DeployApproval version n`       | Contract version, bumped by every change to the kind                   |
+| `policy.WithAccepts(n)`           | `kind DeployApproval version 3, accepts: n` | Oldest version a policy or module may pin; raise it with a breaking change. Defaults to accepting every version |
 | `policy.WithDecisions(d...)`      | `decision ...`, `collect one` and `precedence ...` | Argument order is precedence, highest first               |
 | `policy.WithCollect(d...)`        | `decision ...` and `collect all`      | Instead of `Decisions`: every fired decision applies. Argument order is declaration order (proposed) |
 | `policy.WithDefault(d, reason)`   | `default deny("no_rule_matched")`     | Result when no rule fires; payload fields take their defaults          |
@@ -82,7 +83,7 @@ var Access = policy.NewKind[AccessInput]("AccessGrant",
 )
 ```
 
-`NewKind` reflects over `Input` once and builds a precomputed accessor per field path, so `Eval` never touches `reflect`. `policy.Func` derives the DSL signature from the Go function's type.
+`NewKind` reflects over `Input` once and builds a precomputed accessor per field path, so `Eval` never touches `reflect`. `policy.WithFunc` derives the DSL signature from the Go function's type, but not its name. The name is part of the policy contract, like an input's `policy:"..."` tag, so it's always written out: a derived name would let a Go refactor that renames `strings.Split` rename a function in every policy, and function literals, which are how most adapters are written, have no usable name anyway.
 
 The types `NewKind` accepts are listed in [Kind files](/reference/kind-files/). Anything else (channels, funcs, interfaces, pointers to slices or maps, map keys that aren't scalars, unexported tagged fields) makes `NewKind` panic at init. That's deliberate: a kind that exists can always be exported, which is what makes the round trip `Import(Export(k)) == k` hold.
 

@@ -179,27 +179,23 @@ Settled for host-ordered types, not implemented yet:
 
 ## What the kind version means
 
-**Blocks: M3, M8**
+**Settled and implemented.** Every policy and module header pins the kind version it was written against, `policy deploy.production: DeployApproval@2`, and the kind declares the oldest pin it still accepts, `kind DeployApproval version 3, accepts: 2`. Every document compiles against the one kind the host has; the pin only decides whether the host accepts the document at all. A pin below `accepts` or above `version` is a compile error, and a missing pin is one that suggests the current version.
 
-A kind carries `version 1`, but a policy or module header names only the kind (`policy deploy.production: DeployApproval`). Nothing says what happens when a policy written against version 1 compiles against version 2. The number feeds `sigil breaking`, and beyond that its role is undefined. Options: policies pin a version (`: DeployApproval@1`) and the loader rejects mismatches; or the version is informational and compatibility is decided by type-checking alone.
+Requiring an exact match was rejected, because every kind bump would then break every policy and force hosts to keep old kinds around. With a floor, the host's cost is two numbers: every change bumps `version`, and a breaking change also raises `accepts`. `sigil breaking` checks both. See [Versioning](/reference/kind-files/#versioning).
 
-Two neighbouring gaps in the versioning table belong here too. Adding an input can collide with an existing policy name (see [Namespaces and imports](#namespaces-and-imports)). Adding a `fn` doesn't break any policy, but it does break every service that evaluates through `LoadKind`, because `Eval` refuses to run until all declared functions are bound. "Compatible" needs to say compatible for whom.
+Still open from the same gap: adding a `fn` breaks hosts that evaluate through `LoadKind`, because `Eval` needs every function bound. That's about whether a host can run, not whether policies compile, and it's covered by [Host functions in the CLI](#host-functions-in-the-cli) for the standalone tools.
 
 ## `in` versus `has` for map keys
 
-**Blocks: M3, M6**
-
-Two operators test for a map key: `"env" in service.labels` and `service.labels has "env"`. They mean the same thing. `has` exists because it also takes a map of pairs (`labels has {"env": "dev"}`), and the single-key form fell out of that.
-
-Options: keep both as synonyms; drop the single-key form of `has`; or keep both in the grammar and have `sigil fmt` rewrite one into the other. Two spellings for one check is exactly the kind of drift a canonical formatter should prevent, so the formatter option is the likely answer. Which form wins is still open.
+**Settled.** A map key is tested with `has` only: `service.labels has "env"`. `in` means a list element or a substring, and `"env" in service.labels` is a compile error that suggests the `has` form. `has` stays because it also takes a map of pairs, and one spelling per check is what a canonical formatter would otherwise have to enforce. The cost is readers coming from CEL or Python, where `"env" in labels` is the idiom; the error message points them at `has`.
 
 ## Namespaces and imports
 
-**Blocks: M3, M5**
+**Settled and implemented.** Each document has one flat namespace: the kind's inputs, host functions and decisions, and the document's params, lets, imports and quantifier variables. Any collision is a compile error, and nothing shadows anything, with one exception that version pins make safe.
 
-The proposed rule gives each policy one flat top-level namespace containing inputs, host functions, params, lets and every name bound by `use`. Any collision is a compile error, and nothing shadows anything, including quantifier variables.
+A document pinned to `@N` compiled against version N, where any collision was an error. So a document pinned below the kind's current version that collides with an input, host function or decision must be colliding with a name the kind added since. The document keeps its own name, and the `shadowed-kind-name` lint reports it. A document pinned to the current version gets the collision error. That makes "add an input, function or decision" compatible without any footnote.
 
-Confirming it closes several questions at once: `use deploy.common.{cleared as actor}` is an error because `actor` is an input, a `let` can't be named `split`, and `any release in ...` can't shadow the `release` input. Decision names are in the namespace too, because [asserts use them as values](#decision-values-and-outcome), so importing a policy under a decision's name or naming a `let` after one is an error. The cost is that adding an input or a decision to a kind can break an existing policy that already had a `let` or an import of that name, which makes "add an input" less compatible than the [versioning table](/reference/kind-files/) claims. Either the table needs a footnote, or kind-declared names need to live in a namespace policies can't collide with.
+The alternatives were a footnote saying that adding a name can break policies, which leaves the host unable to tell, qualifying every kind name (`input.release`), which makes every expression longer, and letting any document name shadow a kind name, which would let new policies shadow by accident. See [Identifiers](/reference/policy-files/#identifiers).
 
 ## Vacuous `all in`
 
