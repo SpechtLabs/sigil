@@ -5,7 +5,7 @@ createTime: 2026/09/24 22:30:00
 permalink: /project/open-questions/
 ---
 
-The language, the Go API and the CLI are implemented. This page is for contributors: it lists the design questions the implementation hasn't answered yet, what the code does today in each case, and what an answer would unblock. Questions the implementation has settled are listed under [Settled](#settled) at the end, each pointing at the reference section that now states the rule.
+The language, the Go API and the CLI are implemented. This page is for contributors: it lists the design questions the implementation hasn't answered yet, what the code does today in each case, and what an answer would unblock.
 
 The [roadmap](/project/roadmap/) tracks the planned work. Most questions here block nothing on it; they're refinements someone will run into once real policies push on the edges.
 
@@ -110,31 +110,3 @@ A WASM build of the evaluator would let other languages evaluate policies, not j
 **Blocks:** nothing.
 
 A `*_test.yaml` case expects a decision, an outcome or failing asserts, and a conflict fails all three, so a conflict the kind is meant to catch can only be tested from Go, with `Eval` and `errors.As` on a `*policy.ConflictError` (see [Testing a conflict](/reference/cli/#testing-a-conflict)). A fourth form listing the conflicting candidates would let a policy repository test it without a Go test. What's open is who should own that test: the policy repository, or the host, which declares the `exclusive` sets and decides what a conflict means to its callers.
-
-## Settled
-
-These were open questions until the implementation answered them. The linked reference sections state the rules.
-
-### Decision names as values
-
-A bare decision name is a value of the closed `decision` type, so decision names share the policy's namespace: `let deny = ...` is a compile error in a kind that declares `deny`. String names and qualified names such as `decision.deny` were the alternatives. See [Identifiers](/reference/policy-files/#identifiers) and [Decision values](/reference/expressions/#decision-values-and-outcome).
-
-### Unranked reasons in `collect one`
-
-They're allowed, and two of them firing together is a `*ConflictError`, not a positional tie-break. See [Resolution](/reference/evaluation/#resolution).
-
-### Assert failures and metrics
-
-A failed assert reaches the host as a `*policy.AssertionError`, whose failures carry their own `Reason`, apart from decision reasons. The library emits no metrics, so how to label them is the host's choice.
-
-### Input-dependent invocation arguments
-
-Invocation arguments may read constants and the invoking policy's own params, never inputs, so every invocation is a static instantiation that `sigil explain` can print and bounds can check at compile time. `production(approvers: service.owners)` is a compile error that points at the `when`-per-case workaround. See [Policy invocation](/reference/policy-files/#policy-invocation).
-
-### Re-exports
-
-Modules don't re-export imported names. `pub` applies to `let` only, so a name's origin is always one `use` line away. See [Exporting lets](/reference/policy-files/#exporting-lets).
-
-### Document names in text output
-
-Diagnostics and trace entries print the document name after the position, `policies.sigil:42:5 (payments.production)`, and leave it out when the file's path already matches the name, as in `deploy/production.sigil:16:5`. The CLI and `policy.Position.String` follow the same rule. `sigil explain`, whose call chains carry no file, names every document by its full name, `payments.production:7 → deploy.guardrails:8`, never by the name a `use` bound it to. See [Positions in errors and traces](/reference/go-api/#positions-in-errors-and-traces).
