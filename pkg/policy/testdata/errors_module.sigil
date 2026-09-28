@@ -1,0 +1,3 @@
+module m: DeployApproval@1
+
+let a = true

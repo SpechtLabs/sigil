@@ -44,6 +44,7 @@ type (
 		Teams   []string `policy:"teams"`
 		Roles   []string `policy:"roles"`
 		Regions []string `policy:"regions"`
+		Ticket  *string  `policy:"ticket"`
 	}
 	Input struct {
 		Release     Release   `policy:"release"`
@@ -165,6 +166,16 @@ func TestEval(t *testing.T) {
 		{src: `{"a": 1}["a"]`, want: int64(1)},
 		{src: `{"a": 1}["b"]`, want: int64(0)},
 		{src: `{1: "x"}[1]`, want: "x"},
+		{src: `{1: "x"}[2]`, want: ""},
+		{src: `{"a": 1.5}["b"]`, want: 0.0},
+		{src: `{"a": true}["b"]`, want: false},
+		{src: `{"a": 1h}["b"]`, want: time.Duration(0)},
+		{src: `{"a": [1]}["b"]`, want: []any{}},
+		{src: `{"a": {"b": 1}}["b"]`, want: map[any]any{}},
+		{src: `{1h: "x"}[1h]`, want: "x"},
+		{src: `{1.5: "x"}[1.5]`, want: "x"},
+		{src: `{true: "x"}[true]`, want: "x"},
+		{src: `{now: "x"}[now]`, want: "x"},
 		{src: `split(service.labels["regions"], ",")`, want: []string{"eu-1", "us-1"}},
 		{src: `split(service.labels["regions"], ",")[0]`, want: "eu-1"},
 		{src: "len(actor.roles)", want: 2},
@@ -189,7 +200,14 @@ func TestEval(t *testing.T) {
 		{src: "count <= 2", want: false},
 		{src: "ratio < 0.75", want: true},
 		{src: "now > release.built_at", want: true},
+		{src: "now < release.built_at", want: false},
+		{src: "release.built_at < now", want: true},
+		{src: "now >= now", want: true},
 		{src: "now == release.built_at", want: false},
+		{src: "release.built_at == release.built_at", want: true},
+		{src: "release.built_at != now", want: true},
+		{src: "0.5 == ratio", want: true},
+		{src: "release.hotfix != false", want: false},
 		{src: "release.hotfix == false", want: true},
 		{src: "deny == approve", assert: true, want: false},
 		{src: "deny != approve", assert: true, want: true},
@@ -209,7 +227,17 @@ func TestEval(t *testing.T) {
 		{src: "approve in outcome", assert: true, want: true},
 		{src: "deny in outcome", assert: true, want: false},
 		{src: `["eu-1"] in [["eu-1"], ["us-1"]]`, want: true},
+		{src: `["eu-1"] in [["eu-1", "us-1"]]`, want: false},
+		{src: `["eu-1"] in [["us-1"]]`, want: false},
 		{src: `[] in [["eu-1"], []]`, want: true},
+		{src: `{"a": 1} in [{"a": 1}]`, want: true},
+		{src: `{"a": 1} in [{"a": 2}]`, want: false},
+		{src: `{"a": 1} in [{"b": 1}]`, want: false},
+		{src: `{"a": 1} in [{"a": 1, "b": 2}]`, want: false},
+		{src: `[release.ticket] in [[release.ticket]]`, want: true},
+		{src: `[release.ticket] in [[service.owner.ticket]]`, want: false},
+		{src: `[service.owner.ticket] in [[service.owner.ticket]]`, want: true},
+		{src: `[now] in [[now]]`, want: true},
 
 		// List operators.
 		{src: "actor.teams any in service.owners", want: true},

@@ -1,0 +1,6 @@
+== compile p ==
+3:1: param min_soak: expected duration, found Go type int32
+  |
+3 | param min_soak: duration
+  | ^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: Params values are Go values of the shape NewKind accepts for the param's type

@@ -1,0 +1,22 @@
+== compile p ==
+ok
+
+== the scoped let under a false condition never runs ==
+decision  approve
+reason    owned
+policy    p
+payload   bake: 1h0m0s
+
+candidates
+  approve  owned              15:5 (p)  bake: 1h0m0s
+           service.tier == "critical"
+           "payments" in owners
+
+== a scoped let in a reached body ==
+decision  deny
+reason    no_rule_matched
+policy    p
+payload   (none)
+
+candidates
+  (none)

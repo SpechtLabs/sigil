@@ -1,0 +1,17 @@
+// A scoped let is visible in its body only and runs only when the body
+// is reached, so the one under `when false` never fails.
+policy p: DeployApproval@1
+
+when false {
+  let boom = split(actor.roles[9], ",")
+  when boom any in ["x"] {
+    deny("never")
+  }
+}
+
+when service.tier == "critical" {
+  let owners = service.owners
+  when "payments" in owners {
+    approve("owned")
+  }
+}

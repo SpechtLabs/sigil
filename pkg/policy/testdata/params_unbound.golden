@@ -1,0 +1,6 @@
+== compile p ==
+3:1: param `approvers` has no value
+  |
+3 | param approvers: list<string>
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: bind it with policy.Params{"approvers": ...} when compiling, or give it a default

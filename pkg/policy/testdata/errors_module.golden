@@ -1,0 +1,6 @@
+== compile m ==
+1:1: m is a module, not a policy
+  |
+1 | module m: DeployApproval@1
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: a module holds only lets and has no rules to evaluate; name a policy

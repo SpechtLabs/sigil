@@ -6,7 +6,7 @@ permalink: /reference/evaluation/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. Syntax, kinds, type checking and expression evaluation are implemented; rules and decisions, composition and the CLI aren't yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. Syntax, kinds, type checking, rules, decisions, asserts and the evaluation trace are implemented; composition (imports and invocation) and the CLI aren't yet. See [Open questions](/project/open-questions/).
 :::
 
 Evaluation takes a compiled policy and one input value and produces an outcome: exactly one decision for a kind with `precedence`, and every decision that fired for a [collecting kind](#collecting-kinds). Asserts check the input before any rule runs, and the outcome once it exists. The rules on this page are the whole algorithm. For why it works this way, read [Why rule order never matters](/understanding/order-independence/).
@@ -77,8 +77,8 @@ when "platform" in actor.groups {
 
 For a member of both groups, the outcome is `read("engineering_member")`, `write("platform_member")` and `development_environment_writer("platform_member")`, in that order. The body under `"platform"` holds two constructors, which a collecting kind makes natural; whether that's allowed is still [open](/project/open-questions/#multiple-decisions-per-block).
 
-::: tip Proposed
-Collecting kinds, their ordering and the empty outcome are proposed. See [Open questions](/project/open-questions/#collecting-kinds).
+::: tip Implemented as proposed
+Collecting kinds, their ordering and the empty outcome are implemented as described here. The parts still open are listed under [Collecting kinds](/project/open-questions/#collecting-kinds).
 :::
 
 ## Assertions
@@ -116,8 +116,8 @@ The layout is illustrative; the exact format isn't fixed yet.
 
 Asserts and decisions answer different questions. A decision is an outcome the author expected and the host acts on, such as denying a deploy that hasn't soaked. A failed assert means something is wrong with the policy, the host or the input, and it should reach whoever owns the evaluation as an error. An assert that input from a caller can trip lets that caller fill the host's error metrics, so keep those rare and make them mean it.
 
-::: tip Proposed
-Assertions are proposed. The open parts are listed under [Assertions](/project/open-questions/#assertions).
+::: tip Implemented as proposed
+Assertions are implemented as described here: every reached assert is checked after the outcome is known, every failure is reported, and `Eval` returns an `*AssertionError` with the default result. The open parts are listed under [Assertions](/project/open-questions/#assertions).
 :::
 
 ## Invocation
@@ -212,9 +212,7 @@ Params are covered by [bounds](/reference/policy-files/#bounds). A team binds `m
 
 A `let` has no side effects and host functions are pure, so when a let gets evaluated is unobservable except through runtime errors.
 
-::: tip Proposed
 Lets are evaluated lazily, at most once per evaluation, on first use. A let that no firing path reaches never runs, so it can't raise a runtime error. A [scoped let](/reference/policy-files/#scoped-lets) can only be used inside its `when` body, so it only runs when every enclosing condition holds: the guard around it is guaranteed by the language, not by the author remembering where the let is used.
-:::
 
 ## Determinism
 
@@ -234,7 +232,7 @@ Static typing removes most failure modes. What's left:
 
 A missing map key isn't an error; it yields the zero value. An absent optional isn't an error either, because the compiler already forced a `??`.
 
-A runtime error in a rule, a payload or a let a rule reads aborts the evaluation. `Eval` returns the error together with a result holding the kind's default decision, so a host that fails closed can use the result directly. For a collecting kind the result's outcome is empty, even if the kind declares a default, because a default grant on an error would fail open. (proposed)
+A runtime error in a rule, a payload or a let a rule reads aborts the evaluation. `Eval` returns the error together with a result holding the kind's default decision, so a host that fails closed can use the result directly. For a collecting kind the result's outcome is empty, even if the kind declares a default, because a default grant on an error would fail open.
 
 A runtime error in a rule ends the evaluation after the input asserts have passed, so it never hides a failing input assert, and outcome asserts don't run because there's no outcome. A runtime error inside an assert is reported as that assert's failure; see [Assertions](#assertions). Since every block is evaluated, the outcome doesn't depend on block order: an input that triggers a runtime error always does.
 

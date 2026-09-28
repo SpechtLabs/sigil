@@ -18,90 +18,28 @@ import (
 	"time"
 
 	"github.com/spechtlabs/sigil/internal/ast"
-	"github.com/spechtlabs/sigil/internal/check"
 	"github.com/spechtlabs/sigil/internal/diag"
-	"github.com/spechtlabs/sigil/internal/gokind"
 	"github.com/spechtlabs/sigil/internal/types"
 )
+
+var timeType = reflect.TypeOf(time.Time{})
 
 // Value is a runtime value: a reflect.Value over the host's data, or over
 // a constant. An absent optional is the invalid Value.
 type Value = reflect.Value
 
-// Frame is the state of one evaluation: the input and the values bound
-// to slots (params, lets and quantifier variables).
-type Frame struct {
-	Input   Value
-	Outcome Value // list<decision> for assert conditions; set by the policy evaluator
-	slots   []Value
-}
-
-// NewFrame returns a frame over input, a struct value or a pointer to
-// one, with room for the scope's slots.
-func NewFrame(input any, scope *Scope) *Frame {
-	v := reflect.ValueOf(input)
-	if v.Kind() == reflect.Pointer {
-		v = v.Elem()
-	}
-	n := 0
-	if scope != nil {
-		n = scope.nslots
-	}
-	return &Frame{Input: v, slots: make([]Value, n)}
-}
-
-// Set binds the value of a param or let by slot.
-func (f *Frame) Set(slot int, v Value) { f.slots[slot] = v }
-
 // Expr is a compiled expression.
 type Expr func(f *Frame) Value
-
-// Scope maps the names a document declares to frame slots. Inputs and
-// host functions come from the binding; quantifier variables get slots
-// as the compiler meets them.
-type Scope struct {
-	binding *gokind.Binding
-	slots   map[string]int
-	nslots  int
-}
-
-// NewScope returns a scope over the kind's binding.
-func NewScope(b *gokind.Binding) *Scope {
-	return &Scope{binding: b, slots: map[string]int{}}
-}
-
-// Declare gives name a slot and returns it. The caller binds the value
-// with Frame.Set before evaluating.
-func (s *Scope) Declare(name string) int {
-	if slot, ok := s.slots[name]; ok {
-		return slot
-	}
-	slot := s.nslots
-	s.slots[name] = slot
-	s.nslots++
-	return slot
-}
-
-// Slots returns how many slots a frame for this scope needs.
-func (s *Scope) Slots() int { return s.nslots }
-
-// Compile turns x, checked into info, into an Expr. It fails only when
-// info doesn't cover x, which means x wasn't checked or didn't check.
-func Compile(x ast.Expr, info *check.Info, scope *Scope) (Expr, *diag.Error) {
-	c := &compiler{info: info, scope: scope}
-	var e Expr
-	err := catch(func() { e = c.expr(x) })
-	if err != nil {
-		return nil, err
-	}
-	return e, nil
-}
 
 // Run evaluates e in f, turning a runtime error into a returned one.
 func Run(e Expr, f *Frame) (v Value, err *diag.Error) {
 	err = catch(func() { v = e(f) })
 	return v, err
 }
+
+// Bool is a convenience for tests and the policy evaluator: the bool a
+// condition evaluated to.
+func Bool(v Value) bool { return norm(v).Bool() }
 
 // catch runs fn and returns the runtime error it threw, if any.
 func catch(fn func()) (err *diag.Error) {
@@ -121,20 +59,6 @@ func catch(fn func()) (err *diag.Error) {
 // throwf raises a runtime error at node n.
 func throwf(n ast.Node, format string, args ...any) {
 	panic(&diag.Error{Msg: fmt.Sprintf(format, args...), Pos: n.Pos(), End: n.End()}) //nolint:nopanic // runtime errors unwind to Run, which returns them
-}
-
-type compiler struct {
-	info  *check.Info
-	scope *Scope
-}
-
-// typeOf returns the checked type of x, or throws when there is none.
-func (c *compiler) typeOf(x ast.Expr) types.Type {
-	t := c.info.TypeOf(x)
-	if t == nil || t == types.Invalid {
-		throwf(x, "expression `%s` wasn't checked; compile only checked expressions", ast.Sprint(x))
-	}
-	return t
 }
 
 // norm unwraps an interface value, so an element of a literal list
@@ -180,41 +104,6 @@ func optionalChain(x ast.Expr) bool {
 			return false
 		}
 	}
-}
-
-var timeType = reflect.TypeOf(time.Time{})
-
-// zero returns the zero value of a Sigil type, as a missing map key
-// yields. Struct types need their Go type, from the binding.
-func (c *compiler) zero(t types.Type) Value {
-	switch t := t.(type) {
-	case types.Basic:
-		switch t {
-		case types.Bool:
-			return reflect.ValueOf(false)
-		case types.Int:
-			return reflect.ValueOf(int64(0))
-		case types.Float:
-			return reflect.ValueOf(0.0)
-		case types.String, types.Decision:
-			return reflect.ValueOf("")
-		case types.Duration:
-			return reflect.ValueOf(time.Duration(0))
-		case types.Timestamp:
-			return reflect.Zero(timeType)
-		}
-	case *types.List:
-		return reflect.ValueOf([]any{})
-	case *types.Map:
-		return reflect.ValueOf(map[any]any{})
-	case *types.Struct:
-		if gt, ok := c.scope.binding.Structs[t.Name]; ok {
-			return reflect.Zero(gt)
-		}
-	case *types.Optional:
-		return Value{}
-	}
-	return Value{}
 }
 
 // equal compares two values of Sigil type t.
@@ -318,6 +207,11 @@ func convert(v Value, t reflect.Type) Value {
 		return v
 	case t.Kind() == reflect.Interface:
 		return v
+	case t.Kind() == reflect.Pointer:
+		// A present value for an optional field: box it.
+		p := reflect.New(t.Elem())
+		p.Elem().Set(convert(v, t.Elem()))
+		return p
 	case t.Kind() == reflect.Slice && v.Kind() == reflect.Slice:
 		out := reflect.MakeSlice(t, v.Len(), v.Len())
 		for i := 0; i < v.Len(); i++ {

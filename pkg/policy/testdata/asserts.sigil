@@ -1,0 +1,17 @@
+// Input asserts run before any rule; outcome asserts once the outcome
+// exists. A runtime error in an assert, or in a condition around it, is
+// that assert's failure.
+policy p: DeployApproval@1
+
+assert("negative_soak", release.soak >= 0s)
+assert("must_deny", deny in outcome)
+
+when true {
+  approve("a", bake: 5m)
+  assert("has_team", service.labels has "team")
+  assert("approved", approve in outcome)
+}
+
+when actor.roles[3] == "x" {
+  assert("guarded", true)
+}

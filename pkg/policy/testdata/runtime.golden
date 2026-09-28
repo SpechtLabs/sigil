@@ -1,0 +1,22 @@
+== compile p ==
+ok
+
+== an index out of range ==
+decision  deny
+reason    no_rule_matched
+policy    p
+payload   (none)
+error     3:6 (p): index 3 out of range for a list of 1
+
+candidates
+  (none)
+
+== an index out of range in a payload ==
+decision  deny
+reason    no_rule_matched
+policy    p
+payload   (none)
+error     8:27 (p): index 9 out of range for a list of 1
+
+candidates
+  (none)

@@ -1,0 +1,17 @@
+module m: DeployApproval@1
+
+let a = true
+
+---
+
+module m: DeployApproval@1
+
+let b = false
+
+---
+
+policy p: DeployApproval@1
+
+when true {
+  deny("a")
+}

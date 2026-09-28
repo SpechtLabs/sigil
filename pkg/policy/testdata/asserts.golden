@@ -1,0 +1,27 @@
+== compile p ==
+ok
+
+== every failing input assert is reported and no rule runs ==
+decision  deny
+reason    no_rule_matched
+policy    p
+payload   (none)
+error     assertions failed:
+            "negative_soak" at 6:1 (p)
+            "has_team" at 11:3 (p)
+            "guarded" at 16:3 (p): index 3 out of range for a list of 1
+
+candidates
+  (none)
+
+== outcome asserts see the outcome ==
+decision  deny
+reason    no_rule_matched
+policy    p
+payload   (none)
+error     assertion "must_deny" failed at 7:1 (p)
+          must_deny: approve a at 10:3 (p) {bake: 5m0s}
+
+candidates
+  approve  a                  10:3 (p)  bake: 5m0s
+           true
