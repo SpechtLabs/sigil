@@ -227,4 +227,8 @@ At M4 the language can replace an existing YAML rule set, such as the deploy gat
 
 ## Contributing
 
-The design is open. The most valuable contributions right now are challenges to it: an example that reads badly, a semantic corner the spec doesn't cover, or an answer to one of the [open questions](./docs/project/open-questions.md). Open an [issue](https://github.com/SpechtLabs/sigil/issues) or a pull request against `docs/`.
+The design is open. The most valuable contributions right now are challenges to it: an example that reads badly, a semantic corner the spec doesn't cover, or an answer to one of the [open questions](./docs/project/open-questions.md). Open an [issue](https://github.com/SpechtLabs/sigil/issues) or a pull request against `docs/`. Contributions are accepted under the project's license, as section 5 of the Apache License describes.
+
+## License
+
+Sigil is licensed under the [Apache License 2.0](./LICENSE). Copyright 2026 SpechtLabs.
