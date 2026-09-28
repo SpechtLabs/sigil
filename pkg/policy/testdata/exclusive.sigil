@@ -1,0 +1,17 @@
+// The Compartments kind declares grant_a and grant_b exclusive: both
+// firing is a conflict even though deny outranks them.
+policy p: Compartments@1
+
+when "a" in actor.teams {
+  grant_a(member)
+}
+
+when "b" in actor.teams {
+  grant_b(member)
+}
+
+when "suspended" in actor.roles {
+  deny(suspended)
+}
+
+assert("someone", actor.name != "")

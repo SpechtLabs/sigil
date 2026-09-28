@@ -3,6 +3,7 @@ package policy_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"reflect"
 	"strings"
 	"sync"
@@ -45,13 +46,14 @@ type (
 )
 
 var (
-	Deny    = policy.Decision[policy.None]("deny")
-	Review  = policy.Decision[ReviewData]("review")
-	Approve = policy.Decision[ApproveData]("approve")
+	Deny    = policy.NewDecision[policy.None]("deny", "a", "no_rule_matched", "never", "b", "not_eligible", "soak_too_short", "x")
+	Review  = policy.NewDecision[ReviewData]("review", "b", "a", "service_owner")
+	Approve = policy.NewDecision[ApproveData]("approve", "owned", "a", "release_manager", "payments_sre")
 
 	Deploy = policy.NewKind[Input]("DeployApproval",
 		policy.WithVersion(1),
 		policy.WithDecisions(Deny, Review, Approve), // order = precedence
+		policy.WithReasonPrecedence(Approve, "release_manager", "payments_sre", "owned", "a"),
 		policy.WithDefault(Deny, "no_rule_matched"),
 		policy.WithFunc("split", strings.Split),
 	)
@@ -84,13 +86,31 @@ input environment: string
 
 fn split(string, string) -> list<string>
 
-decision deny(reason: string)
-decision review(reason: string, approvers: list<string>)
-decision approve(reason: string, bake: duration = 1h)
+decision deny {
+  a
+  no_rule_matched
+  never
+  b
+  not_eligible
+  soak_too_short
+  x
+}
+decision review(approvers: list<string>) {
+  b
+  a
+  service_owner
+}
+decision approve(bake: duration = 1h) {
+  owned
+  a
+  release_manager
+  payments_sre
+}
 
 collect one
 precedence deny > review > approve
-default deny("no_rule_matched")
+precedence approve: release_manager > payments_sre > owned > a
+default deny(no_rule_matched)
 `
 	if got := Deploy.Schema(); got != want {
 		t.Errorf("Schema() =\n%s\nwant\n%s", got, want)
@@ -111,6 +131,7 @@ func TestOptionsCompose(t *testing.T) {
 		policy.WithVersion(1),
 		policy.WithDecisions(Deny),
 		policy.WithDecisions(Review, Approve),
+		policy.WithReasonPrecedence(Approve, "release_manager", "payments_sre", "owned", "a"),
 		policy.WithDefault(Deny, "no_rule_matched"),
 		policy.WithFunc("split", strings.Split),
 	)
@@ -139,10 +160,10 @@ func TestCollect(t *testing.T) {
 	type AdminData struct {
 		TTL time.Duration `policy:"ttl,default=8h"`
 	}
-	read := policy.Decision[policy.None]("read")
-	admin := policy.Decision[AdminData]("admin")
+	read := policy.NewDecision[policy.None]("read", "engineering_member")
+	admin := policy.NewDecision[AdminData]("admin", "platform_member", "oncall")
 	access := policy.NewKind[AccessInput]("AccessGrant", policy.WithVersion(1), policy.WithCollect(read), policy.WithCollect(admin))
-	want := "kind AccessGrant version 1\n\ntype Actor {\n  name: string\n  teams: list<string>\n  roles: list<string>\n  regions: list<string>\n}\n\ninput actor: Actor\n\ndecision read(reason: string)\ndecision admin(reason: string, ttl: duration = 8h)\n\ncollect all\n"
+	want := "kind AccessGrant version 1\n\ntype Actor {\n  name: string\n  teams: list<string>\n  roles: list<string>\n  regions: list<string>\n}\n\ninput actor: Actor\n\ndecision read {\n  engineering_member\n}\ndecision admin(ttl: duration = 8h) {\n  platform_member\n  oncall\n}\n\ncollect all\n"
 	if got := access.Schema(); got != want {
 		t.Errorf("Schema() =\n%s\nwant\n%s", got, want)
 	}
@@ -298,7 +319,7 @@ func TestDiagnostics(t *testing.T) {
 	}{
 		{
 			name: "a typo in the second document of a file",
-			src:  "policy p: DeployApproval@1\nwhen true { deny(\"a\") }\n---\npolicy q: DeployApproval@1\nwhen servce.tier == \"x\" { deny(\"a\") }",
+			src:  "policy p: DeployApproval@1\nwhen true { deny(a) }\n---\npolicy q: DeployApproval@1\nwhen servce.tier == \"x\" { deny(a) }",
 			root: "p",
 			want: []policy.Diagnostic{{
 				Message:  "unknown name `servce`",
@@ -309,13 +330,13 @@ func TestDiagnostics(t *testing.T) {
 		},
 		{
 			name: "a missing root has no position",
-			src:  "policy p: DeployApproval@1\nwhen true { deny(\"a\") }",
+			src:  "policy p: DeployApproval@1\nwhen true { deny(a) }",
 			root: "q",
 			want: []policy.Diagnostic{{Message: "bundle has no policy q", Help: "the bundle defines: p"}},
 		},
 		{
 			name: "a nil param value",
-			src:  "policy p: DeployApproval@1\nparam a: int\nwhen true { deny(\"a\") }",
+			src:  "policy p: DeployApproval@1\nparam a: int\nwhen true { deny(a) }",
 			root: "p",
 			opts: []policy.LoadOption{policy.Params{"a": nil}},
 			want: []policy.Diagnostic{{Message: "param a: expected int, found nil", Help: "Params values are Go values of the shape NewKind accepts for the param's type",
@@ -323,7 +344,7 @@ func TestDiagnostics(t *testing.T) {
 		},
 		{
 			name: "every param problem is reported",
-			src:  "policy p: DeployApproval@1\nparam a: int\nparam b: duration\nwhen true { deny(\"a\") }",
+			src:  "policy p: DeployApproval@1\nparam a: int\nparam b: duration\nwhen true { deny(a) }",
 			root: "p",
 			opts: []policy.LoadOption{policy.Params{"c": 1, "b": 2}},
 			want: []policy.Diagnostic{
@@ -364,7 +385,7 @@ func TestEvalContext(t *testing.T) {
 func TestEvalIsConcurrent(t *testing.T) {
 	p := compile(t, Deploy, teamBundle, "payments.production", policy.Params{"approvers": []string{"a"}, "min_soak": 4 * time.Hour})
 	var wg sync.WaitGroup
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -411,10 +432,7 @@ func eval[In any](t *testing.T, p *policy.Policy[In], input In) *policy.Result {
 // with returns a copy of the eligible input changed by fn.
 func with(fn func(*Input)) Input {
 	in := eligible
-	in.Service.Labels = make(map[string]string, len(eligible.Service.Labels))
-	for k, v := range eligible.Service.Labels {
-		in.Service.Labels[k] = v
-	}
+	in.Service.Labels = maps.Clone(eligible.Service.Labels)
 	fn(&in)
 	return in
 }

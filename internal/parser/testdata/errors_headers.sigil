@@ -5,7 +5,7 @@ policy : DeployApproval
 policy good.first: DeployApproval
 
 when true {
-  deny("unclosed")
+  deny(unclosed)
 
 policy good.two: DeployApproval
 let a = min_soak

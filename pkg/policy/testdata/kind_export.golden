@@ -1,12 +1,6 @@
 == compile p ==
-ok
-
-== compiles against a matching export ==
-decision  approve
-reason    a
-policy    p
-payload   bake: 1h0m0s
-
-candidates
-  approve  a                  50:3 (p)  bake: 1h0m0s
-           true
+1:6: kind document DeployApproval doesn't match the host's kind
+  |
+1 | kind DeployApproval version 1
+  |      ^^^^^^^^^^^^^^
+  = help: the host's Go definition is the contract; regenerate this file from Schema()

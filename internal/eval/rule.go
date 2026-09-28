@@ -26,8 +26,13 @@ type Rule struct {
 	fields   []payloadField
 	Pos      token.Pos // of the constructor
 	End      token.Pos
-	rank     int // position in precedence, or declaration order for a collecting kind
+	rank     int // the decision's position in precedence, or declaration order without one
+	rrank    int // the reason's position in the decision's ranking, or 0
 }
+
+// Outcome renders the candidate's decision and reason as a decision
+// value: `approve.release_manager`.
+func (r *Rule) Outcome() string { return r.Decision.Name + "." + r.Reason }
 
 // payloadField is how one payload field's value is produced when the
 // rule fires: from its argument's expression, or from the kind's default.

@@ -112,8 +112,6 @@ No position is consulted. Resolution is fold, check `exclusive`, rank, count (se
 
 The earlier rule picked the earliest source position, which was the last order dependence in the language. Merge functions in the kind were the alternative; they were rejected because a merged candidate has no reason and no position, and because a tie-breaker runs implicitly, outside every policy, the trace and every tool that has no host binary.
 
-The evaluator still implements the positional rule until declared reasons land; see the [roadmap](/project/roadmap/).
-
 ## What the result's `Policy` field names
 
 **Settled**
@@ -136,9 +134,9 @@ Reasons are scoped to their decision, so `deny.release_manager` and `approve.rel
 
 ## Reasons declared in the kind
 
-**Blocks: M4** (the evaluator change), and the M1 pages it touches
+**Blocks: M6** (the remaining points)
 
-Reasons are declared per decision in the kind, in a block, and constructors name one of them (see [Kind files](/reference/kind-files/#decision)). The reasoning is on the [Decisions](/reference/decisions/#the-reason) page: a typo can't create a metric series, `sigil breaking` sees a removed reason, and asserts and `exclusive` can name a reason. What's open:
+Reasons are declared per decision in the kind, and the evaluator, checker and Go API implement it, in a block, and constructors name one of them (see [Kind files](/reference/kind-files/#decision)). The reasoning is on the [Decisions](/reference/decisions/#the-reason) page: a typo can't create a metric series, `sigil breaking` sees a removed reason, and asserts and `exclusive` can name a reason. What's open:
 
 - **Authority.** A new reason is now a kind change, like a new decision. That moves a decision teams used to make on their own to the host. The trade is accepted for the same reason inputs and decisions are the host's: the kind is the contract. An escape hatch for undeclared reasons was considered and rejected, because it gives the typo bug back.
 - **Assert reasons.** They stay string literals, because an assert belongs to its policy and the kind has no say in it. Whether they should be declared too, for the same metric reasons, is open; nothing in the design needs it.

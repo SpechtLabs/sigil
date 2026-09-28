@@ -331,11 +331,11 @@ func (p *parser) parsePrimary() ast.Expr {
 		p.after = ast.OpInvalid
 		x := p.parseExpr(lowest)
 		closing := p.expectClosing(token.RParen, t)
-		return &ast.ParenExpr{X: x, Span: ast.Span{From: t.Pos, To: closing.End}}
+		return &ast.ParenExpr{X: x, From: t.Pos, To: closing.End}
 	case token.LBracket:
 		p.next()
 		elems := p.parseList(token.RBracket, t)
-		lit := &ast.ListLit{Elems: elems, Span: ast.Span{From: t.Pos, To: p.tok.End}}
+		lit := &ast.ListLit{Elems: elems, From: t.Pos, To: p.tok.End}
 		p.next()
 		return lit
 	case token.LBrace:
@@ -366,5 +366,5 @@ func (p *parser) parseMap() ast.Expr {
 		p.next()
 	}
 	closing := p.expectClosing(token.RBrace, open)
-	return &ast.MapLit{Entries: entries, Span: ast.Span{From: open.Pos, To: closing.End}}
+	return &ast.MapLit{Entries: entries, From: open.Pos, To: closing.End}
 }

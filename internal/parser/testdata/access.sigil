@@ -8,13 +8,24 @@ type Actor {
 
 input actor: Actor
 
-decision read(reason: string)
-decision write(reason: string)
-decision admin(reason: string, ttl: duration = 8h)
-decision customer_data_writer(reason: string)
-decision development_environment_writer(reason: string)
+decision read {
+  engineering_member
+}
+decision write {
+  platform_member
+}
+decision admin(ttl: duration = 8h) {
+  oncall
+}
+decision customer_data_writer {
+  data_engineer
+}
+decision development_environment_writer {
+  platform_member
+}
 
 collect all
+exclusive customer_data_writer, development_environment_writer
 
 ---
 
@@ -38,7 +49,7 @@ use access.guardrails
 guardrails()
 
 when "platform" in actor.groups {
-  write("platform_member")
-  development_environment_writer("platform_member")
+  write(platform_member)
+  development_environment_writer(platform_member)
   assert("actor_named", actor.name != "")
 }

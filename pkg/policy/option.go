@@ -2,6 +2,7 @@ package policy
 
 import (
 	"github.com/spechtlabs/sigil/internal/gokind"
+	"github.com/spechtlabs/sigil/internal/kind"
 )
 
 // Option configures NewKind.
@@ -40,6 +41,56 @@ func WithCollect(ds ...DecisionRef) Option {
 	return func(o *gokind.Options) {
 		o.Collect = true
 		o.Decisions = append(o.Decisions, refs(ds)...)
+	}
+}
+
+// WithPrecedence ranks the decisions of a WithCollect kind, highest
+// first, which makes the outcome every candidate at the top rank instead
+// of every candidate that fired. It must list every decision. A
+// WithDecisions kind is ranked by its argument order already.
+func WithPrecedence(ds ...DecisionRef) Option {
+	names := make([]string, 0, len(ds))
+	for _, d := range ds {
+		if d != nil {
+			names = append(names, d.Name())
+		}
+	}
+	return func(o *gokind.Options) {
+		o.Precedence = append(o.Precedence, names...)
+	}
+}
+
+// WithReasonPrecedence ranks the reasons of one decision, highest first,
+// which is what decides between two candidates of that decision. It must
+// list every reason of d. A decision without a ranking has tied reasons:
+// fine wherever two of them can't fire together, and a conflict under
+// `collect one` where they can.
+func WithReasonPrecedence(d DecisionRef, reasons ...string) Option {
+	name := ""
+	if d != nil {
+		name = d.Name()
+	}
+	return func(o *gokind.Options) {
+		o.Rankings = append(o.Rankings, gokind.Ranking{Decision: name, Reasons: reasons})
+	}
+}
+
+// WithExclusive declares outcomes that can't fire together: decisions, or
+// single reasons through Decision[T].Reason. Candidates from two of them
+// in one evaluation are a conflict, checked before anything is ranked,
+// under both collect modes.
+//
+//	policy.WithExclusive(GrantA, GrantB)
+//	policy.WithExclusive(Approve.Reason("release_manager"), Approve.Reason("lgtm"))
+func WithExclusive(outcomes ...OutcomeRef) Option {
+	set := make([]kind.Outcome, 0, len(outcomes))
+	for _, o := range outcomes {
+		if o != nil {
+			set = append(set, o.outcome())
+		}
+	}
+	return func(o *gokind.Options) {
+		o.Exclusive = append(o.Exclusive, set)
 	}
 }
 

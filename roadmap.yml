@@ -123,14 +123,14 @@ milestones:
           spelling is settled: words. Settled with the evaluator: several decisions per block are
           allowed. Still open: glob syntax.
       - title: Declared reasons, exclusive and the resolution rule
-        state: DOING
+        state: DONE
         requirement: MUST
         description: |
           Reasons are declared per decision in the kind and constructors name them, so a typo is a
           compile error and asserts and `exclusive` can name a reason. `exclusive` declares
           outcomes that can't fire together, `precedence approve: a > b` ranks one decision's
           reasons, and resolution is fold, check exclusive, rank, count: no position is read and
-          nothing merges. Written up; the evaluator change is an M4 deliverable.
+          nothing merges.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/evaluation.md
       - title: Published documentation site
         state: DONE
@@ -304,13 +304,13 @@ milestones:
           `Result.Policy` names the evaluated policy; each candidate names the policy its rule
           is in, with a call chain ready for invocations.
       - title: Declared reasons and the resolution rule
-        state: TODO
+        state: DONE
         requirement: MUST
         description: |
           Reason blocks in kind files and `NewDecision` with reasons, bare-name reasons in
           constructors and the default, `exclusive` and scoped `precedence`, and resolution as
-          fold, check exclusive, rank, count with `*ConflictError`. Replaces the positional
-          tie-break the evaluator has today.
+          fold, check exclusive, rank, count with `*ConflictError`. Replaced the positional
+          tie-break the evaluator had.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/evaluation.md
       - title: Go API for compiling and evaluating
         state: DONE

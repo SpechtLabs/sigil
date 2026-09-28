@@ -1,0 +1,20 @@
+// Under collect one, two candidates at the top rank are a conflict:
+// the same reason with different payloads, or two reasons the kind
+// hasn't ranked.
+policy p: DeployApproval@1
+
+when service.tier == "critical" {
+  review(service_owner, approvers: ["a"])
+}
+
+when "payments-sre" in actor.teams {
+  review(service_owner, approvers: ["b"])
+}
+
+when release.hotfix {
+  deny(not_eligible)
+}
+
+when release.hotfix {
+  deny(soak_too_short)
+}

@@ -88,22 +88,7 @@ func (l *kindLoader) decision(d *ast.DecisionDecl) {
 	l.set(key, d.Name)
 	dec := &kind.Decision{Name: d.Name.Name}
 
-	fields := d.Fields
-	if len(fields) > 0 && fields[0].Name.Name == "reason" {
-		reason := fields[0]
-		if named, ok := reason.Type.(*ast.NamedType); !ok || named.Name.Name != "string" {
-			l.c.errorf(reason.Type, "the reason is a stable identifier, so it's always a string", "reason must be a string, not %s", ast.TypeString(reason.Type))
-		}
-		if reason.Default != nil {
-			l.c.errorf(reason.Default, "every constructor passes a reason; there's nothing to default", "reason can't have a default")
-		}
-		fields = fields[1:]
-	} else {
-		l.c.errorf(d.Name, "every decision takes a literal reason first; payload fields follow it",
-			"decision %s must declare `reason: string` as its first field", d.Name.Name)
-	}
-
-	for _, f := range fields {
+	for _, f := range d.Fields {
 		fkey := key + ".field " + f.Name.Name
 		l.set(fkey, f.Name)
 		l.set(fkey+".type", f.Type)
@@ -122,11 +107,19 @@ func (l *kindLoader) decision(d *ast.DecisionDecl) {
 		}
 		dec.Fields = append(dec.Fields, pf)
 	}
+	for _, r := range d.Reasons {
+		l.set(key+".reason "+r.Name, r)
+		dec.Reasons = append(dec.Reasons, r.Name)
+	}
 	l.kind.Decisions = append(l.kind.Decisions, dec)
 }
 
 func (l *kindLoader) precedence(d *ast.PrecedenceDecl) {
 	if d == nil {
+		return
+	}
+	if d.Scope != nil {
+		l.reasonPrecedence(d)
 		return
 	}
 	if l.once(&l.precedenceAt, d, "precedence") {
@@ -137,6 +130,46 @@ func (l *kindLoader) precedence(d *ast.PrecedenceDecl) {
 		l.set("precedence."+n.Name, n)
 		l.kind.Precedence = append(l.kind.Precedence, n.Name)
 	}
+}
+
+// reasonPrecedence loads `precedence d: a > b`, which ranks the reasons
+// of decision d. The decision must exist, and it takes one ranking.
+func (l *kindLoader) reasonPrecedence(d *ast.PrecedenceDecl) {
+	dec := l.kind.Decision(d.Scope.Name)
+	if dec == nil {
+		l.c.errorf(d.Scope, "a scoped precedence ranks the reasons of one of the kind's decisions", "precedence: undeclared decision %q", d.Scope.Name)
+		return
+	}
+	if dec.Ranked != nil {
+		l.c.errorf(d, fmt.Sprintf("a decision's reasons are ranked once; merge the two `precedence %s:` lines", dec.Name), "precedence %s is declared twice", dec.Name)
+		return
+	}
+	key := "precedence " + dec.Name
+	l.set(key, d)
+	dec.Ranked = []string{}
+	for _, n := range d.Names {
+		l.set(key+"."+n.Name, n)
+		dec.Ranked = append(dec.Ranked, n.Name)
+	}
+}
+
+// exclusive loads `exclusive a, b.x`.
+func (l *kindLoader) exclusive(d *ast.ExclusiveDecl) {
+	if d == nil {
+		return
+	}
+	key := fmt.Sprintf("exclusive %d", len(l.kind.Exclusive)+1)
+	l.set(key, d)
+	set := make([]kind.Outcome, 0, len(d.Outcomes))
+	for i, o := range d.Outcomes {
+		l.set(fmt.Sprintf("%s.%d", key, i+1), o)
+		out := kind.Outcome{Decision: o.Decision.Name}
+		if o.Reason != nil {
+			out.Reason = o.Reason.Name
+		}
+		set = append(set, out)
+	}
+	l.kind.Exclusive = append(l.kind.Exclusive, set)
 }
 
 func (l *kindLoader) collect(d *ast.CollectDecl) {
@@ -179,22 +212,23 @@ func (l *kindLoader) defaultDecl(d *ast.DefaultDecl) {
 	def := &kind.Default{Decision: call.Name.Name, Args: map[string]any{}}
 	l.kind.Default = def
 
-	const shape = "the default is written `default deny(\"no_rule_matched\")`"
+	const shape = "the default is written `default deny(no_rule_matched)`, naming one of the decision's reasons"
 	// The reason's key points at whatever is wrong with it, so the model's
-	// "empty reason" finding lands on the loader's error and is dropped.
-	switch lit := call.Positional.(type) {
+	// finding about it lands on the loader's error and is dropped.
+	switch r := call.Positional.(type) {
 	case nil:
 		l.set("default.reason", call)
 		l.c.errorf(call, shape, "the default needs a reason")
+	case *ast.Ident:
+		l.set("default.reason", r)
+		def.Reason = r.Name
 	case *ast.StringLit:
-		l.set("default.reason", lit)
-		if lit.Raw {
-			l.c.errorf(lit, "raw strings are for patterns; write the reason as \"...\"", "the default's reason must be a double-quoted string")
-		}
-		def.Reason = lit.Value
+		l.set("default.reason", r)
+		l.c.errorf(r, fmt.Sprintf("reasons are declared names, not strings; write `%s(%s)`", call.Name.Name, r.Value), "the default's reason must be a bare name")
+		def.Reason = r.Value
 	default:
 		l.set("default.reason", call.Positional)
-		l.c.errorf(call.Positional, shape, "the default's reason must be a string literal")
+		l.c.errorf(call.Positional, shape, "the default's reason must be a bare name")
 	}
 
 	decl := l.kind.Decision(def.Decision)

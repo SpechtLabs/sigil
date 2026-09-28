@@ -35,6 +35,7 @@ linters:
     - goprintffuncname
     - gosec
     - misspell
+    - modernize
     - nakedret
     - nolintlint
     - prealloc

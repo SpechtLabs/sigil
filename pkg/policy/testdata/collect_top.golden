@@ -1,0 +1,32 @@
+== compile p ==
+ok
+
+== every review at the top rank ==
+outcome
+  review   security           approvers: [security-leads]
+  review   owner              approvers: [payments-leads]
+
+candidates
+  review   security           6:3 (p)  approvers: [security-leads]
+           service.tier == "critical"
+  review   owner              10:3 (p)  approvers: [payments-leads]
+           "payments" in service.owners
+  approve  hotfix             14:3 (p)  bake: 1h0m0s
+
+== a deny leaves only itself ==
+outcome
+  deny     soak_too_short     (none)
+
+candidates
+  deny     soak_too_short     18:3 (p)
+           release.soak < 1h
+  review   security           6:3 (p)  approvers: [security-leads]
+  review   owner              10:3 (p)  approvers: [payments-leads]
+
+== one approval ==
+outcome
+  approve  hotfix             bake: 1h0m0s
+
+candidates
+  approve  hotfix             14:3 (p)  bake: 1h0m0s
+           release.hotfix

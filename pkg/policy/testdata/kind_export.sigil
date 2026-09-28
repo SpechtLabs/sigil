@@ -24,28 +24,28 @@ input environment: string
 
 fn split(string, string) -> list<string>
 
-decision deny(reason: string)
-decision review(reason: string, approvers: list<string>)
-decision approve(reason: string, bake: duration = 1h)
+decision deny { a no_rule_matched never b not_eligible soak_too_short x }
+decision review(approvers: list<string>) { b a service_owner }
+decision approve(bake: duration = 1h) { owned a release_manager payments_sre }
 
 collect one
 precedence deny > review > approve
-default deny("no_rule_matched")
+default deny(no_rule_matched)
 
 ---
 
 // A kind document for another kind is ignored.
 kind Other version 1
 
-decision x(reason: string)
+decision x { x }
 
 precedence x
-default x("x")
+default x(x)
 
 ---
 
 policy p: DeployApproval@1
 
 when true {
-  approve("a")
+  approve(a)
 }

@@ -13,7 +13,7 @@ import (
 
 // TestCompilePolicyErrors checks what CompilePolicy rejects.
 func TestCompilePolicyErrors(t *testing.T) {
-	const src = "policy p: Test@1\nparam approvers: list<string>\nwhen true { review(\"a\", approvers: approvers) }"
+	const src = "policy p: Test@1\nparam approvers: list<string>\nwhen true { review(a, approvers: approvers) }"
 	tests := []struct {
 		name    string
 		params  map[string]eval.Value
@@ -32,8 +32,8 @@ func TestCompilePolicyErrors(t *testing.T) {
 			doc := f.Docs[0].(*ast.PolicyDoc)
 			k, b, _ := gokind.Build(gokind.Options{
 				Name: "Test", Version: 1, Input: typeOf[Input](), Ranked: true,
-				Decisions: []gokind.Decision{{Name: "deny", Payload: typeOf[None]()}, {Name: "review", Payload: typeOf[ReviewData]()}},
-				Default:   &gokind.Default{Decision: "deny", Reason: "x"},
+				Decisions: []gokind.Decision{{Name: "deny", Payload: typeOf[None](), Reasons: []string{"b", "a", "d", "not_eligible", "soak_too_short"}}, {Name: "review", Payload: typeOf[ReviewData](), Reasons: []string{"c", "a", "service_owner"}}},
+				Default:   &gokind.Default{Decision: "deny", Reason: "a"},
 			})
 			c := check.New("p.sigil")
 			if tt.checked {

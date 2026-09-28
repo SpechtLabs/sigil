@@ -70,16 +70,24 @@ input environment: string
 
 fn split(string, string) -> list<string>
 
-decision deny(reason: string)
-decision review(reason: string, approvers: list<string>)
-decision approve(reason: string, bake: duration = 1h)
+decision deny {
+  no_rule_matched
+}
+decision review(approvers: list<string>) {
+  service_owner
+  everyone
+}
+decision approve(bake: duration = 1h) {
+  release_manager
+  payments_sre
+}
 
 collect one
 precedence deny > review > approve
-default deny("no_rule_matched")
+default deny(no_rule_matched)
 `
 
-func typeOf[T any]() reflect.Type { return reflect.TypeOf((*T)(nil)).Elem() }
+func typeOf[T any]() reflect.Type { return reflect.TypeFor[T]() }
 
 // pkgRelease lets a test declare a local Release next to this one.
 type pkgRelease = Release
@@ -90,9 +98,9 @@ func deploy() gokind.Options {
 		Version: 1,
 		Input:   typeOf[Input](),
 		Decisions: []gokind.Decision{
-			{Name: "deny", Payload: typeOf[None]()},
-			{Name: "review", Payload: typeOf[ReviewData]()},
-			{Name: "approve", Payload: typeOf[ApproveData]()},
+			{Name: "deny", Payload: typeOf[None](), Reasons: []string{"no_rule_matched"}},
+			{Name: "review", Payload: typeOf[ReviewData](), Reasons: []string{"service_owner", "everyone"}},
+			{Name: "approve", Payload: typeOf[ApproveData](), Reasons: []string{"release_manager", "payments_sre"}},
 		},
 		Default: &gokind.Default{Decision: "deny", Reason: "no_rule_matched"},
 		Funcs:   []gokind.Func{{Name: "split", Fn: strings.Split}},
@@ -220,9 +228,9 @@ func TestBuild(t *testing.T) {
 			errs: []string{`invalid input name "type"`, `invalid input name "kind"`}, help: "an input name is a plain identifier, not a keyword"},
 		{name: "empty input", mutate: func(o *gokind.Options) { o.Input = typeOf[Empty]() }, want: ""},
 		{name: "defaults of every shape", mutate: func(o *gokind.Options) {
-			o.Decisions = []gokind.Decision{{Name: "d", Payload: typeOf[Defaults]()}}
+			o.Decisions = []gokind.Decision{{Name: "d", Payload: typeOf[Defaults](), Reasons: []string{"x"}}}
 			o.Default = &gokind.Default{Decision: "d", Reason: "x"}
-		}, want: "decision d(reason: string, bake: duration = 1h30m, tags: list<string> = [\"a\", \"b\"], limit: int = -3, tiers: map<string, int> = {\"a\": 1}, ratio: float = 0.75, flag: bool = true, opt: ?string = \"x\")\n\ncollect one\nprecedence d\ndefault d(\"x\")\n"},
+		}, want: "decision d(bake: duration = 1h30m, tags: list<string> = [\"a\", \"b\"], limit: int = -3, tiers: map<string, int> = {\"a\": 1}, ratio: float = 0.75, flag: bool = true, opt: ?string = \"x\") {\n  x\n}\n\ncollect one\nprecedence d\ndefault d(x)\n"},
 		{name: "collecting kind", mutate: func(o *gokind.Options) {
 			o.Collect = true
 			o.Default = nil
@@ -285,7 +293,7 @@ func TestBuild(t *testing.T) {
 			o.Decisions[1].Payload = typeOf[[]string]()
 		}, errs: []string{"decision review: payload type []string is not a struct"}, help: "a decision's payload is a struct with tagged fields, or policy.None"},
 		{name: "bad defaults", mutate: func(o *gokind.Options) {
-			o.Decisions = []gokind.Decision{{Name: "d", Payload: typeOf[BadDefaults]()}}
+			o.Decisions = []gokind.Decision{{Name: "d", Payload: typeOf[BadDefaults](), Reasons: []string{"x"}}}
 			o.Default = &gokind.Default{Decision: "d", Reason: "x"}
 		}, errs: []string{
 			"decision d: field bake: default \"1x\": unknown duration unit `x` in `1x`",
@@ -296,7 +304,7 @@ func TestBuild(t *testing.T) {
 		}, help: "write the default as a Sigil literal, like `default=1h` or `default=[\"a\"]`"},
 		{name: "default needs every payload field", mutate: func(o *gokind.Options) {
 			o.Default = &gokind.Default{Decision: "review", Reason: "everyone"}
-		}, errs: []string{`default: field "approvers" is required and has no value`}, help: "review is declared as: decision review(reason: string, approvers: list<string>)"},
+		}, errs: []string{`default: field "approvers" is required and has no value`}, help: "review is declared as: decision review(approvers: list<string>) { service_owner, everyone }"},
 		{name: "default names an unknown decision", mutate: func(o *gokind.Options) {
 			o.Default = &gokind.Default{Decision: "escalate", Reason: "x"}
 		}, errs: []string{`default names undeclared decision "escalate"`}},
@@ -305,7 +313,7 @@ func TestBuild(t *testing.T) {
 			o.Default = nil
 		}, errs: []string{"kind DeployApproval declares no decisions", "kind DeployApproval doesn't declare how many decisions it returns", "kind DeployApproval has no default decision"}},
 		{name: "decision declared twice", mutate: func(o *gokind.Options) {
-			o.Decisions = append(o.Decisions, gokind.Decision{Name: "deny", Payload: typeOf[None]()})
+			o.Decisions = append(o.Decisions, gokind.Decision{Name: "deny", Payload: typeOf[None](), Reasons: []string{"no_rule_matched"}})
 		}, errs: []string{`decision "deny" is declared twice`, `precedence names "deny" twice`}},
 
 		// Functions.

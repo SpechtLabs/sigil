@@ -16,7 +16,7 @@ decision  deny
 reason    no_rule_matched
 policy    p
 payload   (none)
-error     8:27 (p): index 9 out of range for a list of 1
+error     8:25 (p): index 9 out of range for a list of 1
 
 candidates
   (none)

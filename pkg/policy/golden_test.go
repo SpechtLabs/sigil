@@ -28,15 +28,34 @@ type (
 )
 
 var (
-	Read  = policy.Decision[policy.None]("read")
-	Write = policy.Decision[policy.None]("write")
-	Admin = policy.Decision[AdminData]("admin")
+	Read  = policy.NewDecision[policy.None]("read", "engineering_member", "everyone")
+	Write = policy.NewDecision[policy.None]("write", "platform_member")
+	Admin = policy.NewDecision[AdminData]("admin", "platform_member", "oncall")
 
 	Access = policy.NewKind[AccessInput]("AccessGrant", policy.WithVersion(1), policy.WithCollect(Read, Write, Admin))
 
 	// The same kind with a default grant, for the case where nothing fires.
 	AccessWithDefault = policy.NewKind[AccessInput]("AccessGrant", policy.WithVersion(1),
 		policy.WithCollect(Read, Write, Admin), policy.WithDefault(Read, "everyone"))
+
+	// A compartment kind: an actor may be granted A or B, never both, and
+	// a deny outranks either.
+	GrantA       = policy.NewDecision[policy.None]("grant_a", "member")
+	GrantB       = policy.NewDecision[policy.None]("grant_b", "member")
+	Suspend      = policy.NewDecision[policy.None]("deny", "suspended", "none")
+	Compartments = policy.NewKind[AccessInput]("Compartments", policy.WithVersion(1),
+		policy.WithDecisions(Suspend, GrantA, GrantB),
+		policy.WithExclusive(GrantA, GrantB),
+		policy.WithDefault(Suspend, "none"))
+
+	// A collect all kind with precedence: every review reaches the host
+	// unless a deny fired.
+	ReviewAny = policy.NewDecision[ReviewData]("review", "security", "owner")
+	ApproveHF = policy.NewDecision[ApproveData]("approve", "hotfix")
+	DenySoak  = policy.NewDecision[policy.None]("deny", "soak_too_short")
+	Reviews   = policy.NewKind[Input]("Reviews", policy.WithVersion(1),
+		policy.WithCollect(DenySoak, ReviewAny, ApproveHF),
+		policy.WithPrecedence(DenySoak, ReviewAny, ApproveHF))
 )
 
 // The testdata bundles the tables refer to.
@@ -92,6 +111,27 @@ var goldenCases = map[string]func(t *testing.T, src string) string{
 		{"an engineer", AccessInput{Actor: Actor{Teams: []string{"engineering"}}}},
 		{"nobody gets the default", AccessInput{}},
 		{"an assert failure hides the default", AccessInput{Actor: Actor{Teams: []string{"engineering", "platform"}}}},
+	}),
+	"conflicts": run(Deploy, "p", nil, []scenario[Input]{
+		{"one review", with(func(in *Input) { in.Actor.Teams = nil })},
+		{"the same reason with different payloads", eligible},
+		{"two unranked reasons of one decision", with(func(in *Input) { in.Release.Hotfix = true; in.Actor.Teams = nil })},
+	}),
+	"ranked": run(Deploy, "p", nil, []scenario[Input]{
+		{"the team rule alone", eligible},
+		{"both approvals fire and release_manager outranks payments_sre", with(func(in *Input) { in.Actor.Roles = []string{"release_manager"} })},
+		{"the same outcome from two branches folds", with(func(in *Input) { in.Actor.Roles = []string{"release_manager"}; in.Actor.Teams = nil })},
+	}),
+	"exclusive": run(Compartments, "p", nil, []scenario[AccessInput]{
+		{"compartment a", AccessInput{Actor: Actor{Name: "alice", Teams: []string{"a"}}}},
+		{"both compartments conflict", AccessInput{Actor: Actor{Name: "alice", Teams: []string{"a", "b"}}}},
+		{"a deny doesn't hide the conflict", AccessInput{Actor: Actor{Name: "alice", Teams: []string{"a", "b"}, Roles: []string{"suspended"}}}},
+		{"nobody", AccessInput{Actor: Actor{Name: "alice"}}},
+	}),
+	"collect_top": run(Reviews, "p", nil, []scenario[Input]{
+		{"every review at the top rank", with(func(in *Input) { in.Release.Hotfix = true })},
+		{"a deny leaves only itself", with(func(in *Input) { in.Release.Soak = time.Minute })},
+		{"one approval", with(func(in *Input) { in.Service.Tier = "standard"; in.Service.Owners = nil; in.Release.Hotfix = true })},
 	}),
 	"asserts": run(Deploy, "p", nil, []scenario[Input]{
 		{"every failing input assert is reported and no rule runs", with(func(in *Input) {
@@ -207,8 +247,7 @@ func renderResult(res *policy.Result, err error) string {
 	}
 	if err != nil {
 		b.WriteString("error     " + strings.ReplaceAll(err.Error(), "\n", "\n          ") + "\n")
-		var ae *policy.AssertionError
-		if errors.As(err, &ae) {
+		if ae, ok := errors.AsType[*policy.AssertionError](err); ok {
 			for _, f := range ae.Failures {
 				for _, c := range f.Outcome {
 					fmt.Fprintf(&b, "          %s: %s\n", f.Reason, c)

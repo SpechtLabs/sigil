@@ -48,8 +48,7 @@ func (b *builder) inputs(t reflect.Type) {
 // reporting tagged fields that can't be read.
 func (b *builder) taggedFields(t reflect.Type, where string) []tagged {
 	var out []tagged
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
+	for f := range t.Fields() {
 		tag, ok := f.Tag.Lookup("policy")
 		if !ok || tag == "-" {
 			continue
@@ -144,7 +143,7 @@ func (b *builder) structType(t reflect.Type, path string) types.Type {
 // decision turns a payload struct into a decision's fields. A tag's
 // `default=` option is parsed as a Sigil constant of the field's type.
 func (b *builder) decision(d Decision) {
-	dec := &kind.Decision{Name: d.Name}
+	dec := &kind.Decision{Name: d.Name, Reasons: d.Reasons}
 	b.kind.Decisions = append(b.kind.Decisions, dec)
 	if d.Payload == nil || d.Payload.Kind() != reflect.Struct {
 		b.errorf("a decision's payload is a struct with tagged fields, or policy.None", "decision %s: payload type %v is not a struct", d.Name, d.Payload)

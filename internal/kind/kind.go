@@ -28,7 +28,8 @@ type Kind struct {
 	Inputs     []*Input
 	Funcs      []*Func
 	Decisions  []*Decision
-	Precedence []string // decision names, highest first; empty for a collecting kind
+	Precedence []string    // decision names, highest first; empty without a ranking
+	Exclusive  [][]Outcome // sets of outcomes that can't fire together
 	Version    int
 	Accepts    int // the oldest version a document may pin; 0 accepts every version
 	Collect    Collect

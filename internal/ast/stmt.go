@@ -216,17 +216,55 @@ type FnDecl struct {
 	Span
 }
 
-// DecisionDecl is `decision name(reason: string, fields...)`.
+// DecisionDecl is `decision name(fields...) { reasons }`. The payload
+// fields are optional; the reason block isn't.
 type DecisionDecl struct {
-	Name   *Ident
-	Fields []*Field
+	Name    *Ident
+	Fields  []*Field
+	Reasons []*Ident
 	Span
 }
 
-// PrecedenceDecl is `precedence a > b > c`.
+// PrecedenceDecl is `precedence a > b > c`, ranking decisions, or
+// `precedence d: a > b`, ranking the reasons of decision d, which Scope
+// names.
 type PrecedenceDecl struct {
+	Scope *Ident // nil for the decision ranking
 	Names []*Ident
 	Span
+}
+
+// ExclusiveDecl is `exclusive a, b.x, c`: outcomes that can't fire
+// together.
+type ExclusiveDecl struct {
+	Outcomes []*OutcomeRef
+	Span
+}
+
+// OutcomeRef names a decision, or one reason of it: `grant_a` or
+// `approve.release_manager`.
+type OutcomeRef struct {
+	Decision *Ident
+	Reason   *Ident // nil for the whole decision
+}
+
+// Pos returns the start of the decision's name.
+func (o *OutcomeRef) Pos() token.Pos { return o.Decision.Pos() }
+
+// End returns the end of the reason, or of the decision without one.
+func (o *OutcomeRef) End() token.Pos {
+	if o.Reason != nil {
+		return o.Reason.End()
+	}
+	return o.Decision.End()
+}
+
+// String renders the reference as written.
+func (o *OutcomeRef) String() string {
+	if o.Reason != nil {
+		return o.Decision.Name + "." + o.Reason.Name
+	}
+	return o.Decision.Name
 }
 
 // CollectDecl is `collect one` or `collect all`.
@@ -274,5 +312,6 @@ func (*InputDecl) declNode()      {}
 func (*FnDecl) declNode()         {}
 func (*DecisionDecl) declNode()   {}
 func (*PrecedenceDecl) declNode() {}
+func (*ExclusiveDecl) declNode()  {}
 func (*CollectDecl) declNode()    {}
 func (*DefaultDecl) declNode()    {}

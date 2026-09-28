@@ -48,7 +48,7 @@ func (k *Kind) Source() string {
 		b.WriteString("\n")
 	}
 	for _, d := range k.Decisions {
-		b.WriteString(d.Signature() + "\n")
+		b.WriteString(d.Source())
 	}
 
 	b.WriteString("\n")
@@ -60,6 +60,18 @@ func (k *Kind) Source() string {
 	}
 	if len(k.Precedence) > 0 {
 		b.WriteString("precedence " + strings.Join(k.Precedence, " > ") + "\n")
+	}
+	for _, d := range k.Decisions {
+		if len(d.Ranked) > 0 {
+			b.WriteString("precedence " + d.Name + ": " + strings.Join(d.Ranked, " > ") + "\n")
+		}
+	}
+	for _, set := range k.Exclusive {
+		names := make([]string, len(set))
+		for i, o := range set {
+			names[i] = o.String()
+		}
+		b.WriteString("exclusive " + strings.Join(names, ", ") + "\n")
 	}
 	if k.Default != nil {
 		b.WriteString(k.Default.Source(k.Decision(k.Default.Decision)) + "\n")
@@ -87,7 +99,7 @@ func (d *Default) Source(decl *Decision) string {
 	sort.Strings(extra)
 	names = append(names, extra...)
 	args := make([]string, 0, 1+len(names))
-	args = append(args, strconv.Quote(d.Reason))
+	args = append(args, d.Reason)
 	for _, name := range names {
 		args = append(args, name+": "+constant.Format(d.Args[name]))
 	}

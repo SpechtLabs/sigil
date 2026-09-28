@@ -13,11 +13,14 @@ input flag: bool
 fn keys(map<string, string>,) -> list<string>
 fn now() -> timestamp
 
-decision allow(reason: string, weights: map<string, int> = {}, tags: list<string> = [],)
+decision allow(weights: map<string, int> = {}, tags: list<string> = [],) {
+  none
+  ok
+}
 
 collect one
 precedence allow
-default allow("none")
+default allow(none)
 
 ---
 
@@ -30,5 +33,5 @@ param limit: int = -3
 param timeout: duration = 1h + 30m
 
 when flag {
-  allow("ok", weights: m, tags: names,)
+  allow(ok, weights: m, tags: names,)
 }

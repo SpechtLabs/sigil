@@ -8,17 +8,17 @@ use deploy.common.{cleared}
 // `pub` on a let inside a body; the let is kept.
 when cleared {
   pub let tmp = release.soak
-  deny("tmp")
+  deny(tmp)
 }
 
 // A chained comparison; the statement is skipped, the next one isn't.
 when release.soak < min_soak < 2h {
-  deny("chain")
+  deny(chain)
 }
 
 // An unclosed parenthesis.
 when (release.hotfix or cleared {
-  deny("paren")
+  deny(paren)
 }
 
 // A bare name where a statement should be.
@@ -26,12 +26,12 @@ guardrails
 
 // A second positional argument.
 when cleared {
-  review("owner", "extra", approvers: approvers)
+  review(owner, "extra", approvers: approvers)
 }
 
 // Everything after the errors still parses.
 when cleared {
-  approve("fine", bake: 15m)
+  approve(fine, bake: 15m)
 }
 
 // The separator glued into arithmetic. It ends the document, so this

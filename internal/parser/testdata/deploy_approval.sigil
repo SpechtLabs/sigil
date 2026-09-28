@@ -25,10 +25,28 @@ input environment: string
 
 fn split(string, string) -> list<string>
 
-decision deny(reason: string)
-decision review(reason: string, approvers: list<string>)
-decision approve(reason: string, bake: duration = 1h)
+decision deny {
+  no_rule_matched
+  tmp
+  chain
+  paren
+  unclosed
+  not_eligible
+  soak_too_short
+  no_rules_in_modules
+}
+decision review(approvers: list<string>) {
+  cluster_access
+  owner
+  service_owner
+}
+decision approve(bake: duration = 1h) {
+  fine
+  payments_sre
+  release_manager
+}
 
 collect one
 precedence deny > review > approve
-default deny("no_rule_matched")
+precedence approve: release_manager > payments_sre > fine
+default deny(no_rule_matched)

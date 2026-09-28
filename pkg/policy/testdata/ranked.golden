@@ -1,0 +1,38 @@
+== compile p ==
+ok
+
+== the team rule alone ==
+decision  approve
+reason    payments_sre
+policy    p
+payload   bake: 15m0s
+
+candidates
+  approve  payments_sre       6:3 (p)  bake: 15m0s
+           "payments-sre" in actor.teams
+
+== both approvals fire and release_manager outranks payments_sre ==
+decision  approve
+reason    release_manager
+policy    p
+payload   bake: 1h0m0s
+
+candidates
+  approve  release_manager    10:3 (p)  bake: 1h0m0s
+           "release_manager" in actor.roles
+  approve  release_manager    14:3 (p)  bake: 1h0m0s
+           "release_manager" in actor.roles and service.tier == "critical"
+  approve  payments_sre       6:3 (p)  bake: 15m0s
+           "payments-sre" in actor.teams
+
+== the same outcome from two branches folds ==
+decision  approve
+reason    release_manager
+policy    p
+payload   bake: 1h0m0s
+
+candidates
+  approve  release_manager    10:3 (p)  bake: 1h0m0s
+           "release_manager" in actor.roles
+  approve  release_manager    14:3 (p)  bake: 1h0m0s
+           "release_manager" in actor.roles and service.tier == "critical"

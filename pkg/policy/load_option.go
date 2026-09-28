@@ -1,5 +1,7 @@
 package policy
 
+import "maps"
+
 // Params binds the root policy's params from Go, by name. Every value
 // is type-checked against the param's declaration when the policy is
 // compiled, like an invocation's arguments would be. A value is a Go
@@ -23,7 +25,5 @@ type loadOptions struct {
 }
 
 func (p Params) apply(o *loadOptions) {
-	for name, v := range p {
-		o.params[name] = v
-	}
+	maps.Copy(o.params, p)
 }

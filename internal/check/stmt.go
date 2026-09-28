@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spechtlabs/sigil/internal/ast"
 	"github.com/spechtlabs/sigil/internal/constant"
@@ -418,23 +419,7 @@ func (c *Checker) constructor(s *ast.CallStmt, env *Env) {
 	}
 	c.info.Constructors[s] = d
 
-	switch reason := s.Positional.(type) {
-	case nil:
-		c.errorf(s, fmt.Sprintf("write `%s(\"<reason>\")`; %s is declared as: %s", d.Name, d.Name, d.Signature()),
-			"decision %s needs a reason", d.Name)
-	case *ast.StringLit:
-		c.record(reason, types.String)
-		switch {
-		case reason.Raw:
-			c.errorf(reason, "raw strings are for patterns; write the reason as \"...\"", "decision reason must be a double-quoted string")
-		case reason.Value == "":
-			c.errorf(reason, "the reason is a stable identifier for metrics and grep, like `soak_too_short`", "decision reason can't be empty")
-		}
-	default:
-		c.errorf(s.Positional, fmt.Sprintf("put dynamic text in a `detail` field; declare `detail: string = \"\"` on decision %s in the kind", d.Name),
-			"decision reason must be a string literal")
-		c.Expr(s.Positional, env)
-	}
+	c.reason(s, d, env)
 
 	given := map[string]bool{}
 	for _, arg := range s.Args {
@@ -458,6 +443,37 @@ func (c *Checker) constructor(s *ast.CallStmt, env *Env) {
 		if !given[f.Name] && !f.HasDefault {
 			c.errorf(s, fmt.Sprintf("%s is declared as: %s", d.Name, d.Signature()), "decision %s needs field %q", d.Name, f.Name)
 		}
+	}
+}
+
+// reason checks a constructor's first argument: a bare name, one of the
+// decision's declared reasons. The name is a reason, not a value, so it's
+// never resolved against the document's names.
+func (c *Checker) reason(s *ast.CallStmt, d *kind.Decision, env *Env) {
+	declares := fmt.Sprintf("%s declares: %s", d.Name, strings.Join(d.Reasons, ", "))
+	switch r := s.Positional.(type) {
+	case nil:
+		c.errorf(s, fmt.Sprintf("write `%s(<reason>)`; %s", d.Name, declares), "decision %s needs a reason", d.Name)
+	case *ast.Ident:
+		if d.HasReason(r.Name) {
+			c.record(r, types.Decision)
+			return
+		}
+		help := declares
+		if closest, ok := nearest(r.Name, d.Reasons); ok {
+			help = fmt.Sprintf("did you mean `%s`? %s", closest, declares)
+		}
+		c.errorf(r, help, "decision %s has no reason `%s`", d.Name, r.Name)
+	case *ast.StringLit:
+		help := fmt.Sprintf("reasons are declared names, not strings; %s", declares)
+		if d.HasReason(r.Value) {
+			help = fmt.Sprintf("reasons are declared names, not strings; write `%s(%s)`", d.Name, r.Value)
+		}
+		c.errorf(r, help, "decision reason must be a bare name")
+	default:
+		c.errorf(s.Positional, fmt.Sprintf("a reason is one of the names the kind declares; put dynamic text in a `detail` field. %s", declares),
+			"decision reason must be a bare name")
+		c.Expr(s.Positional, env)
 	}
 }
 

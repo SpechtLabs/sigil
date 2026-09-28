@@ -1,0 +1,19 @@
+// A collect all kind with precedence returns every candidate at the top
+// rank: every review when no deny fired, and nothing below it.
+policy p: Reviews@1
+
+when service.tier == "critical" {
+  review(security, approvers: ["security-leads"])
+}
+
+when "payments" in service.owners {
+  review(owner, approvers: ["payments-leads"])
+}
+
+when release.hotfix {
+  approve(hotfix)
+}
+
+when release.soak < 1h {
+  deny(soak_too_short)
+}
