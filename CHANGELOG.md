@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.3.0](https://github.com/SpechtLabs/sigil/compare/v0.2.1...v0.3.0) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **kind:** reject tag options on input fields and accepts below 1
+* **explain:** name every document by its full name and count modules separately
+
+### Features
+
+* **cli:** honor --output in every command ([0089276](https://github.com/SpechtLabs/sigil/commit/0089276167fad5fdb042f35e6befbe2b28aef10e))
+* **examples:** deploygate, a Go host service with both kinds, an LGTM stack and ginkgo suites ([#46](https://github.com/SpechtLabs/sigil/issues/46)) ([6e728fe](https://github.com/SpechtLabs/sigil/commit/6e728fe4cef3a24c35287d768b0164f9ffd73b52))
+* **examples:** k6 load tests, continuous profiling and a demo CLI for deploygate ([#49](https://github.com/SpechtLabs/sigil/issues/49)) ([ab85250](https://github.com/SpechtLabs/sigil/commit/ab8525044253b8c2ae0daca1d29ef2ec0ff176d1))
+
+
+### Bug Fixes
+
+* **check:** reject decisions as map values ([0089276](https://github.com/SpechtLabs/sigil/commit/0089276167fad5fdb042f35e6befbe2b28aef10e))
+* **check:** report `==` and `!=` on lists instead of failing to infer an empty literal ([0089276](https://github.com/SpechtLabs/sigil/commit/0089276167fad5fdb042f35e6befbe2b28aef10e))
+* **cli:** point an unbound host function at the host's own binary ([0089276](https://github.com/SpechtLabs/sigil/commit/0089276167fad5fdb042f35e6befbe2b28aef10e))
+* **devtool:** correct the examples in devtool --help ([0089276](https://github.com/SpechtLabs/sigil/commit/0089276167fad5fdb042f35e6befbe2b28aef10e))
+* **explain:** name every document by its full name and count modules separately ([0089276](https://github.com/SpechtLabs/sigil/commit/0089276167fad5fdb042f35e6befbe2b28aef10e))
+* **kind:** reject tag options on input fields and accepts below 1 ([0089276](https://github.com/SpechtLabs/sigil/commit/0089276167fad5fdb042f35e6befbe2b28aef10e))
+* **lexer:** explain hex, exponent and separator notation in number literals ([0089276](https://github.com/SpechtLabs/sigil/commit/0089276167fad5fdb042f35e6befbe2b28aef10e))
+
+
+### Performance Improvements
+
+* **eval:** reduce allocations and gate benchmark regressions ([#48](https://github.com/SpechtLabs/sigil/issues/48)) ([01d9f72](https://github.com/SpechtLabs/sigil/commit/01d9f72d6a0d1281451b27f1ec73aa9ab0965e7a))
+
 ## [0.2.1](https://github.com/SpechtLabs/sigil/compare/v0.2.0...v0.2.1) (2026-09-28)
 
 
