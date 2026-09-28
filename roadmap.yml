@@ -489,8 +489,9 @@ milestones:
         description: |
           Native Go fuzz targets include arbitrary source, grammar fixtures, valid generated
           contracts and semantic oracles for arithmetic, collection operators and resolution.
-          `mise run fuzz` discovers every target. CI runs smoke campaigns and preserves failing
-          inputs; the scheduled workflow retains its corpus and campaign logs.
+          `mise run fuzz` discovers every target. CI runs bounded, five-second smoke tests and
+          preserves failing inputs. Weekly hour-per-target campaigns run from main, retain
+          their corpus and logs, and open or update a GitHub issue when they fail.
       - title: Day-long fuzz campaign
         state: TODO
         requirement: MUST

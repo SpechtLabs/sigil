@@ -21,12 +21,15 @@ env:
   MISE_TASK_RUN_AUTO_INSTALL: "false"
 
 concurrency:
-  group: extended-fuzz-${{ github.ref }}
+  group: extended-fuzz-main
   cancel-in-progress: false
 
 jobs:
   targets:
+    # Scheduled runs use main; restrict manual dispatches to main as well.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       packages: ${{ steps.discover.outputs.packages }}
     steps:
@@ -93,3 +96,29 @@ jobs:
           path: |
             fuzz.log
             **/testdata/fuzz/**
+
+  report:
+    name: Report failed campaign
+    needs: [targets, fuzz]
+    # A separate job also reports setup failures and timed-out fuzz jobs.
+    if: >-
+      always() && github.ref == 'refs/heads/main' &&
+      (needs.targets.result == 'failure' || needs.fuzz.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Open or update failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGETS_RESULT: ${{ needs.targets.result }}
+          FUZZ_RESULT: ${{ needs.fuzz.result }}
+          FUZZTIME: ${{ inputs.duration || '60m' }}
+        run: bash scripts/report-fuzz-failure.sh
