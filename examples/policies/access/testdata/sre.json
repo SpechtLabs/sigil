@@ -1,0 +1,9 @@
+{
+  "actor": {
+    "name": "linus",
+    "groups": ["payments-sre"],
+    "clearance": "standard"
+  },
+  "team": "payments",
+  "environment": "production"
+}

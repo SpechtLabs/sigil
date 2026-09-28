@@ -1,0 +1,10 @@
+policy checkout.production: DeployApproval@1
+
+use deploy.guardrails
+use deploy.production
+
+assert("named_actor", actor.name != "")
+
+guardrails()
+
+production(approvers: ["checkout-leads"], tiers: ["standard"])

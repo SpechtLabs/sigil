@@ -1,0 +1,5 @@
+{
+  "actor": {"name": "grace", "groups": ["marketing"], "clearance": ""},
+  "team": "payments",
+  "environment": "production"
+}

@@ -1,0 +1,14 @@
+module access.common: AccessGrant@1
+
+// Sigil has no string concatenation, so a policy can't build "<team>-sre"
+// from team, and a glob pattern must be a literal. The platform lists each
+// team's on-call rotation group instead, and a team without an entry has no
+// on-call grant: the lookup is guarded, since a missing key reads as "".
+pub let sre_groups = {"payments": "payments-sre", "checkout": "checkout-sre"}
+
+pub let team_member = team in actor.groups
+pub let on_call = sre_groups has team and sre_groups[team] in actor.groups
+pub let platform_member = "platform" in actor.groups
+pub let admin_cleared = actor.clearance == "admin"
+pub let break_glass = "break-glass" in actor.groups
+pub let compliance_member = "compliance" in actor.groups

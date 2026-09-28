@@ -18,6 +18,7 @@ export const navbar = defineNavbarConfig([
     icon: "mdi:compass",
     items: [
       { text: "Per-team policies", link: "/guides/team-policies", icon: "mdi:account-group" },
+      { text: "The example service", link: "/guides/example-service", icon: "mdi:rocket-launch-outline" },
       { text: "Common patterns", link: "/guides/patterns", icon: "mdi:puzzle" },
       { text: "Policies in a ConfigMap", link: "/guides/configmaps", icon: "mdi:kubernetes" },
       { text: "Evolve a kind safely", link: "/guides/evolve-a-kind", icon: "mdi:source-branch" },

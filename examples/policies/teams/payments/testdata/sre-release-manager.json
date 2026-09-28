@@ -1,0 +1,21 @@
+{
+  "release": {"soak": "6h", "hotfix": false},
+  "service": {
+    "name": "ledger",
+    "tier": "critical",
+    "owners": ["payments"],
+    "labels": {
+      "app.kubernetes.io/managed-by": "argocd",
+      "platform.example.com/lifecycle": "ga",
+      "regions": "eu,us",
+      "compliance": "pci"
+    }
+  },
+  "actor": {
+    "name": "grace",
+    "teams": ["payments-sre"],
+    "roles": ["deployer", "release_manager"],
+    "regions": ["eu", "us"]
+  },
+  "environment": "production"
+}

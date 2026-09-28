@@ -155,7 +155,17 @@ run = "goreleaser build --snapshot --clean"
 
 [tasks.check]
 description = "The definition of done: every gate CI runs on the Go code"
-depends = ["lint", "mod-tidy", "test", "fuzz", "yaml-lint", "actionlint", "shell-lint", "workflow-test", "release-check"]
+depends = [
+  "lint",
+  "mod-tidy",
+  "test",
+  "fuzz",
+  "yaml-lint",
+  "actionlint",
+  "shell-lint",
+  "workflow-test",
+  "release-check",
+]
 
 [tasks.update-gha]
 description = "Pin GitHub Actions to commit SHAs (Renovate keeps them current afterwards)"

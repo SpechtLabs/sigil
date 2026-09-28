@@ -1,0 +1,5 @@
+{
+  "actor": {"name": "ada", "groups": ["payments"], "clearance": ""},
+  "team": "payments",
+  "environment": "production"
+}

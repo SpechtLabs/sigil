@@ -112,6 +112,58 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  # examples/ is a Go module of its own, so the lint and test jobs above stop at
+  # its go.mod. This job runs the same gates inside it. It doesn't start the
+  # compose stack or build snapshots, which need Docker and minutes. The build
+  # job doesn't wait for it, but release.yaml calls this whole workflow, so a
+  # broken example still blocks a release: the docs point at these files.
+  examples:
+    name: Examples
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: go golangci-lint goreleaser
+          working_directory: examples
+
+      # Same key as the lint job: custom-gcl is built from the root config and
+      # lints both modules.
+      - name: Restore custom-gcl cache
+        id: custom-gcl-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: custom-gcl
+          key: custom-gcl-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.custom-gcl.yml', '.mise.toml') }}
+
+      - name: Lint Go
+        if: steps.custom-gcl-cache.outputs.cache-hit != 'true'
+        run: mise run lint
+
+      - name: Lint Go with cached custom-gcl
+        if: steps.custom-gcl-cache.outputs.cache-hit == 'true'
+        run: |
+          chmod +x ../custom-gcl
+          ../custom-gcl run --config ../.golangci.yaml --build-tags e2e ./...
+
+      # Includes every policy test file, through policytest.
+      - name: Run tests
+        run: mise run test
+
+      # sigilc check with the platform as the trusted source, and sigilc test:
+      # what a policy repository's CI runs.
+      - name: Check policies
+        run: mise run policies
+
+      - name: Validate GoReleaser config
+        run: mise run release-check
+
   build:
     name: Build with GoReleaser
     runs-on: ubuntu-latest
