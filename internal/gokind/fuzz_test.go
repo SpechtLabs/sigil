@@ -59,7 +59,9 @@ func FuzzDecodeInput(f *testing.F) {
 		} else if err := yaml.Unmarshal(src, &raw); err != nil {
 			return
 		}
-		before, _ := json.Marshal(raw)
+		// fmt sorts map keys by type and value. JSON can't: YAML may yield the
+		// keys 1 and "1" in one map, and both encode as "1" in random order.
+		before := fmt.Sprintf("%#v", raw)
 		first, err := b.DecodeInput(k, raw)
 		second, again := b.DecodeInput(k, raw)
 		if (err == nil) != (again == nil) || err != nil && err.Error() != again.Error() {
@@ -76,8 +78,7 @@ func FuzzDecodeInput(f *testing.F) {
 				}
 			}
 		}
-		after, _ := json.Marshal(raw)
-		if !bytes.Equal(before, after) {
+		if fmt.Sprintf("%#v", raw) != before {
 			t.Fatal("decoder modified the input document")
 		}
 	})
