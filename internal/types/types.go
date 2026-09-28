@@ -8,7 +8,8 @@
 package types
 
 // Type is a Sigil type. The implementations are Basic, *List, *Map,
-// *Optional and *Struct; nothing outside this package can add one.
+// *Optional, *Struct and *Candidate; nothing outside this package can add
+// one.
 type Type interface {
 	// String returns the type as written in a kind file.
 	String() string
@@ -38,6 +39,9 @@ func Identical(a, b Type) bool {
 	case *Struct:
 		y, ok := b.(*Struct)
 		return ok && x.Name == y.Name
+	case *Candidate:
+		y, ok := b.(*Candidate)
+		return ok && x.Decision == y.Decision
 	}
 	return false
 }

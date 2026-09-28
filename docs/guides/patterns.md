@@ -156,7 +156,14 @@ The second rule matters. When the requestor is the only approver, the filter lea
 
 The policy only proposes who may approve. The approval itself happens in the host, after evaluation, so the host still has to reject a self-approval. The policy's filter is what keeps the requestor from being asked in the first place.
 
-A guardrail that holds every team's policy to this rule would need to read the approvers out of the `review` in `outcome`, and asserts can't read payloads yet. See [the roadmap](/project/roadmap/) for the plan.
+To hold every team's policy to the rule, not just this one, put an assert on the reviews in `outcome` into a policy the host [requires](/reference/evaluation/#required-policies):
+
+```sigil
+assert("no_self_review",
+  all r in outcome.review: actor.name not in r.approvers)
+```
+
+`outcome.review` is every review the host gets back, with its payload (see [Candidates](/reference/expressions/#candidates)). Write `all`, not `any`: in a collecting kind that returns several reviews, `any` would let one clean review hide a self-review next to it. A team policy that forgets the filter then fails the evaluation with the offending approvers in the error, instead of quietly asking the requestor to approve their own change.
 
 ## Write time-based rules
 

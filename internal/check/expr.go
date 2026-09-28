@@ -6,7 +6,15 @@ import (
 	"strings"
 
 	"github.com/spechtlabs/sigil/internal/ast"
+	"github.com/spechtlabs/sigil/internal/kind"
 	"github.com/spechtlabs/sigil/internal/types"
+)
+
+const (
+	// candidateHelp says what a policy can do with candidates.
+	candidateHelp = "candidates can only be ranged over with `any`, `all` or `filter`, and read field by field, like `all r in outcome.<decision>: r.<field> ...`"
+	// candidateEquality is the help for comparing candidates.
+	candidateEquality = "candidates have no equality; compare a field of each, such as `reason`"
 )
 
 // expr types x, using hint, when given, to type an empty list or map
@@ -135,6 +143,8 @@ func (c *Checker) list(x *ast.ListLit, env *Env, hint types.Type) types.Type {
 		switch {
 		case t == types.Invalid:
 			return types.Invalid
+		case c.looseCandidate(e, t, "a list element"):
+			return types.Invalid
 		case elem == nil || untyped(elem) && !untyped(t):
 			// The first typed element sets the type; earlier empty ones follow it.
 			if !c.resolveEarlier(x.Elems[:i], t, "every element of a list has the same type") {
@@ -209,6 +219,8 @@ func (c *Checker) mapLit(x *ast.MapLit, env *Env, hint types.Type) types.Type {
 		vt := c.expr(e.Value, env, nil)
 		switch {
 		case vt == types.Invalid:
+			return types.Invalid
+		case c.looseCandidate(e.Value, vt, "a map value"):
 			return types.Invalid
 		case vt == types.Decision:
 			// A missing key reads as the value type's zero value, and a
@@ -338,6 +350,9 @@ func (c *Checker) comparison(x *ast.BinaryExpr, env *Env, allowed func(types.Typ
 	for _, side := range sides {
 		if !allowed(elemOf(side.t)) {
 			help := why
+			if types.IsCandidates(side.t) {
+				help = candidateEquality
+			}
 			if hint := c.emptinessHint(x, l, r, env); hint != "" {
 				help = hint
 			}
@@ -489,7 +504,11 @@ func (c *Checker) comparable(x *ast.BinaryExpr, elem types.Type) bool {
 	if types.IsComparable(elem) {
 		return true
 	}
-	c.errorf(x, "structs have no equality; compare a field that identifies them, such as a name",
+	help := "structs have no equality; compare a field that identifies them, such as a name"
+	if types.IsCandidates(elem) {
+		help = candidateEquality
+	}
+	c.errorf(x, help,
 		"`%s` can't compare elements of type %s", x.Op, elem)
 	return false
 }
@@ -748,6 +767,15 @@ func (c *Checker) field(x *ast.SelectorExpr, base types.Type, env *Env) (types.T
 		}
 		c.errorf(x.Sel, help, "unknown field %q on type %s", x.Sel.Name, decl.Name)
 		return types.Invalid, false
+	case *types.List:
+		if _, ok := x.X.(*ast.Outcome); ok {
+			return c.candidates(x, env), false
+		}
+		if cand, ok := t.Elem.(*types.Candidate); ok {
+			return c.narrow(x, t, cand, env), false
+		}
+	case *types.Candidate:
+		return c.candidateField(x, t), false
 	case *types.Optional:
 		if _, ok := t.Elem.(*types.Struct); ok {
 			c.errorf(x.Sel, fmt.Sprintf("read the field with `%s?.%s`", operand, x.Sel.Name),
@@ -787,6 +815,86 @@ func (c *Checker) outcomeRef(x *ast.SelectorExpr, env *Env) types.Type {
 	return types.Invalid
 }
 
+// candidates types `outcome.<decision>`: the candidates of one decision
+// that the host gets back, each with the decision's payload fields and
+// its reason.
+func (c *Checker) candidates(x *ast.SelectorExpr, env *Env) types.Type {
+	k := env.Kind()
+	d := k.Decision(x.Sel.Name)
+	if d == nil {
+		names := make([]string, len(k.Decisions))
+		for i, d := range k.Decisions {
+			names[i] = d.Name
+		}
+		help := "`outcome.<decision>` reads the candidates of one decision; the kind declares: " + strings.Join(names, ", ")
+		if closest, found := nearest(x.Sel.Name, names); found {
+			help = fmt.Sprintf("did you mean `%s`? %s", closest, help)
+		}
+		c.errorf(x.Sel, help, "the kind declares no decision `%s`", x.Sel.Name)
+		return types.Invalid
+	}
+	return &types.List{Elem: candidateType(d)}
+}
+
+// candidateType is the type of one candidate of d: its payload fields
+// and its reason.
+func candidateType(d *kind.Decision) *types.Candidate {
+	fields := make([]*types.Field, len(d.Fields))
+	for i, f := range d.Fields {
+		fields[i] = &types.Field{Name: f.Name, Type: f.Type}
+	}
+	return types.NewCandidate(d.Name, fields)
+}
+
+// narrow types `<candidates>.<reason>`, the candidates of l with one of
+// their decision's reasons. A payload field in that place is a field of
+// each candidate, which the error says how to read.
+func (c *Checker) narrow(x *ast.SelectorExpr, l *types.List, cand *types.Candidate, env *Env) types.Type {
+	d := env.Kind().Decision(cand.Decision)
+	if d.HasReason(x.Sel.Name) {
+		return l
+	}
+	help := fmt.Sprintf("%s declares: %s", d.Name, strings.Join(d.Reasons, ", "))
+	if cand.Field(x.Sel.Name) != nil {
+		v := freeName(env)
+		help = fmt.Sprintf("`%s` is a field of each candidate, not of the list; read it per candidate, like `all %s in %s: %s.%s ...`",
+			x.Sel.Name, v, ast.Sprint(x.X), v, x.Sel.Name)
+	} else if closest, found := nearest(x.Sel.Name, d.Reasons); found {
+		help = fmt.Sprintf("did you mean `%s`? %s", closest, help)
+	}
+	c.errorf(x.Sel, help, "decision %s has no reason `%s`", d.Name, x.Sel.Name)
+	return types.Invalid
+}
+
+// candidateField types a field of one candidate: a payload field of its
+// decision, or `reason`.
+func (c *Checker) candidateField(x *ast.SelectorExpr, cand *types.Candidate) types.Type {
+	if f := cand.Field(x.Sel.Name); f != nil {
+		return f.Type
+	}
+	names := make([]string, len(cand.Fields))
+	for i, f := range cand.Fields {
+		names[i] = f.Name
+	}
+	help := fmt.Sprintf("%s has: %s", aOrAn(cand.String()), cand.FieldNames())
+	if closest, found := nearest(x.Sel.Name, names); found {
+		help = fmt.Sprintf("did you mean %q? %s", closest, help)
+	}
+	c.errorf(x.Sel, help, "unknown field %q on %s", x.Sel.Name, aOrAn(cand.String()))
+	return types.Invalid
+}
+
+// looseCandidate reports a candidate, or a list of them, collected into
+// a literal as what, where the order and equality candidates don't have
+// could leak.
+func (c *Checker) looseCandidate(e ast.Expr, t types.Type, what string) bool {
+	if !types.IsCandidates(t) {
+		return false
+	}
+	c.errorf(e, candidateHelp, "%s can't be %s", describe(t), what)
+	return true
+}
+
 func (c *Checker) closestField(s *types.Struct, name string) (string, bool) {
 	names := make([]string, len(s.Fields))
 	for i, f := range s.Fields {
@@ -810,6 +918,11 @@ func (c *Checker) indexOf(x *ast.IndexExpr, base types.Type, env *Env) types.Typ
 		}
 		return t.Value
 	case *types.List:
+		if _, ok := t.Elem.(*types.Candidate); ok {
+			c.errorf(x, fmt.Sprintf("the order of candidates isn't part of the outcome; test every one with `all %s in %s: ...`, or `any`", freeName(env), ast.Sprint(x.X)),
+				"`%s` is a list of candidates, which can't be indexed", ast.Sprint(x.X))
+			return types.Invalid
+		}
 		if c.ExprAs(x.Index, env, types.Int) == types.Invalid {
 			return types.Invalid
 		}
@@ -932,4 +1045,12 @@ func article(e Entity) string {
 		return "an"
 	}
 	return "a"
+}
+
+// aOrAn prefixes s with the indefinite article its first letter takes.
+func aOrAn(s string) string {
+	if s != "" && strings.ContainsRune("aeiou", rune(s[0])) {
+		return "an " + s
+	}
+	return "a " + s
 }

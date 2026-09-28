@@ -22,12 +22,13 @@ var update = flag.Bool("update", false, "rewrite the golden files under testdata
 // golden files.
 func TestEval(t *testing.T) {
 	const (
-		access = "access"
-		grants = "grants"
+		access  = "access"
+		grants  = "grants"
+		reviews = "reviews"
 	)
 	tests := []struct {
 		name   string
-		kind   string // access or grants
+		kind   string // access, grants or reviews
 		input  string // under testdata/inputs, or "-" for stdin
 		stdin  string
 		policy string
@@ -54,6 +55,7 @@ func TestEval(t *testing.T) {
 		{name: "outcome_assert", kind: grants, input: "writeonly.json"},
 		{name: "outcome_assert_json", kind: grants, input: "writeonly.json", format: output.JSON},
 		{name: "outcome_assert_yaml", kind: grants, input: "writeonly.json", format: output.YAML},
+		{name: "candidate_assert", kind: reviews, input: "selfreview.json"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

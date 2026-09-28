@@ -64,6 +64,14 @@ func TestFailureText(t *testing.T) {
 			},
 		},
 		{
+			name: "an outcome assert shows the payloads it read",
+			f: &Failure{Kind: FailAssertion, Asserts: []Assert{
+				{Reason: "no_self_review", Position: "p:1:1", Outcome: []Entry{{Decision: "review", Reason: "a", Position: "p:3:3", values: []field{{name: "approvers", value: []any{"alice", "bob"}}}}}},
+			}},
+			wantHeadline: "an assert failed",
+			wantText:     []string{"  the outcome it read:\n    review(a)  p:3:3\n      approvers = [\"alice\", \"bob\"]\n"},
+		},
+		{
 			name:         "one assert",
 			f:            &Failure{Kind: FailAssertion, Asserts: []Assert{{Reason: "a", Position: "p:1:1"}}},
 			wantHeadline: "an assert failed",

@@ -228,6 +228,7 @@ func (f *Failure) text(t pretty.Theme, width int) string {
 			}
 			for _, c := range a.Outcome {
 				b.WriteString("    " + row(t, width, c, c.location(), false) + "\n")
+				writePayload(&b, t, "      ", c)
 			}
 		}
 	case FailConflict:

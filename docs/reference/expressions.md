@@ -362,7 +362,30 @@ Membership over `outcome` matches rather than compares: a bare decision is in `o
 
 `outcome` can only appear in an `assert` condition. A `when` condition or a `let` that read it could make a rule depend on its own result: `when admin not in outcome { admin(x) }` would fire exactly when it doesn't. See [Assertions](/reference/evaluation/#assertions) for when asserts run.
 
-Decision values can be compared with `==` and `!=`, tested with `in` and the list operators, and collected in lists, and nothing else. A decision can't be a map value: a missing key reads as the zero value of the value type, and a decision has none, so `{"a": approve}` is a compile error. Reading a payload through `outcome` isn't possible; see [Open questions](/project/open-questions/#decision-values-and-outcome).
+Decision values can be compared with `==` and `!=`, tested with `in` and the list operators, and collected in lists, and nothing else. A decision can't be a map value: a missing key reads as the zero value of the value type, and a decision has none, so `{"a": approve}` is a compile error. To read what a decision carries, go through its candidates.
+
+### Candidates
+
+`outcome.review` is the list of `review` candidates the host gets back, each with the decision's payload fields and its `reason`. The decision's name picks the payload type, so every field is checked against the kind:
+
+```sigil
+assert("no_self_review",
+  all r in outcome.review: requestor.name not in r.approvers)
+
+assert("short_admin_grants",
+  all g in outcome.admin: g.ttl <= 8h)
+```
+
+A reason after the decision narrows the list to that reason, `outcome.review.manager_approval`, and on one candidate `r.reason` is a [decision value](#decision-values-and-outcome) with its reason, so `r.reason == review.manager_approval` and `r.reason in [review]` both work. A kind can't declare a payload field called `reason`, so the name is always free. A decision without a payload gives candidates that only have `reason`.
+
+The list holds exactly the candidates the host acts on, the same ones `Decision[T].MatchAll` returns in Go:
+
+- In a `collect one` kind, at most one: the winner, or the default when nothing fired and the default is of that decision. Under `precedence`, a candidate that lost to a higher rank isn't in it, because the host never sees it.
+- In a [collecting kind](/reference/kind-files/#collecting-kinds), every candidate of the decision at the top rank, after equal ones fold. Two reviews with different approvers are both there.
+
+Because a collecting kind can return several candidates of one decision, a guardrail says `all`: with `any`, one clean review would hide a self-review next to it. `all` over no candidates is true, which is what a guardrail wants when the decision didn't fire.
+
+Candidates have no equality and no order. The order a collecting kind returns them in falls back to source position, and an assert that read `outcome.review[0]` would change its answer when someone moved a rule. So a policy can range over a list of candidates with `any`, `all` or [`filter`](#filters), and read the fields of each one, and nothing else: indexing the list, comparing candidates with `==` or `in`, or putting one into a list or map literal is a compile error that says so. A filter over candidates is still a list of candidates, with the same rules. Like `outcome`, candidates only exist in `assert` conditions.
 
 ## Evaluation order
 

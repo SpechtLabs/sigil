@@ -25,6 +25,7 @@ Sigil is statically typed. The compiler knows the type of every input, param, le
 | Struct types   | none           | all fields zero | Declared in the kind, reached with `.field`                             |
 | Ordered types  | none           | none           | Planned: opaque, declared in the kind, ordered by the host               |
 | `decision`     | `approve`      | none           | A decision's name as a value; only useful in `assert`                    |
+| Candidates     | none           | none           | `outcome.review` in an `assert`: one decision's payload and reason. Ranged over, never indexed |
 
 Zero values matter in one place: a missing map key. `service.labels["absent"]` is `""`, and indexing a missing key in a `map<string, int>` gives `0`.
 
@@ -75,6 +76,12 @@ Every decision the kind declares is also a value of type `decision`, written as 
 `decision` values support `==`, `!=` and the list operators, and appear in list literals such as `[read, write, admin]`. Over `outcome` the list operators match: a bare decision matches any of its reasons. The one place decision values come from evaluation is [`outcome`](/reference/expressions/#decision-values-and-outcome), a `list<decision>` that only `assert` conditions can read.
 
 `decision` has no name in source, so a param, input or field can't be declared with it. A `decision` has no zero value for a missing key to read as, so it can't be a map value: `{"a": approve}` is a compile error, while a list such as `[deny, approve]` is fine. Like `outcome`, a bare decision name is only a value inside an `assert` condition.
+
+## Candidates
+
+In an `assert` condition, `outcome.review` is a list of `review` candidates, one for each `review` the host gets back. A candidate's fields are the decision's payload fields, typed as the kind declares them, and `reason`, a `decision` value such as `review.manager_approval`. Type errors name it after its decision, `review candidate`, and the list `list<review candidate>`.
+
+A candidate has no name in source and no equality, and a list of candidates has no order a policy can see: it can be ranged over with `any`, `all` or `filter`, and each element's fields can be read, and that's all. [Candidates](/reference/expressions/#candidates) on the expressions page has the rules and what the list holds in each `collect` mode.
 
 ## Optional types: `?T`
 
@@ -173,7 +180,7 @@ The rules for each operator are on [Expressions](/reference/expressions/). In sh
 | `??`                        | `?T ?? T`, result `T`                                                     |
 | `+` `-`                     | see the arithmetic table on [Expressions](/reference/expressions/)        |
 
-`in`, the list operators and `has` compare elements structurally: two lists are equal when they have the same elements in the same order, two maps when they have the same keys with equal values. That's what makes `["eu-1"] in [["eu-1"], ["us-1"]]` work. Elements that are or contain structs can't be compared, because structs have no equality.
+`in`, the list operators and `has` compare elements structurally: two lists are equal when they have the same elements in the same order, two maps when they have the same keys with equal values. That's what makes `["eu-1"] in [["eu-1"], ["us-1"]]` work. Elements that are or contain structs or candidates can't be compared, because neither has equality.
 
 ## Type inference
 

@@ -67,6 +67,7 @@ type run struct {
 	frames  []*Frame
 	input   Value
 	outcome Value
+	top     []*Candidate // what `outcome.<decision>` reads
 	cands   []*Candidate
 	failed  []Failure
 }
@@ -121,7 +122,7 @@ func (p *Policy) Eval(input any) (*Outcome, *diag.Error) {
 	if out.Conflict != nil {
 		return out, nil
 	}
-	r.setOutcome(reflect.ValueOf(p.outcomeNames(out)))
+	r.setOutcome(reflect.ValueOf(p.outcomeNames(out)), p.outcomeCandidates(out))
 
 	p.walk(f, r, p.root.body, phaseOut)
 	out.Failed = r.failures()
@@ -137,18 +138,18 @@ func (r *run) frame(inst *instance) *Frame {
 	f := newFrame(r.input, inst.scope)
 	f.run = r
 	f.file, f.doc = inst.file, inst.name
-	f.Outcome = r.outcome
+	f.Outcome, f.Candidates = r.outcome, r.top
 	r.frames[inst.index] = f
 	return f
 }
 
 // setOutcome makes the outcome visible to every frame, for the outcome
-// asserts.
-func (r *run) setOutcome(v Value) {
-	r.outcome = v
+// asserts: the decision values and the candidates behind them.
+func (r *run) setOutcome(v Value, top []*Candidate) {
+	r.outcome, r.top = v, top
 	for _, f := range r.frames {
 		if f != nil {
-			f.Outcome = v
+			f.Outcome, f.Candidates = v, top
 		}
 	}
 }
@@ -256,6 +257,15 @@ func (p *Policy) outcomeNames(out *Outcome) []string {
 		names = append(names, p.def.Outcome())
 	}
 	return names
+}
+
+// outcomeCandidates is what `outcome.<decision>` reads from: the
+// candidates the host gets back, or the default when nothing fired.
+func (p *Policy) outcomeCandidates(out *Outcome) []*Candidate {
+	if len(out.Top) == 0 && p.def != nil {
+		return []*Candidate{p.def}
+	}
+	return out.Top
 }
 
 // walk runs one phase over the nodes. In the rules phase a runtime error

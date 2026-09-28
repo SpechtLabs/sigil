@@ -225,6 +225,34 @@ func TestPolicyEval(t *testing.T) {
 			want:    "deny b 4:3 [true] *\ndeny d 7:27 [not release.hotfix] *\napprove a 3:3 [true] *", winner: "none",
 		},
 		{
+			name: "an outcome assert reads a candidate's payload", src: "policy p: Test@1\nassert(\"no_self_review\", all r in outcome.review: actor.name not in r.approvers)\nwhen true { review(a, approvers: [\"bob\"]) }",
+			want: "review a 3:13 [true] *", winner: "review a", payload: map[string]any{"approvers": []string{"bob"}},
+		},
+		{
+			name: "an outcome assert fails on a candidate's payload", src: "policy p: Test@1\nassert(\"no_self_review\", all r in outcome.review: actor.name not in r.approvers)\nwhen true { review(a, approvers: [\"alice\", \"bob\"]) }",
+			want: "review a 3:13 [true] *", winner: "review a", payload: map[string]any{"approvers": []string{"alice", "bob"}}, failed: "no_self_review",
+		},
+		{
+			name: "a collecting kind's assert reads every candidate of the decision", src: "policy p: Test@1\nassert(\"no_self_review\", all r in outcome.review: actor.name not in r.approvers)\nassert(\"some_clean_review\", any r in outcome.review: actor.name not in r.approvers)\nwhen true {\n  review(a, approvers: [\"bob\"])\n  review(service_owner, approvers: [\"alice\"])\n}",
+			collect: true, want: "review a 5:3 [true] *\nreview service_owner 6:3 [true] *", winner: "none", failed: "no_self_review",
+		},
+		{
+			name: "the default is the candidate when nothing fires", src: "policy p: Test@1\nassert(\"default\", all d in outcome.deny: d.reason == deny.no_rule_matched)\nassert(\"one\", any d in outcome.deny: true)\nassert(\"no_review\", not (any r in outcome.review: true))",
+			want: "", winner: "default", payload: map[string]any{},
+		},
+		{
+			name: "a reason narrows the candidates, and payload defaults are read", src: "policy p: Test@1\nassert(\"bake\", all a in outcome.approve.release_manager: a.bake == 1h and a.ticket == \"\")\nassert(\"one\", any a in outcome.approve.release_manager: a.reason == approve.release_manager)\nassert(\"narrowed\", not (any a in outcome.approve.payments_sre: true))\nwhen true { approve(release_manager) }",
+			want: "approve release_manager 5:13 [true] *", winner: "approve release_manager", payload: map[string]any{"bake": time.Hour, "ticket": ""},
+		},
+		{
+			name: "a filter ranges over candidates", src: "policy p: Test@1\nassert(\"bob_reviews\", all r in (filter x in outcome.review: \"bob\" in x.approvers): r.reason == review.a)\nassert(\"found\", any r in (filter x in outcome.review: \"bob\" in x.approvers): true)\nwhen true { review(a, approvers: [\"bob\"]) }",
+			want: "review a 4:13 [true] *", winner: "review a", payload: map[string]any{"approvers": []string{"bob"}},
+		},
+		{
+			name: "candidates outranked by precedence aren't in the outcome", src: "policy p: Test@1\nassert(\"hidden\", not (any r in outcome.review: true))\nassert(\"denied\", all d in outcome.deny.a: d.reason == deny.a)\nwhen true { deny(a) }\nwhen true { review(a, approvers: [\"alice\"]) }",
+			want: "deny a 4:13 [true] *\nreview a 5:13 [true]", winner: "deny a", payload: map[string]any{},
+		},
+		{
 			name: "collecting kind with nothing fired", src: "policy p: Test@1\nwhen false { deny(a) }\nassert(\"empty\", deny not in outcome)",
 			collect: true, want: "", winner: "none",
 		},

@@ -498,7 +498,7 @@ func (c *compiler) selector(x *ast.SelectorExpr) Expr {
 	if rd, ok := c.info.Reads[x]; ok {
 		return c.imported(x, rd)
 	}
-	if id, ok := x.X.(*ast.Ident); ok && c.typeOf(x) == types.Decision {
+	if id, ok := x.X.(*ast.Ident); ok && c.info.TypeOf(id) == types.Decision {
 		return constExpr(id.Name + "." + x.Sel.Name)
 	}
 	return c.chain(x)
@@ -573,6 +573,9 @@ func (c *compiler) link(x ast.Expr) func(*Frame) (Value, bool) {
 		if opt, ok := t.(*types.Optional); ok && x.Optional {
 			t = opt.Elem
 		}
+		if l, ok := c.candidateLink(x, base, t); ok {
+			return l
+		}
 		s := t.(*types.Struct)
 		idx, ok := c.fieldIndex(s.Name + "." + x.Sel.Name)
 		if !ok {
@@ -606,6 +609,52 @@ func (c *compiler) link(x ast.Expr) func(*Frame) (Value, bool) {
 	}
 	e := c.expr(x)
 	return func(f *Frame) (Value, bool) { return e(f), true }
+}
+
+// candidateLink compiles the selectors that read candidates, where t is
+// the operand's type: `outcome.<decision>`, `<candidates>.<reason>` and
+// a field of one candidate. It reports false for any other selector.
+// Their bases are never absent, since `?.` doesn't apply to candidates.
+// A list of candidates is a []*Candidate, so quantifiers and filters
+// range over it like any other list.
+func (c *compiler) candidateLink(x *ast.SelectorExpr, base func(*Frame) (Value, bool), t types.Type) (func(*Frame) (Value, bool), bool) {
+	name := x.Sel.Name
+	switch t := t.(type) {
+	case *types.List:
+		if _, ok := x.X.(*ast.Outcome); ok {
+			return func(f *Frame) (Value, bool) {
+				return reflect.ValueOf(keep(f.Candidates, func(c *Candidate) bool { return c.Decision.Name == name })), true
+			}, true
+		}
+		if _, ok := t.Elem.(*types.Candidate); ok {
+			return func(f *Frame) (Value, bool) {
+				v, _ := base(f)
+				cands, _ := reflect.TypeAssert[[]*Candidate](norm(v))
+				return reflect.ValueOf(keep(cands, func(c *Candidate) bool { return c.Reason == name })), true
+			}, true
+		}
+	case *types.Candidate:
+		return func(f *Frame) (Value, bool) {
+			v, _ := base(f)
+			cand, _ := reflect.TypeAssert[*Candidate](norm(v))
+			if name == "reason" {
+				return reflect.ValueOf(cand.Outcome()), true
+			}
+			return reflect.ValueOf(cand.Payload[name]), true
+		}, true
+	}
+	return nil, false
+}
+
+// keep returns the candidates for which ok holds, in order, never nil.
+func keep(cands []*Candidate, ok func(*Candidate) bool) []*Candidate {
+	out := []*Candidate{}
+	for _, c := range cands {
+		if ok(c) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // linkBase compiles the operand of a link: the previous link of the same

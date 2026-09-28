@@ -388,6 +388,8 @@ The planned `sigil breaking old/deploy_approval.sigil deploy_approval.sigil` com
 
 A breaking change that the type checker catches, such as a removed field, would fail the affected policies anyway; raising `accepts` adds one error per document saying which version it was written for, next to the type errors, so the author knows to review the kind's changes and not just patch each error. For a change that still compiles, such as a reordered `precedence`, raising `accepts` is the only thing that stops old policies from silently meaning something new.
 
+Payload fields that an assert reads through [`outcome.<decision>`](/reference/expressions/#candidates) follow the same rule as input fields: a document reads what the host's kind declares now, whatever its pin, so one pinned to an older version can already read a field added since. Payload fields aren't in the namespace below, so adding one never collides with a policy's names.
+
 ### Adding a name never breaks a policy
 
 Inputs, host functions and decisions share one flat namespace with a policy's params, lets, imports and quantifier and filter variables, and nothing shadows anything (see [Identifiers](/reference/policy-files/#identifiers)). Without pins, a new `input approvers` would break every policy that already declares `param approvers`.
