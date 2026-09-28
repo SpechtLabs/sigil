@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/breaking"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/check"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/eval"
@@ -18,7 +19,6 @@ import (
 	"github.com/spechtlabs/sigil/cmd/sigil/command/lsp"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/test"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/version"
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
 )
 
 // Command groups, in the order help lists them. Every subcommand belongs to

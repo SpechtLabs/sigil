@@ -18,9 +18,9 @@ import (
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
 
+	"github.com/spechtlabs/sigil/cmd/internal/output"
+	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/diag"

@@ -16,6 +16,25 @@ mise run check
 
 The first command runs unit tests, golden tests, fuzz seeds and checked-in regression inputs with the race detector and coverage. The second also runs mutation fuzz smoke tests, benchmark smoke tests and the repository's lint and configuration checks. Plain `go test ./...` runs the same test cases without the race detector. It does not generate new fuzz inputs or measure benchmarks.
 
+## The devtool CLI
+
+The benchmark and fuzz tasks run `devtool`, the repository's own tooling CLI in `cmd/devtool`. It isn't released. Arguments after `--` reach it, as in `mise run bench -- --baseline main`, and `mise run devtool -- --help` lists every command.
+
+`devtool bench` and `devtool fuzz` work the same way. Each has a `run` and a `list` command that take package patterns (`./...` by default), and both `run` commands share their flags:
+
+| Flag | `bench run` | `fuzz run` |
+| --- | --- | --- |
+| `-f`, `--filter` | Benchmarks to run, by name | Fuzz targets to run, by name |
+| `--time` | Time or iterations per sample (200ms) | Time or iterations per target (10s) |
+| `--cpu` | CPUs for every sample, as GOMAXPROCS (2) | CPUs for every target, as fuzzing workers (2) |
+| `--timeout` | Timeout per `go test` process (3m) | Timeout per `go test` process (30m) |
+| `-v`, `--verbose` | Print go test's output instead of a status line | The same |
+| `--results` | Where results go (`benchmark-results/`) | Where results go (`fuzz-results/`) |
+
+`bench run` adds `--baseline`, `--count` and `--benchstat` for comparisons. The `list` commands share `--filter`, `--packages` and `-o text|json|yaml`. Every flag can also be set with an environment variable, `BENCH_` or `FUZZ_` followed by its name in capitals: `BENCH_BASELINE=main`, `FUZZ_TIME=1m`.
+
+Both `run` commands look alike too. A box shows what the run is about to do, then each step (a round of samples, or a fuzz target) gets a numbered status line on a terminal and a ✓ line once it's done. The run ends with a verdict line that says where the results are. Each results directory holds go test's raw output, a `summary.md` that CI adds to the job page and a `metadata.json` with the commit and Go version. Ctrl-C stops a run cleanly.
+
 ## Measure performance
 
 Benchmarks use Go's `testing.B` framework. Run them from the repository root:
@@ -24,17 +43,20 @@ Benchmarks use Go's `testing.B` framework. Run them from the repository root:
 # Run every workload once to check that it works; no performance gate.
 mise run bench-smoke
 
-# Measure the current checkout with ten samples per workload.
+# Print every workload's median time, bytes and allocations over ten samples.
 mise run bench
 
-# Compare the current checkout with a commit or branch.
-BENCH_BASE_REF=main mise run bench
+# Did an uncommitted change regress the evaluator? Only builds what it measures.
+mise run bench -- --baseline HEAD ./internal/eval
+
+# Compare the branch with the commit it forked from main.
+mise run bench -- --baseline "$(git merge-base HEAD main)"
+
+# Compare only selected workloads.
+mise run bench -- --baseline main --filter 'PolicyEval|Lexer'
 
 # Measure a single layer directly with Go.
 go test ./internal/eval -run '^$' -bench . -benchmem -count 10 -cpu 2
-
-# Compare only selected workloads.
-python3 scripts/benchmark.py --baseline main --bench 'PolicyEval|Lexer'
 ```
 
 The runner records `ns/op` (elapsed time per operation), `B/op` (allocated bytes) and `allocs/op` (allocation count). Allocated bytes are not retained heap size. Use application load tests and profiles to investigate service throughput, live memory and contention under load.
@@ -59,7 +81,7 @@ CI copies the current `*_bench_test.go` files and `internal/benchtest` fixtures 
 
 The job fails when any measured workload increases by **more than 10%** in time, allocated bytes or allocation count, and [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat) reports a statistically significant change with `-alpha 0.01`. An increase from zero to nonzero also qualifies. Missing measurements, mismatched workloads, incomplete samples and tool or build failures fail the check too. The build job depends on this result.
 
-The job summary includes the comparison. Its `benchmarks` artifact retains raw samples, benchstat text and CSV, and revision/toolchain metadata. Local runs write these files to the ignored `benchmark-results/` directory; each run replaces its previous results. `BENCH_COUNT` changes the sample count, with at least ten required for comparisons; `BENCH_TIME` changes the measurement duration. The equivalent flags are `--count`, `--benchtime` and `--output`.
+The job summary includes the comparison. Its `benchmarks` artifact retains raw samples, benchstat text and CSV, and revision/toolchain metadata. Local runs write these files to the ignored `benchmark-results/` directory; each run replaces its previous results. `BENCH_COUNT` changes the sample count, with at least ten required for comparisons; `BENCH_TIME` changes the measurement duration. The equivalent flags are `--count` and `--time`, and `--results` picks another directory. In a terminal, the comparison lists only the significant changes, regressions first; `benchstat.txt` holds the full report.
 
 Hosted runners and busy developer machines can still produce misleading timing changes. Review the raw samples and rerun a surprising failure on an idle machine before attributing it to code. Allocation changes are usually easier to reproduce. Benchmark smoke tests only check workload correctness and do not establish a performance baseline.
 
@@ -76,22 +98,22 @@ Use deterministic inputs, report allocations and keep setup outside the timed lo
 mise run fuzz
 
 # Every target, one minute each.
-FUZZTIME=1m mise run fuzz
+FUZZ_TIME=1m mise run fuzz
 
 # Just one package, or one target.
-FUZZTIME=1m bash scripts/fuzz.sh ./internal/parser
-go test ./internal/parser -run '^$' -fuzz '^FuzzParseExpr$' -fuzztime=1m -parallel=2
+mise run fuzz -- --time 1m ./internal/parser
+mise run fuzz -- --time 1m --filter FuzzParseExpr ./internal/parser
 
 # List exactly what the runner discovers.
-bash scripts/fuzz.sh --list
+mise run devtool -- fuzz list
 ```
 
-The runner discovers `Fuzz...` functions in Go test files, runs each separately and stops on the first failure. `FUZZTIME` applies to each target. `FUZZPARALLEL` defaults to two workers; lower it on a busy machine. `FUZZTIMEOUT` is the timeout for each `go test` process and defaults to 30 minutes. Increase it for longer targets.
+The runner discovers `Fuzz...` functions in Go test files, runs each separately and stops on the first failure. When a target finds a failing input, the error names the saved file and the command that replays it. `--time` (`FUZZ_TIME`) applies to each target. `--cpu` (`FUZZ_CPU`) defaults to two workers; lower it on a busy machine. `--timeout` (`FUZZ_TIMEOUT`) is the timeout for each `go test` process and defaults to 30 minutes. Increase it for longer targets.
 
 For an hour per target:
 
 ```sh
-FUZZTIME=60m FUZZTIMEOUT=90m mise run fuzz
+FUZZ_TIME=60m FUZZ_TIMEOUT=90m mise run fuzz
 ```
 
 The CI workflow runs short smoke tests on pull requests: five seconds per target, two workers and a one-minute timeout per test process. The fuzz step has a five-minute limit; its whole job, including tool setup, has a ten-minute limit. With the current 24 targets, mutation time totals about two minutes, plus compilation and seed replay. Local `mise run fuzz` and `mise run check` retain the ten-second default.

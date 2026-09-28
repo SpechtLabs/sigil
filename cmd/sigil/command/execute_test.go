@@ -5,8 +5,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
 )
 
 func TestExecute(t *testing.T) {
@@ -38,27 +36,6 @@ func TestExecute(t *testing.T) {
 			}
 			if !strings.Contains(errOut.String(), tt.wantErr) {
 				t.Errorf("stderr = %q, want it to contain %q", errOut.String(), tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestColorMode(t *testing.T) {
-	tests := []struct {
-		args []string
-		want output.Color
-	}{
-		{nil, output.ColorAuto},
-		{[]string{"check", "-k", "k.sigil", "p.sigil"}, output.ColorAuto},
-		{[]string{"--color=always", "check"}, output.ColorAlways},
-		{[]string{"check", "--color", "never", "-o", "json", "p"}, output.ColorNever},
-		{[]string{"--color=purple"}, output.ColorAuto},
-		{[]string{"--nope", "-x", "--color=never"}, output.ColorNever},
-	}
-	for _, tt := range tests {
-		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
-			if got := colorMode(tt.args); got != tt.want {
-				t.Errorf("colorMode() = %q, want %q", got, tt.want)
 			}
 		})
 	}

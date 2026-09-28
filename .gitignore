@@ -44,11 +44,9 @@ docs/project/roadmap.md
 
 # Local performance measurements and profiling evidence
 /benchmark-results/
+/fuzz-results/
 /testdata/performance/results/
 
 # Binaries that `go build` drops into examples/ when run there.
 /examples/sigilc
 /examples/deploygate
-
-# Python runner caches
-__pycache__/

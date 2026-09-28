@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
+	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 )
 

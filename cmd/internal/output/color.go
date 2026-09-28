@@ -2,11 +2,13 @@ package output
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"strings"
 
 	"github.com/sierrasoftworks/humane-errors-go"
+	"github.com/spf13/pflag"
 )
 
 // Color is the value of the --color flag: when output is styled.
@@ -56,4 +58,18 @@ func (c Color) Apply() {
 		_ = os.Setenv("NO_COLOR", "1")
 	default:
 	}
+}
+
+// ColorFromArgs reads --color from args, ignoring everything else, so the
+// mode can take effect before anything is written: including the help
+// cobra prints while it's still parsing flags. An invalid value reads as
+// auto; the real parse then reports it.
+func ColorFromArgs(args []string) Color {
+	mode := ColorAuto
+	fs := pflag.NewFlagSet("color", pflag.ContinueOnError)
+	fs.ParseErrorsAllowlist.UnknownFlags = true
+	fs.SetOutput(io.Discard)
+	fs.Var(&mode, "color", "")
+	_ = fs.Parse(args)
+	return mode
 }

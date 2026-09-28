@@ -2,9 +2,10 @@ package output_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
+	"github.com/spechtlabs/sigil/cmd/internal/output"
 )
 
 func TestColorFlag(t *testing.T) {
@@ -43,6 +44,27 @@ func TestColorApply(t *testing.T) {
 			}
 			if got := os.Getenv("NO_COLOR"); got != tt.wantNever {
 				t.Errorf("NO_COLOR = %q, want %q", got, tt.wantNever)
+			}
+		})
+	}
+}
+
+func TestColorFromArgs(t *testing.T) {
+	tests := []struct {
+		args []string
+		want output.Color
+	}{
+		{nil, output.ColorAuto},
+		{[]string{"check", "-k", "k.sigil", "p.sigil"}, output.ColorAuto},
+		{[]string{"--color=always", "check"}, output.ColorAlways},
+		{[]string{"check", "--color", "never", "-o", "json", "p"}, output.ColorNever},
+		{[]string{"--color=purple"}, output.ColorAuto},
+		{[]string{"--nope", "-x", "--color=never"}, output.ColorNever},
+	}
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
+			if got := output.ColorFromArgs(tt.args); got != tt.want {
+				t.Errorf("ColorFromArgs() = %q, want %q", got, tt.want)
 			}
 		})
 	}

@@ -4,9 +4,9 @@ package breaking
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/spechtlabs/sigil/cmd/internal/usage"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/placeholder"
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/usage"
 )
 
 // NewCommand returns the breaking command.

@@ -8,8 +8,8 @@ import (
 	"github.com/sierrasoftworks/humane-errors-go"
 	"github.com/spf13/cobra"
 
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/usage"
+	"github.com/spechtlabs/sigil/cmd/internal/output"
+	"github.com/spechtlabs/sigil/cmd/internal/usage"
 )
 
 // root builds a command tree like sigil's, with every kind of usage
