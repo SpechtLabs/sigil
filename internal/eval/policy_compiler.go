@@ -51,6 +51,7 @@ type instance struct {
 	src     []byte
 	chain   []Site
 	body    []*node
+	index   int // slot in each evaluation's frame table
 }
 
 type policyCompiler struct {
@@ -108,6 +109,8 @@ func (pc *policyCompiler) instantiate(src *Source, params map[string]Value, chai
 // scoped let declared and compiled on first reference.
 func (pc *policyCompiler) newInstance(src *Source, name string) *instance {
 	inst := &instance{scope: NewScope(pc.binding), info: src.Info, imports: map[string]*instance{}, name: name, file: src.File, src: src.Src}
+	inst.index = pc.policy.nframes
+	pc.policy.nframes++
 	inst.scope.inst = inst
 	for _, l := range src.Info.Lets {
 		inst.scope.Let(l.Name.Name)

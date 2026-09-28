@@ -279,7 +279,7 @@ The roadmap lives in [`roadmap.yml`](./roadmap.yml) in the [roadmap-md](https://
 
 ## Contributing
 
-Run `mise run test` for the race-enabled test suite, `mise run fuzz` for ten seconds of mutation fuzzing per target, and `mise run check` for the repository checks. See [Testing and fuzzing](./docs/guides/testing.md) for longer campaigns, targeted runs and regression inputs.
+Run `mise run test` for the race-enabled test suite, `mise run fuzz` for ten seconds of mutation fuzzing per target, and `mise run check` for the repository checks. Use `BENCH_BASE_REF=main mise run bench` to compare performance with a base revision. CI fails statistically significant regressions above 10% in time or allocations. See [Testing, fuzzing and benchmarks](./docs/guides/testing.md) for targeted runs, regression inputs and benchmark workloads.
 
 The design is open. The most valuable contributions right now are challenges to it: an example that reads badly, a semantic corner the spec doesn't cover, or an answer to one of the [open questions](./docs/project/open-questions.md). Open an [issue](https://github.com/SpechtLabs/sigil/issues) or a pull request against `docs/`. Contributions are accepted under the project's license, as section 5 of the Apache License describes.
 

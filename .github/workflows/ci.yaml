@@ -171,6 +171,7 @@ jobs:
       - lint
       - test
       - fuzz
+      - benchmark
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -221,3 +222,49 @@ jobs:
           name: fuzz-regressions
           path: '**/testdata/fuzz/**'
           if-no-files-found: ignore
+
+  benchmark:
+    name: Benchmark regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # PRs compare the tested merge result with its base. Release and manual
+      # runs compare the checked-out commit with its parent.
+      BENCH_BASE_REF: ${{ github.event.pull_request.base.sha || 'HEAD^' }}
+      BENCH_COUNT: "10"
+      BENCH_TIME: 200ms
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: go go:golang.org/x/perf/cmd/benchstat
+
+      - name: Test regression detection with benchstat
+        run: python3 -B -m unittest discover -s scripts -p 'benchmark_test.py'
+
+      # Build both revisions first, then alternate sample order on this one
+      # runner. The current benchmark files and fixtures run against both.
+      - name: Compare performance with base
+        run: mise run bench
+
+      - name: Publish comparison in job summary
+        if: always()
+        run: |
+          if test -f benchmark-results/summary.md; then
+            cat benchmark-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Benchmark comparison did not complete; inspect the run logs and artifacts.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep benchmark measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmarks
+          path: benchmark-results/
+          if-no-files-found: warn

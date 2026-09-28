@@ -103,7 +103,7 @@ func Evaluate(prog *eval.Policy, input any) *Result { //nolint:emptyinterface //
 	}
 	res := b.result(out)
 	if out.Conflict != nil {
-		c := &Conflict{Msg: out.Conflict.Msg}
+		c := &Conflict{Msg: out.Conflict.Msg, Candidates: make([]Candidate, 0, len(out.Conflict.Candidates))}
 		for _, cand := range out.Conflict.Candidates {
 			c.Candidates = append(c.Candidates, b.candidate(cand, true))
 		}
@@ -114,11 +114,12 @@ func Evaluate(prog *eval.Policy, input any) *Result { //nolint:emptyinterface //
 	if len(out.Failed) == 0 {
 		return res
 	}
-	f := &Failure{}
+	f := &Failure{Asserts: make([]Assert, 0, len(out.Failed))}
 	for _, fl := range out.Failed {
 		a := fl.Assert
 		af := Assert{Reason: a.Reason, Policy: a.Policy, Position: at(a.File, a.Policy, a.Pos), Chain: sites(a.Chain)}
-		if a.ReadsOutcome {
+		if a.ReadsOutcome && len(out.Top) > 0 {
+			af.Outcome = make([]Candidate, 0, len(out.Top))
 			for _, c := range out.Top {
 				af.Outcome = append(af.Outcome, b.candidate(c, true))
 			}
@@ -194,6 +195,12 @@ func (b builder) Fallback(trace []Candidate) *Result {
 // the candidates of the decisions in the outcome.
 func (b builder) result(out *eval.Outcome) *Result {
 	res := b.empty()
+	if len(out.Candidates) > 0 {
+		res.Trace = make([]Candidate, 0, len(out.Candidates))
+	}
+	if len(out.Top) > 0 {
+		res.Outcome = make([]Entry, 0, len(out.Top))
+	}
 	winning := map[string]bool{}
 	for _, c := range out.Top {
 		winning[c.Decision.Name] = true

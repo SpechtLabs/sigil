@@ -1,13 +1,14 @@
 # .mise.toml — local tooling, exact pins (repo convention)
 #
-# The tasks below are the single definition of how sigil is built and checked.
-# CI calls exactly these, so a green `mise run check` locally means a green
-# pipeline. Renovate keeps every pin in this file current.
+# The tasks below define how sigil is built and checked. CI uses these tasks;
+# benchmark comparisons additionally set BENCH_BASE_REF. Renovate keeps every
+# pin in this file current.
 
 [tools]
 # Keep in lockstep with the toolchain directive in go.mod; Renovate bumps both
 # together. The go directive (minimum language version) is bumped by hand.
 go = "1.27.1"
+"go:golang.org/x/perf/cmd/benchstat" = "v0.0.0-20260908200009-22c9c6c9d4da"
 "go:golang.org/x/tools/gopls" = "0.23.0"
 "go:github.com/go-delve/delve/cmd/dlv" = "1.27.2"
 
@@ -47,6 +48,14 @@ run = "go run -buildvcs=true ./cmd/sigil/"
 [tasks.test]
 description = "Run the test suite with race detector and coverage"
 run = "go test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.txt ./..."
+
+[tasks.bench]
+description = "Measure every benchmark; BENCH_BASE_REF enables the 10% regression gate"
+run = "python3 scripts/benchmark.py"
+
+[tasks.bench-smoke]
+description = "Run every Go benchmark once to check workload correctness"
+run = "python3 scripts/benchmark.py --no-baseline --count 1 --benchtime 1x"
 
 [tasks.fuzz]
 description = "Fuzz every target; FUZZTIME sets the duration per target (default 10s)"
@@ -142,7 +151,7 @@ description = "Lint the fuzz runner and issue reporter"
 run = "shellcheck scripts/*.sh"
 
 [tasks.workflow-test]
-description = "Test automated fuzz failure reporting without contacting GitHub"
+description = "Test benchmark regression checks and fuzz reporting without contacting GitHub"
 run = "python3 -B -m unittest discover -s scripts -p '*_test.py'"
 
 [tasks.release-check]
@@ -160,6 +169,7 @@ depends = [
   "mod-tidy",
   "test",
   "fuzz",
+  "bench-smoke",
   "yaml-lint",
   "actionlint",
   "shell-lint",

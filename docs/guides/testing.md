@@ -1,5 +1,5 @@
 ---
-title: Testing and fuzzing
+title: Testing, fuzzing and benchmarks
 icon: mdi:test-tube
 createTime: 2026/09/28 20:00:00
 permalink: /guides/testing/
@@ -14,7 +14,60 @@ mise run test
 mise run check
 ```
 
-The first command runs unit tests, golden tests, fuzz seeds and checked-in regression inputs with the race detector and coverage. The second also runs mutation fuzz smoke tests and the repository's lint and configuration checks. Plain `go test ./...` runs the same test cases without the race detector. It does not generate new fuzz inputs.
+The first command runs unit tests, golden tests, fuzz seeds and checked-in regression inputs with the race detector and coverage. The second also runs mutation fuzz smoke tests, benchmark smoke tests and the repository's lint and configuration checks. Plain `go test ./...` runs the same test cases without the race detector. It does not generate new fuzz inputs or measure benchmarks.
+
+## Measure performance
+
+Benchmarks use Go's `testing.B` framework. Run them from the repository root:
+
+```sh
+# Run every workload once to check that it works; no performance gate.
+mise run bench-smoke
+
+# Measure the current checkout with ten samples per workload.
+mise run bench
+
+# Compare the current checkout with a commit or branch.
+BENCH_BASE_REF=main mise run bench
+
+# Measure a single layer directly with Go.
+go test ./internal/eval -run '^$' -bench . -benchmem -count 10 -cpu 2
+
+# Compare only selected workloads.
+python3 scripts/benchmark.py --baseline main --bench 'PolicyEval|Lexer'
+```
+
+The runner records `ns/op` (elapsed time per operation), `B/op` (allocated bytes) and `allocs/op` (allocation count). Allocated bytes are not retained heap size. Use application load tests and profiles to investigate service throughput, live memory and contention under load.
+
+| Layer | Workloads |
+| --- | --- |
+| Lexer, parser and AST | Tokenization and file parsing at 1 and 64 rules, expression parsing, AST printing |
+| Checker and kinds | Policy checking at both sizes, contract loading and source generation |
+| Go bindings | Kind construction, synthesized bindings and input decoding |
+| Constants and evaluator | Constant evaluation, expression compilation, policy evaluation at both sizes and composed policies |
+| Bundles, lints and formatter | Bundle compilation, linting and formatting |
+| Results and public API | Result conversion, compilation, ranked and collecting evaluation, conflicts, assertions, fallback and concurrent evaluation |
+| Tooling | Diagnostic rendering, CLI configuration and YAML test-suite parsing |
+
+Compilation and evaluation are measured separately. Evaluation benchmarks prepare policies and inputs before the timer starts. Serial benchmarks use `b.Loop()`; the concurrent public API workload uses `b.RunParallel()` against a shared compiled policy. The default runner uses two Go execution threads (`GOMAXPROCS=2` and `-cpu=2`). This does not reserve two physical cores.
+
+### CI regression gate
+
+The **Benchmark regressions** job compares a PR's tested merge result with the PR base commit. Release and manual runs compare the checked-out commit with its parent. Both revisions run on the same runner and Go version, with ten samples of at least 200 ms per workload. All binaries compile before measurement; the order alternates between base-first and head-first samples.
+
+CI copies the current `*_bench_test.go` files and `internal/benchtest` fixtures onto the base snapshot. Both revisions therefore execute the same workloads, including newly added benchmarks. If those workloads cannot compile against the base, the job fails: adapt the benchmark to a shared API or choose a compatible baseline for a local comparison.
+
+The job fails when any measured workload increases by **more than 10%** in time, allocated bytes or allocation count, and [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat) reports a statistically significant change with `-alpha 0.01`. An increase from zero to nonzero also qualifies. Missing measurements, mismatched workloads, incomplete samples and tool or build failures fail the check too. The build job depends on this result.
+
+The job summary includes the comparison. Its `benchmarks` artifact retains raw samples, benchstat text and CSV, and revision/toolchain metadata. Local runs write these files to the ignored `benchmark-results/` directory; each run replaces its previous results. `BENCH_COUNT` changes the sample count, with at least ten required for comparisons; `BENCH_TIME` changes the measurement duration. The equivalent flags are `--count`, `--benchtime` and `--output`.
+
+Hosted runners and busy developer machines can still produce misleading timing changes. Review the raw samples and rerun a surprising failure on an idle machine before attributing it to code. Allocation changes are usually easier to reproduce. Benchmark smoke tests only check workload correctness and do not establish a performance baseline.
+
+### Add a workload
+
+Put benchmarks in `*_bench_test.go` files so the comparison runner can copy them. Keep shared fixtures in `internal/benchtest`; avoid relying on helpers in ordinary unit-test files or mutable external services. The runner discovers benchmark packages within the root Go module and excludes nested Go modules.
+
+Use deterministic inputs, report allocations and keep setup outside the timed loop unless setup is what the benchmark measures. Check that the operation succeeds and exercises the intended path. Include realistic sizes and a larger case when scaling matters. Review workload changes alongside results: identical inputs across revisions make a comparison useful, but the chosen workload still determines what regressions it can catch.
 
 ## Run mutation fuzzing
 
