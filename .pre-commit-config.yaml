@@ -27,6 +27,16 @@ repos:
     hooks:
       - id: markdownlint-cli2
 
+  # Runs the mise-pinned actionlint (and shellcheck) rather than a copy
+  # pre-commit would build, so the hook and CI agree on the version.
+  - repo: local
+    hooks:
+      - id: actionlint
+        name: actionlint
+        entry: mise exec -- actionlint
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
     hooks:

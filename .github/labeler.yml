@@ -1,3 +1,40 @@
+# Front end: tokens, lexer, parser, AST and diagnostics
+parser:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "internal/token/**"
+          - "internal/lexer/**"
+          - "internal/parser/**"
+          - "internal/ast/**"
+          - "internal/diag/**"
+
+# Type checker, types and constant folding
+checker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "internal/check/**"
+          - "internal/types/**"
+          - "internal/constant/**"
+
+# Kind model and its derivation from Go structs
+kinds:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "internal/kind/**"
+          - "internal/gokind/**"
+
+# Rule evaluation, resolution and the trace
+evaluator:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "internal/eval/**"
+
+# The public Go API
+go-api:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "pkg/**"
+
 # CLI commands and entrypoint
 cli:
   - changed-files:
@@ -18,6 +55,21 @@ documentation:
           - "docs/**"
           - "**/*.md"
 
+# The docs site's build: VuePress config, theme and dependencies
+docs-site:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/.vuepress/**"
+          - "docs/package.json"
+          - "docs/bun.lock"
+
+# Roadmap and open design questions
+roadmap:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "roadmap.yml"
+          - "docs/project/**"
+
 # Build, release, and CI plumbing
 build:
   - changed-files:
@@ -29,6 +81,11 @@ build:
           - ".mise.toml"
           - ".golangci.yaml"
           - ".custom-gcl.yml"
+          - ".pre-commit-config.yaml"
+          - ".markdownlint-cli2.yaml"
+          - ".yamllint.yaml"
+          - ".editorconfig"
+          - "codecov.yml"
           - "renovate.json"
           - "go.mod"
           - "go.sum"
