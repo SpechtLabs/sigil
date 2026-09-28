@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/SpechtLabs/sigil/compare/v0.1.0...v0.1.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **release:** sign the checksum file and check go.mod is tidy in CI ([#36](https://github.com/SpechtLabs/sigil/issues/36)) ([6eec9a3](https://github.com/SpechtLabs/sigil/commit/6eec9a3200f10d171d0f3542553f4a9169ebd6ae))
+
 ## 0.1.0 (2026-09-28)
 
 
