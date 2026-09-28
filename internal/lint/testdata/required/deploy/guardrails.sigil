@@ -1,0 +1,7 @@
+policy deploy.guardrails: DeployApproval@1
+
+when release.soak < 1h {
+  deny(soak_too_short)
+}
+
+assert("named_actor", actor.name != "")

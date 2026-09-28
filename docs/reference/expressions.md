@@ -6,7 +6,7 @@ permalink: /reference/expressions/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, only `sigil explain` exists. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, `fmt`, `check`, `eval`, `explain`, `test` and `export` exist. See [Open questions](/project/open-questions/).
 :::
 
 Expressions appear in `when` conditions, `assert` conditions, `let` bindings, param defaults, policy invocation arguments and decision payloads. Every expression has a static type that the compiler knows before evaluation, and nothing converts between types implicitly. The types themselves are on [Types](/reference/types/).
@@ -305,6 +305,8 @@ To end a quantifier early, wrap it in parentheses:
 ```sigil
 (any r in actor.roles: r like "sre-*") and eligible
 ```
+
+Read quickly, the first form looks like two conditions joined by `and`. `sigil fmt` therefore adds parentheses around every quantifier body whose top level is `and`, `or` or `xor`, which changes nothing about how it parses and makes the body's extent visible.
 
 The quantifier variable follows the no-shadowing rule: naming it after an input, param, let, imported name or host function is a compile error.
 

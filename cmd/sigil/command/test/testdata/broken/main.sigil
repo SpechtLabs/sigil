@@ -1,0 +1,5 @@
+policy access.broken: Access@1
+
+when user.nmae == "x" {
+  allow(admin)
+}

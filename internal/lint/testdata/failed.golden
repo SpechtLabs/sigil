@@ -1,0 +1,13 @@
+== check errors ==
+team.sigil:6:14: unknown field "teir" on type Service
+  |
+6 | when service.teir == "x" {
+  |              ^^^^
+  = help: did you mean "tier"? Service declares: name, tier, owners, labels
+
+warn unused-let (team.clean)
+team.sigil:14:5 (team.clean): let unused is never read
+   |
+14 | let unused = release.hotfix
+   |     ^^^^^^
+   = help: remove the let, or read it; a private let can't be imported

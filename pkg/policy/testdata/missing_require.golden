@@ -1,5 +1,5 @@
 == compile payments.production ==
-payments.sigil:1:1: payments.production doesn't invoke deploy.guardrails
+payments.sigil:1:1 (payments.production): payments.production doesn't invoke deploy.guardrails
   |
 1 | policy payments.production: DeployApproval@1
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,5 @@
+policy deploy.approvals: DeployApproval@1
+
+when service.tier == "standard" {
+  approve(release_manager)
+}

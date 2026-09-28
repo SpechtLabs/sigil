@@ -13,6 +13,7 @@ import (
 // Error is one diagnostic: what's wrong, where, and how to fix it.
 type Error struct {
 	File string    // the file the positions refer to; empty when unknown
+	Doc  string    // the document the position is in, when the stage knows it
 	Msg  string    // what's wrong, one sentence without a trailing period
 	Help string    // how to fix it, or empty when there's no obvious fix
 	Pos  token.Pos // start of the offending source
@@ -21,7 +22,9 @@ type Error struct {
 
 // Error formats e as file:line:col: msg, leaving out the file when it's
 // unknown and the position when there is none, as for a rule of the kind
-// model that has no source.
+// model that has no source. When the document is known and the file's
+// path doesn't already say which document it is, its name follows the
+// position: `policies.sigil:42:5 (payments.production): msg`.
 func (e *Error) Error() string {
 	var b strings.Builder
 	if e.File != "" {
@@ -30,10 +33,22 @@ func (e *Error) Error() string {
 	}
 	if e.Pos.IsValid() {
 		b.WriteString(e.Pos.String())
+		if e.Doc != "" && !PathMatches(e.File, e.Doc) {
+			b.WriteString(" (" + e.Doc + ")")
+		}
 		b.WriteString(": ")
 	} else if e.File != "" {
 		b.WriteByte(' ')
 	}
 	b.WriteString(e.Msg)
 	return b.String()
+}
+
+// PathMatches reports whether file is where a document called name is
+// expected: its path, with each `.` as a directory separator and `.sigil`
+// appended, possibly under a directory.
+func PathMatches(file, name string) bool {
+	want := strings.ReplaceAll(name, ".", "/") + ".sigil"
+	file = strings.ReplaceAll(file, "\\", "/")
+	return file == want || strings.HasSuffix(file, "/"+want)
 }

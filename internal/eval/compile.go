@@ -514,7 +514,21 @@ func (c *compiler) imported(x ast.Expr, rd check.Read) Expr {
 		throwf(x, "document %s has no let `%s`", rd.Doc, rd.Let)
 	}
 	target.scope.ensure(i)
-	return func(f *Frame) Value { return target.scope.value(f.frameOf(target), i) }
+	return func(f *Frame) Value {
+		tf := f.frameOf(target)
+		if tf.done[i] {
+			return tf.lets[i]
+		}
+		var v Value
+		if err := catch(func() { v = target.scope.value(tf, i) }); err != nil {
+			// The let is the imported document's source, not the reader's.
+			if err.File == "" {
+				err.File, err.Doc = target.file, target.name
+			}
+			panic(err) //nolint:nopanic // runtime errors unwind to Run, which returns them
+		}
+		return v
+	}
 }
 
 // index compiles `x[i]`, the end of a chain.

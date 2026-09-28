@@ -1,0 +1,25 @@
+{
+  "error": {
+    "kind": "assertion",
+    "message": "assertions failed: \"named_user\"",
+    "asserts": [
+      {
+        "reason": "named_user",
+        "position": "testdata/access/main.sigil:3:1"
+      }
+    ]
+  },
+  "policy": "access.main",
+  "decision": "deny",
+  "reason": "no_rule_matched",
+  "outcome": [
+    {
+      "decision": "deny",
+      "reason": "no_rule_matched"
+    }
+  ],
+  "trace": []
+}
+--- error ---
+the evaluation failed; the host would act on the fallback shown above
+advice: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong

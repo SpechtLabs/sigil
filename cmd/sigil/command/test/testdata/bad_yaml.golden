@@ -1,0 +1,5 @@
+FAIL  testdata/badyaml/main_test.yaml
+      testdata/badyaml/main_test.yaml: not a valid test file: line 5: unknown key "expcet" in a case
+--- error ---
+1 of 1 test files couldn't run
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

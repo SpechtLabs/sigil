@@ -1,0 +1,13 @@
+policy q: DeployApproval@1
+
+when actor.roles[3] == "x" {
+  approve(a)
+}
+
+---
+
+policy p: DeployApproval@1
+
+use q
+
+q()

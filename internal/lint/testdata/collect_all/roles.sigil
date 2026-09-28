@@ -1,0 +1,28 @@
+policy roles.base: Roles@1
+
+when user != "" {
+  read(member)
+}
+
+assert("named_user", user != "")
+
+---
+
+policy roles.writers: Roles@1
+
+when user == "root" {
+  write(owner)
+}
+
+---
+
+policy roles.team: Roles@1
+
+use roles.base
+use roles.writers
+
+// A collecting kind has no deny to switch off, but the assert still is.
+when user != "guest" {
+  base()
+  writers()
+}

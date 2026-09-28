@@ -66,12 +66,14 @@ type Release {
   soak: duration
   hotfix: bool
 }
+
 type Service {
   name: string
   tier: string
   owners: list<string>
   labels: map<string, string>
 }
+
 type Actor {
   name: string
   teams: list<string>
@@ -95,11 +97,13 @@ decision deny {
   soak_too_short
   x
 }
+
 decision review(approvers: list<string>) {
   b
   a
   service_owner
 }
+
 decision approve(bake: duration = 1h) {
   owned
   a
@@ -110,6 +114,7 @@ decision approve(bake: duration = 1h) {
 collect one
 precedence deny > review > approve
 precedence approve: release_manager > payments_sre > owned > a
+
 default deny(no_rule_matched)
 `
 	if got := Deploy.Schema(); got != want {
@@ -163,7 +168,7 @@ func TestCollect(t *testing.T) {
 	read := policy.NewDecision[policy.None]("read", "engineering_member")
 	admin := policy.NewDecision[AdminData]("admin", "platform_member", "oncall")
 	access := policy.NewKind[AccessInput]("AccessGrant", policy.WithVersion(1), policy.WithCollect(read), policy.WithCollect(admin))
-	want := "kind AccessGrant version 1\n\ntype Actor {\n  name: string\n  teams: list<string>\n  roles: list<string>\n  regions: list<string>\n}\n\ninput actor: Actor\n\ndecision read {\n  engineering_member\n}\ndecision admin(ttl: duration = 8h) {\n  platform_member\n  oncall\n}\n\ncollect all\n"
+	want := "kind AccessGrant version 1\n\ntype Actor {\n  name: string\n  teams: list<string>\n  roles: list<string>\n  regions: list<string>\n}\n\ninput actor: Actor\n\ndecision read {\n  engineering_member\n}\n\ndecision admin(ttl: duration = 8h) {\n  platform_member\n  oncall\n}\n\ncollect all\n"
 	if got := access.Schema(); got != want {
 		t.Errorf("Schema() =\n%s\nwant\n%s", got, want)
 	}

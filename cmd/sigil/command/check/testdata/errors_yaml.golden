@@ -1,0 +1,10 @@
+- severity: error
+  file: testdata/errors/bad.sigil
+  document: teams.bad
+  message: unknown field "teir" on type Service
+  help: 'did you mean "tier"? Service declares: name, tier, owners, labels'
+  line: 3
+  column: 14
+--- error ---
+check found 1 error
+advice: each diagnostic says where the problem is and how to fix it

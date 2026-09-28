@@ -1,0 +1,5 @@
+policy teams.bad: DeployApproval@1
+
+when service.teir == "critical" {
+  approve(payments_sre)
+}

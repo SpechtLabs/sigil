@@ -2,6 +2,12 @@ package check
 
 import "strings"
 
+// Nearest is nearest for tools outside the checker, such as the input
+// decoder and the lint configuration, so every "did you mean" agrees.
+func Nearest(name string, candidates []string) (string, bool) {
+	return nearest(name, candidates)
+}
+
 // nearest finds the name an author most likely meant, for the "did you
 // mean" hint on unknown fields, types and names. It returns the
 // candidate nearest to name when it's near enough to be a plausible

@@ -1,0 +1,7 @@
+--- error ---
+testdata/errors/bad.sigil:3:14 (teams.bad): unknown field "teir" on type Service
+  |
+3 | when service.teir == "critical" {
+  |              ^^^^
+  = help: did you mean "tier"? Service declares: name, tier, owners, labels
+advice: fix the documents above

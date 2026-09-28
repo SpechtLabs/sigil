@@ -1,0 +1,13 @@
+policy grants: Grants@1
+
+when "eng" in teams {
+  read(member, scope: "eng")
+}
+
+when "platform" in teams {
+  write(owner)
+}
+
+when "oncall" in teams {
+  write(oncall)
+}

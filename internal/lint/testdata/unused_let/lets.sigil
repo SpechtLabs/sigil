@@ -1,0 +1,22 @@
+policy team.lets: DeployApproval@1
+
+param min_soak: duration = 4h
+
+// Read by another let, which is read by a rule.
+let soak = release.soak
+let long_enough = soak >= min_soak
+// Only a field of the same name is read, after a dot.
+let tier = "critical"
+// Exported, so importers may read it.
+pub let exported = release.hotfix
+// Read in a payload argument.
+let approvers = service.owners
+
+when long_enough and service.tier == "standard" {
+  // Scoped and never read.
+  let unused_scoped = actor.name
+  let used_scoped = actor.teams
+  when "sre" in used_scoped {
+    review(service_owner, approvers: approvers)
+  }
+}

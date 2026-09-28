@@ -69,11 +69,15 @@ jobs:
         if: steps.custom-gcl-cache.outputs.cache-hit != 'true'
         run: mise run lint
 
+      # The cached path skips `mise run lint`, so it runs the .sigil
+      # formatting check by hand. yamllint and actionlint have steps of their
+      # own below.
       - name: Lint Go with cached custom-gcl
         if: steps.custom-gcl-cache.outputs.cache-hit == 'true'
         run: |
           chmod +x ./custom-gcl
           ./custom-gcl run ./...
+          mise run sigil-lint
 
       - name: Lint YAML
         run: mise run yaml-lint

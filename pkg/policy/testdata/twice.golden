@@ -18,8 +18,8 @@ policy    payments.regions
 payload   (none)
 error     conflict: collect one: 2 candidates at the top rank
             review service_owner at policies.sigil:18:1 (payments.regions) → policies.sigil:9:3 (deploy.regional) {approvers: [eu-leads]}
-            review service_owner at policies.sigil:19:1 (payments.regions) → policies.sigil:9:3 (deploy.regional) {approvers: [us-leads]}
+            review service_owner at policies.sigil:20:1 (payments.regions) → policies.sigil:9:3 (deploy.regional) {approvers: [us-leads]}
 
 candidates
   review   service_owner      policies.sigil:18:1 (payments.regions) → policies.sigil:9:3 (deploy.regional)  approvers: [eu-leads]
-  review   service_owner      policies.sigil:19:1 (payments.regions) → policies.sigil:9:3 (deploy.regional)  approvers: [us-leads]
+  review   service_owner      policies.sigil:20:1 (payments.regions) → policies.sigil:9:3 (deploy.regional)  approvers: [us-leads]

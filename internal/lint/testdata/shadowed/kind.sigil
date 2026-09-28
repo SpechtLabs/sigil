@@ -1,0 +1,21 @@
+kind DeployApproval version 2
+
+type Service {
+  tier: string
+}
+
+input service: Service
+input approvers: list<string>
+
+decision deny {
+  no_rule_matched
+}
+
+decision approve {
+  ok
+}
+
+collect one
+precedence deny > approve
+
+default deny(no_rule_matched)

@@ -1,0 +1,12 @@
+== compile p ==
+ok
+
+== an index out of range in an imported let ==
+decision  deny
+reason    no_rule_matched
+policy    p
+payload   (none)
+error     modules.sigil:3:18 (lib.roles): index 3 out of range for a list of 1
+
+candidates
+  (none)

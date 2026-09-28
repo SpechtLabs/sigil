@@ -1,0 +1,48 @@
+kind DeployApproval version 1
+
+type Release {
+  soak: duration
+  hotfix: bool
+}
+
+type Service {
+  name: string
+  tier: string
+  owners: list<string>
+  labels: map<string, string>
+}
+
+type Actor {
+  name: string
+  teams: list<string>
+  roles: list<string>
+  regions: list<string>
+}
+
+input release: Release
+input service: Service
+input actor: Actor
+input environment: string
+
+fn split(string, string) -> list<string>
+
+decision deny {
+  not_eligible
+  soak_too_short
+  no_rule_matched
+}
+
+decision review(approvers: list<string>) {
+  service_owner
+}
+
+decision approve(bake: duration = 1h) {
+  release_manager
+  payments_sre
+}
+
+collect one
+precedence deny > review > approve
+precedence approve: release_manager > payments_sre
+
+default deny(no_rule_matched)

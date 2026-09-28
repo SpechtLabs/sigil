@@ -50,6 +50,10 @@ func (d *Document) Module() bool {
 	return ok
 }
 
+// Clean reports whether the document checked without errors, which is
+// what a lint needs before it reads the checker's Info.
+func (d *Document) Clean() bool { return d.Info != nil && !d.failed }
+
 // New returns an empty bundle for k.
 func New(k *kind.Kind) *Bundle {
 	return &Bundle{kind: k, Sources: map[string][]byte{}, docs: map[string]*Document{}}
@@ -137,6 +141,16 @@ func (b *Bundle) lookup(name string) *Document {
 
 // Document returns the document called name, or nil.
 func (b *Bundle) Document(name string) *Document { return b.lookup(name) }
+
+// Documents lists the bundle's own policies and modules, in the order
+// they were read. Trusted documents aren't the bundle's own.
+func (b *Bundle) Documents() []*Document {
+	out := make([]*Document, len(b.order))
+	for i, n := range b.order {
+		out[i] = b.docs[n]
+	}
+	return out
+}
 
 // Policies lists the bundle's own policies, in the order they were read.
 func (b *Bundle) Policies() []string {
@@ -318,15 +332,23 @@ type Options struct {
 	Static  bool
 }
 
-// Compile checks the bundle and compiles the policy called root.
+// Compile checks the bundle and compiles the policy called root. The
+// errors are the bundle's own and this root's; compiling one root never
+// leaves errors behind for the next, so a tool can compile every policy
+// of a bundle in turn.
 func (b *Bundle) Compile(root string, o Options) (*eval.Policy, diag.ErrorList) {
 	b.Check()
+	fail := func(errs ...*diag.Error) diag.ErrorList {
+		all := append(append(diag.ErrorList{}, b.Errors()...), errs...)
+		sortErrors(all)
+		return all
+	}
 	d := b.lookup(root)
 	switch {
 	case d == nil:
-		b.errs = append(b.errs, b.noRoot(root))
+		return nil, fail(b.noRoot(root))
 	case d.Module():
-		b.errs = append(b.errs, &diag.Error{
+		return nil, fail(&diag.Error{
 			File: d.File, Pos: d.Node.Pos(), End: d.Node.Pos(),
 			Msg:  fmt.Sprintf("%s is a module, not a policy", root),
 			Help: "a module holds only lets and has no rules to evaluate; name a policy",
@@ -337,22 +359,21 @@ func (b *Bundle) Compile(root string, o Options) (*eval.Policy, diag.ErrorList) 
 	}
 	prog, err := eval.CompilePolicy(b.source(d), b.kind, o.Binding, linker{b}, eval.Options{Params: o.Params, Static: o.Static})
 	if err != nil {
-		b.errs = append(b.errs, err)
-		return nil, b.Errors()
+		return nil, fail(err)
 	}
-	b.require(prog, o.Require)
-	if errs := b.Errors(); errs != nil {
-		return nil, errs
+	if errs := b.require(prog, o.Require); errs != nil {
+		return nil, fail(errs...)
 	}
 	return prog, nil
 }
 
 // require checks that the root reaches every required policy through
 // top-level invocations only.
-func (b *Bundle) require(prog *eval.Policy, names []string) {
+func (b *Bundle) require(prog *eval.Policy, names []string) diag.ErrorList {
 	if prog == nil {
-		return
+		return nil
 	}
+	var errs diag.ErrorList
 	root := b.lookup(prog.Name)
 	for _, name := range names {
 		req := prog.Requirement(name)
@@ -360,20 +381,21 @@ func (b *Bundle) require(prog *eval.Policy, names []string) {
 		case req.Unconditional:
 		case req.Invoked:
 			for _, site := range req.Gated {
-				b.errs = append(b.errs, &diag.Error{
+				errs = append(errs, &diag.Error{
 					File: site.File, Pos: site.Pos, End: site.End,
 					Msg:  fmt.Sprintf("%s must be invoked unconditionally", name),
 					Help: fmt.Sprintf("the host requires %s for every %s policy; move the call to the top level", name, b.kind.Name),
 				})
 			}
 		default:
-			b.errs = append(b.errs, &diag.Error{
+			errs = append(errs, &diag.Error{
 				File: root.File, Pos: root.Node.Pos(), End: root.Node.Pos(),
 				Msg:  fmt.Sprintf("%s doesn't invoke %s", prog.Name, name),
 				Help: fmt.Sprintf("the host requires %s for every %s policy; import it with `use %s` and invoke it at the top level", name, b.kind.Name, name),
 			})
 		}
 	}
+	return errs
 }
 
 // source wraps a document for the compiler.
@@ -415,19 +437,29 @@ func (b *Bundle) Errors() diag.ErrorList {
 	if len(b.errs) == 0 {
 		return nil
 	}
-	sort.SliceStable(b.errs, func(i, j int) bool {
-		if b.errs[i].File != b.errs[j].File {
-			return b.errs[i].File < b.errs[j].File
-		}
-		return b.errs[i].Pos.Offset < b.errs[j].Pos.Offset
-	})
+	sortErrors(b.errs)
 	return b.errs
+}
+
+// sortErrors sorts diagnostics by file and position.
+func sortErrors(errs diag.ErrorList) {
+	sort.SliceStable(errs, func(i, j int) bool {
+		if errs[i].File != errs[j].File {
+			return errs[i].File < errs[j].File
+		}
+		return errs[i].Pos.Offset < errs[j].Pos.Offset
+	})
 }
 
 // Render renders every diagnostic with its source line.
 func (b *Bundle) Render(errs diag.ErrorList) string {
 	parts := make([]string, len(errs))
 	for i, e := range errs {
+		if e.Doc == "" {
+			named := *e
+			named.Doc = b.DocumentAt(e.File, e.Pos)
+			e = &named
+		}
 		parts[i] = strings.TrimRight(diag.Render(e, b.sourceOf(e.File)), "\n")
 	}
 	return strings.Join(parts, "\n")

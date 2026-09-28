@@ -1,0 +1,41 @@
+---
+---
+policy   deploy.production :DeployApproval @1
+use deploy.common.{ cleared ,owns_service, }
+param approvers:list<string>
+param tiers : list< string > = [ "standard","internal", ]
+param min_soak: duration = 24h, max: 48h, min: 1h
+param weights: map<string, int>= {}
+let owns = actor.teams any in service.owners let joined = actor.teams + ["x"]
+let eligible = "deployer" in actor.roles and
+  environment == "production" and service.labels has {"a": "b", "c": "d"}
+let managed = service.labels has {
+"app.kubernetes.io/managed-by": "argocd",
+    "platform.example.com/lifecycle": "ga"}
+let is_sre = any r in actor.roles: r like "sre-*" or release.hotfix
+let kept = (any r in actor.roles: r like "sre-*") or release.hotfix
+let nested = all r in actor.regions: (r like "eu-*" and r != "eu-9")
+let neg = - -1 - -2
+let coalesce = release?.ticket ?? ""
+let present_ticket = present release?.ticket and not release.hotfix
+let exclusive_check = [a, b] exclusive in outcome
+let call = split(
+  service.labels["regions"],
+  ",")
+let paren = (a
+  or b) and c
+let mixed = a or b
+     or c
+when cleared { when sre and release.hotfix { approve(sre_hotfix) }
+when sre { review(sre_change, approvers: approvers) deny(x) }
+      let scoped   = 1
+}
+when a {}
+assert("negative_soak",release.soak>=0s)
+assert("sod_customer_dev",
+      [customer_data_writer, development_environment_writer] exclusive in outcome,)
+production(
+    min_soak : 4h, approvers: ["payments-leads"])
+production(min_soak: 4h,
+  approvers: ["payments-leads"],)
+guardrails()

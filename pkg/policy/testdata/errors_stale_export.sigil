@@ -2,9 +2,18 @@ kind DeployApproval version 2
 
 input x: int
 
-decision deny { a no_rule_matched never b not_eligible soak_too_short x }
+decision deny {
+  a
+  no_rule_matched
+  never
+  b
+  not_eligible
+  soak_too_short
+  x
+}
 
 precedence deny
+
 default deny(x)
 
 ---

@@ -1,0 +1,3 @@
+module lib.roles: DeployApproval@1
+
+pub let fourth = actor.roles[3]

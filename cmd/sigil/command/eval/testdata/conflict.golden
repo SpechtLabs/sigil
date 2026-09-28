@@ -1,0 +1,15 @@
+access.main: the candidates conflict, the host falls back to deny no_rule_matched (the kind's default)
+
+conflict: collect one: 2 candidates at the top rank
+  deny     too_old           testdata/access/main.sigil:14:3
+  deny     banned            testdata/access/main.sigil:18:3
+
+trace: 3 candidates
+  deny     too_old           testdata/access/main.sigil:14:3
+  deny     banned            testdata/access/main.sigil:18:3
+  allow    team_member       testdata/access/main.sigil:10:3
+           ttl = 1h
+           scopes = []
+--- error ---
+the evaluation failed; the host would act on the fallback shown above
+advice: a conflict is a defect in the policy: rank the reasons with precedence, or keep the exclusive outcomes' conditions apart

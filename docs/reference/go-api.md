@@ -6,7 +6,7 @@ permalink: /reference/go-api/
 ---
 
 ::: warning Partly implemented
-Defining a kind exists: `NewKind`, `Decision`, `None`, the `With` options and `Schema()`. So do `Compile`, `Params`, `Eval`, `Result`, `Match` and `MatchAll`, and the `*CompileError`, `*RuntimeError` and `*AssertionError` types. Declared reasons (`NewDecision` with reasons, `WithExclusive`, `WithReasonPrecedence`, `WithPrecedence` and `*ConflictError`) exist too. So do `Load`, `Require`, `From` and `MapFS`. `LoadKind` and `Resolver` don't exist yet; they come with the tooling milestones. The rest of this page describes the API as designed, so the language reference has a concrete host to point at; names and signatures may still change before the first release.
+Defining a kind exists: `NewKind`, `Decision`, `None`, the `With` options and `Schema()`. So do `Compile`, `Params`, `Eval`, `Result`, `Match` and `MatchAll`, and the `*CompileError`, `*RuntimeError` and `*AssertionError` types. Declared reasons (`NewDecision` with reasons, `WithExclusive`, `WithReasonPrecedence`, `WithPrecedence` and `*ConflictError`) exist too. So do `Load`, `Require`, `From` and `MapFS`, and the `policytest` and `cli` packages the tooling builds on. `LoadKind` and `Resolver` don't exist yet. The rest of this page describes the API as designed, so the language reference has a concrete host to point at; names and signatures may still change before the first release.
 :::
 
 The API mirrors `regexp`: define a kind once at package level, compile policies once, and evaluate them many times from any goroutine. Everything lives in package `policy`, import path `github.com/spechtlabs/sigil/pkg/policy`.
@@ -347,10 +347,38 @@ At startup there's no last good policy, so a failed `Load` should stop the proce
 
 `Deploy.Schema()` returns the kind file text. A `go generate` step writes it into the policy repository as `deploy_approval.sigil`, where the `sigil` CLI, the LSP server and other services pick it up without importing the host's code. The defining host never loads a kind file itself; its Go definition is the source of truth.
 
+The simplest way to write it is the host's own `sigil` binary, built with package `cli` (see [Host binaries](/reference/cli/#host-functions-and-host-binaries)), whose `sigil export` writes the linked kind's `Schema()`:
+
 ```go
-// Illustrative: a small program in the host repo that writes Deploy.Schema() to disk.
-//go:generate go run ./cmd/export-kind -o ../policies/deploy_approval.sigil
+// cmd/sigil/main.go in the host repository
+func main() { cli.Main(cli.WithKind(policy.Deploy)) }
+
+//go:generate go run ./cmd/sigil export --out ../policies/deploy_approval.sigil
 ```
+
+A test keeps the copy honest, so a kind change that wasn't exported fails `go test`:
+
+```go
+func TestKindFileIsCurrent(t *testing.T) {
+	policytest.Schema(t, policy.Deploy, "../policies/deploy_approval.sigil")
+}
+```
+
+`Schema()` prints the kind in `sigil fmt`'s canonical style, so the exported file also passes `sigil fmt --check`.
+
+## Testing policies
+
+Package `policytest` runs the test files `sigil test` runs, from `go test`, with the host's Go types and real function implementations:
+
+```go
+func TestPolicies(t *testing.T) {
+	policytest.Run(t, policy.Deploy, os.DirFS("../policies"), policy.Require("deploy.guardrails"))
+}
+```
+
+Each `*_test.yaml` file becomes a subtest, and each case a subtest of it. The test file format is described under [`sigil test`](/reference/cli/#sigil-test).
+
+`Kind.Contract` exists for the tooling in this module, `cli` and `policytest`, and returns a type that nothing outside it can use.
 
 ## Loading a kind elsewhere
 

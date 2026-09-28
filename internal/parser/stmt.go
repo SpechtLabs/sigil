@@ -187,6 +187,7 @@ func (p *parser) parseWhen() *ast.WhenStmt {
 	p.next()
 	s := &ast.WhenStmt{}
 	start := p.tok.Pos
+	p.lostBody = nil
 	ok := p.try(func() {
 		p.after = ast.OpInvalid
 		s.Cond = p.parseExpr(lowest)
@@ -194,6 +195,15 @@ func (p *parser) parseWhen() *ast.WhenStmt {
 			p.unexpected("`{` after the condition", "a rule is written `when condition { ... }`")
 		}
 	})
+	if open := p.lostBody; !ok && open != nil {
+		// The condition swallowed the body's `{`; the body resumes here.
+		p.lostBody = nil
+		s.Cond = &ast.BadExpr{From: start, To: open.Pos}
+		s.Body = p.parseBody(*open)
+		s.Span = ast.Span{From: kw.Pos, To: p.tok.End}
+		p.next()
+		return s
+	}
 	if !ok {
 		// The condition is broken, but if its `{` is still ahead the body
 		// can be parsed as usual, so its rules and their errors aren't lost

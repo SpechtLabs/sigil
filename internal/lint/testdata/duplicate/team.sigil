@@ -1,0 +1,15 @@
+policy team.main: DeployApproval@1
+
+use deploy.production
+
+production(approvers: ["a"], tiers: ["x"])
+
+// The same call with its arguments reordered.
+production(tiers: ["x"], approvers: ["a"])
+
+when release.hotfix {
+  // Different arguments: fine.
+  production(approvers: ["b"])
+  // Same as the first, gated.
+  production(approvers: ["a"], tiers: ["x"])
+}

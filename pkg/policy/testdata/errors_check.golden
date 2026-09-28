@@ -1,15 +1,15 @@
 == compile p ==
-5:14: unknown field "teir" on type Service
+5:14 (p): unknown field "teir" on type Service
   |
 5 | when service.teir == "x" {
   |              ^^^^
   = help: did you mean "tier"? Service declares: name, tier, owners, labels
-15:1: expected `:`, found `}`
+13:19 (q): `==` has no right operand
    |
-15 | }
-   | ^
-   = help: a map entry is written `key: value`
-21:6: expected bool, found int
+13 | when service.tier == {
+   |                   ^^
+   = help: the `{` after it was read as a map literal; finish the condition before the rule's `{`
+21:6 (r): expected bool, found int
    |
 21 | when 1 {
    |      ^

@@ -15,7 +15,7 @@ If you have an opinion on any of these, [open an issue](https://github.com/Spech
 
 ## Assertions
 
-**Blocks: M5, M6** (the remaining points)
+**Blocks: nothing yet** (the remaining points)
 
 `assert("<reason>", <condition>)` fails the evaluation loudly when its condition is false, and it's the guardrail mechanism for [collecting kinds](#collecting-kinds), which have no deny that outranks a grant. The syntax and semantics are in [Policy files](/reference/policy-files/#assert), [Expressions](/reference/expressions/#decision-values-and-outcome) and [Evaluation semantics](/reference/evaluation/#assertions). Still open:
 
@@ -42,7 +42,7 @@ Two more gaps:
 
 ## Collecting kinds
 
-**Blocks: M6** (the remaining points)
+**Blocks: nothing yet** (the remaining points)
 
 A kind that declares `collect all` returns every candidate that fired, not one winner: roles a user can hold at the same time, feature flags, labels to attach. See [Kind files](/reference/kind-files/#collect) and [Evaluation semantics](/reference/evaluation/#collecting-kinds). Still open:
 
@@ -63,7 +63,7 @@ Params with an order, such as durations and numbers, are covered by [bounds](/re
 
 ## Vacuous `all in`
 
-**Blocks: M6** (the linter)
+**Blocks: a lint for it**
 
 The evaluator keeps the math: an empty left side makes `all in` and `exclusive in` true, `any in` and `one in` false, and `all x in []: ...` true. What's open is whether the linter should warn on a left side that can be empty.
 
@@ -88,18 +88,12 @@ An earlier draft of this design called evaluation cost linear in policy size tim
 
 ## Reasons declared in the kind
 
-**Blocks: M6** (the remaining points)
+**Blocks: nothing yet** (the remaining points)
 
 Reasons are declared per decision in the kind, and constructors name one of them (see [Kind files](/reference/kind-files/#decision) and [Decisions](/reference/decisions/#the-reason)). What's open:
 
 - **Assert reasons.** They stay string literals, because an assert belongs to its policy and the kind has no say in it. Whether they should be declared too, for the same metric reasons, is open; nothing in the design needs it.
 - **Unranked reasons in `collect one`.** Allowed, and a conflict when two of them fire. A lint could flag unranked reasons whose branches can overlap, but that's the solver-style analysis the language avoids, so it would only catch identical conditions.
-
-## Checking a base policy on its own
-
-**Blocks: M6**
-
-A missing required param is a compile error for a host, and `sigil explain` shows an unbound param by its name instead, `approvers = approvers`, so a shared policy can be explained before any team invokes it. What `sigil check` should do with `deploy.production`, which declares `param approvers: list<string>` without a default, is still open: type-check it and report the param as unbound rather than as an error, or check shared policies only through the policies that invoke them.
 
 ## Input-dependent invocation arguments
 
@@ -127,35 +121,9 @@ A host could layer a required policy itself, with something like `policy.Base("d
 
 Should a module be able to re-export names it imports, so a team gets one `use` line instead of several? Leaning no, because it hides where names come from, which is exactly what banning wildcard imports protects.
 
-## Parentheses around quantifier bodies
-
-**Blocks: M6** (the formatter)
-
-A quantifier body extends as far right as possible, so
-
-```sigil
-any r in actor.roles: r like "sre-*" and release.soak < 1h
-```
-
-parses as `any r in actor.roles: (r like "sre-*" and release.soak < 1h)`. That's settled and implemented; see [Quantifiers](/reference/expressions/#quantifiers). The risk is that authors read the line above as two conditions joined by `and` and get a subtly different result. Should `sigil fmt` always add parentheses around a body that contains `and` or `or`, so the extent is visible?
-
-## Input encoding for the CLI
-
-**Blocks: M6**
-
-`sigil eval` and `sigil test` take JSON input, and the `Resolver` supplies values by path. Neither says how a `duration` or `timestamp` is encoded (Go duration strings like `"45m"` and RFC 3339 are the obvious choices), or whether a field missing from the JSON is an error or reads as the zero value. Reading it as zero matches how map keys behave, but it means a typo in a test fixture silently tests the wrong thing.
-
-## Host functions in the CLI
-
-**Blocks: M6**
-
-`sigil eval` and `sigil test` evaluate policies, which means calling the host functions a kind declares. The exported kind file (`deploy_approval.sigil`) carries only their signatures. A standalone `sigil` binary has no implementations for them.
-
-Options: hosts build their own `sigil` binary with their functions linked in (a small `main` package the library provides); a plugin mechanism; or a stub mode where the test file supplies return values for each function call. The `policytest` package for `go test` doesn't have this problem, since it runs inside the host.
-
 ## Document names in text output
 
-**Blocks: M6**
+**Blocks: nothing yet**
 
 Every diagnostic and trace entry carries the document name alongside file, line and column, as a `policy.Position`. Its text form adds the name in parentheses, `policies.sigil:42:5 (payments.production)`, and leaves it out when the file's path matches the name, so the common repository layout keeps short positions. What's left for the CLI is whether the "file holds only that document" half of the rule matters in practice, and whether the CLI should always print the name instead, which is uniform but doubles the length of every position in a one-document-per-file repository.
 

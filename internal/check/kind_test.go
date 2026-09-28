@@ -14,12 +14,14 @@ type Release {
   soak: duration
   hotfix: bool
 }
+
 type Service {
   name: string
   tier: string
   owners: list<string>
   labels: map<string, string>
 }
+
 type Actor {
   name: string
   teams: list<string>
@@ -42,12 +44,14 @@ decision deny {
   not_eligible
   soak_too_short
 }
+
 decision review(approvers: list<string>) {
   r
   c
   x
   service_owner
 }
+
 decision approve(bake: duration = 1h) {
   ok
   x
@@ -58,6 +62,7 @@ decision approve(bake: duration = 1h) {
 
 collect one
 precedence deny > review > approve
+
 default deny(no_rule_matched)
 `
 
@@ -74,14 +79,23 @@ func TestLoadKind(t *testing.T) {
 	}{
 		{name: "README kind round-trips", src: deploy, want: deploy},
 		{name: "collecting kind", src: `kind AccessGrant version 1
-type Actor { name: string groups: list<string> clearance: string }
+
+type Actor {
+  name: string
+  groups: list<string>
+  clearance: string
+}
+
 input actor: Actor
+
 decision read {
   everyone
 }
+
 decision admin(ttl: duration = 8h) {
   x
 }
+
 collect all
 `, want: `kind AccessGrant version 1
 
@@ -96,6 +110,7 @@ input actor: Actor
 decision read {
   everyone
 }
+
 decision admin(ttl: duration = 8h) {
   x
 }
@@ -103,31 +118,47 @@ decision admin(ttl: duration = 8h) {
 collect all
 `},
 		{name: "kind that accepts older versions", src: "kind K version 3, accepts: 2\ndecision d { a x y }\ncollect one\nprecedence d\ndefault d(x)",
-			want: "kind K version 3, accepts: 2\n\ndecision d {\n  a\n  x\n  y\n}\n\ncollect one\nprecedence d\ndefault d(x)\n"},
+			want: "kind K version 3, accepts: 2\n\ndecision d {\n  a\n  x\n  y\n}\n\ncollect one\nprecedence d\n\ndefault d(x)\n"},
 		{name: "accepts 1 is the default", src: "kind K version 3, accepts: 1\ndecision d { a x y }\ncollect one\nprecedence d\ndefault d(x)",
-			want: "kind K version 3\n\ndecision d {\n  a\n  x\n  y\n}\n\ncollect one\nprecedence d\ndefault d(x)\n"},
+			want: "kind K version 3\n\ndecision d {\n  a\n  x\n  y\n}\n\ncollect one\nprecedence d\n\ndefault d(x)\n"},
 		{name: "collecting kind with a default", src: "kind K version 1\ndecision read { everyone }\ncollect all\ndefault read(everyone)",
-			want: "kind K version 1\n\ndecision read {\n  everyone\n}\n\ncollect all\ndefault read(everyone)\n"},
+			want: "kind K version 1\n\ndecision read {\n  everyone\n}\n\ncollect all\n\ndefault read(everyone)\n"},
 		{name: "declarations in any order", src: `kind K version 3
+
 default allow(none, tags: ["x"], weight: 1 + 1)
+
 collect one
 precedence allow
+
 decision allow(weight: int = 0, tags: list<string> = []) {
   none
 }
+
 input a: A
-type A { b: B next: ?A2 }
-type A2 { n: int }
-type B { m: map<int, list<string>> }
+
+type A {
+  b: B
+  next: ?A2
+}
+
+type A2 {
+  n: int
+}
+
+type B {
+  m: map<int, list<string>>
+}
 `, want: `kind K version 3
 
 type A {
   b: B
   next: ?A2
 }
+
 type A2 {
   n: int
 }
+
 type B {
   m: map<int, list<string>>
 }
@@ -140,18 +171,22 @@ decision allow(weight: int = 0, tags: list<string> = []) {
 
 collect one
 precedence allow
+
 default allow(none, weight: 2, tags: ["x"])
 `},
-		{name: "keyword field and payload names", src: "kind K version 1\ntype R { kind: string type: int }\ninput r: R\ndecision d(kind: string = \"\") { a x y }\ncollect one\nprecedence d\ndefault d(x, kind: \"cluster\")\n",
-			want: "kind K version 1\n\ntype R {\n  kind: string\n  type: int\n}\n\ninput r: R\n\ndecision d(kind: string = \"\") {\n  a\n  x\n  y\n}\n\ncollect one\nprecedence d\ndefault d(x, kind: \"cluster\")\n"},
+		{name: "keyword field and payload names", src: "kind K version 1\n\ntype R {\n  kind: string\n  type: int\n}\n\ninput r: R\n\ndecision d(kind: string = \"\") {\n  a\n  x\n  y\n}\n\ncollect one\nprecedence d\n\ndefault d(x, kind: \"cluster\")\n",
+			want: "kind K version 1\n\ntype R {\n  kind: string\n  type: int\n}\n\ninput r: R\n\ndecision d(kind: string = \"\") {\n  a\n  x\n  y\n}\n\ncollect one\nprecedence d\n\ndefault d(x, kind: \"cluster\")\n"},
 		{name: "constant defaults of every shape", src: `kind K version 1
+
 decision d(i: int = -3, f: float = 0.5 + 0.25, s: string = "a", b: bool = true, dur: duration = 1h + 30m, l: list<int> = [1, -2], m: map<string, list<int>> = {"a": [1]}, o: ?string = "x") {
   a
   x
   y
 }
+
 collect one
 precedence d
+
 default d(x)
 `, want: `kind K version 1
 
@@ -163,6 +198,7 @@ decision d(i: int = -3, f: float = 0.75, s: string = "a", b: bool = true, dur: d
 
 collect one
 precedence d
+
 default d(x)
 `},
 
@@ -228,7 +264,7 @@ default d(x)
 		{name: "reason declared twice", src: "kind K version 1\ndecision d { x x }\ncollect one\nprecedence d\ndefault d(x)",
 			errs: []string{`2:16: decision d: reason "x" is declared twice`}},
 		{name: "scoped precedence round-trips", src: "kind K version 1\ndecision d { a x y }\ncollect one\nprecedence d\nprecedence d: y > x > a\ndefault d(x)",
-			want: "kind K version 1\n\ndecision d {\n  a\n  x\n  y\n}\n\ncollect one\nprecedence d\nprecedence d: y > x > a\ndefault d(x)\n"},
+			want: "kind K version 1\n\ndecision d {\n  a\n  x\n  y\n}\n\ncollect one\nprecedence d\nprecedence d: y > x > a\n\ndefault d(x)\n"},
 		{name: "scoped precedence on an undeclared decision", src: "kind K version 1\ndecision d { a x y }\ncollect one\nprecedence d\nprecedence e: a > b\ndefault d(x)",
 			errs: []string{`5:12: precedence: undeclared decision "e"`}},
 		{name: "scoped precedence twice", src: "kind K version 1\ndecision d { a x y }\ncollect one\nprecedence d\nprecedence d: a > x > y\nprecedence d: y > x > a\ndefault d(x)",
@@ -236,7 +272,7 @@ default d(x)
 		{name: "scoped precedence misses a reason", src: "kind K version 1\ndecision d { a x y }\ncollect one\nprecedence d\nprecedence d: a > y\ndefault d(x)",
 			errs: []string{`5:1: precedence d: doesn't name reason "x"`}},
 		{name: "exclusive round-trips", src: "kind K version 1\ndecision d { a x y }\ndecision e { z }\ncollect all\nexclusive d.a, e\nexclusive d, e",
-			want: "kind K version 1\n\ndecision d {\n  a\n  x\n  y\n}\ndecision e {\n  z\n}\n\ncollect all\nexclusive d.a, e\nexclusive d, e\n"},
+			want: "kind K version 1\n\ndecision d {\n  a\n  x\n  y\n}\n\ndecision e {\n  z\n}\n\ncollect all\nexclusive d.a, e\nexclusive d, e\n"},
 		{name: "exclusive names an undeclared reason", src: "kind K version 1\ndecision d { a x y }\ncollect one\nprecedence d\nexclusive d.a, d.b\ndefault d(x)",
 			errs: []string{`5:16: exclusive: decision d has no reason "b"`}, help: "d declares: a, x, y"},
 		{name: "exclusive names an undeclared decision", src: "kind K version 1\ndecision d { a x y }\ncollect one\nprecedence d\nexclusive d, e\ndefault d(x)",

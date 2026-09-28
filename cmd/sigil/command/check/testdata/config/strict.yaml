@@ -1,0 +1,5 @@
+lints:
+  gated-deny: error
+  path-matches-name: warn
+  qualified-imports: warn
+  unused-let: "off"

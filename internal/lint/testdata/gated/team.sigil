@@ -1,0 +1,18 @@
+policy team.main: DeployApproval@1
+
+use deploy.baseline
+use deploy.approvals
+use deploy.guardrails
+
+// Gated through the baseline: both lints.
+when environment == "production" {
+  baseline()
+}
+
+// Gated, but holds approvals only.
+when environment == "staging" {
+  approvals()
+}
+
+// Unconditional: fine.
+guardrails()

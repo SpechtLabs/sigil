@@ -1,0 +1,15 @@
+policy team.main: DeployApproval@1
+
+use team.lib
+
+let unused = release.hotfix
+
+when release.hotfix {
+  approve(payments_sre)
+}
+
+---
+
+module team.lib: DeployApproval@1
+
+pub let x = 1

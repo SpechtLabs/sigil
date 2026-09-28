@@ -1,0 +1,27 @@
+warn unused-import (team.main)
+team.sigil:8:26 (team.main): critical is imported from deploy.common but never used
+  |
+8 | use deploy.common.{owns, critical}
+  |                          ^^^^^^^^
+  = help: remove it from the import list
+
+warn unused-import (team.main)
+team.sigil:10:30 (team.main): urgent is imported from deploy.common but never used
+   |
+10 | use deploy.common.{hotfix as urgent}
+   |                              ^^^^^^
+   = help: remove it from the import list
+
+warn unused-import (team.unused)
+unused.sigil:4:1 (team.unused): deploy.common is imported but never used
+  |
+4 | use deploy.common
+  | ^^^^^^^^^^^^^^^^^
+  = help: remove the import, or use what it binds
+
+warn unused-import (team.unused)
+unused.sigil:5:1 (team.unused): deploy.production is imported but never used
+  |
+5 | use deploy.production
+  | ^^^^^^^^^^^^^^^^^^^^^
+  = help: remove the import, or use what it binds

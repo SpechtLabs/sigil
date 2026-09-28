@@ -1,0 +1,6 @@
+policy deploy.baseline: DeployApproval@1
+
+// Holds denies and asserts through the guardrails it invokes.
+use deploy.guardrails
+
+guardrails()

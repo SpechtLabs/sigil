@@ -107,10 +107,6 @@ p, err := Deploy.Load(teamFS, "payments.production",
 
 A team document that claims `deploy.guardrails` or `deploy.common` is then a compile error. [Policies in a ConfigMap](/guides/configmaps/#protect-the-guardrails) shows the full setup.
 
-::: info Planned API
-`Require` and `From` are planned and come with composition. See the [Go API reference](/reference/go-api/) for what exists today.
-:::
-
 ## Bind params from Go instead
 
 If a team only needs different param values and no rules of its own, it doesn't need a policy file at all. The platform writes one policy that composes the guardrails and the approvals and passes its own params through:
@@ -125,6 +121,7 @@ param min_soak: duration = 24h
 param approvers: list<string>
 
 guardrails(min_soak: min_soak)
+
 production(approvers: approvers)
 ```
 
@@ -203,6 +200,7 @@ use deploy.regional
 guardrails(min_soak: 4h)
 
 regional(region: "eu-1", approvers: ["payments-leads"])
+
 regional(region: "us-1", approvers: ["payments-leads", "us-platform"])
 ```
 

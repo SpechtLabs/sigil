@@ -98,13 +98,15 @@ linters:
         path: ^internal/types/
 
       # The checker's and the compiler's rule methods take AST nodes the
-      # parser guarantees are non-nil, and the policy package's helpers
-      # take outcomes the evaluator guarantees; returning quietly on nil
-      # would hide a bug rather than prevent one.
+      # parser guarantees are non-nil, the policy package's helpers take
+      # outcomes the evaluator guarantees, and the tooling (the decoder,
+      # the lints, the test runner and the CLI) takes kinds, documents and
+      # results its own callers built; returning quietly on nil would hide
+      # a bug rather than prevent one.
       - linters:
           - golint-sl
         text: "^nilcheck:"
-        path: ^(internal/(ast|check|eval)|pkg/policy)/
+        path: ^(internal/(ast|check|eval|gokind|lint|result|testsuite)|pkg/(policy|policytest)|cmd/sigil)/
 
       # The public API returns typed errors (*CompileError, *AssertionError,
       # *RuntimeError) that hosts match with errors.As, each carrying its own

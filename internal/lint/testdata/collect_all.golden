@@ -1,0 +1,6 @@
+warn gated-assert (roles.team)
+roles.sigil:26:3 (roles.team): roles.base holds asserts and is invoked under `when`
+   |
+26 |   base()
+   |   ^^^^^^
+   = help: its asserts only run while the condition holds; invoke it at the top level, or have the host require it

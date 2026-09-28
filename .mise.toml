@@ -48,11 +48,57 @@ run = "go run -buildvcs=true ./cmd/sigil/"
 description = "Run the test suite with race detector and coverage"
 run = "go test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.txt ./..."
 
+# `mise run fmt` rewrites everything that has a canonical form; `mise run
+# lint` checks the same things without touching a file. The steps run in
+# order, because go mod tidy may rewrite go.mod while sigil fmt builds.
+[tasks.fmt]
+description = "Format everything: go.mod, Go sources, .sigil files and Markdown"
+run = [
+  { task = "go-tidy" },
+  { task = "go-fmt" },
+  { task = "sigil-fmt" },
+  { task = "md-fmt" },
+]
+
+[tasks.go-tidy]
+description = "Tidy go.mod and go.sum"
+run = "go mod tidy"
+
+# The same gofmt and goimports settings `mise run lint` checks, read from
+# .golangci.yaml.
+[tasks.go-fmt]
+description = "Format Go sources with the formatters configured for golangci-lint"
+run = "golangci-lint fmt"
+
+# The same files sigil-lint checks; see there for what's left out and why.
+[tasks.sigil-fmt]
+description = "Format every .sigil file in sigil fmt's canonical style"
+run = """
+git ls-files --cached --others --exclude-standard -z -- '*.sigil' \
+  ':!:internal/parser/testdata' ':!:internal/format/testdata' \
+  ':!:pkg/policy/testdata/errors_check.sigil' \
+  | xargs -0 go run ./cmd/sigil fmt --write
+"""
+
+[tasks.md-fmt]
+description = "Fix what markdownlint can fix in the documentation and the README"
+run = "markdownlint-cli2 --fix 'docs/**/*.md' '*.md'"
+
 # golint-sl runs as a golangci-lint module plugin, so it has to be compiled into
 # a custom binary (./custom-gcl). Rebuilds only when .custom-gcl.yml changes.
 [tasks.lint-build]
 description = "Build the custom-gcl binary with the golint-sl plugin baked in"
-run = "golangci-lint custom"
+# The build downloads golangci-lint's whole dependency tree, and the module
+# proxy sometimes resets the HTTP/2 stream partway through. Modules already
+# downloaded stay in the cache, so a retry picks up where it failed.
+run = """
+for attempt in 1 2 3; do
+  golangci-lint custom && exit 0
+  echo "golangci-lint custom failed (attempt $attempt of 3)" >&2
+  sleep 10
+done
+exit 1
+"""
 sources = [".custom-gcl.yml"]
 outputs = ["custom-gcl"]
 
@@ -63,9 +109,21 @@ description = "Check that go.mod and go.sum are tidy"
 run = "go mod tidy -diff"
 
 [tasks.lint]
-description = "Lint the module with golangci-lint and the golint-sl plugin"
-depends = ["lint-build"]
+description = "Lint the Go module with golangci-lint and golint-sl, check .sigil formatting, and lint YAML and workflows"
+depends = ["lint-build", "sigil-lint", "yaml-lint", "actionlint"]
 run = "./custom-gcl run ./..."
+
+# The parser's and the formatter's test inputs are unformatted on purpose,
+# and errors_check.sigil doesn't parse on purpose; every other .sigil file,
+# tracked or new, must be in sigil fmt's canonical style.
+[tasks.sigil-lint]
+description = "Check that every .sigil file in the repository is formatted"
+run = """
+git ls-files --cached --others --exclude-standard -z -- '*.sigil' \
+  ':!:internal/parser/testdata' ':!:internal/format/testdata' \
+  ':!:pkg/policy/testdata/errors_check.sigil' \
+  | xargs -0 go run ./cmd/sigil fmt --check
+"""
 
 [tasks.yaml-lint]
 description = "Lint every YAML file in the repository"
@@ -95,10 +153,7 @@ run = "pinact run -e 'SpechtLabs/StaticPages-Upload'"
 description = "Lint the documentation markdown and roadmap.yml (the docs workflow's first job)"
 # roadmap.yml is linted here rather than by yaml-lint in CI: CI skips pull
 # requests that only touch documentation, and the roadmap counts as docs.
-run = [
-  "markdownlint-cli2 'docs/**/*.md'",
-  "yamllint --strict roadmap.yml",
-]
+run = ["markdownlint-cli2 'docs/**/*.md'", "yamllint --strict roadmap.yml"]
 
 [tasks.docs-roadmap]
 description = "Validate roadmap.yml and render it into the docs site's roadmap page"

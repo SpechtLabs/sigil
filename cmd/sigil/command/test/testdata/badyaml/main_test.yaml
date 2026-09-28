@@ -1,0 +1,7 @@
+policy: access.main
+cases:
+  - name: misspelled expect
+    input: {user: {name: ada}}
+    expcet:
+      decision: allow
+      reason: admin

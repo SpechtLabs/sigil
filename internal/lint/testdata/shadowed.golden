@@ -1,0 +1,6 @@
+warn shadowed-kind-name (team.old)
+old.sigil:4:5 (team.old): approvers shadows the kind's input approvers, added after the version this document pins
+  |
+4 | let approvers = ["a"]
+  |     ^^^^^^^^^
+  = help: the kind's input is out of reach here; rename approvers and raise the document's pin to DeployApproval@2

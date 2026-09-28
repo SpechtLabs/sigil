@@ -1,0 +1,9 @@
+policy team.unused: DeployApproval@1
+
+// Neither read nor invoked.
+use deploy.common
+use deploy.production
+
+when release.hotfix {
+  approve(payments_sre)
+}

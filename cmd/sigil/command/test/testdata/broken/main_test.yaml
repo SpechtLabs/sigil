@@ -1,0 +1,7 @@
+policy: access.broken
+cases:
+  - name: never runs
+    input: {user: {name: ada}}
+    expect:
+      decision: allow
+      reason: admin

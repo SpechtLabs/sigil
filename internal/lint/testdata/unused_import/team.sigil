@@ -1,0 +1,16 @@
+policy team.main: DeployApproval@1
+
+// Whole import, read through its qualifier: used.
+use deploy.common
+// Whole import of a policy, invoked: used.
+use deploy.production
+// Selective import: owns is read, critical isn't.
+use deploy.common.{owns, critical}
+// Aliased item, never read.
+use deploy.common.{hotfix as urgent}
+
+production()
+
+when common.hotfix and owns {
+  approve(payments_sre)
+}

@@ -7,8 +7,8 @@ permalink: /getting-started/first-policy/
 
 In this tutorial you'll write `deploy/production.sigil` from an empty file, one rule at a time, against the `DeployApproval` kind from the [tour](/getting-started/tour/). After each step you'll check the policy and evaluate it against a sample deploy, and along the way you'll hit the compile errors Sigil exists to produce. At the end you'll invoke it from a team policy and split it into the files the tour uses.
 
-::: info Illustrative CLI
-Sigil is in the design phase and the `sigil` CLI doesn't exist yet. The commands, flags and output on this page show the intended experience; the exact spelling will change. The language itself is what this page specifies.
+::: info Which `sigil`
+The transcripts on this page are real output from the deploy gate's own build of the CLI, which links the `DeployApproval` kind and its `split` function (see [Host binaries](/reference/cli/#host-functions-and-host-binaries)). The stock `sigil` binary prints the same, except that from step 5 on, `eval` and `test` stop with a runtime error naming `split` as soon as a rule calls it.
 :::
 
 ## Set up the policy repo
@@ -71,13 +71,9 @@ A policy with no rules is valid. Evaluate it:
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
-decision  deny
-reason    no_rule_matched
-policy    deploy.production
-payload   (none)
+deploy.production: deny no_rule_matched (the kind's default)
 
-candidates
-  (none)
+trace: no rule fired
 ```
 
 :::
@@ -102,18 +98,16 @@ when release.soak < 24h and not release.hotfix {
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
-decision  deny
-reason    soak_too_short
-policy    deploy.production
-payload   (none)
+deploy.production: deny soak_too_short
 
-candidates
-  deny     soak_too_short    deploy/production.sigil:4:3
+trace: 1 candidate
+* deny     soak_too_short    deploy/production.sigil:4:3
+           release.soak < 24h and not release.hotfix
 ```
 
 :::
 
-The candidate list tells you where the decision came from, down to line and column. You never have to name rules; the reason and the position identify them.
+The trace tells you where the decision came from, down to line and column, and which conditions held on the way; `*` marks the candidate the host acts on. You never have to name rules; the reason and the position identify them.
 
 ## Step 3: a let, and your first compile error
 
@@ -145,11 +139,14 @@ There's a typo on line 6. Check the file:
 
 ```shell
 $ sigil check --kind deploy_approval.sigil deploy/production.sigil
-deploy/production.sigil:6:15: error: unknown field "lables" on type Service
+Error: deploy/production.sigil:6:15: unknown field "lables" on type Service
   |
 6 |   and service.lables has {
   |               ^^^^^^
   = help: did you mean "labels"? Service declares: name, tier, owners, labels
+
+What you can do
+  • fix the documents above
 ```
 
 :::
@@ -160,19 +157,18 @@ In a YAML matcher, or in a language where unknown fields resolve to `null`, this
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input wrong-lifecycle.json deploy/production.sigil
-decision  deny
-reason    not_eligible
-policy    deploy.production
-payload   (none)
+deploy.production: deny not_eligible
 
-candidates
-  deny     not_eligible      deploy/production.sigil:12:3
+trace: 2 candidates
+* deny     not_eligible      deploy/production.sigil:12:3
+           not eligible
   deny     soak_too_short    deploy/production.sigil:16:3
+           release.soak < 24h and not release.hotfix
 ```
 
 :::
 
-Both denies fired. They share a decision, so precedence can't pick between them, and the earlier source position wins. The trace still lists both, so nothing is hidden.
+Both denies fired. They share a decision, so ranking decisions can't pick between them, but the kind also ranks deny's reasons, `precedence deny: not_eligible > soak_too_short > no_rule_matched`, and `not_eligible` wins. Without that line the two would be a conflict, and the host would fall back to the default. The trace still lists both, so nothing is hidden.
 
 A few things to notice about the `let`:
 
@@ -250,17 +246,24 @@ when cleared {
 
 ```shell
 $ sigil check --kind deploy_approval.sigil deploy/production.sigil
-deploy/production.sigil:34:29: error: decision review has no payload field "approver"
+Error: deploy/production.sigil:34:5: decision review needs field "approvers"
    |
 34 |     review(service_owner, approver: approvers)
-   |                             ^^^^^^^^
-   = note: DeployApproval declares: decision review(approvers: list<string>) { service_owner }
-   = help: did you mean "approvers"?
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: review is declared as: decision review(approvers: list<string>) { service_owner }
+deploy/production.sigil:34:27: decision review has no payload field "approver"
+   |
+34 |     review(service_owner, approver: approvers)
+   |                           ^^^^^^^^
+   = help: did you mean "approvers"? review is declared as: decision review(approvers: list<string>) { service_owner }
+
+What you can do
+  • fix the documents above
 ```
 
 :::
 
-Payload fields come from the kind, and the error quotes the signature so you don't have to go looking for it. Rename the argument to `approvers:` and the file is the finished base policy.
+One misspelled argument, two errors: `approver` isn't a field of `review`, and the `approvers` it was meant to be is missing. Payload fields come from the kind, and both errors quote the signature so you don't have to go looking for it. Rename the argument to `approvers:` and the file is the finished base policy.
 
 Some notes on what you just wrote:
 
@@ -277,12 +280,14 @@ Try to evaluate the base policy on its own:
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
-deploy/production.sigil:4:7: error: required param "approvers" is not bound
+Error: deploy/production.sigil:4:1: param `approvers` has no value
   |
 4 | param approvers: list<string>
-  |       ^^^^^^^^^
-  = help: bind it from a policy that invokes this one, as in
-          production(approvers: [...]), or from Go with policy.Params
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: bind it with policy.Params{"approvers": ...} when compiling, or give it a default
+
+What you can do
+  • fix the documents above; eval needs a policy that compiles
 ```
 
 :::
@@ -310,14 +315,16 @@ when "payments-sre" in actor.teams {
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
-decision  review
-reason    service_owner
-policy    payments.production
-payload   approvers = ["payments-leads"]
+payments.production: review service_owner
+  approvers = ["payments-leads"]
 
-candidates
-  review   service_owner     payments/production.sigil:5:1 → deploy/production.sigil:34:5
+trace: 2 candidates
+* review   service_owner     payments/production.sigil:5:1 → deploy/production.sigil:34:5
+           cleared
+           and service.tier in ["standard", "internal"] and owns_service
+           approvers = ["payments-leads"]
   approve  payments_sre      payments/production.sigil:11:3
+           bake = 15m
 ```
 
 :::
@@ -327,7 +334,7 @@ The team policy imports `deploy.production`, so the command passes both director
 With `min_soak` lowered to four hours, the six-hour soak no longer trips `soak_too_short`. The base policy asks for review, the team's rule offers an approval, and review wins because it ranks higher in the kind's `precedence`. The first candidate's position is a call chain: the invocation on line 5 of the team file, then the rule on line 34 of the base.
 
 ::: tip Checking a base policy on its own
-Whether `sigil check` should accept a base policy with unbound required params, treating it as a library, or report them the way `eval` does, isn't settled yet. Either way, checking a policy that invokes it checks the base too.
+`sigil check` accepts `deploy/production.sigil` on its own: it type-checks and compiles a base policy with its required params unbound, the way `sigil explain` shows it. Checking a policy that invokes it checks the base again, with the arguments bound.
 :::
 
 ## Step 7: protect the denies
@@ -400,23 +407,25 @@ when cleared {
 }
 ```
 
-The host now loads every team policy with `policy.Require("deploy.guardrails")`, and a policy repository runs the same check in CI with `sigil check --require`. Try it on the team policy from step 6, which doesn't invoke the guardrails yet:
+The host now loads every team policy with `policy.Require("deploy.guardrails")`, and a policy repository runs the same check in CI with `sigil check --require`. Try it on the team policy from step 6, which doesn't invoke the guardrails yet. `deploy.production` no longer declares `min_soak`, so drop that argument from the call first; otherwise `check` stops at the unknown param before it gets to the requirement:
 
 ::: terminal Check the team policy against the requirement
 
 ```shell
 $ sigil check --kind deploy_approval.sigil --require deploy.guardrails deploy/ payments/
-payments/production.sigil:1:1: error: deploy.guardrails must be invoked unconditionally
+Error: payments/production.sigil:1:1: payments.production doesn't invoke deploy.guardrails
   |
 1 | policy payments.production: DeployApproval@1
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  = help: the host requires deploy.guardrails for every DeployApproval policy.
-          Add `use deploy.guardrails` and invoke it at the top level.
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: the host requires deploy.guardrails for every DeployApproval policy; import it with `use deploy.guardrails` and invoke it at the top level
+
+What you can do
+  • fix the documents above
 ```
 
 :::
 
-The same check reports a second error, left out above: `deploy.production` no longer declares `min_soak`, so the call on line 5 passes an argument the policy doesn't have. The requirement check also fails if the call is there but sits inside a `when`. Update the team policy to invoke both policies. While you're at it, give services in PCI scope a second approver group, and only offer the SRE fast path to actors who are cleared for the service's regions:
+The requirement check also fails if the call is there but sits inside a `when`. Update the team policy to invoke both policies. While you're at it, give services in PCI scope a second approver group, and only offer the SRE fast path to actors who are cleared for the service's regions:
 
 ```sigil
 policy payments.production: DeployApproval@1
@@ -446,14 +455,17 @@ Here the `when` around `production(...)` is exactly what you want: the block's c
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
-decision  review
-reason    service_owner
-policy    payments.production
-payload   approvers = ["payments-leads"]
+payments.production: review service_owner
+  approvers = ["payments-leads"]
 
-candidates
-  review   service_owner     payments/production.sigil:14:3 → deploy/production.sigil:16:5
+trace: 2 candidates
+* review   service_owner     payments/production.sigil:14:3 → deploy/production.sigil:16:5
+           service.labels["compliance"] != "pci"
+           and cleared
+           and service.tier in ["standard", "internal"] and owns_service
+           approvers = ["payments-leads"]
   approve  payments_sre      payments/production.sigil:18:3
+           bake = 15m
 ```
 
 :::
@@ -462,17 +474,37 @@ Same decision as before the split; only the positions moved. These are the exact
 
 ## Step 8: pin the behaviour with test cases
 
-A policy is only as trustworthy as the cases you've pinned down. `sigil test` (and the `policytest` package for `go test`) will run cases that pair an input JSON file with the decision and reason you expect. The file format isn't designed yet, so here are the cases this tutorial has already exercised, plus one for the PCI split, as a plain table:
+A policy is only as trustworthy as the cases you've pinned down. Put the two inputs next to the team policy, `payments/testdata/owner.json` and `payments/testdata/wrong-lifecycle.json`, and write the cases this tutorial has exercised into `payments/production_test.yaml`:
 
-| Policy | Input | Expected decision | Expected reason |
-| --- | --- | --- | --- |
-| `payments.production` | `owner-deploy.json` | `review` | `service_owner` |
-| `payments.production` | `owner-deploy.json` with `"soak": "2h"` | `deny` | `soak_too_short` |
-| `payments.production` | `wrong-lifecycle.json` | `deny` | `not_eligible` |
-| `payments.production` | `owner-deploy.json` with the actor's teams set to `["checkout"]` | `deny` | `no_rule_matched` |
-| `payments.production` | `owner-deploy.json` with `"compliance": "pci"` on the service | `review` | `service_owner` |
+```yaml
+policy: payments.production
+cases:
+  - name: the owner's deploy goes to review
+    input_file: testdata/owner.json
+    expect:
+      decision: review
+      reason: service_owner
+      payload:
+        approvers: [payments-leads]
+  - name: a beta service isn't eligible
+    input_file: testdata/wrong-lifecycle.json
+    expect:
+      decision: deny
+      reason: not_eligible
+```
 
-Because reasons are string literals, a test that expects `soak_too_short` breaks loudly if someone renames the reason, and a dashboard grouping by reason keeps working as long as the tests pass. The last case has the same decision and reason as the first; asserting on the payload's `approvers` as well is what would tell them apart, which is one reason the test format should allow payload assertions.
+::: terminal Run the test cases
+
+```shell
+$ sigil test --kind deploy_approval.sigil -v
+--- PASS: payments/production_test.yaml:3: the owner's deploy goes to review
+--- PASS: payments/production_test.yaml:10: a beta service isn't eligible
+ok    payments/production_test.yaml  2 cases
+```
+
+:::
+
+`sigil test` finds every `*_test.yaml` under the current directory and runs it against all the `.sigil` files it finds there. Each case names the decision and the reason; since reasons are declared in the kind, a case that expects a reason nobody can construct fails before anything runs, and a dashboard grouping by reason keeps working as long as the tests pass. The first case also pins the payload, which is what tells it apart from a PCI deploy: that one is `review(service_owner)` too, with `security-leads` added to the approvers. The host's own test suite can run the same file from `go test` with [`policytest`](/reference/cli/#policytest-for-go-hosts).
 
 ## Where you are now
 

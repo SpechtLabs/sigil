@@ -1,0 +1,31 @@
+policy: access.main
+cases:
+  - name: unknown decision
+    input: {user: {name: ada}}
+    expect:
+      decision: allwo
+      reason: admin
+  - name: no reason
+    input: {user: {name: ada}}
+    expect:
+      decision: allow
+  - name: unknown reason and field
+    input: {user: {name: ada}}
+    expect:
+      decision: allow
+      reason: admn
+      payload:
+        tll: 1h
+  - name: outcome on a collect one kind
+    input: {user: {name: ada}}
+    expect:
+      outcome: []
+  - name: two inputs
+    input: {user: {name: ada}}
+    input_file: testdata/member.json
+    expect:
+      asserts: [named_user]
+  - name: no reason
+    input: {user: {name: ada}}
+    expect:
+      asserts: []

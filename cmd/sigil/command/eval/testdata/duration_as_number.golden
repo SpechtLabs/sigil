@@ -1,0 +1,4 @@
+--- error ---
+testdata/inputs/number_age.json: age: expected a duration, found a number
+advice: write durations as strings in Sigil's syntax, like "45m" or "1h30m"
+advice: the input is a JSON object with one key per input the kind declares

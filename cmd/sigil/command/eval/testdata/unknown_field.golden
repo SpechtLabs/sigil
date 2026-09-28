@@ -1,0 +1,4 @@
+--- error ---
+testdata/inputs/typo.json: user.amdin: unknown field "amdin" on type User
+advice: did you mean "admin"? declared: name, teams, admin, expires
+advice: the input is a JSON object with one key per input the kind declares
