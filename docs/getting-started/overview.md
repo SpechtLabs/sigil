@@ -7,8 +7,10 @@ permalink: /getting-started/overview/
 
 Sigil is a small, statically typed policy language that you embed in a Go application. Engineers write rules that read host-provided input and produce a typed decision such as `approve`, `deny` or `review`. Every decision carries a reason and a payload, so the host always knows what was decided, why, and with which parameters.
 
+This page is the starting point for everyone: people who write policies, Go developers who embed Sigil in a service, and anyone deciding whether it fits. [Where to go next](#where-to-go-next) splits the paths.
+
 ::: info Project status
-The language, Go API, composition and CLI are implemented through M6. M7 Hardening adds fuzzing and round-trip properties across the language and tooling. Public dynamic kind loading, static cost budgets and editor tooling remain planned. See the [roadmap](/project/roadmap/) for remaining work and [Testing and fuzzing](/guides/testing/) for the checks. The language is still evolving; report problems through [GitHub issues](https://github.com/SpechtLabs/sigil/issues).
+The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`), host-ordered types such as versions, static cost budgets, and editor tooling. The [roadmap](/project/roadmap/) tracks what's left. The language can still change; report problems through [GitHub issues](https://github.com/SpechtLabs/sigil/issues).
 :::
 
 ## The problem it replaces
@@ -63,13 +65,29 @@ The host compiles each policy once and evaluates it for every request, from as m
 
 ## What it isn't
 
-Sigil isn't a general-purpose language and it isn't meant to replace OPA or Cedar for org-wide authorization. It targets decisions that live inside one application, where the host already has the data in Go structs. For now only Go can evaluate policies; other languages can read the exported kind file and type-check against it, but not run it.
+Sigil isn't a general-purpose language and it isn't meant to replace OPA or Cedar for org-wide authorization. It targets decisions that live inside one application, where the host already has the data in Go structs. For now only a Go program can embed the evaluator. The exported kind file is plain text with a [published grammar](/reference/grammar/), so tooling in other languages can read it, but nothing outside Go runs policies yet.
 
 Policy and kind files share the `.sigil` extension, and the CLI is called `sigil`.
 
+## Install
+
+Policy authors need the `sigil` CLI, not Go. Install it with Homebrew:
+
+```sh
+brew install --cask spechtlabs/tap/sigil
+```
+
+Or, if you have Go, with `go install github.com/spechtlabs/sigil/cmd/sigil@latest`. The [releases](https://github.com/SpechtLabs/sigil/releases) also have signed archives for Linux and macOS.
+
+The stock binary knows each host function's signature from the kind file, but not its implementation. `check`, `fmt` and `explain` work on any policy. `eval` and `test` work until a rule calls a host function, such as the deploy kind's `split`, and then stop with a runtime error naming it. For those, use the host team's own build of the CLI, which links in the real functions through package `cli`; the [example service](/guides/example-service/) builds one as `sigilc`. [Host functions and host binaries](/reference/cli/#host-functions-and-host-binaries) has the details.
+
+Host engineers add the library to their module with `go get github.com/spechtlabs/sigil@latest` and import `github.com/spechtlabs/sigil/pkg/policy`.
+
 ## Where to go next
 
-- [A tour of the language](/getting-started/tour/) walks through a complete example and evaluates a few inputs by hand.
-- [Your first policy](/getting-started/first-policy/) builds that example from an empty file.
-- [Design goals](/understanding/design-goals/) explains the constraints behind the syntax.
-- The [language reference](/reference/policy-files/) is the precise version of everything above.
+It depends on what you're here to do.
+
+- **Writing policies.** [A tour of the language](/getting-started/tour/) walks through a complete example and evaluates a few inputs by hand, and [Your first policy](/getting-started/first-policy/) builds it from an empty file, tests included. After that, the [guides](/guides/team-policies/) cover per-team policies and common patterns, and the [language reference](/reference/policy-files/) is the precise version of everything above.
+- **Embedding Sigil in a Go service.** The [Go API reference](/reference/go-api/) covers defining a kind, loading and evaluating policies, typed matching and hot reload. [The example service](/guides/example-service/) is a complete host you can run, and [Policies in a ConfigMap](/guides/configmaps/) and [Evolve a kind safely](/guides/evolve-a-kind/) cover running one in production.
+- **Deciding whether Sigil fits.** [Design goals](/understanding/design-goals/) explains the constraints behind the syntax, and [Prior art](/understanding/prior-art/) says what Sigil takes from filt-rs, Cedar, CEL and Rego, and what it avoids.
+- **Changing Sigil itself.** [Testing, fuzzing and benchmarking](/guides/testing/) explains the test suite, benchmarks and fuzz campaigns, and the [open questions](/project/open-questions/) list what's still undecided.

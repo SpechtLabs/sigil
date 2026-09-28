@@ -2,16 +2,21 @@ package format
 
 import (
 	"bytes"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spechtlabs/sigil/cmd/internal/output"
 )
 
 const (
 	messy = "policy a: K@1\nwhen x==1{deny( r )}\n"
 	tidy  = "policy a: K@1\n\nwhen x == 1 { deny(r) }\n"
 )
+
+var update = flag.Bool("update", false, "rewrite the golden files under testdata")
 
 // TestRun runs fmt over a temporary tree in every mode.
 func TestRun(t *testing.T) {
@@ -153,7 +158,7 @@ func TestRun(t *testing.T) {
 			t.Chdir(dir)
 
 			var out bytes.Buffer
-			err := run(&out, strings.NewReader(tt.stdin), tt.paths, tt.mode)
+			err := run(&out, strings.NewReader(tt.stdin), tt.paths, tt.mode, output.Text)
 			switch {
 			case tt.err == "" && err != nil:
 				t.Fatalf("run: %v", err)
@@ -189,7 +194,7 @@ func TestRewriteKeepsMode(t *testing.T) {
 	if err := os.Chmod(p, 0o640); err != nil {
 		t.Fatal(err)
 	}
-	if err := run(&bytes.Buffer{}, strings.NewReader(""), []string{p}, modeWrite); err != nil {
+	if err := run(&bytes.Buffer{}, strings.NewReader(""), []string{p}, modeWrite, output.Text); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(p)
@@ -198,5 +203,71 @@ func TestRewriteKeepsMode(t *testing.T) {
 	}
 	if got := info.Mode().Perm(); got != 0o640 {
 		t.Errorf("mode = %v, want 0640", got)
+	}
+}
+
+// TestRunStructured runs fmt with JSON and YAML output over a tree with a
+// formatted and an unformatted file, and a broken one where the case says,
+// and compares what it prints with the golden files.
+func TestRunStructured(t *testing.T) {
+	testdata, err := filepath.Abs("testdata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name   string
+		mode   mode
+		format output.Format
+		broken bool
+		err    string
+	}{
+		{name: "print_json", mode: modePrint, format: output.JSON},
+		{name: "print_yaml", mode: modePrint, format: output.YAML},
+		{name: "check_json", mode: modeCheck, format: output.JSON, err: "1 file is not formatted"},
+		{name: "check_yaml", mode: modeCheck, format: output.YAML, err: "1 file is not formatted"},
+		{name: "write_json", mode: modeWrite, format: output.JSON},
+		{name: "broken_json", mode: modeCheck, format: output.JSON, broken: true, err: "1 file has syntax errors"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tree := map[string]string{"a.sigil": messy, "b.sigil": tidy}
+			if tt.broken {
+				tree["c.sigil"] = "policy c: K@1\nlet = 1\n"
+			}
+			dir := t.TempDir()
+			for name, src := range tree {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Chdir(dir)
+
+			var out bytes.Buffer
+			err := run(&out, strings.NewReader(""), nil, tt.mode, tt.format)
+			switch {
+			case tt.err == "" && err != nil:
+				t.Fatalf("run: %v", err)
+			case tt.err != "" && (err == nil || !strings.Contains(err.Error(), tt.err)):
+				t.Fatalf("run() error = %v, want %q", err, tt.err)
+			}
+			golden(t, filepath.Join(testdata, tt.name+".golden"), out.String())
+		})
+	}
+}
+
+func golden(t *testing.T, path, got string) {
+	t.Helper()
+	if *update {
+		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%v (run with -update to create it)", err)
+	}
+	if got != string(want) {
+		t.Errorf("output differs from %s (run with -update to accept):\n--- got ---\n%s\n--- want ---\n%s", path, got, want)
 	}
 }

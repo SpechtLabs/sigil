@@ -19,7 +19,7 @@ Reuse gets worse over time, too. Once teams copy a rendered policy and edit it b
 
 Sigil splits reuse along two lines that templating mixes up: sharing names and sharing rules.
 
-**Shared names live in modules.** A module holds typed `let`s and nothing else, so importing from it can never change a decision:
+**Shared names live in modules.** A module holds typed `let`s and the imports they need, with no rules and no params, so importing from it can never change a decision:
 
 ```sigil
 module deploy.common: DeployApproval@1
@@ -43,7 +43,7 @@ policy deploy.guardrails: DeployApproval@1
 
 use deploy.common.{eligible}
 
-param min_soak: duration = 24h
+param min_soak: duration = 24h, min: 1h, max: 48h
 
 when not eligible {
   deny(not_eligible)
@@ -75,7 +75,7 @@ when cleared {
 }
 ```
 
-`approvers` has no default, so it's required. The others have defaults a team can override.
+`approvers` has no default, so it's required. The others have defaults a team can override, and `min_soak` has [bounds](/reference/policy-files/#bounds) that limit how far.
 
 **A team composes them by invocation.** `use` imports a name; calling it like a decision constructor adds the policy's rules with its params bound:
 
@@ -126,13 +126,25 @@ p, err := Deploy.Load(policies, "payments.production",
 	policy.Require("deploy.guardrails"))
 ```
 
-The compiler checks that `deploy.guardrails` is invoked from the root through top-level invocations only, with no `when` on the path. Move `guardrails(min_soak: 4h)` into either `when` block above and the build fails. With that in place:
+The compiler checks that `deploy.guardrails` is invoked from the root through top-level invocations only, with no `when` on the path. Move `guardrails(min_soak: 4h)` into the PCI block above and the build fails:
+
+```text
+teams/payments/production.sigil:8:3: error: deploy.guardrails must be invoked unconditionally
+  |
+8 |   guardrails(min_soak: 4h)
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: the host requires deploy.guardrails for every DeployApproval policy; move the call to the top level
+```
+
+`sigil check --require deploy.guardrails` runs the same check in a policy repository's CI. A name alone isn't enough, though: a team could put its own document called `deploy.guardrails` in the bundle. `policy.Require("deploy.guardrails", policy.From(platformFS))` loads the required policy, and everything it uses, from a source the host trusts, and makes a bundle document that claims one of those names a compile error.
+
+With that in place:
 
 > Every candidate a required policy produces is always in the candidate set, so a required policy's deny is never outranked.
 
 If the guardrails deny, the result is deny, whatever the team adds. In the example above, the payments team added an approve for its SRE team, but `not_eligible` and `soak_too_short` still win over it because `deny` outranks `approve`. The team can widen who gets approved; it can't approve a deploy the guardrails explicitly reject.
 
-Protection is explicit now: the host decides which policies are guardrails, instead of every composed policy being protected implicitly. That's what makes it reasonable for a platform team to own the guardrails and let product teams own their compositions without reviewing every change.
+Protection is explicit: the host decides which policies are guardrails, instead of every composed policy being protected implicitly. That's what makes it reasonable for a platform team to own the guardrails and let product teams own their compositions without reviewing every change.
 
 ### Collecting kinds
 
@@ -141,11 +153,12 @@ A [collecting kind](/reference/kind-files/#collecting-kinds) returns every decis
 ```sigil
 policy access.guardrails: AccessGrant@1
 
-assert("sod_customer_dev",
-  [customer_data_writer, development_environment_writer] exclusive in outcome)
+assert("sod_auditor_deployer", [auditor, deployer] exclusive in outcome)
 ```
 
 `outcome` is the whole root's outcome, so this assert sees every grant any team adds. Required with `policy.Require`, it runs on every evaluation, and a composition that grants both roles fails loudly instead of granting them. The guarantee has the same shape as for denies, and the same host-side step makes it hold.
+
+When the host itself wants two outcomes never to fire together, it can say so in the kind with [`exclusive`](/reference/kind-files/#exclusive), which needs no required policy at all. The example `AccessGrant` kind declares `exclusive admin, release_manager`. An assert is for invariants the platform team owns rather than the host.
 
 ## What the guarantee doesn't cover
 
@@ -155,7 +168,17 @@ Three things sit outside it, and all are easy to miss.
 
 **The kind's default.** When no rule fires, the kind's `default` applies, typically a deny. That default isn't a decision any policy made explicitly, so a team rule can turn it into an approve. That's by design: it's exactly how teams add approvals the platform didn't anticipate. But it means "no policy has an approve rule for X" doesn't imply "X will be denied". If the platform wants something denied no matter what teams add, it has to say so with an explicit `deny` in a required policy.
 
-**Params.** A team binds params, so a team can lower `min_soak` from 24 hours to 4, or to zero, and the `soak_too_short` deny moves with it. The union-of-candidates argument doesn't help here because the team didn't add a rule; it changed an input to an existing one. A required policy closes that gap by bounding its params: with `param min_soak: duration = 24h, min: 1h`, a team can move the threshold but not below an hour, and `guardrails(min_soak: 0s)` fails to compile. See [Bounds](/reference/policy-files/#bounds). Lists such as `approvers` have no bounds, so those still rest on review.
+**Params.** A team binds params, so a team can lower `min_soak` from 24 hours to 4, or to zero, and the `soak_too_short` deny moves with it. The union-of-candidates argument doesn't help here because the team didn't add a rule; it changed an input to an existing one. A required policy closes that gap by bounding its params. With `min: 1h, max: 48h` on `min_soak`, a team can move the threshold but not below an hour:
+
+```text
+teams/payments/production.sigil:7:22: error: min_soak: 0s is below the minimum 1h
+  |
+7 | guardrails(min_soak: 0s)
+  |                      ^^
+  = help: deploy.guardrails declares `param min_soak: duration = 24h, min: 1h, max: 48h`
+```
+
+See [Bounds](/reference/policy-files/#bounds). Lists such as `approvers` have no bounds, so those still rest on review.
 
 ## Seeing the whole picture
 

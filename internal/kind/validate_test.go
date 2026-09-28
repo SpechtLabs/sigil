@@ -27,6 +27,12 @@ func TestValidate(t *testing.T) {
 		{name: "kind name is a keyword", mutate: func(k *kind.Kind) { k.Name = "kind" }, want: []string{`invalid kind name "kind"`}},
 		{name: "kind name has a dash", mutate: func(k *kind.Kind) { k.Name = "deploy-approval" }, want: []string{`invalid kind name "deploy-approval"`}},
 		{name: "version zero", mutate: func(k *kind.Kind) { k.Version = 0 }, want: []string{"invalid kind version 0"}},
+		{name: "accepts the current version", mutate: func(k *kind.Kind) { k.Version, k.Accepts = 3, 3 }},
+		{name: "accepts zero", mutate: func(k *kind.Kind) { k.Accepts = 0 }, want: []string{"kind DeployApproval accepts version 0, but versions start at 1"},
+			help: "leave `accepts` out to accept every version, or name the oldest version policies may still pin, between 1 and the version"},
+		{name: "accepts a negative version", mutate: func(k *kind.Kind) { k.Accepts = -1 }, want: []string{"kind DeployApproval accepts version -1, but versions start at 1"}},
+		{name: "accepts above the version", mutate: func(k *kind.Kind) { k.Accepts = 2 }, want: []string{"kind DeployApproval at version 1 can't accept version 2"},
+			help: "`accepts` names the oldest version policies may still pin, between 1 and the version"},
 
 		// Types.
 		{name: "type name is a keyword", mutate: func(k *kind.Kind) {

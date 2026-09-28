@@ -4,12 +4,14 @@ package gen
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/sigil/command/gen/golang"
 )
 
 // NewCommand returns the gen command with every generator attached.
 func NewCommand(opts ...Option) *cobra.Command {
-	o := &options{}
+	text := output.Text
+	o := &options{output: &text}
 	for _, opt := range opts {
 		opt(o)
 	}
@@ -17,8 +19,10 @@ func NewCommand(opts ...Option) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "gen",
 		Aliases: []string{"generate"},
-		Short:   "Generate code from a kind file",
-		Long: `Generates code from a kind file, so other services can consume decisions
+		Short:   "Generate code from a kind file (planned)",
+		Long: `Planned: code generation is not implemented yet.
+
+Generates code from a kind file, so other services can consume decisions
 with typed values instead of loading the kind at run time. Each target language
 is a subcommand.`,
 		Example: `# Generate typed Go code for the deploy approval kind
@@ -32,7 +36,7 @@ sigil gen go --package approval deploy_approval.sigil`,
 	}
 
 	cmd.AddCommand(
-		golang.NewCommand(),
+		golang.NewCommand(golang.WithOutput(o.output)),
 	)
 
 	return cmd

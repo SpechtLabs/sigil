@@ -31,13 +31,13 @@ type Kind struct {
 	Precedence []string    // decision names, highest first; empty without a ranking
 	Exclusive  [][]Outcome // sets of outcomes that can't fire together
 	Version    int
-	Accepts    int // the oldest version a document may pin; 0 accepts every version
+	Accepts    int // the oldest version a document may pin, from 1; 1 accepts every version
 	Collect    Collect
 }
 
 // Oldest returns the oldest kind version a policy or module may pin.
 func (k *Kind) Oldest() int {
-	return max(k.Accepts, 1)
+	return k.Accepts
 }
 
 // Type returns the struct type called name, or nil.

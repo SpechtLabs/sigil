@@ -28,8 +28,6 @@ func FuzzLoadKind(f *testing.F) {
 		if errs != nil {
 			t.Fatalf("export does not load: %v\n%s", errs, out)
 		}
-		// accepts: 1 and an omitted accepts have the same meaning.
-		k.Accepts, again.Accepts = k.Oldest(), again.Oldest()
 		if !reflect.DeepEqual(k, again) || out != again.Source() {
 			t.Fatalf("kind changed on export/import:\n%s\nthen:\n%s", out, again.Source())
 		}

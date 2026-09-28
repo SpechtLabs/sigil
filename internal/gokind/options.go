@@ -10,6 +10,7 @@ import (
 type Options struct {
 	Input     reflect.Type // the input struct
 	Default   *Default     // nil for none
+	Accepts   *int         // the oldest version a document may pin; nil accepts every version
 	Name      string
 	Decisions []Decision // precedence order, or declaration order when Collect is set
 	Rankings  []Ranking  // reason rankings, one per decision at most
@@ -20,7 +21,6 @@ type Options struct {
 	Exclusive  [][]kind.Outcome
 	Funcs      []Func
 	Version    int
-	Accepts    int // the oldest version a document may pin; 0 accepts every version
 	// Ranked and Collect record which of WithDecisions and WithCollect
 	// added the decisions; both is an error.
 	Ranked  bool

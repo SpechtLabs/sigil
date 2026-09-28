@@ -39,6 +39,7 @@ func (b *builder) inputs(t reflect.Type) {
 		return
 	}
 	for _, f := range b.taggedFields(t, "input") {
+		b.noOptions(f, "input")
 		b.binding.Fields["."+f.name] = f.field.Index
 		b.kind.Inputs = append(b.kind.Inputs, &kind.Input{Name: f.name, Type: b.convert(f.field.Type, f.name)})
 	}
@@ -68,6 +69,16 @@ func (b *builder) taggedFields(t reflect.Type, where string) []tagged {
 		out = append(out, tagged{field: f, name: name, options: options})
 	}
 	return out
+}
+
+// noOptions reports tag options on a field that takes none. The only
+// option is a payload field's `default=`; inputs and the fields of struct
+// types have no defaults, as in a kind file.
+func (b *builder) noOptions(f tagged, where string) {
+	if f.options != "" {
+		b.errorf("only decision payload fields take a tag option, `default=<constant>`; drop it from this tag",
+			"%s: field %s has tag option %q, which only a decision payload field takes", where, f.field.Name, f.options)
+	}
 }
 
 // convert maps a Go type to a Sigil type, registering struct types as it
@@ -134,6 +145,7 @@ func (b *builder) structType(t reflect.Type, path string) types.Type {
 	b.binding.Structs[name] = t
 	b.kind.Types = append(b.kind.Types, s)
 	for _, f := range b.taggedFields(t, "type "+name) {
+		b.noOptions(f, "type "+name)
 		b.binding.Fields[name+"."+f.name] = f.field.Index
 		s.Fields = append(s.Fields, &types.Field{Name: f.name, Type: b.convert(f.field.Type, name+"."+f.name)})
 	}

@@ -106,7 +106,7 @@ func (c *Checker) ident(x *ast.Ident, env *Env) types.Type {
 		// A decision's name is a value only where outcome is: an assert
 		// condition. Anywhere else it's a constructor that lost its call.
 		if !env.InAssert {
-			c.errorf(x, fmt.Sprintf("to produce the decision, construct it inside a rule: `when <condition> { %s(\"<reason>\") }`; its bare name is only a value in an assert condition", x.Name),
+			c.errorf(x, fmt.Sprintf("to produce the decision, construct it inside a rule: `when <condition> { %s(<reason>) }`; its bare name is only a value in an assert condition", x.Name),
 				"`%s` is a decision, not a value here", x.Name)
 			return types.Invalid
 		}
@@ -207,6 +207,12 @@ func (c *Checker) mapLit(x *ast.MapLit, env *Env, hint types.Type) types.Type {
 		vt := c.expr(e.Value, env, nil)
 		switch {
 		case vt == types.Invalid:
+			return types.Invalid
+		case vt == types.Decision:
+			// A missing key reads as the value type's zero value, and a
+			// decision has none.
+			c.errorf(e.Value, "a missing key would read as the zero value, and a decision has none; test decisions with `in outcome`, or collect them in a list like `[deny, approve]`",
+				"a decision can't be a map value")
 			return types.Invalid
 		case val == nil || untyped(val) && !untyped(vt):
 			earlier := make([]ast.Expr, i)
@@ -311,17 +317,33 @@ func (c *Checker) binary(x *ast.BinaryExpr, env *Env) types.Type {
 }
 
 // comparison checks `==`, `!=`, `<` and the rest: both sides of one type
-// that supports the operator.
+// that supports the operator. An empty literal takes its type from the
+// other side first, so `actor.regions != []` is reported as the list
+// comparison it is, not as a literal without a type.
 func (c *Checker) comparison(x *ast.BinaryExpr, env *Env, allowed func(types.Type) bool, why string) types.Type {
-	l := c.Expr(x.X, env)
-	r := c.Expr(x.Y, env)
+	l := c.expr(x.X, env, nil)
+	r := c.expr(x.Y, env, nil)
 	if l == types.Invalid || r == types.Invalid {
 		return types.Invalid
 	}
-	for _, side := range []struct {
+	l, r = c.unify(x.X, l, x.Y, r)
+	sides := [2]struct {
 		x ast.Expr
 		t types.Type
-	}{{x.X, l}, {x.Y, r}} {
+	}{{x.X, l}, {x.Y, r}}
+	// A type without the operator is the error even when it's optional,
+	// since unwrapping it wouldn't help.
+	for _, side := range sides {
+		if !allowed(elemOf(side.t)) {
+			help := why
+			if hint := c.emptinessHint(x, l, r, env); hint != "" {
+				help = hint
+			}
+			c.errorf(x, help, "`%s` isn't defined for %s", x.Op, describe(side.t))
+			return types.Invalid
+		}
+	}
+	for _, side := range sides {
 		if isOptional(side.t) {
 			c.errorf(side.x, c.unwrapHint(side.x, side.t), "`%s` can't compare %s; unwrap it first", x.Op, side.t)
 			return types.Invalid
@@ -331,11 +353,35 @@ func (c *Checker) comparison(x *ast.BinaryExpr, env *Env, allowed func(types.Typ
 		c.errorf(x, sameTypeHint(l, r), "`%s` needs operands of the same type, found %s and %s", x.Op, l, r)
 		return types.Invalid
 	}
-	if !allowed(l) {
-		c.errorf(x, why, "`%s` isn't defined for %s", x.Op, l)
-		return types.Invalid
-	}
 	return types.Bool
+}
+
+// emptinessHint is the hint for `==` or `!=` between a list or map and an
+// empty literal, on either side: what tests for emptiness instead. It's
+// empty for any other comparison. l and r are the operands' types.
+func (c *Checker) emptinessHint(cmp *ast.BinaryExpr, l, r types.Type, env *Env) string {
+	op, x, t, other := cmp.Op, cmp.X, l, cmp.Y
+	if isEmptyLit(x) {
+		x, t, other = other, r, x
+	}
+	if op != ast.OpEq && op != ast.OpNotEq || !isEmptyLit(other) || untyped(t) {
+		return ""
+	}
+	switch elemOf(t).(type) {
+	case *types.List:
+		rng := ast.Sprint(x)
+		if isOptional(t) {
+			rng = fmt.Sprintf("(%s ?? [])", rng)
+		}
+		test := fmt.Sprintf("any %s in %s: true", freeName(env), rng)
+		if op == ast.OpEq {
+			return fmt.Sprintf("lists have no `==`; to test that `%s` is empty, write `not (%s)`, or call a host function such as `len` if the kind declares one", ast.Sprint(x), test)
+		}
+		return fmt.Sprintf("lists have no `!=`; to test that `%s` isn't empty, write `%s`, or call a host function such as `len` if the kind declares one", ast.Sprint(x), test)
+	case *types.Map:
+		return fmt.Sprintf("maps have no `%s`; test for a key with `has`, or for emptiness with a host function such as `len` if the kind declares one", op)
+	}
+	return ""
 }
 
 // sameTypeHint is the hint for two operands of different types.
@@ -515,6 +561,35 @@ func isMapLit(x ast.Expr) bool {
 		default:
 			return false
 		}
+	}
+}
+
+// isEmptyLit reports whether x is `[]` or `{}`, looking through
+// parentheses.
+func isEmptyLit(x ast.Expr) bool {
+	for {
+		switch v := x.(type) {
+		case *ast.ParenExpr:
+			x = v.X
+		case *ast.ListLit:
+			return len(v.Elems) == 0
+		case *ast.MapLit:
+			return len(v.Entries) == 0
+		default:
+			return false
+		}
+	}
+}
+
+// freeName returns a name env doesn't bind, for a quantifier variable in a
+// suggestion, so the suggestion compiles as written.
+func freeName(env *Env) string {
+	name := "x"
+	for i := 2; ; i++ {
+		if _, ok := env.Lookup(name); !ok {
+			return name
+		}
+		name = fmt.Sprintf("x%d", i)
 	}
 }
 

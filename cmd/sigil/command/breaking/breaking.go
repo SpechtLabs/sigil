@@ -4,6 +4,7 @@ package breaking
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/usage"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/placeholder"
@@ -11,7 +12,8 @@ import (
 
 // NewCommand returns the breaking command.
 func NewCommand(opts ...Option) *cobra.Command {
-	o := &options{}
+	text := output.Text
+	o := &options{output: &text}
 	for _, opt := range opts {
 		opt(o)
 	}
@@ -19,8 +21,10 @@ func NewCommand(opts ...Option) *cobra.Command {
 	return &cobra.Command{
 		Use:        "breaking OLD_KIND_FILE NEW_KIND_FILE",
 		SuggestFor: []string{"compat", "compatible", "diff"},
-		Short:      "Detect kind changes that break existing policies",
-		Long: `Compares two versions of a kind file and flags changes that would break
+		Short:      "Detect kind changes that break existing policies (planned)",
+		Long: `Planned: this command is not implemented yet, and exits with an error.
+
+Compares two versions of a kind file and flags changes that would break
 existing policies, modeled on buf breaking.
 
 Run it in CI on every change to a kind, comparing against the version on the
@@ -31,7 +35,7 @@ sigil breaking /tmp/deploy_approval.main.sigil policies/deploy_approval.sigil`,
 		Args:              usage.Exactly("OLD_KIND_FILE", "NEW_KIND_FILE"),
 		ValidArgsFunction: complete.SigilFilesUpTo(2),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return placeholder.NotImplemented(cmd)
+			return placeholder.NotImplemented(cmd, *o.output)
 		},
 	}
 }

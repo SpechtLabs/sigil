@@ -5,7 +5,7 @@ createTime: 2026/09/25 10:00:00
 permalink: /guides/configmaps/
 ---
 
-This guide shows how to ship policies to a service running on Kubernetes as a ConfigMap, built with kustomize from files in a policy repository, how to keep the platform's guardrails out of reach of whoever writes that ConfigMap, and how to check in CI exactly what the service will load.
+This guide is for the platform team that runs a Sigil host service on Kubernetes and owns the policy repository around it. It shows how to ship policies to the service as a ConfigMap built with kustomize, how to keep the platform's guardrails out of reach of whoever writes that ConfigMap, and how to check in CI exactly what the service will load. The Go snippets are for whoever maintains the service; the rest is YAML and shell.
 
 It builds on the `deploy.*` and `payments.production` documents from the [tour](/getting-started/tour/). The service is a deploy gate that loads `payments.production` and requires `deploy.guardrails`.
 
@@ -26,7 +26,7 @@ The split matters because documents resolve by name. If the guardrails lived in 
 
 ## Lay out the repository
 
-Keep one document per file, with paths that match the names. That's what reviewers and CODEOWNERS work with:
+Give each platform document its own file, at the path its name spells, and give each team one file for all its documents. That's what reviewers and CODEOWNERS work with:
 
 ```text
 policies/
@@ -91,6 +91,7 @@ use deploy.guardrails
 use deploy.production
 
 guardrails(min_soak: 1h)
+
 production(approvers: ["payments-leads"], tiers: ["standard", "internal", "critical"])
 ```
 
@@ -144,7 +145,7 @@ kustomize appends a content hash to the generated ConfigMap's name, so by defaul
 
 To pick up changes without a rollout, turn the hash off (`generatorOptions: {disableNameSuffixHash: true}`) and reload in place:
 
-- **Watch `..data`, not the key.** Kubelet updates a mounted ConfigMap by writing a new timestamped directory and swapping the `..data` symlink to it. The key files themselves never change, so a watcher on `/etc/sigil/payments.sigil` can miss the update. Watch the directory and reload when `..data` is replaced.
+- **Watch `..data`, not the key.** Kubelet updates a mounted ConfigMap by writing a new timestamped directory and swapping the `..data` symlink to it. The key files themselves never change, so a watcher on `/etc/sigil/payments.sigil` can miss the update. Watch the directory and reload when `..data` is replaced. Polling works too: the [example service](/guides/example-service/) hashes the content of every `.sigil` file it can reach through the links, every 30 seconds by default, and reloads when the hash changes.
 - **Keep the last known good policy.** A bundle loads as a whole, so one team's typo fails the reload for every team. Compile first, swap only on success, and otherwise keep serving the old policy, log the error and increment a failure metric you alert on; the [Go API](/reference/go-api/#hot-reload) shows the pattern.
 - **Don't use `subPath` mounts.** A ConfigMap mounted with `subPath` never receives updates at all.
 
@@ -181,7 +182,7 @@ Errors from stdin still name the document, as in `<stdin>:42:5 (payments.product
 - Every name the platform's source defines is reserved. A team document named `deploy.guardrails` or `deploy.common` is a compile error in CI and at load time, not a silent override.
 - The team ConfigMap can then be writable by teams, by a GitOps controller or by anything else, without that writer being able to switch the guardrails off.
 
-In the repository, CODEOWNERS on `deploy/` and on each team's file, plus the `path-matches-name` lint, keep reviews routed to the right people. They're review aids; `policy.From` is what the service enforces.
+In the repository, CODEOWNERS on `deploy/` and on each team's file keeps reviews routed to the right people. The [`path-matches-name`](/reference/cli/#lints) lint checks the platform's side of that layout, but it wants every document in a file of its own, at the path its name spells, so it flags a team file that holds several documents. Turn it on if your teams keep one document per file, as the [example service](/guides/example-service/) does with `teams/payments/production.sigil`. Either way these are review aids; `policy.From` is what the service enforces.
 
 ## Further reading
 

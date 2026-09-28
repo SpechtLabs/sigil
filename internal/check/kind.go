@@ -61,7 +61,7 @@ func (c *Checker) Kind(doc *ast.KindDoc) *kind.Kind {
 	before := len(c.errs)
 	l := &kindLoader{
 		c:     c,
-		kind:  &kind.Kind{Name: doc.Name.Name, Version: int(doc.Version.Value)},
+		kind:  &kind.Kind{Name: doc.Name.Name, Version: int(doc.Version.Value), Accepts: 1},
 		decls: map[*ast.TypeDecl]*types.Struct{},
 		loc:   map[string]span{},
 	}

@@ -1,11 +1,17 @@
 ---
-title: Testing, fuzzing and benchmarks
+title: Testing, fuzzing and benchmarking Sigil
 icon: mdi:test-tube
 createTime: 2026/09/28 20:00:00
 permalink: /guides/testing/
 ---
 
-Use these commands from the repository root with the Go toolchain pinned in `go.mod`. They test Sigil itself. To test a policy repository, use [`sigil test`](/reference/cli/#sigil-test) or [`policytest.Run`](/reference/go-api/).
+This page is for contributors changing Sigil itself: the lexer, parser, checker, evaluator, CLI and Go API. It covers the repository's test suite, its benchmarks, its fuzz targets and the CI workflows that run them.
+
+::: tip Testing your own policies
+To test policies you wrote, you don't need any of this. Write `*_test.yaml` cases and run them with [`sigil test`](/reference/cli/#sigil-test), or from `go test` in the host with [`policytest.Run`](/reference/go-api/#testing-policies). [Your first policy](/getting-started/first-policy/) walks through a test file.
+:::
+
+Run the commands below from the repository root. The tools come from `.mise.toml`, so `mise install` sets up the Go toolchain that `go.mod` pins.
 
 ## Run the tests
 
@@ -14,7 +20,9 @@ mise run test
 mise run check
 ```
 
-The first command runs unit tests, golden tests, fuzz seeds and checked-in regression inputs with the race detector and coverage. The second also runs mutation fuzz smoke tests, benchmark smoke tests and the repository's lint and configuration checks. Plain `go test ./...` runs the same test cases without the race detector. It does not generate new fuzz inputs or measure benchmarks.
+The first command runs unit tests, golden tests, fuzz seeds and checked-in regression inputs with the race detector and coverage. The second also runs mutation fuzz smoke tests, benchmark smoke tests and the repository's lint and configuration checks. Plain `go test ./...` runs the same test cases without the race detector. It doesn't generate new fuzz inputs or measure benchmarks.
+
+`examples/` is a separate Go module with its own `.mise.toml`. Run `mise run test` or `mise run check` from that directory to test the example service and its policies.
 
 ## The devtool CLI
 
@@ -31,7 +39,7 @@ The benchmark and fuzz tasks run `devtool`, the repository's own tooling CLI in 
 | `-v`, `--verbose` | Print go test's output instead of a status line | The same |
 | `--results` | Where results go (`benchmark-results/`) | Where results go (`fuzz-results/`) |
 
-`bench run` adds `--baseline`, `--count` and `--benchstat` for comparisons. The `list` commands share `--filter`, `--packages` and `-o text|json|yaml`. Every flag can also be set with an environment variable, `BENCH_` or `FUZZ_` followed by its name in capitals: `BENCH_BASELINE=main`, `FUZZ_TIME=1m`.
+`bench run` adds `-b`, `--baseline` to compare with a revision, `--no-baseline` to measure only the checkout even when `BENCH_BASELINE` is set, `--count` for the samples per revision (10) and `--benchstat` for the benchstat binary. `fuzz report` is for CI only: the extended fuzzing workflow uses it to open or update the failure issue. The `list` commands share `--filter`, `--packages` and `-o text|json|yaml`. Every flag can also be set with an environment variable, `BENCH_` or `FUZZ_` followed by its name in capitals: `BENCH_BASELINE=main`, `FUZZ_TIME=1m`.
 
 Both `run` commands look alike too. A box shows what the run is about to do, then each step (a round of samples, or a fuzz target) gets a numbered status line on a terminal and a ✓ line once it's done. The run ends with a verdict line that says where the results are. Each results directory holds go test's raw output, a `summary.md` that CI adds to the job page and a `metadata.json` with the commit and Go version. Ctrl-C stops a run cleanly.
 
@@ -151,6 +159,4 @@ Keep a real failure in that directory with its fix. Ordinary `go test` then repl
 
 ## Record a campaign
 
-Record the commit, `go version`, target list, duration and worker count, logs, and any fixes or retained failures. M7 requires a continuous 24-hour campaign that exercises every target for at least an hour without failures. Parallel target-hours do not substitute for elapsed campaign time. With the current 24 targets, the sequential hour-per-target command above supplies that duration; rerun after fixing any failure. The scheduled workflow supplies additional parallel testing but cannot alone satisfy the elapsed-time criterion.
-
-A short passing campaign is evidence for those runs only. M7's day-long criterion remains open until a complete campaign is recorded. Public dynamic `policy.LoadKind` and static cost analysis also remain on the [roadmap](/project/roadmap/).
+Record the commit, `go version`, target list, duration and worker count, logs, and any fixes or retained failures. The [roadmap](/project/roadmap/)'s hardening milestone asks for a continuous 24-hour campaign that exercises every target for at least an hour without failures, and no such campaign has been recorded yet. Parallel target-hours don't substitute for elapsed campaign time. With the current 24 targets, the sequential hour-per-target command above takes that long; rerun it after fixing any failure. The scheduled workflow adds parallel coverage but can't meet the elapsed-time criterion on its own.

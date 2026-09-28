@@ -7,8 +7,10 @@ permalink: /getting-started/first-policy/
 
 In this tutorial you'll write `deploy/production.sigil` from an empty file, one rule at a time, against the `DeployApproval` kind from the [tour](/getting-started/tour/). After each step you'll check the policy and evaluate it against a sample deploy, and along the way you'll hit the compile errors Sigil exists to produce. At the end you'll invoke it from a team policy and split it into the files the tour uses.
 
+You need the `sigil` CLI and a text editor, not Go. Install the CLI with `brew install --cask spechtlabs/tap/sigil`, or with `go install github.com/spechtlabs/sigil/cmd/sigil@latest` if you have Go.
+
 ::: info Which `sigil`
-The transcripts on this page are real output from the deploy gate's own build of the CLI, which links the `DeployApproval` kind and its `split` function (see [Host binaries](/reference/cli/#host-functions-and-host-binaries)). The stock `sigil` binary prints the same, except that from step 5 on, `eval` and `test` stop with a runtime error naming `split` as soon as a rule calls it.
+The transcripts on this page are real output. Once a rule calls the kind's `split` function, `eval` and `test` need a build of the CLI with the host's functions linked in, which the host team provides (see [Host binaries](/reference/cli/#host-functions-and-host-binaries)). The [example service](/guides/example-service/) builds one as `sigilc`, and that's what produced these transcripts. The stock `sigil` binary prints the same up to step 6, where `eval` stops with a runtime error naming `split`. `check`, `fmt` and `explain` work with either.
 :::
 
 ## Set up the policy repo
@@ -171,7 +173,7 @@ Both denies fired. They share a decision, so ranking decisions can't pick betwee
 
 A few things to notice about the `let`:
 
-- It spans several lines. The grammar doesn't care about newlines or indentation, because every statement starts with a keyword.
+- It spans several lines. The grammar doesn't care about newlines or indentation, because every statement starts with a keyword or a call, which is how the parser tells where one ends.
 - `environment` is an input of type `string`, not a struct, so you compare it directly.
 - Label keys like `platform.example.com/lifecycle` are strings inside a map literal. Identifiers can't contain `.` or `/`, so you'd read a single one with `service.labels["platform.example.com/lifecycle"]`.
 - The trailing comma after the last pair is fine.
@@ -196,7 +198,7 @@ when release.soak < min_soak and not release.hotfix {
 }
 ```
 
-Behaviour doesn't change: nobody has bound `min_soak` yet, so it's `24h`. But now a team can lower it without copying the file, and the type checker makes sure whatever they pass is a `duration`.
+Behavior doesn't change: nobody has bound `min_soak` yet, so it's `24h`. But now a team can lower it without copying the file, and the type checker makes sure whatever they pass is a `duration`.
 
 ## Step 5: approvals and reviews
 
@@ -340,7 +342,7 @@ With `min_soak` lowered to four hours, the six-hour soak no longer trips `soak_t
 
 ## Step 7: protect the denies
 
-An invocation can go anywhere a decision can, including inside a `when` block, where the block's condition gets added to every rule it brings in. That's useful: it's how a team says "these approvals, but only for some services". It's also a hole. Nothing stops a team from writing this:
+An invocation can go anywhere a decision can, including inside a `when` block, where the block's condition gets added to every rule it brings in. That's useful: it's how a team says "these approvals, but only for some services". It's also a hole, because a team can write this:
 
 ```sigil
 when false {
@@ -348,9 +350,9 @@ when false {
 }
 ```
 
-That switches off `not_eligible` and `soak_too_short` along with everything else. The fix is to keep the denies in a policy of their own and have the host require it. Split `deploy/production.sigil` into three files.
+That switches off `not_eligible` and `soak_too_short` along with everything else. `sigil check` flags it with a `gated-deny` warning, but a warning doesn't fail the check, and the host doesn't run lints when it loads a policy. The fix is to keep the denies in a policy of their own and have the host require it. Split `deploy/production.sigil` into three files.
 
-The shared matchers move to a module, a file that holds `let`s and nothing else. Create `deploy/common.sigil`:
+The shared matchers move to a module, a document that holds only imports and `let`s. Create `deploy/common.sigil`:
 
 ```sigil
 module deploy.common: DeployApproval@1
@@ -472,7 +474,7 @@ trace: 2 candidates
 
 Same decision as before the split; only the positions moved. These are the exact files the [tour](/getting-started/tour/#evaluating-it-by-hand) walks through with more inputs. To see everything the team policy can decide in one place, run `sigil explain` on it; the tour shows [its output](/getting-started/tour/#what-the-team-policy-adds-up-to).
 
-## Step 8: pin the behaviour with test cases
+## Step 8: pin the behavior with test cases
 
 A policy is only as trustworthy as the cases you've pinned down. Put the two inputs next to the team policy, `payments/testdata/owner.json` and `payments/testdata/wrong-lifecycle.json`, and write the cases this tutorial has exercised into `payments/production_test.yaml`:
 
@@ -509,7 +511,7 @@ ok    payments/production_test.yaml  2 cases
 
 ## Where you are now
 
-You've written a policy with a required param, invoked it from a team policy, split its denies into guardrails the host requires, and seen the evaluator pick a winner from several candidates. From here:
+You've written a policy with a required param, invoked it from a team policy, split its denies into guardrails the host requires, and seen the evaluator pick a winner from several candidates. The test cases pin that behavior. From here:
 
 - [Per-team policies](/guides/team-policies/) covers imports, invoking under conditions, binding params from Go, and what teams can and can't override.
 - [Common patterns](/guides/patterns/) collects recipes for labels, optionals, quantifiers and time.

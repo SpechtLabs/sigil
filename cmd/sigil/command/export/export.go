@@ -10,14 +10,32 @@ import (
 	"github.com/sierrasoftworks/humane-errors-go"
 	"github.com/spf13/cobra"
 
+	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/internal/usage"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 )
 
+// What export found or did with the --out file.
+const (
+	statusCurrent = "current" // it already matched, so it was left alone
+	statusWritten = "written" // it was missing or stale, and was rewritten
+	statusStale   = "stale"   // --check found it stale
+)
+
+// Export is what export printed or did, as JSON and YAML print it.
+type Export struct {
+	Kind    string `json:"kind" yaml:"kind"`
+	Version int    `json:"version" yaml:"version"`
+	File    string `json:"file,omitempty" yaml:"file,omitempty"`     // the --out file
+	Status  string `json:"status,omitempty" yaml:"status,omitempty"` // with --out: current, written or stale
+	Source  string `json:"source" yaml:"source"`                     // the kind file, as the binary exports it
+}
+
 // NewCommand returns the export command.
 func NewCommand(opts ...Option) *cobra.Command {
-	o := &options{}
+	format := output.Text
+	o := &options{output: &format}
 	for _, opt := range opts {
 		opt(o)
 	}
@@ -52,7 +70,7 @@ sigil export --check --out ../policies/deploy_approval.sigil`,
 			if len(args) == 1 {
 				name = args[0]
 			}
-			return run(cmd.OutOrStdout(), o.kinds, name, out, check)
+			return run(cmd.OutOrStdout(), o.kinds, name, out, check, *o.output)
 		},
 	}
 
@@ -64,7 +82,7 @@ sigil export --check --out ../policies/deploy_approval.sigil`,
 	return cmd
 }
 
-func run(stdout io.Writer, kinds []project.Linked, name, out string, check bool) humane.Error {
+func run(stdout io.Writer, kinds []project.Linked, name, out string, check bool, f output.Format) humane.Error {
 	k, err := pick(kinds, name)
 	if err != nil {
 		return err
@@ -73,28 +91,56 @@ func run(stdout io.Writer, kinds []project.Linked, name, out string, check bool)
 	if check && out == "" {
 		return humane.New("--check needs the file to compare", "name the checked-in kind file with --out")
 	}
+	rec := Export{Kind: k.Model.Name, Version: k.Model.Version, File: out, Source: string(schema)}
 	if out == "" {
+		if f != output.Text {
+			return output.Encode(stdout, f, rec)
+		}
 		if _, err := stdout.Write(schema); err != nil {
 			return humane.Wrap(err, "the kind file couldn't be written", "check where the output is going")
 		}
 		return nil
 	}
-	p := pretty.New(stdout)
 	current, rerr := os.ReadFile(out) //nolint:gosec // the path comes from the command line, which is the point
-	if rerr == nil && bytes.Equal(current, schema) {
-		return p.Ok(out + " is up to date")
+	switch {
+	case rerr == nil && bytes.Equal(current, schema):
+		rec.Status = statusCurrent
+	case check:
+		rec.Status = statusStale
+	default:
+		if err := os.WriteFile(out, schema, 0o644); err != nil { //nolint:gosec // a kind file is meant to be read by everyone
+			return humane.Wrap(err, out+" couldn't be written", "check that its directory exists and is writable")
+		}
+		rec.Status = statusWritten
 	}
-	if check {
-		msg := out + " is stale: it doesn't match the kind " + k.Model.Name + " linked into this binary"
-		if err := p.Fail(msg, "regenerate it with `sigil export --out "+out+"`"); err != nil {
+	return report(stdout, f, rec)
+}
+
+// report says what export did with the --out file, and fails when
+// --check found it stale.
+func report(stdout io.Writer, f output.Format, rec Export) humane.Error {
+	msg := rec.File + " is stale: it doesn't match the kind " + rec.Kind + " linked into this binary"
+	help := "regenerate it with this binary's `export " + rec.Kind + " --out " + rec.File + "`"
+	if f != output.Text {
+		if err := output.Encode(stdout, f, rec); err != nil {
 			return err
 		}
-		return pretty.Fail(msg, "regenerate it with `sigil export --out "+out+"`")
+		if rec.Status == statusStale {
+			return pretty.Fail(msg, help)
+		}
+		return nil
 	}
-	if err := os.WriteFile(out, schema, 0o644); err != nil { //nolint:gosec // a kind file is meant to be read by everyone
-		return humane.Wrap(err, out+" couldn't be written", "check that its directory exists and is writable")
+	p := pretty.New(stdout)
+	switch rec.Status {
+	case statusCurrent:
+		return p.Ok(rec.File + " is up to date")
+	case statusStale:
+		if err := p.Fail(msg, help); err != nil {
+			return err
+		}
+		return pretty.Fail(msg, help)
 	}
-	return p.Ok("wrote " + out)
+	return p.Ok("wrote " + rec.File)
 }
 
 // pick returns the linked kind to export.

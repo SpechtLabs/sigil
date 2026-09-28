@@ -128,7 +128,7 @@ From a checkout of the repository, the engine's benchmarks run with the same set
 mise run bench
 ```
 
-That prints each benchmark's medians, writes the raw samples to `benchmark-results/`, and takes a few minutes. Narrow it to what you're changing, or compare against another revision, with the flags in [Testing, fuzzing and benchmarks](/guides/testing/#measure-performance):
+That prints each benchmark's medians, writes the raw samples to `benchmark-results/`, and takes a few minutes. Narrow it to what you're changing, or compare against another revision, with the flags in [Testing, fuzzing and benchmarking Sigil](/guides/testing/#measure-performance):
 
 ```sh
 mise run bench -- --filter PolicyEval ./pkg/policy

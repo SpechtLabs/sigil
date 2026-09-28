@@ -91,7 +91,7 @@ func FuzzGoKindRoundTrip(f *testing.F) {
 			{Name: "Count", Type: reflect.TypeFor[int64](), Tag: reflect.StructTag(`policy:` + constant.Format("count,default="+constant.Format(n)))},
 			{Name: "Text", Type: reflect.TypeFor[string](), Tag: reflect.StructTag(`policy:` + constant.Format("text,default="+constant.Format(s)))},
 		})
-		opts := gokind.Options{Name: "Generated", Version: 2, Accepts: 1, Input: reflect.TypeFor[struct{}](), Collect: all,
+		opts := gokind.Options{Name: "Generated", Version: 2, Accepts: new(1), Input: reflect.TypeFor[struct{}](), Collect: all,
 			Decisions: []gokind.Decision{{Name: "allow", Payload: payload, Reasons: []string{"ok"}}},
 			Default:   &gokind.Default{Decision: "allow", Reason: "ok"},
 		}
@@ -103,7 +103,6 @@ func FuzzGoKindRoundTrip(f *testing.F) {
 		if errs != nil {
 			t.Fatalf("Go kind export does not load: %v\n%s", errs, k.Source())
 		}
-		k.Accepts, again.Accepts = k.Oldest(), again.Oldest()
 		if !reflect.DeepEqual(k, again) {
 			t.Fatalf("Go kind changed on import:\n%s\nthen:\n%s", k.Source(), again.Source())
 		}

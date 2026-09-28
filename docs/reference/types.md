@@ -5,9 +5,7 @@ createTime: 2026/09/24 22:30:00
 permalink: /reference/types/
 ---
 
-::: info Draft specification
-This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, `fmt`, `check`, `eval`, `explain`, `test` and `export` exist. See [Open questions](/project/open-questions/).
-:::
+This page is the policy author's reference for Sigil's types: what each one holds, its literal, its zero value and which operators accept it.
 
 Sigil is statically typed. The compiler knows the type of every input, param, let and expression before a policy runs, and it checks them against the kind the policy implements. Nothing converts implicitly: an `int` never becomes a `float`, a `string` never becomes a `duration`, and a `?T` never becomes a `T` without `??`.
 
@@ -25,7 +23,7 @@ Sigil is statically typed. The compiler knows the type of every input, param, le
 | `map<K, V>`    | `{"k": "v"}`   | `{}`           | Missing key yields the zero value of `V`, like Go                        |
 | `?T`           | none           | absent         | Optional, from Go pointer fields. Unwrapped with `??`; an optional struct is read with `?.` |
 | Struct types   | none           | all fields zero | Declared in the kind, reached with `.field`                             |
-| Ordered types  | none           | none           | Opaque, declared in the kind, ordered by the host (proposed)             |
+| Ordered types  | none           | none           | Planned: opaque, declared in the kind, ordered by the host               |
 | `decision`     | `approve`      | none           | A decision's name as a value; only useful in `assert`                    |
 
 Zero values matter in one place: a missing map key. `service.labels["absent"]` is `""`, and indexing a missing key in a `map<string, int>` gives `0`.
@@ -50,7 +48,7 @@ A sequence of bytes, normally UTF-8. Equality is byte-for-byte and case-sensitiv
 
 ### `duration`
 
-A length of time with nanosecond resolution, matching Go's `time.Duration`. Duration literals are described on [Lexical structure](/reference/lexical/). A bare number is never a duration: `release.soak > 30` is a compile error, `release.soak > 30m` is fine.
+A length of time with nanosecond resolution, matching Go's `time.Duration`. Duration literals, with the units `ms`, `s`, `m`, `h` and `d` (a fixed 24 hours), are described on [Lexical structure](/reference/lexical/#durations). Printed values are normalized to the largest units, so a `24h` param shows up as `1d` in a trace. A bare number is never a duration: `release.soak > 30` is a compile error, `release.soak > 30m` is fine.
 
 ### `timestamp`
 
@@ -62,7 +60,7 @@ A point in time, matching Go's `time.Time`. It has no literal form and can only 
 
 An ordered sequence of values of one type. List literals must be homogeneous: `["a", 1]` is a compile error.
 
-An empty literal `[]` takes its element type from context: the declared type of a param, the other operand of a binary operator, or the payload field it's passed to. An empty list with no context, such as `let nothing = []`, is a compile error.
+An empty literal `[]` takes its element type from context: the declared type of a param, the other operand of `in`, `all in`, `any in`, `one in`, `exclusive in`, `has` or `??`, the payload field or host function parameter it's passed to, or another element of the list or map it sits in. An empty list with no context, such as `let nothing = []`, is a compile error. `actor.regions != []` is a compile error too, though for a different reason: the `[]` takes `list<string>` from the other side, and `==` and `!=` aren't defined for lists. Test for an element with `any x in actor.regions: true`, for emptiness with `not (any x in actor.regions: true)`, or with a host function such as `len` when the kind declares one.
 
 ### `map<K, V>`
 
@@ -76,18 +74,18 @@ Every decision the kind declares is also a value of type `decision`, written as 
 
 `decision` values support `==`, `!=` and the list operators, and appear in list literals such as `[read, write, admin]`. Over `outcome` the list operators match: a bare decision matches any of its reasons. The one place decision values come from evaluation is [`outcome`](/reference/expressions/#decision-values-and-outcome), a `list<decision>` that only `assert` conditions can read.
 
-A param can't have type `decision` or `list<decision>`, and a `decision` has no zero value, so it can't be a map value. Like `outcome`, a bare decision name is only a value inside an `assert` condition.
+`decision` has no name in source, so a param, input or field can't be declared with it. A `decision` has no zero value for a missing key to read as, so it can't be a map value: `{"a": approve}` is a compile error, while a list such as `[deny, approve]` is fine. Like `outcome`, a bare decision name is only a value inside an `assert` condition.
 
 ## Optional types: `?T`
 
-An optional value is either a `T` or absent. Optional types come from Go pointer fields in the kind (`*string` becomes `?string`); policies can't write optional literals, and params can't be declared optional. Lists and maps can't be optional: a Go pointer to a slice or a map is rejected by `NewKind`, and `?list<T>` or `?map<K, V>` is an error in a kind file, because an absent collection would read the same as an empty one.
+An optional value is either a `T` or absent. Optional types come from Go pointer fields in the kind (`*string` becomes `?string`); policies can't write optional literals, and params can't be declared optional. A kind can't declare an optional list or map: a Go pointer to a slice or a map is rejected by `NewKind`, and `?list<T>` or `?map<K, V>` is an error in a kind file, because an absent collection would read the same as an empty one. An [optional chain](/reference/expressions/#optional-chaining) that ends at a list or map field still has type `?list<T>` or `?map<K, V>`, and unwraps with `?? []` or `?? {}`.
 
 An optional must be unwrapped with `??` before anything else touches it:
 
 ```sigil
 // assuming the kind declares `ticket: ?string` on Release
 release.ticket ?? "none" == "CHG-1042"      // ok
-release.ticket == "CHG-1042"                // compile error: ?string vs string
+release.ticket == "CHG-1042"                // compile error: `==` can't compare ?string
 ```
 
 The compiler rejects comparisons, operators, indexing, field access and function arguments that receive a `?T` where a `T` is required.
@@ -122,8 +120,8 @@ Structs have no equality. `==` doesn't apply to them, and neither do `in` and th
 
 ## Host-ordered types
 
-::: tip Proposed
-Host-ordered types are the chosen direction for versions and other domain values with their own ordering. They aren't implemented yet.
+::: warning Planned
+Host-ordered types are the chosen direction for versions and other domain values with their own ordering. None of this section is implemented: `type X ordered` doesn't parse, and `policy.WithOrdered` doesn't exist. It describes the design.
 :::
 
 Some values have an order the language can't know: semantic versions, calendar versions, a vendor's release numbers. A host declares a type for them in the kind, and the ordering comes from Go:
@@ -164,18 +162,18 @@ The rules for each operator are on [Expressions](/reference/expressions/). In sh
 
 | Operation                   | Allowed types                                                             |
 | --------------------------- | ------------------------------------------------------------------------- |
-| `==` `!=`                   | same type on both sides; `bool`, `int`, `float`, `string`, `duration`, `timestamp`, `decision`, ordered types |
-| `<` `<=` `>` `>=`           | same type on both sides; `int`, `float`, `duration`, `timestamp`, ordered types |
+| `==` `!=`                   | same type on both sides; `bool`, `int`, `float`, `string`, `duration`, `timestamp`, `decision` |
+| `<` `<=` `>` `>=`           | same type on both sides; `int`, `float`, `duration`, `timestamp`          |
 | `and` `or` `xor` `not`      | `bool`                                                                    |
 | `in`                        | `T in list<T>`, `string in string`; `T` without structs; map keys use `has` |
 | `all in` `any in`           | `list<T>` on both sides                                                   |
 | `one in` `exclusive in`     | `list<T>` on both sides                                                   |
 | `has`                       | `map<K, V> has map<K, V>`, `map<K, V> has K`                              |
-
-`in`, the list operators and `has` compare elements structurally: two lists are equal when they have the same elements in the same order, two maps when they have the same keys with equal values. That's what makes `["eu-1"] in [["eu-1"], ["us-1"]]` work. Elements that are or contain structs can't be compared, because structs have no equality.
 | `like` `matches`            | `string` and a string literal                                             |
 | `??`                        | `?T ?? T`, result `T`                                                     |
 | `+` `-`                     | see the arithmetic table on [Expressions](/reference/expressions/)        |
+
+`in`, the list operators and `has` compare elements structurally: two lists are equal when they have the same elements in the same order, two maps when they have the same keys with equal values. That's what makes `["eu-1"] in [["eu-1"], ["us-1"]]` work. Elements that are or contain structs can't be compared, because structs have no equality.
 
 ## Type inference
 

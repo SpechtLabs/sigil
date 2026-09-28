@@ -197,6 +197,15 @@ func TestNewKindPanics(t *testing.T) {
 		{name: "no version", fn: func() {
 			policy.NewKind[Input]("K", policy.WithDecisions(Deny), policy.WithDefault(Deny, "x"))
 		}, want: []string{"invalid kind version 0"}},
+		{name: "accepts zero", fn: func() {
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithAccepts(0), policy.WithDecisions(Deny), policy.WithDefault(Deny, "x"))
+		}, want: []string{"kind K accepts version 0, but versions start at 1"}},
+		{name: "tag option on an input", fn: func() {
+			type Bad struct {
+				Env string `policy:"environment,default=\"prod\""`
+			}
+			policy.NewKind[Bad]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(Deny, "x"))
+		}, want: []string{`input: field Env has tag option "default=\"prod\"", which only a decision payload field takes`}},
 		{name: "every problem is listed", fn: func() {
 			policy.NewKind[Input]("kind", policy.WithDecisions(Deny))
 		}, want: []string{`invalid kind name "kind"`, "invalid kind version 0", "kind kind has no default decision"}},
@@ -440,4 +449,26 @@ func with(fn func(*Input)) Input {
 	in.Service.Labels = maps.Clone(eligible.Service.Labels)
 	fn(&in)
 	return in
+}
+
+// TestHostFunctionPanics checks that a panic in a host function isn't
+// recovered: it propagates out of Eval unchanged, for the host to handle.
+func TestHostFunctionPanics(t *testing.T) {
+	k := policy.NewKind[Input]("Panicky",
+		policy.WithVersion(1),
+		policy.WithDecisions(Deny, Review, Approve),
+		policy.WithDefault(Deny, "no_rule_matched"),
+		policy.WithFunc("explode", func(s string) string { panic("kaboom: " + s) }),
+	)
+	p, err := k.Compile("policy p: Panicky@1\n\nwhen explode(\"x\") == \"\" {\n  approve(a)\n}\n", "p")
+	if err != nil {
+		t.Fatalf("Compile:\n%v", err)
+	}
+	defer func() {
+		if r := recover(); r != "kaboom: x" {
+			t.Errorf("recover() = %v, want the host function's panic value", r)
+		}
+	}()
+	_, _ = p.Eval(context.Background(), eligible)
+	t.Error("Eval returned; want the host function's panic to propagate")
 }

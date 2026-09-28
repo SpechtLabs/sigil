@@ -25,9 +25,13 @@ Each decision constructor that evaluation reaches becomes a _candidate_, carryin
 
 If nothing fires, the kind's `default` applies. For most kinds that's a deny, so an input nobody wrote a rule for fails closed.
 
-Here's what that looks like with the `deploy.production` policy:
+Here's what that looks like in the deploy gate used throughout these docs. The platform's guardrails deny a deploy that isn't eligible, and its production policy approves critical services for release managers. Condensed into one file, the two rules are:
 
 ```sigil
+policy deploy.gate: DeployApproval@1
+
+use deploy.common.{cleared, eligible}
+
 when not eligible {
   deny(not_eligible)
 }
@@ -56,7 +60,7 @@ Sigil asks you to write the negation out:
 
 ```sigil
 when eligible {
-  review(eligible, approvers: approvers)
+  review(service_owner, approvers: approvers)
 }
 
 when not eligible {
@@ -78,7 +82,7 @@ Precedence settles conflicts between different decisions. It doesn't settle ties
 
 Sigil answers with the kind, not with a position. Reasons are declared on each decision and can be ranked there, so `approve(release_manager)` and `approve(payments_sre)` compete the same way `deny` and `approve` do, by a line in the kind. Two candidates with the same decision and reason and the same payload are one outcome. Two with the same reason and different payloads are a contradiction, and the kind says what that means: a `collect one` kind refuses with a conflict error, a `collect all` kind hands both to the host. The [resolution rule](/reference/evaluation/#resolution) is fold, check `exclusive`, rank, count, and no step reads a position.
 
-Take the canonical example, a critical service deployed by someone who is a release manager and also on `payments-sre`. `deploy.production`'s `approve(release_manager)` (bake 1h, the kind's default) and the team's `approve(payments_sre, bake: 15m)` both fire. With `precedence approve: release_manager > payments_sre` in the kind, the release manager's approval wins, wherever the two rules sit. Without that line, the deploy kind has chosen `collect all`, and the host takes the shorter bake in two lines of Go over `Approve.MatchAll`. Either way, moving the team rule above the call changes nothing.
+Take the canonical example, a critical service deployed by someone who is a release manager and also on `payments-sre`. `deploy.production`'s `approve(release_manager)` (bake 1h, the kind's default) and the team's `approve(payments_sre, bake: 15m)` both fire. With `precedence approve: release_manager > payments_sre` in the kind, the release manager's approval wins, wherever the two rules sit. Without that line, the `collect one` deploy kind can't pick, so `Eval` returns a `*ConflictError` naming both candidates, together with the kind's default. A kind that wants the host to see both approvals declares `collect all` instead, and the host takes the shorter bake in a few lines of Go over `Approve.MatchAll`. Either way, moving the team rule above the call changes nothing.
 
 ## What you give up
 

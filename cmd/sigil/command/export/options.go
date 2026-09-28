@@ -1,12 +1,27 @@
 package export
 
-import "github.com/spechtlabs/sigil/cmd/sigil/internal/project"
+import (
+	"github.com/spechtlabs/sigil/cmd/internal/output"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
+)
 
 // Option configures the export command.
 type Option func(*options)
 
 type options struct {
-	kinds []project.Linked
+	output *output.Format
+	kinds  []project.Linked
+}
+
+// WithOutput sets the output format. It takes a pointer so the command
+// reads the root --output flag after cobra has parsed it. A nil pointer
+// keeps text.
+func WithOutput(format *output.Format) Option {
+	return func(o *options) {
+		if format != nil {
+			o.output = format
+		}
+	}
 }
 
 // WithKinds sets the kinds linked into the binary.

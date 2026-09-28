@@ -5,11 +5,7 @@ createTime: 2026/09/24 22:30:00
 permalink: /reference/grammar/
 ---
 
-::: info Draft specification
-This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, `fmt`, `check`, `eval`, `explain`, `test` and `export` exist. See [Open questions](/project/open-questions/).
-:::
-
-This is the complete syntax of Sigil source files and the three kinds of document they hold: policies, modules and kinds. A file uses the `.sigil` extension and may hold several documents, and each document's header keyword (`policy`, `module` or `kind`) decides which grammar applies to it. It covers what parses; what type-checks is on the other reference pages. The parser is hand-written: recursive descent for statements and a Pratt parser for expressions. The grammar below is written so that both fall out of it directly, with one token of lookahead everywhere except at the start of a call argument, where the parser peeks at a second token (see [Calls](#calls)).
+This page is for policy authors who want the exact syntax, and for anyone writing a tool that reads Sigil. It's the complete syntax of Sigil source files and the three kinds of document they hold: policies, modules and kinds. A file uses the `.sigil` extension and may hold several documents, and each document's header keyword (`policy`, `module` or `kind`) decides which grammar applies to it. It covers what parses; what type-checks is on the other reference pages. The parser is hand-written: recursive descent for statements and a Pratt parser for expressions. The grammar below is written so that both fall out of it directly, with one token of lookahead everywhere except at the start of a call argument, where the parser peeks at a second token (see [Calls](#calls)).
 
 ## Notation
 
@@ -35,12 +31,12 @@ Whitespace and comments may appear between any two tokens. The parser ignores bo
 
 ```text
 Ident       ::= [A-Za-z_] [A-Za-z0-9_]* - Keyword
-Keyword     ::= "policy" | "module" | "use" | "as" | "param" | "let" | "when"
-              | "assert"
+Keyword     ::= "policy" | "module" | "use" | "as" | "param" | "let" | "pub"
+              | "when" | "assert"
               | "kind" | "version" | "type" | "input" | "fn" | "decision"
               | "precedence" | "collect" | "default"
               | "and" | "or" | "xor" | "not" | "in" | "all" | "any" | "one"
-              | "exclusive" | "has" | "like" | "matches"
+              | "exclusive" | "has" | "like" | "matches" | "present"
               | "true" | "false" | "outcome"
 
 Int         ::= [0-9]+
@@ -53,11 +49,11 @@ Escape      ::= "\" EscapeBody     /* any escape Go accepts in an
                                      interpreted string literal */
 RawString   ::= "`" [^`]* "`"
 
-Comment     ::= "//" [^#xA]*
+Comment     ::= "//" [^#xA#xD]*
 Separator   ::= "---"
 ```
 
-The lexer takes the longest match. A run of digits followed directly by a unit is a `Duration`; `ms` wins over `m` followed by `s`. A number followed directly by any other letter is a lexical error. `??`, `?.`, `==`, `!=`, `<=`, `>=`, `->` and `---` are single tokens. A float needs digits on both sides of its point, so `?.` never splits into `?` and a number.
+The lexer takes the longest match. A run of digits followed directly by a unit is a `Duration`; `ms` wins over `m` followed by `s`. A number followed directly by any other letter or `_` is a lexical error, and so is a `Float` followed by a unit (`1.5h`). `??`, `?.`, `==`, `!=`, `<=`, `>=`, `->` and `---` are single tokens. A float needs digits on both sides of its point, so `?.` never splits into `?` and a number.
 
 `Ident` excludes keywords, but field names don't: see `Name` below.
 
@@ -84,7 +80,7 @@ type Resource {
 input resource: Resource
 
 decision review(approvers: list<string>) {
-  service_owner
+  cluster_access
 }
 
 decision deny {
@@ -114,7 +110,7 @@ The first `type` body is the case to watch: `kind:` sits at the start of a line,
 
 ```text
 PolicyDoc    ::= PolicyHeader UseStmt* PolicyStmt*
-PolicyHeader ::= "policy" PolicyName ":" Ident "@" Int
+PolicyHeader ::= "policy" PolicyName ":" Ident ( "@" Int )?   /* the checker requires the pin */
 PolicyName   ::= Ident ( "." Ident )*     /* no whitespace around "." */
 
 PolicyStmt   ::= ParamStmt | LetStmt | WhenStmt | AssertStmt | Call
@@ -131,7 +127,7 @@ RuleItem     ::= WhenStmt | LetStmt | AssertStmt | Call
 AssertStmt   ::= "assert" "(" String "," Expr ","? ")"
 
 Call         ::= Ident "(" CallArgs? ")"
-CallArgs     ::= Ident ( "," NamedArg )* ","?      /* decision constructor: the reason first */
+CallArgs     ::= Expr ( "," NamedArg )* ","?       /* decision constructor: the reason first */
                | NamedArgs                         /* policy invocation */
 
 NamedArgs    ::= NamedArg ( "," NamedArg )* ","?
@@ -139,7 +135,7 @@ NamedArg     ::= Name ":" Expr
 Name         ::= Ident | Keyword          /* field and payload names */
 ```
 
-A `Call` is either a decision constructor or a policy invocation, and the parser doesn't need to know which. The checker decides by the name: a decision of the kind makes it a constructor, whose first argument is a bare name, one of the decision's declared reasons; an imported policy makes it an invocation, whose arguments must all be named. Anything else is a compile error. (The parser accepted a string literal reason before reasons were declared in the kind; that form is a parse error with a hint now.)
+A `Call` is either a decision constructor or a policy invocation, and the parser doesn't need to know which. The checker decides by the name: a decision of the kind makes it a constructor, whose first argument is a bare name, one of the decision's declared reasons; an imported policy makes it an invocation, whose arguments must all be named. Anything else is a compile error. The parser accepts any expression as the first, positional argument; the checker requires a bare reason name, so `deny("soak_too_short")` parses and then fails with a hint to drop the quotes.
 
 A `LetStmt` in a `RuleItem` is a scoped let and can't be `pub`; the parser reports a `pub` there and keeps the let, so its uses still resolve. That scoped let names are unique per document, and that a `pub let` in a policy can't read a param, are checked after parsing. See [Scoped lets](/reference/policy-files/#scoped-lets).
 
@@ -153,10 +149,10 @@ In `use deploy.common.{cleared}`, the `.` before `{` follows the last path segme
 
 ```text
 ModuleDoc    ::= ModuleHeader UseStmt* LetStmt*
-ModuleHeader ::= "module" PolicyName ":" Ident "@" Int
+ModuleHeader ::= "module" PolicyName ":" Ident ( "@" Int )?   /* the checker requires the pin */
 ```
 
-A module contains nothing but imports and `let`s. A `param`, `when` or call in a module is a parse error with a hint that it belongs in a policy.
+A module contains nothing but imports and `let`s. A `param`, `when`, `assert` or call in a module is a parse error with a hint that it belongs in a policy.
 
 ## Kind files
 
@@ -167,20 +163,22 @@ KindHeader   ::= "kind" Ident "version" Int ( "," "accepts" ":" Int )?   /* "acc
 KindStmt     ::= TypeDecl | InputDecl | FnDecl | DecisionDecl
                | PrecedenceDecl | ExclusiveDecl | CollectDecl | DefaultDecl
 
-TypeDecl     ::= "type" Ident ( "{" FieldDecl* "}" | "ordered" )   /* "ordered" is proposed */
+TypeDecl     ::= "type" Ident "{" FieldDecl* "}"
 FieldDecl    ::= Name ":" Type
 InputDecl    ::= "input" Ident ":" Type
 FnDecl       ::= "fn" Ident "(" ( Type ( "," Type )* ","? )? ")" "->" Type
-DecisionDecl ::= "decision" Ident ( "(" DecisionField ( "," DecisionField )* ","? ")" )? "{" Ident+ "}"
+DecisionDecl ::= "decision" Ident ( "(" ( DecisionField ( "," DecisionField )* ","? )? ")" )? "{" Ident+ "}"
 DecisionField ::= Name ":" Type ( "=" Expr )?
 PrecedenceDecl ::= "precedence" ( Ident ":" )? Ident ( ">" Ident )*   /* "d:" scopes it to d's reasons */
 ExclusiveDecl ::= "exclusive" Outcome ( "," Outcome )+
 Outcome      ::= Ident ( "." Ident )?                 /* a decision, or one of its reasons */
 CollectDecl  ::= "collect" ( "one" | "all" )
-DefaultDecl  ::= "default" Constructor
+DefaultDecl  ::= "default" Call
 ```
 
-That a `DecisionDecl` declares at least one reason, that a kind declares `collect` once, that `collect one` comes with a `precedence` over decisions, that `precedence` names every decision (or every reason of its decision) once, that an `ExclusiveDecl` names declared outcomes, and that defaults are constants are semantic rules, checked after parsing. See [Kind files](/reference/kind-files/).
+`type Version ordered`, for [host-ordered types](/reference/types/#host-ordered-types), is planned and doesn't parse yet.
+
+That a kind declares `collect` once, that `collect one` comes with a `precedence` over decisions, that `precedence` names every decision (or every reason of its decision) once, that an `ExclusiveDecl` names declared outcomes, and that defaults are constants are semantic rules, checked after parsing. See [Kind files](/reference/kind-files/).
 
 ## Types
 
@@ -221,7 +219,7 @@ MapLit       ::= "{" ( MapEntry ( "," MapEntry )* ","? )? "}"
 MapEntry     ::= Coalesce ":" Expr
 ```
 
-Syntax alone accepts a few things the checker rejects: `outcome` outside an `assert` condition, a call expression on anything but a host function name, a call statement on anything but a decision or an imported policy, a non-literal pattern after `like` or `matches`, an undeclared reason in a constructor, and `.name` on something that isn't a struct or a whole-module import. Leaving those to the checker gives better error messages than a parse failure would.
+Syntax alone accepts a few things the checker rejects: `outcome` outside an `assert` condition, a call expression on anything but a host function name, a call statement on anything but a decision or an imported policy, a non-literal pattern after `like` or `matches`, a constructor reason that isn't a declared reason name, a missing `@N` pin in a header, and `.name` on something that isn't a struct, a decision in an `assert` or a whole import. Leaving those to the checker gives better error messages than a parse failure would.
 
 ## Operator precedence
 
@@ -247,10 +245,6 @@ The expression grammar encodes this table, lowest to highest. It matches [Expres
 `or` and `xor` share level 1, but `OrExpr` takes either a chain of `or` or a single `xor`, never both, so `a xor b xor c` and `a or b xor c` fail to parse with a hint to add parentheses.
 
 A quantifier sits at level 3 as an alternative to `not`. Its range is parsed at level 5, and its body is a full `Expr`, so the body extends as far right as the enclosing construct allows.
-
-::: info
-Level 4 is non-associative, the quantifier body extends to the right, and keywords are allowed as field names. All three are settled and implemented, and the next sections explain them. `assert`, `collect all`, `xor`, `one in`, `exclusive in` and `outcome` came with assertions and collecting kinds; their remaining open parts are listed under [Open questions](/project/open-questions/#assertions).
-:::
 
 ## How the parser decides
 
@@ -303,11 +297,11 @@ Two other boundaries work the same way:
 
 ### Calls
 
-A `Call`'s arguments are either one positional reason followed by named payload fields, or named arguments only. The parser tells the two apart at the first argument: a `Name` followed by `:` starts a named argument, a bare `Ident` followed by `,` or `)` is the reason. That's the one place the grammar needs two tokens of lookahead, and it's never ambiguous.
+A `Call`'s arguments are either one positional reason followed by named payload fields, or named arguments only. The parser tells the two apart at the first argument: a `Name` followed by `:` starts a named argument, and anything else is parsed as an expression, the reason. That's the one place the grammar needs two tokens of lookahead, and it's never ambiguous, because no expression starts with a name followed by `:`.
 
 ### Keywords as field names
 
-A Go host can tag a field with any name, and Kubernetes-shaped data often has a field called `type`, which is a keyword. The grammar allows any keyword wherever a field or payload name appears: after `.`, in `type` bodies, in decision fields and in named arguments. If `Service` declared a `type` field, `service.type` would parse, because the token after `.` is always a name. Top-level names (inputs, params, lets, imported names, host functions, decisions, types) must still be plain identifiers.
+A Go host can tag a field with any name, and Kubernetes-shaped data often has a field called `type`, which is a keyword. The grammar allows any keyword wherever a field or payload name appears: after `.`, in `type` bodies, in decision fields and in named arguments. If `Service` declared a `type` field, `service.type` would parse, because the token after `.` is always a name. Top-level names (inputs, params, lets, imported names, host functions, decisions, types), decision reasons and quantifier variables must still be plain identifiers.
 
 ### Closing angle brackets
 

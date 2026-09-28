@@ -1,0 +1,22 @@
+// Diagnostics that point at the real problem: a list compared with `[]`
+// is a list comparison, a decision can't be a map value, and a number in
+// a notation Sigil doesn't have isn't an unknown duration unit.
+policy p: DeployApproval@1
+
+when actor.regions != [] {
+  deny(a)
+}
+
+---
+
+policy q: DeployApproval@1
+
+assert("expected", {"payments": approve}["payments"] in outcome)
+
+---
+
+policy r: DeployApproval@1
+
+when release.soak < 0x10 or 1e3 > 1_000 {
+  deny(a)
+}

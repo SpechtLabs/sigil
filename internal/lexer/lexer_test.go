@@ -359,16 +359,72 @@ func TestLexErrors(t *testing.T) {
 			msg: "a float literal needs digits on both sides of the point", help: "write `5.0`", pos: "1:1-1:3",
 		},
 		{
-			name: "exponent", src: "1e5", want: []tok{{token.Illegal, "1e5"}},
-			msg: "unknown duration unit `e5` in `1e5`", help: "the units are ms, s, m, h and d, like `30m` or `1h30m`", pos: "1:1-1:4",
+			name: "exponent", src: "1e3", want: []tok{{token.Illegal, "1e3"}},
+			msg: "`1e3` uses exponent notation, which Sigil doesn't have", help: "write the decimal integer `1000`", pos: "1:1-1:4",
+		},
+		{
+			name: "exponent with a sign", src: "1e-3 x", want: []tok{{token.Illegal, "1e-3"}, {token.Ident, "x"}},
+			msg: "`1e-3` uses exponent notation, which Sigil doesn't have", help: "floats are written with a point and no exponent: `0.001`", pos: "1:1-1:5",
+		},
+		{
+			name: "exponent with a plus", src: "2E+2", want: []tok{{token.Illegal, "2E+2"}},
+			msg: "`2E+2` uses exponent notation, which Sigil doesn't have", help: "write the decimal integer `200`", pos: "1:1-1:5",
+		},
+		{
+			name: "float exponent", src: "1.5e3", want: []tok{{token.Illegal, "1.5e3"}},
+			msg: "`1.5e3` uses exponent notation, which Sigil doesn't have", help: "floats are written with a point and no exponent: `1500.0`", pos: "1:1-1:6",
+		},
+		{
+			name: "exponent out of range", src: "1e999", want: []tok{{token.Illegal, "1e999"}},
+			msg: "`1e999` uses exponent notation, which Sigil doesn't have", help: "write the number out in full, like `1000` or `0.001`", pos: "1:1-1:6",
+		},
+		{
+			name: "exponent too long to write out", src: "1e-30", want: []tok{{token.Illegal, "1e-30"}},
+			msg: "`1e-30` uses exponent notation, which Sigil doesn't have", help: "write the number out in full, like `1000` or `0.001`", pos: "1:1-1:6",
 		},
 		{
 			name: "hex", src: "0x1F", want: []tok{{token.Illegal, "0x1F"}},
-			msg: "unknown duration unit `x1F` in `0x1F`", help: "the units are ms, s, m, h and d, like `30m` or `1h30m`", pos: "1:1-1:5",
+			msg: "`0x1F` is hex notation, which Sigil doesn't have", help: "write the decimal integer `31`", pos: "1:1-1:5",
+		},
+		{
+			name: "octal", src: "0o17", want: []tok{{token.Illegal, "0o17"}},
+			msg: "`0o17` is octal notation, which Sigil doesn't have", help: "write the decimal integer `15`", pos: "1:1-1:5",
+		},
+		{
+			name: "binary", src: "0B101", want: []tok{{token.Illegal, "0B101"}},
+			msg: "`0B101` is binary notation, which Sigil doesn't have", help: "write the decimal integer `5`", pos: "1:1-1:6",
+		},
+		{
+			name: "malformed hex", src: "0xZZ", want: []tok{{token.Illegal, "0xZZ"}},
+			msg: "`0xZZ` is hex notation, which Sigil doesn't have", help: "write the number in decimal", pos: "1:1-1:5",
+		},
+		{
+			name: "digit separator", src: "1_000", want: []tok{{token.Illegal, "1_000"}},
+			msg: "`1_000` uses `_` as a digit separator, which Sigil doesn't have", help: "write the digits without it: `1000`", pos: "1:1-1:6",
+		},
+		{
+			name: "digit separator in a float", src: "1_000.5", want: []tok{{token.Illegal, "1_000.5"}},
+			msg: "`1_000.5` uses `_` as a digit separator, which Sigil doesn't have", help: "write the digits without it: `1000.5`", pos: "1:1-1:8",
+		},
+		{
+			name: "digit separator in a fraction", src: "0.000_1", want: []tok{{token.Illegal, "0.000_1"}},
+			msg: "`0.000_1` uses `_` as a digit separator, which Sigil doesn't have", help: "write the digits without it: `0.0001`", pos: "1:1-1:8",
+		},
+		{
+			name: "digit separator in a duration", src: "1_000ms", want: []tok{{token.Illegal, "1_000ms"}},
+			msg: "`1_000ms` uses `_` as a digit separator, which Sigil doesn't have", help: "write the digits without it: `1000ms`", pos: "1:1-1:8",
 		},
 		{
 			name: "number glued to identifier", src: "1abc", want: []tok{{token.Illegal, "1abc"}},
 			msg: "unknown duration unit `abc` in `1abc`", help: "the units are ms, s, m, h and d, like `30m` or `1h30m`", pos: "1:1-1:5",
+		},
+		{
+			name: "unknown unit", src: "5w", want: []tok{{token.Illegal, "5w"}},
+			msg: "unknown duration unit `w` in `5w`", help: "the units are ms, s, m, h and d, like `30m` or `1h30m`", pos: "1:1-1:3",
+		},
+		{
+			name: "e without exponent digits is a unit", src: "1e", want: []tok{{token.Illegal, "1e"}},
+			msg: "unknown duration unit `e` in `1e`", help: "the units are ms, s, m, h and d, like `30m` or `1h30m`", pos: "1:1-1:3",
 		},
 
 		// Durations.

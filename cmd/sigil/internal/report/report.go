@@ -65,9 +65,11 @@ type Failure struct {
 
 // Assert is one failing assert.
 type Assert struct {
-	Reason   string `json:"reason" yaml:"reason"`
-	Position string `json:"position" yaml:"position"`
-	Cause    string `json:"cause,omitempty" yaml:"cause,omitempty"`
+	Reason   string  `json:"reason" yaml:"reason"`
+	Position string  `json:"position" yaml:"position"`
+	Cause    string  `json:"cause,omitempty" yaml:"cause,omitempty"`     // the runtime error its condition raised
+	Help     string  `json:"help,omitempty" yaml:"help,omitempty"`       // what to do about the cause, when it knows better than the failure's help
+	Outcome  []Entry `json:"outcome,omitempty" yaml:"outcome,omitempty"` // for an outcome assert, the candidates that formed the outcome it read
 }
 
 // New builds the report for one evaluation.
@@ -168,6 +170,11 @@ func (r *Report) width() int {
 		for _, e := range r.Error.Candidates {
 			w = max(w, len(e.head()))
 		}
+		for _, a := range r.Error.Asserts {
+			for _, e := range a.Outcome {
+				w = max(w, len(e.head()))
+			}
+		}
 	}
 	return w
 }
@@ -212,6 +219,15 @@ func (f *Failure) text(t pretty.Theme, width int) string {
 			fmt.Fprintf(&b, "%s %s failed at %s\n", t.Fail("assert"), t.Bold(a.Reason), t.Location(a.Position))
 			if a.Cause != "" {
 				b.WriteString("  " + a.Cause + "\n")
+			}
+			if a.Help != "" {
+				b.WriteString("    " + t.Help("= help:") + " " + a.Help + "\n")
+			}
+			if len(a.Outcome) > 0 {
+				b.WriteString("  " + t.Muted("the outcome it read:") + "\n")
+			}
+			for _, c := range a.Outcome {
+				b.WriteString("    " + row(t, width, c, c.location(), false) + "\n")
 			}
 		}
 	case FailConflict:
@@ -263,7 +279,11 @@ func (e Entry) location() string {
 func failure(k *project.Kind, fl *result.Failure) *Failure {
 	switch {
 	case fl.Runtime != nil:
-		return &Failure{Kind: FailRuntime, Message: runtimeText(fl.Runtime), Help: help(FailRuntime)}
+		h := fl.Runtime.Help
+		if h == "" {
+			h = help(FailRuntime)
+		}
+		return &Failure{Kind: FailRuntime, Message: runtimeText(fl.Runtime), Help: h}
 	case fl.Conflict != nil:
 		f := &Failure{Kind: FailConflict, Message: fl.Conflict.Msg, Help: help(FailConflict)}
 		for _, c := range fl.Conflict.Candidates {
@@ -277,7 +297,10 @@ func failure(k *project.Kind, fl *result.Failure) *Failure {
 		reasons[i] = strconv.Quote(a.Reason)
 		as := Assert{Reason: a.Reason, Position: result.Chain(append(append([]result.Position{}, a.Chain...), a.Position))}
 		if a.Cause != nil {
-			as.Cause = runtimeText(a.Cause)
+			as.Cause, as.Help = runtimeText(a.Cause), a.Cause.Help
+		}
+		for _, c := range a.Outcome {
+			as.Outcome = append(as.Outcome, candidate(k, c))
 		}
 		f.Asserts = append(f.Asserts, as)
 	}

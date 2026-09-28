@@ -1,6 +1,7 @@
 package constant_test
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -73,6 +74,8 @@ func TestFormat(t *testing.T) {
 		{500 * time.Millisecond, "500ms"},
 		{-15 * time.Minute, "-15m"},
 		{1500 * time.Microsecond, "1ms+500000ns"},
+		{time.Duration(math.MaxInt64), "106751d23h47m16s854ms+775807ns"},
+		{time.Duration(math.MinInt64), "-106751d23h47m16s854ms+775808ns"},
 		{ts, `"2026-09-27T22:30:00Z"`},
 		{[]any{}, "[]"},
 		{[]any{"a", int64(1)}, `["a", 1]`},

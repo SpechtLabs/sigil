@@ -76,7 +76,7 @@ func LoadKind(file string, linked []Linked) (*Kind, humane.Error) {
 		if l.Model.Source() != k.Source() {
 			return nil, humane.New(
 				fmt.Sprintf("%s doesn't match the kind %s linked into this binary", file, k.Name),
-				"regenerate the kind file with `sigil export --out "+file+"`, or rebuild the binary from the host's current code",
+				"regenerate the kind file with this binary's `export "+k.Name+" --out "+file+"`, or rebuild the binary from the host's current code",
 			)
 		}
 		return &Kind{Model: l.Model, Binding: l.Binding, Host: true}, nil

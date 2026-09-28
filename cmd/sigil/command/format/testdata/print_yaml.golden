@@ -1,0 +1,12 @@
+- file: a.sigil
+  formatted: false
+  source: |
+    policy a: K@1
+
+    when x == 1 { deny(r) }
+- file: b.sigil
+  formatted: true
+  source: |
+    policy a: K@1
+
+    when x == 1 { deny(r) }

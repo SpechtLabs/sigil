@@ -11,3 +11,6 @@ when "platform" in teams {
 when "oncall" in teams {
   write(oncall)
 }
+
+// An outcome assert: whoever may write may read.
+assert("write_needs_read", write not in outcome or read in outcome)

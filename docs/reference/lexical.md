@@ -5,17 +5,15 @@ createTime: 2026/09/24 22:30:00
 permalink: /reference/lexical/
 ---
 
-::: info Draft specification
-This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, `fmt`, `check`, `eval`, `explain`, `test` and `export` exist. See [Open questions](/project/open-questions/).
-:::
+This page is part of the language reference for policy authors. It defines the tokens a `.sigil` file is made of: whitespace, comments, identifiers, keywords, literals and operators.
 
-Sigil source is UTF-8 text. The lexer turns it into a flat stream of tokens and throws away whitespace, so newlines and indentation carry no meaning anywhere in the language. Comments become tokens of their own, which the parser skips and `sigil fmt` keeps, so formatting a file never loses one. Every statement starts with a keyword or, for a policy invocation, with a name followed by `(`, which is how the parser finds statement boundaries (see [Grammar](/reference/grammar/)).
+Sigil source is UTF-8 text. The lexer turns it into a flat stream of tokens and throws away whitespace, so newlines and indentation carry no meaning anywhere in the language. Comments become tokens of their own, which the parser skips and `sigil fmt` keeps, so formatting a file never loses one. Every statement starts with a keyword or, for a decision constructor or policy invocation, with a name followed by `(`, which is how the parser finds statement boundaries (see [Grammar](/reference/grammar/)).
 
 ## Whitespace and comments
 
 Spaces, tabs, carriage returns and newlines separate tokens and are otherwise ignored.
 
-A comment starts with `//` and runs to the end of the line, not including the line break. There are no block comments. A comment has no meaning to the parser, which treats it like whitespace, but the lexer emits it as a token so that tools which rewrite source, such as `sigil fmt`, can put it back where it was.
+A comment starts with `//` and runs to the end of the line, not including the line break (`\n` or `\r\n`). There are no block comments. A comment has no meaning to the parser, which treats it like whitespace, but the lexer emits it as a token so that tools which rewrite source, such as `sigil fmt`, can put it back where it was.
 
 ```sigil
 // This whole line is a comment.
@@ -30,7 +28,7 @@ identifier = [A-Za-z_][A-Za-z0-9_]*
 
 Identifiers name inputs, types, fields, params, lets, host functions, decisions, quantifier variables and names bound by `use`. They're case-sensitive: `Release` and `release` are different names.
 
-Unlike filt-rs, an identifier can't contain `-` or `.`. A key such as `platform.example.com/lifecycle` isn't a name; you reach it through map indexing:
+Identifiers are ASCII only and can't contain `-` or `.`. A key such as `platform.example.com/lifecycle` isn't a name; you reach it through map indexing:
 
 ```sigil
 service.labels["platform.example.com/lifecycle"]
@@ -55,7 +53,7 @@ These words are reserved and can't be used as identifiers.
 | Group          | Keywords                                                                          |
 | -------------- | --------------------------------------------------------------------------------- |
 | Policy files   | `policy`, `module`, `use`, `as`, `param`, `let`, `pub`, `when`, `assert`          |
-| Kind files     | `kind`, `version`, `type`, `ordered`, `input`, `fn`, `decision`, `precedence`, `collect`, `default` |
+| Kind files     | `kind`, `version`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default` |
 | Operators      | `and`, `or`, `xor`, `not`, `in`, `all`, `any`, `one`, `exclusive`, `has`, `like`, `matches`, `present` |
 | Values         | `true`, `false`, `outcome`                                                        |
 
@@ -63,7 +61,7 @@ The built-in type names (`bool`, `int`, `float`, `string`, `duration`, `timestam
 
 Decision names like `deny` or `approve` aren't keywords either. Each kind declares its own, and they're identifiers in the policy's namespace like inputs and lets (see [Identifiers](/reference/policy-files/#identifiers)).
 
-`ordered` is proposed with [host-ordered types](/reference/types/#host-ordered-types) and isn't a keyword yet.
+`ordered` isn't a keyword. The planned [host-ordered types](/reference/types/#host-ordered-types) would use it in `type Version ordered`.
 
 Keywords are allowed as field and payload names, because real Go structs have fields called `kind` or `type`. `service.type` is valid: the token after `.` is always read as a name. The same goes for field declarations in a `type` body, decision fields and named arguments. Top-level names such as inputs, params, lets and imported names must be plain identifiers. Without this, a Go field tagged `type` or `kind` couldn't be exported to a kind at all.
 
@@ -84,13 +82,13 @@ Keywords are allowed as field and payload names, because real Go structs have fi
 3.0     // float
 ```
 
-A float literal needs digits on both sides of the point: `.5` and `5.` aren't valid. Integer literals are decimal and fit in a signed 64-bit integer; a literal outside that range is a compile error. Leading zeros are allowed and carry no meaning: `007` is the integer seven, never octal, and `sigil fmt` removes them. Negative numbers are written with unary minus (`-3`), which is an operator, not part of the literal.
+A float literal needs digits on both sides of the point: `.5` and `5.` aren't valid. Integer literals are decimal and fit in a signed 64-bit integer; a literal outside that range is a compile error. Leading zeros are allowed and carry no meaning: `007` is the integer seven, never octal. `sigil fmt` leaves them as written. Negative numbers are written with unary minus (`-3`), which is an operator, not part of the literal.
 
-The current design doesn't specify hex, octal, binary, exponent notation or `_` digit separators. They're not part of the language until someone decides otherwise.
+There's no hex, octal or binary notation, no exponent notation and no `_` digit separator. Each one is a lexical error that names the notation and writes the number out for you: `0x10` suggests `16`, `1e3` suggests `1000`, `1.5e3` suggests the float `1500.0`, and `1_000` suggests `1000`. Any other letter right after digits starts a duration unit, so `5w` is an error about an unknown duration unit.
 
 ### Strings
 
-Double-quoted strings use Go's escape sequences (`\n`, `\t`, `\\`, `\"`, `é` and the rest of the Go set).
+Double-quoted strings use Go's escape sequences for interpreted string literals: `\n`, `\t`, `\\`, `\"`, `\xhh`, `\u00e9`, `\U0001F600`, three-digit octal `\101` and the rest of the Go set. An unknown escape such as `\'` is an error at the backslash.
 
 ```sigil
 "deployer"
@@ -126,7 +124,9 @@ A duration literal is an integer followed immediately by a unit, and units can b
 
 `d` is a fixed 24 hours. It has no calendar or daylight-saving meaning, because the language has no clock or time zone to apply one to.
 
-In a chained literal each unit may appear at most once, largest first: `1h30m` is valid, `30m1h` and `1h1h` are compile errors. Fractional components such as `1.5h` aren't allowed; write `1h30m`.
+In a chained literal each unit may appear at most once, largest first: `1h30m` is valid, `30m1h` and `1h1h` are errors, and so is `1h30`, whose last component has no unit. Fractional components such as `1.5h` aren't allowed; write `1h30m`. A duration is a Go `time.Duration`, so a literal above about 292 years, such as `107000d`, is out of range. There's no negative duration literal; `-30m` is unary minus applied to `30m`.
+
+When Sigil prints a duration value, as a param's value in `sigil explain`, a payload in `sigil eval` or a mismatch in `sigil test`, it normalizes it to the largest units, each once: `24h` prints as `1d`, `1500m` as `1d1h`, and zero as `0s`. A literal in source is printed as written, and `sigil fmt` doesn't rewrite it. A value with a sub-millisecond part, which only a Go host can produce, prints with a `+Nns` suffix, such as `1s+500ns`, which isn't valid source.
 
 ### Lists
 
@@ -144,11 +144,11 @@ Every element must have the same type. See [Types](/reference/types/) for how th
 {}
 ```
 
-Keys and values are expressions; every key must share one type and every value must share one type.
+Keys and values are expressions; every key must share one type and every value must share one type. A key must be a scalar (`bool`, `int`, `float`, `string`, `duration` or `timestamp`). A key is parsed at the precedence of `??`, so a comparison used as a key needs parentheses.
 
 ### Trailing commas
 
-A trailing comma is allowed in every comma-separated list: list and map literals, function call arguments, decision payloads, policy invocation arguments and selective imports. It keeps diffs to one line and keeps text-templated output valid.
+A trailing comma is allowed in every comma-separated list: list and map literals, function call arguments, decision constructors, policy invocation arguments, `assert`, selective imports, and in kind files `fn` parameters and decision payload fields. It keeps diffs to one line and keeps text-templated output valid.
 
 ```sigil
 production(
@@ -161,13 +161,13 @@ production(
 
 | Token                       | Used for                                    |
 | --------------------------- | ------------------------------------------- |
-| `==` `!=` `<` `<=` `>` `>=` | Comparison                                  |
+| `==` `!=` `<` `<=` `>` `>=` | Comparison; `<` `>` also delimit type arguments (`list<T>`), and `>` orders a kind's `precedence` |
 | `+` `-`                     | Arithmetic, unary minus                     |
 | `??`                        | Optional default                            |
 | `?.`                        | Optional chaining                           |
-| `.`                         | Field access, qualified import access       |
+| `.`                         | Field access, qualified import access, a decision's reason (`approve.release_manager`) |
 | `[` `]`                     | List literals, indexing                     |
-| `{` `}`                     | Map literals, rule bodies, type bodies, selective imports |
+| `{` `}`                     | Map literals, rule bodies, type bodies, reason blocks, selective imports |
 | `(` `)`                     | Grouping, calls, decision constructors, policy invocations |
 | `:`                         | Type annotations, named arguments, quantifier bodies, map entries |
 | `,`                         | Separators                                  |
@@ -200,7 +200,7 @@ use deploy.common.{owns_service}
 The one casualty is writing `a---b` to mean `a - (-(-b))`. It lexes as `a`, `---`, `b` and fails with an error that says so. `a - --b` still means `a - (-(-b))`, since `--` is two `-` tokens, and `----` lexes as `---` followed by `-`, which is an error too.
 
 ```text
-policies.sigil:12:21 (deploy.guardrails): error: `---` separates documents and can't appear inside an expression
+policies.sigil:12:21: error: `---` separates documents and can't appear inside an expression
    |
 12 | let tight = min_soak---1h
    |                     ^^^

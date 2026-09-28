@@ -54,6 +54,7 @@ func deploy() *kind.Kind {
 	return &kind.Kind{
 		Name:    "DeployApproval",
 		Version: 1,
+		Accepts: 1,
 		Types:   []*types.Struct{release, service, actor},
 		Inputs: []*kind.Input{
 			{Name: "release", Type: release},
@@ -85,6 +86,7 @@ func access() *kind.Kind {
 	return &kind.Kind{
 		Name:    "AccessGrant",
 		Version: 1,
+		Accepts: 1,
 		Types:   []*types.Struct{actor},
 		Inputs:  []*kind.Input{{Name: "actor", Type: actor}},
 		Decisions: []*kind.Decision{

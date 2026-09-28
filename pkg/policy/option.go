@@ -17,9 +17,10 @@ func WithVersion(n int) Option {
 // WithAccepts sets the oldest version a policy or module may pin with
 // `Kind@N`. Raise it with a breaking change, so documents written for an
 // older version are rejected instead of compiled against a contract they
-// weren't written for. Without it, every version is accepted.
+// weren't written for. Without it, every version is accepted; n is from
+// 1 to the kind's version.
 func WithAccepts(n int) Option {
-	return func(o *gokind.Options) { o.Accepts = n }
+	return func(o *gokind.Options) { o.Accepts = &n }
 }
 
 // WithDecisions declares the decisions of a `collect one` kind in

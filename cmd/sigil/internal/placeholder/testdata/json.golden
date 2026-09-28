@@ -1,0 +1,7 @@
+{
+  "error": {
+    "kind": "not_implemented",
+    "message": "\"sigil lsp\" is not implemented yet",
+    "help": "the command is planned for a later milestone; track progress at https://github.com/SpechtLabs/sigil/blob/main/roadmap.yml"
+  }
+}

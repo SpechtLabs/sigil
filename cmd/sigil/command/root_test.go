@@ -142,3 +142,37 @@ func TestOutputFlagCompletion(t *testing.T) {
 		}
 	}
 }
+
+// TestOutputFlagReachesEveryCommand checks that the commands with no
+// report of their own honor --output too: fmt prints its records, and a
+// planned command its error.
+func TestOutputFlagReachesEveryCommand(t *testing.T) {
+	notImplemented := func(path string) string {
+		return "{\n  \"error\": {\n    \"kind\": \"not_implemented\",\n    \"message\": \"\\\"sigil " + path + "\\\" is not implemented yet\","
+	}
+	tests := []struct {
+		args  []string
+		stdin string
+		want  string // the start of the output
+	}{
+		{args: []string{"fmt", "-o", "json", "-"}, stdin: "policy a: K@1\n", want: "[\n  {\n    \"file\": \"\\u003cstdin\\u003e\",\n    \"formatted\": true,"},
+		{args: []string{"fmt", "-o", "yaml", "--check", "-"}, stdin: "policy a: K@1\n", want: "- file: <stdin>\n  formatted: true\n"},
+		{args: []string{"lsp", "-o", "json"}, want: notImplemented("lsp")},
+		{args: []string{"gen", "go", "-o", "json", "k.sigil"}, want: notImplemented("gen go")},
+		{args: []string{"breaking", "-o", "json", "old.sigil", "new.sigil"}, want: notImplemented("breaking")},
+	}
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
+			cmd := NewCommand()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetIn(strings.NewReader(tt.stdin))
+			cmd.SetArgs(tt.args)
+			_ = cmd.Execute() // the planned commands fail; the output is what's checked
+			if !strings.HasPrefix(out.String(), tt.want) {
+				t.Errorf("output = %q, want it to start with %q", out.String(), tt.want)
+			}
+		})
+	}
+}

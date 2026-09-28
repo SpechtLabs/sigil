@@ -4,13 +4,15 @@ package lsp
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/usage"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/placeholder"
 )
 
 // NewCommand returns the lsp command.
 func NewCommand(opts ...Option) *cobra.Command {
-	o := &options{}
+	text := output.Text
+	o := &options{output: &text}
 	for _, opt := range opts {
 		opt(o)
 	}
@@ -18,8 +20,10 @@ func NewCommand(opts ...Option) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:        "lsp",
 		SuggestFor: []string{"language-server", "server"},
-		Short:      "Run the Sigil language server",
-		Long: `Runs the Sigil language server, which editors start in the background. It
+		Short:      "Run the Sigil language server (planned)",
+		Long: `Planned: this command is not implemented yet, and exits with an error.
+
+Runs the Sigil language server, which editors start in the background. It
 reads the kind file and offers completion for inputs, fields, functions and
 decision payload keys, hover with a decision's full signature, and
 go-to-definition for let bindings and use targets.
@@ -30,7 +34,7 @@ sigil lsp --stdio`,
 		Args:              usage.None(),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return placeholder.NotImplemented(cmd)
+			return placeholder.NotImplemented(cmd, *o.output)
 		},
 	}
 

@@ -76,7 +76,11 @@ func (v *validator) header() {
 	if v.kind.Version < 1 {
 		v.errorf("kind.version", "the version is a positive integer that changes when the contract does", "invalid kind version %d", v.kind.Version)
 	}
-	if v.kind.Accepts < 0 || v.kind.Accepts > v.kind.Version {
+	switch {
+	case v.kind.Accepts < 1:
+		v.errorf("kind.accepts", "leave `accepts` out to accept every version, or name the oldest version policies may still pin, between 1 and the version",
+			"kind %s accepts version %d, but versions start at 1", v.kind.Name, v.kind.Accepts)
+	case v.kind.Version >= 1 && v.kind.Accepts > v.kind.Version:
 		v.errorf("kind.accepts", "`accepts` names the oldest version policies may still pin, between 1 and the version",
 			"kind %s at version %d can't accept version %d", v.kind.Name, v.kind.Version, v.kind.Accepts)
 	}

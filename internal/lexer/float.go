@@ -29,6 +29,9 @@ func (l *Lexer) float(start token.Pos) token.Token {
 			fmt.Sprintf("write `%s0`", l.text(start)))
 	}
 	l.digits()
+	if t, ok := l.notation(start); ok {
+		return t
+	}
 	if isLetter(l.at(0)) {
 		l.letters()
 		return l.fail(start, "a duration can't have a fractional component",

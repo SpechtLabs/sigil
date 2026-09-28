@@ -2,7 +2,7 @@
 
 deploygate is a small deploy approval API. A client posts the release it wants to ship, and deploygate works out which roles the requestor holds, evaluates the team's Sigil policy with those roles and answers with a decision: approve, review or deny, each with a reason, a typed payload and a trace of how the policy got there. It's the running example from the [documentation](../docs/getting-started/tour.md), turned into a service you can start with one command.
 
-The example is a separate Go module, `github.com/spechtlabs/sigil/examples`, that builds against the Sigil checkout it lives in. Its dependencies never reach the library's `go.mod`.
+The example is a separate Go module, `github.com/spechtlabs/sigil/examples`, that builds against the Sigil checkout it lives in. Its dependencies never reach the library's `go.mod`. Start with [Run it](#run-it); [Layout](#layout) and [How it is wired](#how-it-is-wired) near the end map the directories and packages.
 
 ## What the example shows
 
@@ -13,45 +13,6 @@ The example is a separate Go module, `github.com/spechtlabs/sigil/examples`, tha
 - **A second, collecting kind.** `internal/access` declares `AccessGrant`, a `collect all` kind that grants roles. Its outcome feeds the deploy policy's `actor.roles`, so a client can't claim a role, and it shows both ways a collecting kind says no: a host-declared `exclusive` line and a separation-of-duties assert in a required policy.
 - **Typed matching.** The handler matches deploy results with `deploy.Review.Match` and `deploy.Approve.Match`, and access results with `access.Deployer.MatchAll` and friends, and gets `ReviewData`, `ApproveData` and `GrantData` back, not maps. See [Typed matching](../docs/reference/go-api.md#typed-matching).
 - **A complete local observability stack.** Alloy sends metrics to Mimir, traces to Tempo and JSON logs to Loki. Pyroscope collects every profile type supported by its Go SDK. Grafana connects decisions, logs, traces and profiles in one provisioned dashboard. k6 exercises both policy stages and records throughput, latency and correctness.
-
-## Layout
-
-```text
-examples/
-  README.md                  this walkthrough
-  go.mod, go.sum             the examples module
-  .goreleaser.yaml           builds deploygate, demo-cli and sigilc; separate from the root release
-  Dockerfile                 builds the deploygate image
-  docker-compose.yaml        deploygate, Alloy, Grafana, Loki, Tempo, Mimir, Pyroscope and k6
-  deploy/                    configuration for the compose services
-  cmd/
-    demo-cli/                the deployment platform CLI, run with `mise run demo`
-    deploygate/              the service: `serve`, `healthcheck` and `version`
-    sigilc/                  the host's sigil binary, with both kinds linked in
-  internal/
-    access/                  the AccessGrant kind
-    config/                  flags, environment variables and their defaults
-    deploy/                  the DeployApproval kind
-    server/                  HTTP routes, handlers and the JSON error model
-    store/                   the loaded policies and hot reload
-    telemetry/               tracing, logging, metrics and continuous profiles
-  policies/
-    deploy_approval.sigil    the exported DeployApproval kind file, generated
-    access_grant.sigil       the exported AccessGrant kind file, generated
-    embed.go                 embeds platform/, teams/ and access/ into the binary
-    platform/deploy/         the platform's trusted deploy documents
-    platform/access/         the platform's trusted access documents
-    teams/<team>/            each team's policy, its test cases and their inputs
-    access/                  access.main, its test cases and their inputs
-  requests/                  example requests embedded in demo-cli and checked by tests
-  test/
-    integration/             Ginkgo suite against the server in-process
-    e2e/                     Ginkgo suite against the running compose stack
-    load/                    k6 smoke, constant-rate and stress scenarios
-    internal/fixture/        requests, expected decisions and helpers both suites share
-```
-
-[`policies/README.md`](./policies/README.md) describes the policy tree in detail: who owns which file, how the two kinds share the platform directory, and how to add a team.
 
 ## Run it
 
@@ -78,51 +39,9 @@ The tasks in [`.mise.toml`](./.mise.toml) run from `examples/` and inherit tool 
 | Grafana | `grafana/grafana:13.2.2` | <http://localhost:3000/d/deploygate> | The provisioned dashboard, no login needed |
 | k6 | `grafana/k6:2.3.0` | No listening port | Optional load generator; runs with `mise run loadtest` |
 
-Each backend runs as one process with filesystem storage in named volumes. Mimir uses its classic ingestion path, so the stack needs neither Kafka nor object storage. Alloy's Docker discovery is restricted to this Compose project's deploygate container; it reads logs through the mounted Docker socket. `mise run down` stops the stack and drops its volumes.
+Each backend runs as one process with filesystem storage in named volumes. Mimir uses its classic ingestion path, so the stack needs neither Kafka nor object storage. Alloy's Docker discovery is restricted to this Compose project's deploygate container; it reads logs through the mounted Docker socket. `mise run down` stops the stack and drops its volumes. [Observe it](#observe-it) covers the dashboard and the load tests.
 
-### Explore the dashboard
-
-Open [deploygate · LGTM](http://localhost:3000/d/deploygate). The dashboard is provisioned from [`deploy/grafana/dashboards/deploygate.json`](deploy/grafana/dashboards/deploygate.json), with four datasources ready to use:
-
-- **Mimir:** service health, grants, decisions, evaluation latency, HTTP status codes, reloads and k6 measurements. **Team** filters the policy panels; **Load run** filters k6 panels independently.
-- **Tempo:** a table of decision traces. Open a trace to inspect access and deploy spans, candidate events and the roles used for the decision.
-- **Loki:** JSON service logs. Expand a line and follow **View trace** to its Tempo trace. A span's logs link searches Loki for the same trace ID.
-- **Pyroscope:** a CPU flame graph and a selectable runtime flame graph. Use **Runtime profile** to switch between allocations, live heap, goroutines, mutex contention, blocking and detected leaks. The selector lists types that have reached Pyroscope. Click a frame to inspect its callers and callees, or use **Explore profiles**. A Tempo span's profiles link opens the service profile for the surrounding time window; profiles describe the whole process, not just that request.
-
-Alloy scrapes every five seconds; profiles upload every fifteen seconds. Start a load test below to populate the charts and stacks. Expected policy conflicts and asserts appear in the evaluation-error panel; k6 checks that their responses are correct.
-
-The **Sigil evaluation performance** section measures the timed `p.Eval` calls. It shows completed evaluations per second, the evaluation count over the selected range, mean access and deploy latency, p50/p95/p99, and the share finishing within 100 µs. These panels follow **Team** and include failed evaluations. A deployment can evaluate both policies, while an access request evaluates one. Throughput comes from histogram counts, so granting several roles counts as one evaluation. Mean latency uses the histogram sum and count; percentiles are bucket estimates, with a lowest boundary of 50 µs. The throughput shown is what the service processed under the offered load, not its maximum capacity.
-
-### Generate load with k6
-
-From `examples/`:
-
-```bash
-mise run loadtest-smoke
-mise run loadtest
-DURATION=15m RATE=100 mise run loadtest
-RATE=200 mise run loadtest-stress
-```
-
-The smoke test sends each of eight request cases once. The default load test schedules 100 requests per second for two minutes. Stress mode ramps from `RATE` to twice that rate, then five times it, and back over three minutes. Requests rotate evenly through deployment approval, review, denial and a failed input assert, then access grants, no grants, an exclusive-role conflict and a separation-of-duties assert. Each iteration checks both the HTTP status and the policy result. Expected `403`, `409` and `422` responses count as successful test cases.
-
-The tasks start the stack, run the pinned k6 image, send metrics to Mimir and save a JSON report under `results/<run-id>.json`. Reports include the scenario, revision, working-tree status, Docker resource allocation and threshold results; `results/` is ignored by Git. Set a unique `RUN_ID` to make a run easy to select in Grafana. A finished run remains visible in its time range, although its live series become stale.
-
-To generate traffic against the stack that's already running, use `DURATION=15m RATE=100 mise run --skip-deps loadtest`. This skips the build and startup task, keeping the running application in place.
-
-| Setting | Default | Meaning |
-| --- | --- | --- |
-| `RATE` | `100` | Iterations per second; each iteration makes one policy request |
-| `DURATION` | `2m` | Duration of constant-rate load mode |
-| `VUS` / `MAX_VUS` | `20` / `100` | Preallocated and maximum virtual users; stress mode uses `50` / `200` |
-| `P95_MS` / `P99_MS` | `250` / `500` | Full-request latency budgets in milliseconds |
-| `RUN_ID` | UTC timestamp | Report filename and Mimir `testid` label; use a unique value per run |
-
-Any incorrect outcome, a failed-request rate of 1% or more, a latency-budget breach or a dropped iteration fails the run. Dropped iterations mean k6 could not start the requested work on schedule; inspect generator resources and concurrency before treating a run as a capacity measurement. The dashboard shows p95 and p99 separately for each request series. The JSON report provides the overall percentiles for the completed run.
-
-These measurements cover HTTP, JSON handling, the applicable policy stages and telemetry with profiling enabled. They depend on your machine, Docker's CPU and memory allocation, and competing workloads. They measure this example service under the configured workload; they do not establish Sigil's maximum throughput or compare it with another policy engine. For repeatable measurements, leave the application and policies unchanged during the run and run the hot-reload e2e tests separately.
-
-The compose image is built with the version `compose`:
+The compose image reports the version `compose`:
 
 ```bash
 docker compose exec deploygate /deploygate version
@@ -134,10 +53,10 @@ deploygate compose
 
 ### Without Docker
 
-deploygate runs on its own too. With no `--policies` and no `--access-policies` it serves the bundles embedded in the binary; pointing the flags at `policies/teams` and `policies/access` serves the files in your checkout and reloads them when they change. Turn tracing off when no collector is listening:
+deploygate runs on its own too. With no `--policies` and no `--access-policies` it serves the bundles embedded in the binary; pointing the flags at `policies/teams` and `policies/access` serves the files in your checkout and reloads them when they change. Spans are exported only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, so no collector is needed:
 
 ```bash
-OTEL_TRACES_EXPORTER=none go run ./cmd/deploygate serve \
+go run ./cmd/deploygate serve \
   --policies policies/teams --access-policies policies/access --log-format console
 ```
 
@@ -363,7 +282,7 @@ for _, m := range access.Deployer.MatchAll(res) {
 
 A client that still sends `roles` or `teams` gets a `400`: unknown fields are rejected, and a client that believes it picked its own roles is the bug this layer exists to prevent.
 
-The on-call SRE shows both stages at work. `linus` is in `payments-sre` only, so the access policy grants no team membership but makes him a deployer for two hours, and the deploy policy's own SRE rule approves:
+The on-call SRE shows both stages at work. `linus` is in `payments-sre` only, so the access policy grants no team membership but makes them a deployer for two hours, and the deploy policy's own SRE rule approves:
 
 ```bash
 mise run demo deploy sre --json
@@ -477,7 +396,7 @@ mise run demo policies reload
 The reload answers `500 Internal Server Error`. The error's message says what happened, and its cause holds the compiler's diagnostics, pointing at the file, line and column:
 
 ```text
-the team policies from /etc/deploygate/policies don't load: payments.production failed to compile, so the previous bundle keeps serving
+the DeployApproval policies from /etc/deploygate/policies don't load: payments.production failed to compile, so the previous bundle keeps serving
 ```
 
 deploygate keeps serving the bundle it loaded last, so the SRE deploy above still reports `Bake: 30m`, and `mise run demo policies` still reports the team bundle's earlier `loaded_at`. The failure shows up in the metrics, and on the dashboard's "Failed reloads" and "Policy reloads" panels:
@@ -487,6 +406,52 @@ mise run demo metrics | grep deploygate_policy_reloads_total
 ```
 
 The `kind="DeployApproval",result="failure"` series has gone up. The poller may have tried before you did, so it can be one more than the reloads you asked for; it reports a broken bundle once, though, not at every poll. Alert on that counter: while it's rising, the running policy is stale. Put the `}` back, set the bake to `15m` again and reload, and the success counter moves instead. The same thing happens when a whole broken document lands in the directory, because a bundle loads as a whole: one team's typo stops every team's reload, never every team's deploys.
+
+## Observe it
+
+The compose stack records every request deploygate answers. Run a few of the demo commands above, or a load test, and look at the results in Grafana.
+
+### Explore the dashboard
+
+Open [deploygate · LGTM](http://localhost:3000/d/deploygate). The dashboard is provisioned from [`deploy/grafana/dashboards/deploygate.json`](deploy/grafana/dashboards/deploygate.json), with four datasources ready to use:
+
+- **Mimir:** service health, grants, decisions, evaluation latency, HTTP status codes, reloads and k6 measurements. **Team** filters the policy panels; **Load run** filters k6 panels independently.
+- **Tempo:** a table of decision traces. Open a trace to inspect access and deploy spans, candidate events and the roles used for the decision.
+- **Loki:** JSON service logs. Expand a line and follow **View trace** to its Tempo trace. A span's logs link searches Loki for the same trace ID.
+- **Pyroscope:** a CPU flame graph and a selectable runtime flame graph. Use **Runtime profile** to switch between allocations, live heap, goroutines, mutex contention, blocking and detected leaks. The selector lists types that have reached Pyroscope. Click a frame to inspect its callers and callees, or use **Explore profiles**. A Tempo span's profiles link opens the service profile for the surrounding time window; profiles describe the whole process, not just that request.
+
+Alloy scrapes every five seconds; profiles upload every fifteen seconds. Start a load test below to populate the charts and stacks. Expected policy conflicts and asserts appear in the evaluation-error panel; k6 checks that their responses are correct.
+
+The **Sigil evaluation performance** section measures the timed `p.Eval` calls. It shows completed evaluations per second, the evaluation count over the selected range, mean access and deploy latency, p50/p95/p99, and the share finishing within 100 µs. These panels follow **Team** and include failed evaluations. A deployment can evaluate both policies, while an access request evaluates one. Throughput comes from histogram counts, so granting several roles counts as one evaluation. Mean latency uses the histogram sum and count; percentiles are bucket estimates, with a lowest boundary of 50 µs. The throughput shown is what the service processed under the offered load, not its maximum capacity.
+
+### Generate load with k6
+
+From `examples/`:
+
+```bash
+mise run loadtest-smoke
+mise run loadtest
+DURATION=15m RATE=100 mise run loadtest
+RATE=200 mise run loadtest-stress
+```
+
+The smoke test sends each of eight request cases once. The default load test schedules 100 requests per second for two minutes. Stress mode ramps from `RATE` to twice that rate, then five times it, and back over three minutes. Requests rotate evenly through deployment approval, review, denial and a failed input assert, then access grants, no grants, an exclusive-role conflict and a separation-of-duties assert. Each iteration checks both the HTTP status and the policy result. Expected `403`, `409` and `422` responses count as successful test cases.
+
+The tasks start the stack, run the pinned k6 image, send metrics to Mimir and save a JSON report under `results/<run-id>.json`. Reports include the scenario, revision, working-tree status, Docker resource allocation and threshold results; `results/` is ignored by Git. Set a unique `RUN_ID` to make a run easy to select in Grafana. A finished run remains visible in its time range, although its live series become stale.
+
+To generate traffic against the stack that's already running, use `DURATION=15m RATE=100 mise run --skip-deps loadtest`. This skips the build and startup task, keeping the running application in place.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `RATE` | `100` | Iterations per second; each iteration makes one policy request |
+| `DURATION` | `2m` | Duration of constant-rate load mode |
+| `VUS` / `MAX_VUS` | `20` / `100` | Preallocated and maximum virtual users; stress mode uses `50` / `200` |
+| `P95_MS` / `P99_MS` | `250` / `500` | Full-request latency budgets in milliseconds |
+| `RUN_ID` | UTC timestamp | Report filename and Mimir `testid` label; use a unique value per run |
+
+Any incorrect outcome, a failed-request rate of 1% or more, a latency-budget breach or a dropped iteration fails the run. Dropped iterations mean k6 could not start the requested work on schedule; inspect generator resources and concurrency before treating a run as a capacity measurement. The dashboard shows p95 and p99 separately for each request series. The JSON report provides the overall percentiles for the completed run.
+
+These measurements cover HTTP, JSON handling, the applicable policy stages and telemetry with profiling enabled. They depend on your machine, Docker's CPU and memory allocation, and competing workloads. They measure this example service under the configured workload; they do not establish Sigil's maximum throughput or compare it with another policy engine. For repeatable measurements, leave the application and policies unchanged during the run and run the hot-reload e2e tests separately.
 
 ## Your own sigil binary: sigilc
 
@@ -537,9 +502,7 @@ ok    policies/access/main_test.yaml  17 cases
 ✓ 17 cases passed in 1 file
 ```
 
-Flatten a team policy into the rules it adds up to, with each invocation's conditions pushed into the rules and every param replaced by its value:
-
-`--policy payments.production` selects the name declared in the policy document. When adapting the command to a different working directory, adjust the `--kind` path and the directory arguments after `-R`; keep the policy name unchanged.
+Flatten a team policy into the rules it adds up to, with each invocation's conditions pushed into the rules and every param replaced by its value. `--policy` takes the name the document declares, `payments.production`, not a file path:
 
 ```bash
 mise run sigilc explain --kind policies/deploy_approval.sigil \
@@ -547,12 +510,12 @@ mise run sigilc explain --kind policies/deploy_approval.sigil \
 ```
 
 ```text
-payments.production: 7 rules from 4 policies
+payments.production: 7 rules from 3 policies and 1 module
 
-  deny(not_eligible)        payments.production:7 → guardrails:8
+  deny(not_eligible)        payments.production:7 → deploy.guardrails:8
     when not eligible
 
-  deny(soak_too_short)      payments.production:7 → guardrails:12
+  deny(soak_too_short)      payments.production:7 → deploy.guardrails:12
     when release.soak < 4h and not release.hotfix
 
   approve(release_manager)  payments.production:10 → deploy.production:11
@@ -590,39 +553,39 @@ mise run sigilc explain --kind policies/access_grant.sigil \
 ```
 
 ```text
-access.main: 10 rules from 3 policies
+access.main: 10 rules from 2 policies and 1 module
 
-  reader(team_member)                    main:9
+  reader(team_member)                    access.main:9
     when team_member
 
-  deployer(team_member)                  main:10
+  deployer(team_member)                  access.main:10
     when team_member
 
-  reader(everyone_in_staging)            main:14
+  reader(everyone_in_staging)            access.main:14
     when environment == "staging"
 
-  deployer(oncall)                       main:19
+  deployer(oncall)                       access.main:19
     when on_call
     with ttl = 2h
 
-  release_manager(platform_member)       main:25
+  release_manager(platform_member)       access.main:25
     when platform_member and not admin_cleared
     with ttl = 4h
 
-  admin(clearance)                       main:29
+  admin(clearance)                       access.main:29
     when admin_cleared
 
-  admin(break_glass)                     main:36
+  admin(break_glass)                     access.main:36
     when break_glass
     with ttl = 15m
 
-  auditor(compliance_member)             main:40
+  auditor(compliance_member)             access.main:40
     when compliance_member
 
-  assert named_actor (input)             main:6 → guardrails:6
+  assert named_actor (input)             access.main:6 → access.guardrails:6
     check actor.name != ""
 
-  assert sod_auditor_deployer (outcome)  main:6 → guardrails:11
+  assert sod_auditor_deployer (outcome)  access.main:6 → access.guardrails:11
     check [auditor, deployer] exclusive in outcome
 ```
 
@@ -639,9 +602,9 @@ The flags are described in the [CLI reference](../docs/reference/cli.md).
 
 There are four layers, from fastest to slowest. `mise run test` runs the first three with `go test -race ./...`, and vets the fourth; none of them needs Docker.
 
-- **Unit tests** are table-driven `testing` tests next to the code in `internal/`.
-- **Policy tests** run the same `*_test.yaml` files `sigilc test` runs, from `go test`, with `policytest.Run` and the real kinds. `internal/deploy/kind_test.go` and `internal/access/kind_test.go` load them the way the service does, with the guardrails required from `policies/platform/deploy` and `policies/platform/access`, and `policytest.Schema` fails when an exported kind file is stale.
-- **Integration tests** in `test/integration` are a Ginkgo suite that wires the real store and server the way `cmd/deploygate` does and serves them with `httptest`. Spans go to an in-memory exporter and metrics to a fresh registry per spec, so the specs assert exact values: every span attribute, candidate and grant event, each counter after a known set of requests. It covers every grant of the access endpoint, the `403` of an empty outcome, the `409` conflict with both candidates named and the `422` separation-of-duties assert, on both endpoints. Fake clocks pin `loaded_at` and fire polls by hand, so the reload specs cover polling, `SIGHUP` and last-known-good for both bundles without waiting, on private copies of `policies/teams` and `policies/access`. The suite also checks that the embedded bundles decide every case the same way as the directories they were built from, and it posts every file under `requests/` so this walkthrough can't drift from the service.
+- **Unit tests** are table-driven `testing` tests next to the code in `internal/` and `cmd/demo-cli`.
+- **Policy tests** run the same `*_test.yaml` files `sigilc test` runs, from `go test`, with `policytest.Run` and the real kinds. `internal/deploy/kind_test.go` and `internal/access/kind_test.go` load them the way the service does, with the guardrails required from `policies/platform/deploy` and `policies/platform/access`, and `policytest.Schema` fails when an exported kind file is stale. A test file can't expect a conflict, so the break-glass conflict is covered by the integration suite's `409`; [Testing a conflict](../docs/reference/cli.md#testing-a-conflict) shows how to test it against `Eval` directly, with plain `testing` and with Ginkgo.
+- **Integration tests** in `test/integration` are a Ginkgo suite that wires the real store and server the way `cmd/deploygate` does and serves them with `httptest`. Spans go to an in-memory exporter and metrics to a fresh registry per spec, so the specs assert exact values: every span attribute, candidate and grant event, each counter after a known set of requests. It covers every grant of the access endpoint, the `403` of an empty outcome, the `409` conflict with both candidates named and the `422` separation-of-duties assert, on both endpoints. Fake clocks pin `loaded_at` and fire polls by hand, so the reload specs cover polling, `SIGHUP` and last-known-good for both bundles without waiting, on private copies of `policies/teams` and `policies/access`. The suite also checks that the embedded bundles decide every case the same way as the directories they were built from, and it posts every file under `requests/` and checks that each answers with the status this walkthrough shows.
 - **End-to-end tests** in `test/e2e` are a Ginkgo suite behind the `e2e` build tag that talks to the compose stack over HTTP only, and checks Mimir metrics, Tempo spans, Loki logs with resolvable trace IDs, Pyroscope profiles and all four Grafana datasources.
 
 Both suites run the same table of requests and expected decisions from `test/internal/fixture`, so the in-process server and the container can't drift apart. Run the end-to-end suite with:
@@ -665,6 +628,45 @@ go test -count=1 -tags e2e ./test/e2e/...
 ```bash
 mise run bench
 ```
+
+## Layout
+
+```text
+examples/
+  README.md                  this walkthrough
+  go.mod, go.sum             the examples module
+  .goreleaser.yaml           builds deploygate, demo-cli and sigilc; separate from the root release
+  Dockerfile                 builds the deploygate image
+  docker-compose.yaml        deploygate, Alloy, Grafana, Loki, Tempo, Mimir, Pyroscope and k6
+  deploy/                    configuration for the compose services
+  cmd/
+    demo-cli/                the deployment platform CLI, run with `mise run demo`
+    deploygate/              the service: `serve`, `healthcheck` and `version`
+    sigilc/                  the host's sigil binary, with both kinds linked in
+  internal/
+    access/                  the AccessGrant kind
+    config/                  flags, environment variables and their defaults
+    deploy/                  the DeployApproval kind
+    server/                  HTTP routes, handlers and the JSON error model
+    store/                   the loaded policies and hot reload
+    telemetry/               tracing, logging, metrics and continuous profiles
+  policies/
+    deploy_approval.sigil    the exported DeployApproval kind file, generated
+    access_grant.sigil       the exported AccessGrant kind file, generated
+    embed.go                 embeds platform/, teams/ and access/ into the binary
+    platform/deploy/         the platform's trusted deploy documents
+    platform/access/         the platform's trusted access documents
+    teams/<team>/            each team's policy, its test cases and their inputs
+    access/                  access.main, its test cases and their inputs
+  requests/                  example requests embedded in demo-cli and checked by tests
+  test/
+    integration/             Ginkgo suite against the server in-process
+    e2e/                     Ginkgo suite against the running compose stack
+    load/                    k6 smoke, constant-rate and stress scenarios
+    internal/fixture/        requests, expected decisions and helpers both suites share
+```
+
+[`policies/README.md`](./policies/README.md) describes the policy tree in detail: who owns which file, how the two kinds share the platform directory, and how to add a team.
 
 ## How it is wired
 
@@ -741,7 +743,7 @@ Every label is bounded. `url` is the route template, `/api/v1/teams/:team/deploy
 
 `deploygate_decisions_total` counts deploy decisions only. A request whose access stage fails never reaches the deploy policy, so it counts as an evaluation error with `stage="access"` and as nothing else.
 
-Each deployment request gets the gin server span and, below it, two siblings. The `deploygate.access` span comes first, with `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.environment` and `sigil.grants`, plus one `sigil.grant` event per grant with its `role`, `reason` and `ttl`. The `deploygate.evaluate` span follows, with `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.roles`, `sigil.decision`, `sigil.reason` and `sigil.candidates`, plus one `sigil.candidate` event per trace entry. A failed evaluation sets its span's status to error; when the access stage fails, there is no `deploygate.evaluate` span at all. The access endpoint records the same `deploygate.access` span on its own. Reloads run in a `deploygate.policies.reload` span with `sigil.source`, `sigil.kind`, `deploygate.reload.trigger` (`startup`, `manual`, `sighup` or `poll`) and, on success, `sigil.policies`; a rejected bundle sets the status to error and records the diagnostics.
+Each deployment request gets the gin server span and, below it, two siblings. The `deploygate.access` span comes first, with `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.environment` and `sigil.grants`, plus one `sigil.grant` event per grant with its `role`, `reason` and `ttl`. The `deploygate.evaluate` span follows, with `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.roles`, `sigil.decision`, `sigil.reason` and `sigil.candidates`, plus one `sigil.candidate` event per trace entry. A failed evaluation sets its span's status to error; when the access stage fails, there is no `deploygate.evaluate` span at all. The access endpoint records the same `deploygate.access` span on its own. Reloads run in a `deploygate.policies.reload` span with `sigil.source`, `sigil.kind`, `deploygate.reload.trigger` (`startup`, `manual`, `sighup` or `poll`) and, on success, `sigil.policies`; a rejected bundle sets the status to error and records the diagnostics. The first loads sit under a `deploygate.startup` span, and a graceful shutdown runs in a `server.shutdown` span.
 
 ### config
 
@@ -758,7 +760,7 @@ Each deployment request gets the gin server span and, below it, two siblings. Th
 | `--debug` | `DEPLOYGATE_DEBUG` | `false` | Debug logging and gin's debug mode |
 | `--log-format` | `DEPLOYGATE_LOG_FORMAT` | `json` | `json` or `console` |
 
-Tracing takes the standard variables: `OTEL_EXPORTER_OTLP_ENDPOINT` for Alloy (or another OTLP collector), `OTEL_SERVICE_NAME`, which defaults to `deploygate`, and `OTEL_TRACES_EXPORTER=none` to turn tracing off.
+Tracing takes the standard variables. Spans are exported over OTLP only when `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` points at Alloy or another collector; without one, spans are still created, so trace IDs appear in the logs. `OTEL_EXPORTER_OTLP_INSECURE=true` turns off TLS the way an `http://` endpoint does, `OTEL_SERVICE_NAME` defaults to `deploygate`, and `OTEL_TRACES_EXPORTER=none` turns export off even when an endpoint is set.
 
 `PYROSCOPE_SERVER_ADDRESS` enables continuous profiling; Compose sets it to `http://pyroscope:4040`. Leave it unset to disable profiling when running the service alone. All eleven profile types exposed by the pinned Go SDK are enabled:
 

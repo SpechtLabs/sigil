@@ -5,7 +5,7 @@ createTime: 2026/09/24 22:30:00
 permalink: /guides/team-policies/
 ---
 
-This guide shows how to give each team its own version of a policy without copying it and without running it through a text templater. The platform writes shared policies with typed params, each team composes them by invoking them from its own policy or gets their params bound from Go, and the host makes sure the guardrails can't be switched off.
+This guide is for the platform team that writes shared policies and the product teams that build on them. It shows how to give each team its own version of a policy without copying it and without running it through a text templater. The platform writes shared policies with typed params. Each team either composes them by invoking them from its own policy, or gets their params bound from Go. The host makes sure the guardrails can't be switched off. Two sections, [Require the guardrails from the host](#require-the-guardrails-from-the-host) and [Bind params from Go instead](#bind-params-from-go-instead), show the host's side, in Go.
 
 The examples build on the `DeployApproval` kind and the `deploy.*` files from the [tour](/getting-started/tour/).
 
@@ -87,16 +87,14 @@ p, err := Deploy.Load(policies, "payments.production",
 The compiler checks that `deploy.guardrails` is reachable from the root through top-level invocations only. Here's what a team sees if it tries to skip the guardrails for PCI services:
 
 ```text
-payments/production.sigil:10:3: error: deploy.guardrails must be invoked unconditionally
-   |
- 9 | when service.labels["compliance"] != "pci" {
-10 |   guardrails(min_soak: 4h)
-   |   ^^^^^^^^^^^^^^^^^^^^^^^^
-   = help: the host requires deploy.guardrails for every DeployApproval policy.
-           Move the call to the top level.
+payments/production.sigil:7:3: error: deploy.guardrails must be invoked unconditionally
+  |
+7 |   guardrails(min_soak: 4h)
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: the host requires deploy.guardrails for every DeployApproval policy; move the call to the top level
 ```
 
-A team policy that doesn't invoke the guardrails at all fails the same way. Put the `Require` wherever the host loads team policies, so no team can forget it.
+A team policy that doesn't invoke the guardrails at all fails too, with `payments.production doesn't invoke deploy.guardrails`. In CI, `sigil check --require deploy.guardrails` runs the same check; see [Policies in a ConfigMap](/guides/configmaps/#check-in-ci-what-the-service-will-load). Put the `Require` wherever the host loads team policies, so no team can forget it.
 
 `Require` checks a name, and any document can claim a name. When teams can write to the bundle, the host also passes `policy.From` with a source only the platform controls, so the guardrails, and everything they import, come from there and nowhere else:
 
@@ -164,8 +162,8 @@ when cleared and owns_service
 The team's approval now only fires when the actor is cleared for every region the service runs in and is on one of its owning teams, and nobody copied the region-matching logic. Other forms work too:
 
 ```sigil
-use deploy.common                            // qualified: common.cleared
-use deploy.common.{owns_service as owner}    // renamed: owner
+use deploy.common                         // qualified: common.cleared
+use deploy.common.{owns_service as owner} // renamed: owner
 ```
 
 Imported names live in the same top-level namespace as inputs, params and lets. Importing something as `release` or `actor` is a compile error, because it would collide with an input.
@@ -174,7 +172,7 @@ Only `pub let`s can be imported, and a policy can mark its own lets `pub` too, a
 
 ## Invoke the same policy twice
 
-A policy can invoke the same policy more than once with different arguments, for example once per region. Take a policy that gates deploys touching one region:
+A policy can invoke the same policy more than once with different arguments, for example once per region. Take a policy that gates deploys touching one region. Its `regional_deploy` reason isn't in the tour's kind, so the kind would need it added to `decision review`:
 
 ```sigil
 policy deploy.regional: DeployApproval@1
@@ -204,7 +202,7 @@ regional(region: "eu-1", approvers: ["payments-leads"])
 regional(region: "us-1", approvers: ["payments-leads", "us-platform"])
 ```
 
-Each call is a separate instantiation with its own params. A service that only runs in `us-1` only matches the second call's rule, so it gets both approver groups. The trace records the call chain for every candidate, so a review from the `us-1` call reads `payments/regions.sigil:9:1 → deploy/regional.sigil:9:3`, and it's clear which call produced it.
+Each call is a separate instantiation with its own params. A service that only runs in `us-1` only matches the second call's rule, so it gets both approver groups. The trace records the call chain for every candidate, so a review from the `us-1` call reads `payments/regions.sigil:10:1 → deploy/regional.sigil:9:3`, and it's clear which call produced it.
 
 ::: warning Composition is a union
 Every rule of every invocation runs against every input, unless a `when` around the call says otherwise. If `deploy.regional` had an unscoped rule such as `when not in_scope { deny(out_of_region) }`, the `eu-1` call would deny every service that runs only in `us-1`, and the other way round. A policy meant to be invoked more than once should guard each rule with its scoping condition, as `in_scope` does above, or the caller should gate each call.

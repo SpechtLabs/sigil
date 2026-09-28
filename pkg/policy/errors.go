@@ -57,7 +57,7 @@ type AssertFailure struct {
 	Cause     *RuntimeError
 	Reason    string
 	Policy    string      // the policy the assert is in
-	CallChain []Position  // the invocations it was reached through; empty until composition lands
+	CallChain []Position  // the invocations it was reached through; empty for an assert in the evaluated policy itself
 	Outcome   []Candidate // for an outcome assert, the candidates that formed the outcome it read
 	Position  Position    // of the assert in its policy
 }

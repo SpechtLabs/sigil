@@ -32,10 +32,10 @@ a base revision, and fuzz campaigns that run every target one at a time. The
 mise tasks and the CI workflows call it. It isn't released; run it with
 go run ./cmd/devtool from the repository.`,
 		Example: `# Compare the benchmarks with main
-go run ./cmd/devtool bench --baseline main
+go run ./cmd/devtool bench run --baseline main
 
 # Fuzz the parser's targets for a minute each
-go run ./cmd/devtool fuzz run --fuzztime 1m ./internal/parser`,
+go run ./cmd/devtool fuzz run --time 1m ./internal/parser`,
 		// No Args validator: cobra then reports an unknown subcommand and
 		// suggests the closest one.
 		SilenceUsage:  true,

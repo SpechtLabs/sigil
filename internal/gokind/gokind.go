@@ -28,7 +28,7 @@ var (
 // host fixes its types in one round.
 func Build(o Options) (*kind.Kind, *Binding, diag.ErrorList) {
 	b := &builder{
-		kind: &kind.Kind{Name: o.Name, Version: o.Version, Accepts: o.Accepts, Collect: collect(o)},
+		kind: &kind.Kind{Name: o.Name, Version: o.Version, Accepts: accepts(o), Collect: collect(o)},
 		binding: &Binding{
 			Input:    o.Input,
 			Structs:  map[string]reflect.Type{},
@@ -91,4 +91,14 @@ func collect(o Options) kind.Collect {
 		return kind.CollectOne
 	}
 	return kind.CollectUnset
+}
+
+// accepts is the oldest version the kind accepts: every version, from 1,
+// unless WithAccepts set one. A version below 1 stays for Validate to
+// report.
+func accepts(o Options) int {
+	if o.Accepts == nil {
+		return 1
+	}
+	return *o.Accepts
 }

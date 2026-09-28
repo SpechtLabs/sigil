@@ -375,7 +375,7 @@ func builtKind(t *testing.T) *kind.Kind {
 		Name:    "Built",
 		Input:   reflect.TypeFor[buildInput](),
 		Version: 3,
-		Accepts: 2,
+		Accepts: new(2),
 		Ranked:  true,
 		Decisions: []gokind.Decision{
 			{Name: "deny", Payload: reflect.TypeFor[buildNone](), Reasons: []string{"no_rule_matched", "stale"}},

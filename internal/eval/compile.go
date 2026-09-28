@@ -1,6 +1,8 @@
 package eval
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"reflect"
 	"regexp"
@@ -11,6 +13,7 @@ import (
 	"github.com/spechtlabs/sigil/internal/check"
 	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/diag"
+	"github.com/spechtlabs/sigil/internal/gokind"
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
@@ -651,7 +654,8 @@ func (c *compiler) indexer(x *ast.IndexExpr) func(*Frame, Value) Value {
 
 // call compiles a host function call. Arguments are converted to the Go
 // parameter types when a literal's representation differs; an error
-// result becomes a runtime error.
+// result becomes a runtime error. A panic in the function isn't
+// recovered: it isn't a *diag.Error, so catch re-raises it to the host.
 func (c *compiler) call(x *ast.CallExpr) Expr {
 	name := x.Fun.(*ast.Ident).Name
 	var fn reflect.Value
@@ -674,7 +678,12 @@ func (c *compiler) call(x *ast.CallExpr) Expr {
 		}
 		out := fn.Call(in)
 		if len(out) == 2 && !out[1].IsNil() {
-			throwf(x, "host function %s failed: %v", name, out[1].Interface())
+			err, _ := reflect.TypeAssert[error](out[1])
+			e := &diag.Error{Msg: fmt.Sprintf("host function %s failed: %v", name, err), Pos: x.Pos(), End: x.End()}
+			if _, ok := errors.AsType[*gokind.ErrUnbound](err); ok {
+				e.Help = "this sigil binary has only " + name + "'s signature from the kind file; evaluate with the host's own binary, built with sigil's pkg/cli, which links the real function in"
+			}
+			panic(e) //nolint:nopanic // runtime errors unwind to Run, which returns them
 		}
 		return out[0]
 	}

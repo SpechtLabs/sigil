@@ -1,0 +1,30 @@
+== compile p ==
+6:6 (p): error: `!=` isn't defined for list<string>
+  |
+6 | when actor.regions != [] {
+  |      ^^^^^^^^^^^^^^^^^^^
+  = help: lists have no `!=`; to test that `actor.regions` isn't empty, write `any x in actor.regions: true`, or call a host function such as `len` if the kind declares one
+
+14:33 (q): error: a decision can't be a map value
+   |
+14 | assert("expected", {"payments": approve}["payments"] in outcome)
+   |                                 ^^^^^^^
+   = help: a missing key would read as the zero value, and a decision has none; test decisions with `in outcome`, or collect them in a list like `[deny, approve]`
+
+20:21 (r): error: `0x10` is hex notation, which Sigil doesn't have
+   |
+20 | when release.soak < 0x10 or 1e3 > 1_000 {
+   |                     ^^^^
+   = help: write the decimal integer `16`
+
+20:29 (r): error: `1e3` uses exponent notation, which Sigil doesn't have
+   |
+20 | when release.soak < 0x10 or 1e3 > 1_000 {
+   |                             ^^^
+   = help: write the decimal integer `1000`
+
+20:35 (r): error: `1_000` uses `_` as a digit separator, which Sigil doesn't have
+   |
+20 | when release.soak < 0x10 or 1e3 > 1_000 {
+   |                                   ^^^^^
+   = help: write the digits without it: `1000`
