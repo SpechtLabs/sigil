@@ -64,9 +64,9 @@ An empty literal `[]` takes its element type from context: the declared type of 
 
 ### `map<K, V>`
 
-An unordered collection of key-value pairs. The key type follows Go's rule for map keys: any scalar (`bool`, `int`, `float`, `string`, `duration`, `timestamp`), never a list, map, optional or `decision`. Struct keys wait on the [open question](/project/open-questions/#composite-values-equality-ordering-and-recursion) of struct equality. In practice most keys are strings, because labels are. Map literals follow the same homogeneity and empty-literal rules as lists.
+An unordered collection of key-value pairs. The key type follows Go's rule for map keys: any scalar (`bool`, `int`, `float`, `string`, `duration`, `timestamp`), never a list, map, optional or `decision`. Structs can't be keys, because they have no equality. In practice most keys are strings, because labels are. Map literals follow the same homogeneity and empty-literal rules as lists.
 
-Indexing a map with a missing key yields the zero value of `V`. Use `m has "k"` or `"k" in m` when absence and emptiness need to be told apart.
+Indexing a map with a missing key yields the zero value of `V`. Use `m has "k"` when absence and emptiness need to be told apart; `"k" in m` is a compile error.
 
 ## `decision`
 
