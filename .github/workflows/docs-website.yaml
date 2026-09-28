@@ -22,6 +22,13 @@ on:
       - .mise.toml
       - .github/workflows/docs-website.yaml
 
+# Each job installs the tools it needs with mise-action's install_args. Without
+# this, `mise run` installs every tool in .mise.toml first, gopls and delve
+# included, which makes each job wait on (and fail with) the module proxy for
+# tools it never runs.
+env:
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+
 permissions:
   contents: read
 
@@ -57,7 +64,8 @@ jobs:
       - name: Set up mise
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          install_args: bun
+          # docs-build renders roadmap.yml before building the site.
+          install_args: bun github:SierraSoftworks/roadmap
 
       - name: Build
         run: mise run docs-build

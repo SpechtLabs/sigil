@@ -2,10 +2,6 @@ version: 2
 
 project_name: sigil
 
-before:
-  hooks:
-    - go mod tidy
-
 builds:
   - id: sigil
     env:
@@ -39,19 +35,18 @@ checksum:
 changelog:
   disable: true
 
-# Keyless cosign signatures for every published binary.
+# A keyless cosign signature over checksums.txt, as a Sigstore bundle, covers
+# every archive through its checksum. `artifacts: binary` would sign nothing:
+# it only matches binaries released on their own, and ours ship in archives.
 signs:
   - cmd: cosign
-    signature: "${artifact}.sig"
-    certificate: "${artifact}.pem"
+    signature: "${artifact}.sigstore.json"
     args:
       - sign-blob
-      - --yes
-      - --oidc-issuer=https://token.actions.githubusercontent.com
-      - "--output-certificate=${certificate}"
-      - "--output-signature=${signature}"
+      - "--bundle=${signature}"
       - "${artifact}"
-    artifacts: binary
+      - --yes
+    artifacts: checksum
 
 release:
   github:

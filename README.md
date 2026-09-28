@@ -201,6 +201,30 @@ The host gets back the winning decision, its reason and payload, the policy that
 | [Rego (OPA)](https://www.openpolicyagent.org/docs/latest/policy-language/) | The lesson about learning curves | Datalog semantics, implicit iteration, partial rule sets |
 | HCL / YAML DSLs | The declarative feel | Nesting that fights templating, anchors as reuse, stringly typed matchers |
 
+## Install
+
+The library is a Go module; hosts import `github.com/spechtlabs/sigil/pkg/policy`:
+
+```sh
+go get github.com/spechtlabs/sigil@latest
+```
+
+The `sigil` CLI installs with Go, or comes prebuilt for Linux and macOS on amd64 and arm64 from the [releases](https://github.com/SpechtLabs/sigil/releases):
+
+```sh
+go install github.com/spechtlabs/sigil/cmd/sigil@latest
+```
+
+Every release after v0.1.0 signs `checksums.txt` with a keyless [cosign](https://docs.sigstore.dev/) signature from the release workflow. Verify the checksums, then the archive against them:
+
+```sh
+cosign verify-blob checksums.txt \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity https://github.com/SpechtLabs/sigil/.github/workflows/release.yaml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+sha256sum --ignore-missing -c checksums.txt
+```
+
 ## Documentation
 
 The docs site lives in [`docs/`](./docs) and follows the [Diátaxis](https://diataxis.fr/) layout.
