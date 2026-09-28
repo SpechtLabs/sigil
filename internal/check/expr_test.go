@@ -393,6 +393,8 @@ func TestExpr(t *testing.T) {
 		{src: "outcome.review any in outcome.review", assert: true, msg: "`any in` can't compare elements of type review candidate", help: "candidates have no equality; compare a field of each, such as `reason`", span: "1:1-1:37"},
 		{src: "all r in outcome.review: r in outcome.review", assert: true, msg: "`in` can't compare elements of type review candidate", span: "1:26-1:45"},
 		{src: "outcome?.review", assert: true, msg: "`outcome` isn't optional", span: "1:10-1:16"},
+		{src: "any d in outcome: d.x", assert: true, msg: "`d` is a decision value, not a decision's name, so `.x` names no reason", help: "compare the whole value instead, like `d == <decision>.x`, or test it with `in`", span: "1:21-1:22"},
+		{src: "all r in outcome.review: r.reason.x", assert: true, msg: "`r.reason.x` names no reason", help: "a reason follows a decision's name directly, like `approve.release_manager`", span: "1:35-1:36"},
 		{src: "outcome.review", msg: "`outcome` can only be read in an assert condition", help: "a rule that read its own outcome could fire exactly when it doesn't; only `assert` conditions may read it", span: "1:1-1:8"},
 
 		// Filter rules, the same as a quantifier's.

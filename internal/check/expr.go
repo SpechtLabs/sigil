@@ -802,6 +802,10 @@ func (c *Checker) outcomeRef(x *ast.SelectorExpr, env *Env) types.Type {
 	}
 	d := env.Kind().Decision(id.Name)
 	if d == nil {
+		// A variable holding a decision value, `any d in outcome: d.x`: the
+		// value already has its reason, and there's no decision to name.
+		c.errorf(x.Sel, fmt.Sprintf("compare the whole value instead, like `%s == <decision>.%s`, or test it with `in`", id.Name, x.Sel.Name),
+			"`%s` is a decision value, not a decision's name, so `.%s` names no reason", id.Name, x.Sel.Name)
 		return types.Invalid
 	}
 	if d.HasReason(x.Sel.Name) {
