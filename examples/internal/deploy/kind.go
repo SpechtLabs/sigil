@@ -64,10 +64,13 @@ var (
 
 // Kind is the DeployApproval contract, version 1. Decisions are listed in
 // precedence order: a deny beats a review beats an approval, so a guardrail
-// always wins over a team's approval.
+// always wins over a team's approval. The reasons of deny and approve are
+// ranked too, so two rules of the same decision never conflict: a deploy that
+// is both ineligible and too fresh is denied as not_eligible.
 var Kind = policy.NewKind[Input]("DeployApproval",
 	policy.WithVersion(1),
 	policy.WithDecisions(Deny, Review, Approve),
+	policy.WithReasonPrecedence(Deny, "not_eligible", "soak_too_short", "no_rule_matched"),
 	policy.WithReasonPrecedence(Approve, "release_manager", "payments_sre"),
 	policy.WithDefault(Deny, "no_rule_matched"),
 	policy.WithFunc("split", strings.Split),

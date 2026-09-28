@@ -2,7 +2,7 @@
 // in. Unlike the stock sigil binary it decodes inputs into the host's Go
 // types and calls the real host functions, so `sigilc eval` and
 // `sigilc test` run the same code the service runs, and `sigilc export`
-// writes the kind file the policy repository checks in.
+// writes the kind files the policy repository checks in, one per kind.
 package main
 
 import (
