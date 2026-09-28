@@ -347,10 +347,10 @@ func TestDiagnostics(t *testing.T) {
 			src:  "policy p: DeployApproval@1\nparam a: int\nparam b: duration\nwhen true { deny(a) }",
 			root: "p",
 			opts: []policy.LoadOption{policy.Params{"c": 1, "b": 2}},
-			want: []policy.Diagnostic{
-				{Message: "policy p has no param \"c\"", Help: "p declares: a, b"},
+			want: []policy.Diagnostic{ // in param name order
 				{Message: "param b: expected duration, found int", Help: "Params values are Go values of the shape NewKind accepts for the param's type",
 					Position: policy.Position{Document: "p", Line: 3, Column: 1}, End: policy.Position{Line: 3, Column: 18}},
+				{Message: "policy p has no param \"c\"", Help: "p declares: a, b"},
 			},
 		},
 	}

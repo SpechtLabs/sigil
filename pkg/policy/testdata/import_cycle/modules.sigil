@@ -1,0 +1,29 @@
+module a: DeployApproval@1
+
+use b.{y}
+
+pub let x = y
+
+---
+
+module b: DeployApproval@1
+
+use c
+
+pub let y = c.z
+
+---
+
+module c: DeployApproval@1
+
+use a.{x}
+
+pub let z = x
+
+---
+
+policy p: DeployApproval@1
+
+use a.{x}
+
+when x { deny(not_eligible) }

@@ -6,7 +6,7 @@ permalink: /reference/go-api/
 ---
 
 ::: warning Partly implemented
-Defining a kind exists: `NewKind`, `Decision`, `None`, the `With` options and `Schema()`. So do `Compile`, `Params`, `Eval`, `Result`, `Match` and `MatchAll`, and the `*CompileError`, `*RuntimeError` and `*AssertionError` types. Declared reasons (`NewDecision` with reasons, `WithExclusive`, `WithReasonPrecedence`, `WithPrecedence` and `*ConflictError`) exist too. `Load`, `Require`, `From`, `MapFS`, `LoadKind` and `Resolver` don't exist yet either; they come with composition and the tooling milestones. The rest of this page describes the API as designed, so the language reference has a concrete host to point at; names and signatures may still change before the first release.
+Defining a kind exists: `NewKind`, `Decision`, `None`, the `With` options and `Schema()`. So do `Compile`, `Params`, `Eval`, `Result`, `Match` and `MatchAll`, and the `*CompileError`, `*RuntimeError` and `*AssertionError` types. Declared reasons (`NewDecision` with reasons, `WithExclusive`, `WithReasonPrecedence`, `WithPrecedence` and `*ConflictError`) exist too. So do `Load`, `Require`, `From` and `MapFS`. `LoadKind` and `Resolver` don't exist yet; they come with the tooling milestones. The rest of this page describes the API as designed, so the language reference has a concrete host to point at; names and signatures may still change before the first release.
 :::
 
 The API mirrors `regexp`: define a kind once at package level, compile policies once, and evaluate them many times from any goroutine. Everything lives in package `policy`, import path `github.com/spechtlabs/sigil/pkg/policy`.
@@ -193,6 +193,7 @@ With `From`, the loader reads the trusted source as its own bundle, separate fro
 
 - The required policy is taken from the trusted source, and so is everything it imports and invokes. A trusted policy never resolves a name in the untrusted bundle, so a team can't redefine `deploy.common.eligible` to switch a guardrail off from underneath it.
 - Every name the trusted source defines is reserved. A document in the untrusted bundle that claims one of them, a `deploy.guardrails` or a `deploy.common`, is a compile error naming both definitions, not a silent override in either direction.
+- Several `Require` options may name the same source; it's read once.
 - Team policies import and invoke trusted documents by name as usual, so `use deploy.guardrails` and `use deploy.common.{cleared}` work unchanged.
 
 Without `From`, the required policy is looked up in the bundle like any other document. That's fine when the whole bundle is trusted, for example an `embed.FS` built from a reviewed repository, and it's how the examples in these docs read. Whenever someone other than the platform team can write to the bundle, pass `From`.

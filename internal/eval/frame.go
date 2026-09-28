@@ -6,12 +6,16 @@ import (
 	"github.com/spechtlabs/sigil/internal/diag"
 )
 
-// Frame is the state of one evaluation: the input, the values bound to
-// slots (quantifier variables and whatever a test binds directly), the
-// lets evaluated so far and the `when` conditions evaluated so far.
+// Frame is the state of one instance in one evaluation: the input, the
+// values bound to slots (quantifier variables and whatever a test binds
+// directly), the lets evaluated so far and the `when` conditions
+// evaluated so far. Every instance a policy invokes gets a frame of its
+// own, sharing the input and the outcome through the run.
 type Frame struct {
 	Input   Value
 	Outcome Value // list<decision> for assert conditions; set by the policy evaluator
+	run     *run  // the evaluation this frame belongs to, nil for a bare frame
+	file    string
 	slots   []Value
 	lets    []Value // a let's value once evaluated, by let index
 	done    []bool  // whether lets[i] has been evaluated in this frame
@@ -33,11 +37,15 @@ func NewFrame(input any, scope *Scope) *Frame {
 	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
+	return newFrame(v, scope)
+}
+
+func newFrame(input Value, scope *Scope) *Frame {
 	nslots, nlets, nconds := 0, 0, 0
 	if scope != nil {
 		nslots, nlets, nconds = scope.nslots, len(scope.lets), scope.nconds
 	}
-	return &Frame{Input: v, slots: make([]Value, nslots), lets: make([]Value, nlets), done: make([]bool, nlets), conds: make([]condMemo, nconds)}
+	return &Frame{Input: input, slots: make([]Value, nslots), lets: make([]Value, nlets), done: make([]bool, nlets), conds: make([]condMemo, nconds)}
 }
 
 // Set binds the value of a slot.
@@ -52,4 +60,13 @@ func (f *Frame) cond(b *block) (bool, *diag.Error) {
 		m.done = true
 	}
 	return m.held, m.err
+}
+
+// frameOf returns the frame of another instance in the same evaluation,
+// for reading an imported let.
+func (f *Frame) frameOf(inst *instance) *Frame {
+	if f.run == nil {
+		throwf(nil, "no evaluation to read an imported let in")
+	}
+	return f.run.frame(inst)
 }

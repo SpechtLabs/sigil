@@ -97,9 +97,9 @@ Reasons are declared per decision in the kind, and constructors name one of them
 
 ## Checking a base policy on its own
 
-**Blocks: M5, M6**
+**Blocks: M6**
 
-A missing required param is a compile error. So `deploy.production`, which declares `param approvers: list<string>` without a default, fails `sigil check` unless something binds `approvers`. That's right when a host loads it, and wrong for a policy repo that wants to lint its shared policies in CI before any team invokes them. Options: `sigil check` type-checks unbound params by their declared type and reports them as unbound rather than as errors; or a shared policy is only ever checked through the policies that invoke it. `sigil explain` has the same problem: without bound values it can only print param names.
+A missing required param is a compile error for a host, and `sigil explain` shows an unbound param by its name instead, `approvers = approvers`, so a shared policy can be explained before any team invokes it. What `sigil check` should do with `deploy.production`, which declares `param approvers: list<string>` without a default, is still open: type-check it and report the param as unbound rather than as an error, or check shared policies only through the policies that invoke them.
 
 ## Input-dependent invocation arguments
 
@@ -113,15 +113,13 @@ The workaround is a `when` per case, as the PCI split in the canonical example d
 
 **Blocks: M5**
 
-A policy may invoke the same policy more than once with different arguments, for example `deploy.regional` once for `eu-1` and once for `us-1`. Each call is a separate instantiation, and each candidate records its call chain, so the trace can tell the instances apart. One problem remains, because composition is a union: any rule the invoked policy doesn't scope fires for every call. If `deploy.regional` had `when not in_scope { deny(out_of_region) }`, the `eu-1` call would deny every deploy the `us-1` call was meant to review. Policies meant to be invoked more than once have to scope every rule to their own params, or callers have to gate each call, and nothing enforces either. A lint for unscoped denies in a policy that's invoked twice could.
+A policy may invoke the same policy more than once with different arguments, for example `deploy.regional` once for `eu-1` and once for `us-1`. Each call is a separate instantiation, and each candidate records its call chain, so the trace can tell the instances apart; that part is implemented. One problem remains, because composition is a union: any rule the invoked policy doesn't scope fires for every call. If `deploy.regional` had `when not in_scope { deny(out_of_region) }`, the `eu-1` call would deny every deploy the `us-1` call was meant to review. Policies meant to be invoked more than once have to scope every rule to their own params, or callers have to gate each call, and nothing enforces either. A lint for unscoped denies in a policy that's invoked twice could.
 
 ## Direct or transitive requirement
 
-**Blocks: M5**
+**Settled**
 
-`policy.Require("deploy.guardrails")` makes the compiler check that the root policy reaches `deploy.guardrails` through top-level invocations only. Should the call have to sit in the root file itself, or is an ungated chain through other policies enough?
-
-Direct is easier to read: open the team file and the guardrail call is there. Transitive allows shared "team baseline" policies, such as a `deploy.gate` that invokes the guardrails and the approvals, which a team then invokes in turn. The [Go API](/reference/go-api/#required-policies) currently describes the transitive reading.
+Transitive. `policy.Require("deploy.guardrails")` passes when the root reaches `deploy.guardrails` through top-level invocations only, at any depth, so a shared "team baseline" policy that invokes the guardrails and the approvals can itself be invoked by a team. A gated call anywhere on the path is reported at that call. Direct would have been easier to read in the team file, and `sigil explain` gives that view back: the chain of every rule starts in the root.
 
 ## Host-layered bases
 

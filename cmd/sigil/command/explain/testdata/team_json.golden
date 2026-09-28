@@ -1,0 +1,130 @@
+[
+  {
+    "policy": "payments.production",
+    "documents": 4,
+    "rules": [
+      {
+        "kind": "decision",
+        "decision": "deny",
+        "reason": "not_eligible",
+        "chain": [
+          "payments.production:7",
+          "guardrails:8"
+        ],
+        "conditions": [
+          "not eligible"
+        ]
+      },
+      {
+        "kind": "decision",
+        "decision": "deny",
+        "reason": "soak_too_short",
+        "chain": [
+          "payments.production:7",
+          "guardrails:12"
+        ],
+        "conditions": [
+          "release.soak \u003c 4h and not release.hotfix"
+        ]
+      },
+      {
+        "kind": "decision",
+        "decision": "approve",
+        "reason": "release_manager",
+        "chain": [
+          "payments.production:10",
+          "deploy.production:11"
+        ],
+        "conditions": [
+          "service.labels[\"compliance\"] == \"pci\"",
+          "cleared",
+          "service.tier == \"critical\" and \"release_manager\" in actor.roles"
+        ]
+      },
+      {
+        "kind": "decision",
+        "decision": "review",
+        "reason": "service_owner",
+        "chain": [
+          "payments.production:10",
+          "deploy.production:16"
+        ],
+        "conditions": [
+          "service.labels[\"compliance\"] == \"pci\"",
+          "cleared",
+          "service.tier in [\"standard\", \"internal\"] and owns_service"
+        ],
+        "payload": [
+          "approvers = [\"payments-leads\", \"security-leads\"]"
+        ]
+      },
+      {
+        "kind": "decision",
+        "decision": "approve",
+        "reason": "release_manager",
+        "chain": [
+          "payments.production:14",
+          "deploy.production:11"
+        ],
+        "conditions": [
+          "service.labels[\"compliance\"] != \"pci\"",
+          "cleared",
+          "service.tier == \"critical\" and \"release_manager\" in actor.roles"
+        ]
+      },
+      {
+        "kind": "decision",
+        "decision": "review",
+        "reason": "service_owner",
+        "chain": [
+          "payments.production:14",
+          "deploy.production:16"
+        ],
+        "conditions": [
+          "service.labels[\"compliance\"] != \"pci\"",
+          "cleared",
+          "service.tier in [\"standard\", \"internal\"] and owns_service"
+        ],
+        "payload": [
+          "approvers = [\"payments-leads\"]"
+        ]
+      },
+      {
+        "kind": "decision",
+        "decision": "approve",
+        "reason": "payments_sre",
+        "chain": [
+          "payments.production:18"
+        ],
+        "conditions": [
+          "cleared and \"payments-sre\" in actor.teams"
+        ],
+        "payload": [
+          "bake = 15m"
+        ]
+      },
+      {
+        "kind": "assert",
+        "reason": "named_actor",
+        "phase": "input",
+        "chain": [
+          "payments.production:21"
+        ],
+        "conditions": [],
+        "check": "actor.name != \"\""
+      },
+      {
+        "kind": "assert",
+        "reason": "hotfix_approved",
+        "phase": "outcome",
+        "chain": [
+          "payments.production:24"
+        ],
+        "conditions": [
+          "release.hotfix"
+        ],
+        "check": "approve in outcome"
+      }
+    ]
+  }
+]

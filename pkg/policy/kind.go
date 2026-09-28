@@ -44,19 +44,3 @@ func (k *Kind[In]) Name() string { return k.kind.Name }
 // checks in so the CLI and other services can type-check against it
 // without importing the host.
 func (k *Kind[In]) Schema() string { return k.kind.Source() }
-
-// Compile compiles the policy called name from src, a one-file bundle
-// that may hold several documents. Every document is checked against the
-// kind, so a broken document fails the compile even when the root never
-// uses it, and a kind document with the kind's name must match Schema().
-// The error is a *CompileError listing every problem with a position and
-// a fix hint.
-func (k *Kind[In]) Compile(src, name string, opts ...LoadOption) (*Policy[In], error) {
-	o := &loadOptions{params: Params{}}
-	for _, opt := range opts {
-		opt.apply(o)
-	}
-	b := newBundle(k)
-	b.add("", []byte(src))
-	return b.compile(name, o)
-}

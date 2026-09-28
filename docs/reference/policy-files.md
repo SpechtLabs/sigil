@@ -6,7 +6,7 @@ permalink: /reference/policy-files/
 ---
 
 ::: info Draft specification
-This page specifies the language as designed. Syntax, kinds, type checking, rules, decisions, asserts and the evaluation trace are implemented; composition (imports and invocation) and the CLI aren't yet. See [Open questions](/project/open-questions/).
+This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, only `sigil explain` exists. See [Open questions](/project/open-questions/).
 :::
 
 A policy opens with a `policy` header, lists its imports, and then contains any number of `param`, `let`, `when` and `assert` statements and policy invocations in any order. Each statement starts with a keyword or with the name of an imported policy followed by `(`, so a policy needs no separators and no significant whitespace.
@@ -124,7 +124,7 @@ teams/payments.sigil:5:22: error: min_soak: 0s is below the minimum 1h
   = help: deploy.guardrails declares `param min_soak: duration = 24h, min: 1h, max: 48h`
 ```
 
-The declaration checks are implemented; checking invocation arguments and `policy.Params` against the bounds comes with invocation in the composition milestone. Bounds are only as trustworthy as the file that declares them: for a required guardrail, [`policy.From`](/reference/go-api/#where-required-policies-come-from) loads that file from a source the host trusts.
+Bounds are only as trustworthy as the file that declares them: for a required guardrail, [`policy.From`](/reference/go-api/#where-required-policies-come-from) loads that file from a source the host trusts.
 
 ## `let`
 

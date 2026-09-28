@@ -9,8 +9,8 @@ This guide shows how to ship policies to a service running on Kubernetes as a Co
 
 It builds on the `deploy.*` and `payments.production` documents from the [tour](/getting-started/tour/). The service is a deploy gate that loads `payments.production` and requires `deploy.guardrails`.
 
-::: info Planned tooling
-Nothing on this page is implemented yet. The commands and the Go API are the planned ones; see [CLI & editor tooling](/reference/cli/) and the [Go API](/reference/go-api/).
+::: info Partly planned
+The Go API on this page exists: `Load`, `MapFS`, `Require` and `From`. The CLI commands other than `sigil explain` are planned; see [CLI & editor tooling](/reference/cli/) and the [Go API](/reference/go-api/).
 :::
 
 ## Why files are only containers

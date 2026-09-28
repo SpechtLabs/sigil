@@ -12,6 +12,10 @@ import (
 // Checker checks expressions and statements of one file and collects
 // what it finds.
 type Checker struct {
+	// Resolver finds the documents `use` names. Without one every
+	// import is an unknown document.
+	Resolver  Resolver
+	exported  *Exported
 	info      *Info
 	letStates map[string]*letState // every let of the document being checked; names are unique per document
 	typing    *letState            // the let whose value is being typed, if any
@@ -26,11 +30,17 @@ func New(file string) *Checker {
 		Types:        map[ast.Expr]types.Type{},
 		Params:       map[*ast.ParamStmt]types.Type{},
 		Constructors: map[*ast.CallStmt]*kind.Decision{},
+		Invocations:  map[*ast.CallStmt]string{},
+		Reads:        map[ast.Expr]Read{},
 	}}
 }
 
 // Info returns the types recorded so far.
 func (c *Checker) Info() *Info { return c.info }
+
+// Exported returns what other documents may import from the document
+// checked last, or nil before a document was checked.
+func (c *Checker) Exported() *Exported { return c.exported }
 
 // Errors returns every diagnostic so far, in source order.
 func (c *Checker) Errors() diag.ErrorList {

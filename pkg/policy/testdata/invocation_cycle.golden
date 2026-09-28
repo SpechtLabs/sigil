@@ -1,0 +1,6 @@
+== compile a ==
+policies.sigil:19:1: import cycle: a -> b -> c -> a
+   |
+19 | use a
+   | ^^^^^
+   = help: a policy can't invoke itself, directly or through other policies; imports form a directed acyclic graph

@@ -81,6 +81,10 @@ func (c *Checker) ident(x *ast.Ident, env *Env) types.Type {
 	case Param:
 		c.readParam(x.Name)
 	case Let:
+		if b.Doc != nil {
+			c.info.Reads[x] = Read{Doc: b.Doc.Name, Let: b.Let}
+			return b.Type
+		}
 		// A let read before it's typed is typed now, so declaration order
 		// doesn't matter; a let that reaches itself this way is a cycle.
 		t := b.Type
@@ -91,6 +95,13 @@ func (c *Checker) ident(x *ast.Ident, env *Env) types.Type {
 			c.readParam(st.param)
 		}
 		return t
+	case Module:
+		c.errorf(x, fmt.Sprintf("read one of its pub lets as `%s.<let>`", x.Name), "`%s` is a module, not a value", x.Name)
+		return types.Invalid
+	case Invocable:
+		c.errorf(x, fmt.Sprintf("invoke it as a statement, `%s(<param>: <value>)`, or read one of its pub lets as `%s.<let>`", x.Name, x.Name),
+			"`%s` is an imported policy, not a value", x.Name)
+		return types.Invalid
 	case DecisionName:
 		// A decision's name is a value only where outcome is: an assert
 		// condition. Anywhere else it's a constructor that lost its call.
@@ -599,6 +610,11 @@ func (c *Checker) chain(x ast.Expr, env *Env) types.Type {
 func (c *Checker) link(x ast.Expr, env *Env) (types.Type, bool) {
 	switch x := x.(type) {
 	case *ast.SelectorExpr:
+		if id, ok := x.X.(*ast.Ident); ok {
+			if b, found := env.Lookup(id.Name); found && (b.Entity == Module || b.Entity == Invocable) {
+				return c.qualified(x, b), false
+			}
+		}
 		base, short := c.linkBase(x.X, env)
 		t, opt := c.field(x, base, env)
 		return t, short || opt

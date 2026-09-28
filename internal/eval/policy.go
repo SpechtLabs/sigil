@@ -11,21 +11,21 @@ import (
 	"github.com/spechtlabs/sigil/internal/token"
 )
 
-// Policy is a compiled policy document: its statements as a tree of
-// closures over a Frame, and what's needed to resolve the candidates
-// they produce into an outcome by the rules in
-// docs/reference/evaluation.md.
+// Policy is a compiled policy: the root document's statements as a tree
+// of closures over a Frame, with every invoked policy instantiated
+// inside it, and what's needed to resolve the candidates they produce
+// into an outcome by the rules in docs/reference/evaluation.md.
 //
 // A Policy is immutable once compiled and safe for concurrent use; every
-// evaluation gets its own Frame.
+// evaluation gets its own frames.
 type Policy struct {
-	kind  *kind.Kind
-	scope *Scope
-	def   *Candidate // the kind's default, nil for a collecting kind without one
-	ranks map[string]int
-	Name  string // the document's name
-	File  string
-	body  []*node
+	kind   *kind.Kind
+	root   *instance
+	def    *Candidate // the kind's default, nil for a collecting kind without one
+	ranks  map[string]int
+	Name   string // the root document's name
+	File   string
+	static bool
 }
 
 // Outcome is the result of one evaluation. Candidates is every
@@ -50,10 +50,23 @@ type Conflict struct {
 	Candidates []*Candidate
 }
 
-// run is the mutable state of one evaluation.
+// Requirement is how the root reaches a policy: through top-level
+// invocations only, which is what policy.Require asks for, or only
+// through gated ones, or not at all.
+type Requirement struct {
+	Gated         []Site // invocations under a `when`, when none is unconditional
+	Invoked       bool
+	Unconditional bool
+}
+
+// run is the mutable state of one evaluation: the frames of every
+// instance reached, keyed by instance, and what the phases collected.
 type run struct {
-	cands  []*Candidate
-	failed []Failure
+	frames  map[*instance]*Frame
+	input   Value
+	outcome Value
+	cands   []*Candidate
+	failed  []Failure
 }
 
 // Default returns the kind's default as a candidate without a position,
@@ -74,16 +87,22 @@ func (p *Policy) Ranked() bool { return len(p.kind.Precedence) > 0 }
 // as the error, with no outcome; one in an assert is that assert's
 // failure.
 func (p *Policy) Eval(input any) (*Outcome, *diag.Error) {
-	f := NewFrame(input, p.scope)
-	r := &run{}
+	if p.static {
+		return nil, &diag.Error{File: p.File, Msg: "policy was compiled for explanation only and can't be evaluated"}
+	}
+	v := reflect.ValueOf(input)
+	if v.Kind() == reflect.Pointer {
+		v = v.Elem()
+	}
+	r := &run{frames: map[*instance]*Frame{}, input: v}
+	f := r.frame(p.root)
 
-	p.walk(f, r, p.body, phaseInput)
+	p.walk(f, r, p.root.body, phaseInput)
 	if len(r.failed) > 0 {
 		return &Outcome{Failed: r.failures()}, nil
 	}
 
-	if err := catch(func() { p.walk(f, r, p.body, phaseRules) }); err != nil {
-		err.File = p.File
+	if err := catch(func() { p.walk(f, r, p.root.body, phaseRules) }); err != nil {
 		return nil, err
 	}
 	sort.SliceStable(r.cands, func(i, j int) bool {
@@ -94,18 +113,41 @@ func (p *Policy) Eval(input any) (*Outcome, *diag.Error) {
 		if a.rrank != b.rrank {
 			return a.rrank < b.rrank
 		}
-		return before(a.Pos, b.Pos)
+		return before(a.Rule, b.Rule)
 	})
 	out := &Outcome{Candidates: r.cands}
 	out.Top, out.Conflict = p.resolve(r.cands)
 	if out.Conflict != nil {
 		return out, nil
 	}
-	f.Outcome = reflect.ValueOf(p.outcomeNames(out))
+	r.setOutcome(reflect.ValueOf(p.outcomeNames(out)))
 
-	p.walk(f, r, p.body, phaseOut)
+	p.walk(f, r, p.root.body, phaseOut)
 	out.Failed = r.failures()
 	return out, nil
+}
+
+// frame returns the instance's frame in this evaluation, creating it on
+// first use.
+func (r *run) frame(inst *instance) *Frame {
+	if f, ok := r.frames[inst]; ok {
+		return f
+	}
+	f := newFrame(r.input, inst.scope)
+	f.run = r
+	f.file = inst.file
+	f.Outcome = r.outcome
+	r.frames[inst] = f
+	return f
+}
+
+// setOutcome makes the outcome visible to every frame, for the outcome
+// asserts.
+func (r *run) setOutcome(v Value) {
+	r.outcome = v
+	for _, f := range r.frames {
+		f.Outcome = v
+	}
 }
 
 // resolve turns the sorted candidates into the outcome: fold equal
@@ -130,6 +172,18 @@ func (p *Policy) resolve(cands []*Candidate) ([]*Candidate, *Conflict) {
 		return nil, &Conflict{Msg: fmt.Sprintf("collect one: %d candidates at the top rank", len(top)), Candidates: top}
 	}
 	return top, nil
+}
+
+// fireIn fires a rule in f, naming the rule's file on a runtime error.
+func fireIn(r *Rule, f *Frame) *Candidate {
+	var c *Candidate
+	if err := catch(func() { c = fire(r, f) }); err != nil {
+		if err.File == "" {
+			err.File = r.File
+		}
+		panic(err) //nolint:nopanic // a rule's runtime error unwinds to Eval, which returns it
+	}
+	return c
 }
 
 // fold drops every candidate equal to an earlier one in decision, reason
@@ -203,16 +257,19 @@ func (p *Policy) outcomeNames(out *Outcome) []string {
 
 // walk runs one phase over the nodes. In the rules phase a runtime error
 // unwinds to Eval; in the assert phases it becomes the failure of every
-// assert it kept from being checked.
+// assert it kept from being checked. An invocation's body runs in the
+// invoked instance's own frame.
 func (p *Policy) walk(f *Frame, r *run, nodes []*node, ph phase) {
 	for _, n := range nodes {
 		switch {
 		case n.rule != nil && ph == phaseRules:
-			r.cands = append(r.cands, fire(n.rule, f))
+			r.cands = append(r.cands, fireIn(n.rule, f))
 		case n.assert != nil && n.assert.wants(ph):
 			r.check(f, n.assert)
-		case n.block != nil && n.block.wants(ph):
+		case n.block != nil && n.block.summary.wants(ph):
 			p.enter(f, r, n.block, ph)
+		case n.invoke != nil && n.invoke.summary.wants(ph):
+			p.walk(r.frame(n.invoke.inst), r, n.invoke.inst.body, ph)
 		}
 	}
 }
@@ -222,11 +279,14 @@ func (p *Policy) walk(f *Frame, r *run, nodes []*node, ph phase) {
 // or unwinds as a runtime error in the rules phase.
 func (p *Policy) enter(f *Frame, r *run, b *block, ph phase) {
 	held, err := f.cond(b)
+	if err != nil && err.File == "" {
+		err.File = f.file
+	}
 	switch {
 	case err != nil && ph == phaseRules:
 		panic(err) //nolint:nopanic // a rule's runtime error unwinds to Eval, which returns it
 	case err != nil:
-		for _, a := range b.asserts {
+		for _, a := range b.summary.asserts {
 			if a.wants(ph) {
 				r.failed = append(r.failed, Failure{Assert: a, Err: err})
 			}
@@ -241,6 +301,9 @@ func (p *Policy) enter(f *Frame, r *run, b *block, ph phase) {
 func (r *run) check(f *Frame, a *Assert) {
 	held := false
 	if err := catch(func() { held = Bool(a.cond(f)) }); err != nil {
+		if err.File == "" {
+			err.File = a.File
+		}
 		r.failed = append(r.failed, Failure{Assert: a, Err: err})
 		return
 	}
@@ -252,19 +315,177 @@ func (r *run) check(f *Frame, a *Assert) {
 // failures returns the failures so far, sorted by position, with the
 // file set on every runtime error.
 func (r *run) failures() []Failure {
-	sort.SliceStable(r.failed, func(i, j int) bool { return before(r.failed[i].Assert.Pos, r.failed[j].Assert.Pos) })
+	sort.SliceStable(r.failed, func(i, j int) bool {
+		return beforeAt(r.failed[i].Assert.Chain, r.failed[i].Assert.Pos, r.failed[j].Assert.Chain, r.failed[j].Assert.Pos)
+	})
 	for _, fl := range r.failed {
-		if fl.Err != nil {
+		if fl.Err != nil && fl.Err.File == "" {
 			fl.Err.File = fl.Assert.File
 		}
 	}
 	return r.failed
 }
 
-// before orders two positions in one file: by line, then column.
-func before(a, b token.Pos) bool {
+// before orders two rules by their call chain, then their position: the
+// call site in the evaluated file first, then the position in the
+// invoked file, element by element.
+func before(a, b *Rule) bool { return beforeAt(a.Chain, a.Pos, b.Chain, b.Pos) }
+
+func beforeAt(ca []Site, pa token.Pos, cb []Site, pb token.Pos) bool {
+	for i := 0; i < len(ca) && i < len(cb); i++ {
+		if ca[i].Pos != cb[i].Pos {
+			return posBefore(ca[i].Pos, cb[i].Pos)
+		}
+	}
+	switch {
+	case len(ca) < len(cb):
+		return posBefore(pa, cb[len(ca)].Pos)
+	case len(ca) > len(cb):
+		return posBefore(ca[len(cb)].Pos, pb)
+	}
+	return posBefore(pa, pb)
+}
+
+// posBefore orders two positions in one file: by line, then column.
+func posBefore(a, b token.Pos) bool {
 	if a.Line != b.Line {
 		return a.Line < b.Line
 	}
 	return a.Column < b.Column
+}
+
+// Requirement reports how the root reaches the policy called name.
+func (p *Policy) Requirement(name string) Requirement {
+	w := &requirer{name: name, seen: map[*instance]bool{}}
+	w.visit(p.root.body, false)
+	if w.req.Unconditional {
+		w.req.Gated = nil
+	}
+	return w.req
+}
+
+// requirer walks the invocation tree for one policy's call sites.
+type requirer struct {
+	seen map[*instance]bool
+	name string
+	req  Requirement
+}
+
+// visit records every invocation of the policy under nodes; gated says
+// whether a `when` encloses them.
+func (w *requirer) visit(nodes []*node, gated bool) {
+	for _, n := range nodes {
+		switch {
+		case n.block != nil:
+			w.visit(n.block.body, true)
+		case n.invoke != nil:
+			w.site(n.invoke, gated)
+		}
+	}
+}
+
+// site records one invocation and walks into it once.
+func (w *requirer) site(inv *invocation, gated bool) {
+	if inv.inst.name == w.name {
+		w.req.Invoked = true
+		if gated {
+			w.req.Gated = append(w.req.Gated, inv.Site)
+		} else {
+			w.req.Unconditional = true
+		}
+	}
+	if !w.seen[inv.inst] {
+		w.seen[inv.inst] = true
+		w.visit(inv.inst.body, gated)
+	}
+}
+
+// Rules returns every decision constructor the policy can reach, in
+// source order with invocations inlined where they're called: what
+// sigil explain lists.
+func (p *Policy) Rules() []*Rule {
+	var out []*Rule
+	var visit func(nodes []*node)
+	visit = func(nodes []*node) {
+		for _, n := range nodes {
+			switch {
+			case n.rule != nil:
+				out = append(out, n.rule)
+			case n.block != nil:
+				visit(n.block.body)
+			case n.invoke != nil:
+				visit(n.invoke.inst.body)
+			}
+		}
+	}
+	visit(p.root.body)
+	return out
+}
+
+// Asserts returns every assert the policy can reach, in the same order
+// as Rules.
+func (p *Policy) Asserts() []*Assert {
+	var out []*Assert
+	var visit func(nodes []*node)
+	visit = func(nodes []*node) {
+		for _, n := range nodes {
+			switch {
+			case n.assert != nil:
+				out = append(out, n.assert)
+			case n.block != nil:
+				visit(n.block.body)
+			case n.invoke != nil:
+				visit(n.invoke.inst.body)
+			}
+		}
+	}
+	visit(p.root.body)
+	return out
+}
+
+// Instances returns the names of every document the policy compiled
+// in, the root first: the invoked policies and the imported documents.
+func (p *Policy) Instances() []string {
+	c := &collector{seen: map[string]bool{p.root.name: true}, names: []string{p.root.name}}
+	c.visit(p.root)
+	return c.names
+}
+
+// collector gathers the documents reachable from an instance.
+type collector struct {
+	seen  map[string]bool
+	names []string
+}
+
+// add records a document once.
+func (c *collector) add(name string) bool {
+	if c.seen[name] {
+		return false
+	}
+	c.seen[name] = true
+	c.names = append(c.names, name)
+	return true
+}
+
+// visit records the instance's imports and invoked instances.
+func (c *collector) visit(inst *instance) {
+	for name := range inst.imports {
+		c.add(name)
+	}
+	for _, n := range inst.body {
+		c.visitNode(n)
+	}
+}
+
+func (c *collector) visitNode(n *node) {
+	switch {
+	case n.block != nil:
+		for _, m := range n.block.body {
+			c.visitNode(m)
+		}
+	case n.invoke != nil:
+		if c.add(n.invoke.inst.name) {
+			c.visit(n.invoke.inst)
+		}
+	}
 }

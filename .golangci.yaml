@@ -108,11 +108,13 @@ linters:
 
       # The public API returns typed errors (*CompileError, *AssertionError,
       # *RuntimeError) that hosts match with errors.As, each carrying its own
-      # position and fix hint, and its options are values, because
-      # policy.Params is a map literal in the documented API.
+      # position and fix hint, passes loader errors through unwrapped since
+      # they already carry advice, returns fs.FS and option interfaces by
+      # design, and its options are values, because policy.Params is a map
+      # literal in the documented API.
       - linters:
           - golint-sl
-        text: "^(humaneerror|optionspattern):"
+        text: "^(humaneerror|optionspattern|returninterface|errorwrap):"
         path: ^pkg/policy/
 
       # Runtime values are boxed as any when they cross into host data, and

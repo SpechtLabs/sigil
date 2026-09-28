@@ -1,0 +1,25 @@
+== compile payments.regions ==
+ok
+
+== an actor cleared for eu-1 only ==
+decision  review
+reason    service_owner
+policy    payments.regions
+payload   approvers: [eu-leads]
+
+candidates
+  review   service_owner      policies.sigil:18:1 (payments.regions) → policies.sigil:9:3 (deploy.regional)  approvers: [eu-leads]
+           "eu-1" in actor.regions
+
+== an actor cleared for both regions conflicts ==
+decision  deny
+reason    no_rule_matched
+policy    payments.regions
+payload   (none)
+error     conflict: collect one: 2 candidates at the top rank
+            review service_owner at policies.sigil:18:1 (payments.regions) → policies.sigil:9:3 (deploy.regional) {approvers: [eu-leads]}
+            review service_owner at policies.sigil:19:1 (payments.regions) → policies.sigil:9:3 (deploy.regional) {approvers: [us-leads]}
+
+candidates
+  review   service_owner      policies.sigil:18:1 (payments.regions) → policies.sigil:9:3 (deploy.regional)  approvers: [eu-leads]
+  review   service_owner      policies.sigil:19:1 (payments.regions) → policies.sigil:9:3 (deploy.regional)  approvers: [us-leads]

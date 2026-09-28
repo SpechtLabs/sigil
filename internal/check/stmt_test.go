@@ -102,7 +102,7 @@ when true {
 
 		// Kind and imports.
 		{name: "wrong kind", src: "policy p: Other@1\nlet a = 1", errs: []string{"1:11: document is for kind Other, not Test"}, help: "this document can only be checked against kind Other"},
-		{name: "use is not supported yet", src: "policy p: Test@1\nuse deploy.common\nlet a = 1", errs: []string{"2:1: `use` isn't supported yet"}},
+		{name: "unknown document", src: "policy p: Test@1\nuse deploy.common\nlet a = 1", errs: []string{"2:5: unknown document `deploy.common`"}, help: "`use` names a policy or module by the name in its header, wherever its file is"},
 
 		// Params.
 		{name: "param collides with input", src: "policy p: Test@1\nparam release: int", errs: []string{"2:7: `release` is already the name of an input"}, help: "every name in a document means one thing; rename one of them"},

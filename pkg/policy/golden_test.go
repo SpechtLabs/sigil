@@ -88,7 +88,34 @@ type scenario[In any] struct {
 // goldenCases says how each testdata/*.sigil bundle is compiled and
 // which inputs it's evaluated against. A bundle without an entry is
 // only compiled, which is what the error cases need.
-var goldenCases = map[string]func(t *testing.T, src string) string{
+var goldenCases = map[string]func(t *testing.T, src, dir string) string{
+	"composition": run(Deploy, "payments.production", []policy.LoadOption{policy.Require("deploy.guardrails")}, []scenario[Input]{
+		{"a short soak is denied through the guardrails", with(func(in *Input) { in.Release.Soak = 2 * time.Hour })},
+		{"a standard service owned by another team gets the team approval", with(func(in *Input) {
+			in.Release.Soak = 6 * time.Hour
+			in.Service.Tier = "standard"
+			in.Service.Owners = []string{"other"}
+		})},
+		{"a pci service gets two approver groups", with(func(in *Input) {
+			in.Service.Tier = "internal"
+			in.Service.Labels["compliance"] = "pci"
+			in.Actor.Teams = []string{"payments"}
+		})},
+		{"release manager and payments-sre both approve", with(func(in *Input) {
+			in.Actor.Roles = []string{"deployer", "release_manager"}
+		})},
+	}),
+	"gated":            run(Deploy, "payments.production", []policy.LoadOption{policy.Require("deploy.guardrails")}, nil),
+	"missing_require":  run(Deploy, "payments.production", []policy.LoadOption{policy.Require("deploy.guardrails")}, nil),
+	"bounds":           run(Deploy, "payments.production", nil, nil),
+	"import_cycle":     run(Deploy, "p", nil, nil),
+	"invocation_cycle": run(Deploy, "a", nil, nil),
+	"trusted": run(Deploy, "payments.production",
+		[]policy.LoadOption{policy.Require("deploy.guardrails", policy.From(os.DirFS(filepath.Join("testdata", "_platform"))))}, nil),
+	"twice": run(Deploy, "payments.regions", nil, []scenario[Input]{
+		{"an actor cleared for eu-1 only", with(func(in *Input) { in.Actor.Regions = []string{"eu-1"} })},
+		{"an actor cleared for both regions conflicts", eligible},
+	}),
 	teamBundle: run(Deploy, "payments.production",
 		[]policy.LoadOption{policy.Params{"approvers": []string{"payments-leads"}, "min_soak": 4 * time.Hour}},
 		[]scenario[Input]{
@@ -165,22 +192,38 @@ var goldenCases = map[string]func(t *testing.T, src string) string{
 // the matching .golden file. Run with -update to accept changes; review
 // the diff, since the golden files pin what a host gets back.
 func TestGolden(t *testing.T) {
-	paths, err := filepath.Glob(filepath.Join("testdata", "*.sigil"))
+	entries, err := os.ReadDir("testdata")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(paths) == 0 {
-		t.Fatal("no testdata/*.sigil files")
+	var names []string
+	for _, e := range entries {
+		switch {
+		case strings.HasPrefix(e.Name(), "_"):
+			// A shared source for other cases, such as a trusted bundle.
+		case e.IsDir():
+			names = append(names, e.Name())
+		case strings.HasSuffix(e.Name(), ".sigil"):
+			names = append(names, strings.TrimSuffix(e.Name(), ".sigil"))
+		}
 	}
-	for _, path := range paths {
-		name := strings.TrimSuffix(filepath.Base(path), ".sigil")
+	if len(names) == 0 {
+		t.Fatal("no testdata")
+	}
+	for _, name := range names {
 		t.Run(name, func(t *testing.T) {
 			render, ok := goldenCases[name]
 			if !ok {
 				render = run(Deploy, "p", nil, []scenario[Input]{})
 			}
-			got := render(t, readBundle(t, name))
-			goldenPath := strings.TrimSuffix(path, ".sigil") + ".golden"
+			dir := filepath.Join("testdata", name)
+			src := ""
+			if _, err := os.Stat(dir); err != nil {
+				dir = ""
+				src = readBundle(t, name)
+			}
+			got := render(t, src, dir)
+			goldenPath := filepath.Join("testdata", name+".golden")
 			if *update {
 				if werr := os.WriteFile(goldenPath, []byte(got), 0o644); werr != nil {
 					t.Fatal(werr)
@@ -211,11 +254,17 @@ func readBundle(t *testing.T, name string) string {
 // run returns a golden renderer: it compiles root from the bundle
 // against k, reports the compile error if any, and otherwise renders
 // every scenario's result.
-func run[In any](k *policy.Kind[In], root string, opts []policy.LoadOption, scenarios []scenario[In]) func(*testing.T, string) string {
-	return func(_ *testing.T, src string) string {
+func run[In any](k *policy.Kind[In], root string, opts []policy.LoadOption, scenarios []scenario[In]) func(*testing.T, string, string) string {
+	return func(_ *testing.T, src, dir string) string {
 		var b strings.Builder
 		fmt.Fprintf(&b, "== compile %s ==\n", root)
-		p, err := k.Compile(src, root, opts...)
+		var p *policy.Policy[In]
+		var err error
+		if dir != "" {
+			p, err = k.Load(os.DirFS(dir), root, opts...)
+		} else {
+			p, err = k.Compile(src, root, opts...)
+		}
 		if err != nil {
 			b.WriteString(err.Error() + "\n")
 			return b.String()

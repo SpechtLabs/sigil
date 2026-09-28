@@ -1,0 +1,5 @@
+policy payments.production: DeployApproval@1
+
+when release.hotfix {
+  approve(payments_sre)
+}

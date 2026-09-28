@@ -1,0 +1,19 @@
+policy payments.production: DeployApproval@1
+
+use deploy.guardrails
+use deploy.production
+use deploy.common.{cleared}
+
+guardrails(min_soak: 4h)
+
+when service.labels["compliance"] == "pci" {
+  production(approvers: ["payments-leads", "security-leads"])
+}
+
+when service.labels["compliance"] != "pci" {
+  production(approvers: ["payments-leads"])
+}
+
+when cleared and "payments-sre" in actor.teams {
+  approve(payments_sre, bake: 15m)
+}

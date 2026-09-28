@@ -1,0 +1,6 @@
+== compile payments.production ==
+payments.sigil:1:1: payments.production doesn't invoke deploy.guardrails
+  |
+1 | policy payments.production: DeployApproval@1
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: the host requires deploy.guardrails for every DeployApproval policy; import it with `use deploy.guardrails` and invoke it at the top level

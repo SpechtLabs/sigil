@@ -12,9 +12,9 @@ import (
 
 // Policy checks a policy document against k and records what the
 // evaluator needs: every expression's type, the lets in an order that
-// respects their dependencies, and the decision each constructor builds.
-// Imports and invocations belong to the composition milestone and are
-// reported as unsupported for now.
+// respects their dependencies, the decision each constructor builds and
+// the policy each invocation instantiates. Imports resolve through the
+// checker's Resolver.
 func (c *Checker) Policy(doc *ast.PolicyDoc, k *kind.Kind) {
 	if doc == nil || !c.checkKind(doc.Kind, doc.Pin, k) {
 		return
@@ -22,11 +22,12 @@ func (c *Checker) Policy(doc *ast.PolicyDoc, k *kind.Kind) {
 	env := NewEnv(k)
 	c.letStates = map[string]*letState{}
 	defer func() { c.letStates = nil }()
-	c.uses(doc.Uses)
+	c.uses(doc.Uses, env)
 	c.params(doc.Stmts, env)
 	lets := letsOf(doc.Stmts)
 	c.lets(lets, env)
 	c.pubLets(lets)
+	defer func() { c.exported = c.buildExported(doc.Name.String(), false, env, doc.Stmts) }()
 	for _, s := range doc.Stmts {
 		switch s := s.(type) {
 		case *ast.WhenStmt:
@@ -47,8 +48,10 @@ func (c *Checker) Module(doc *ast.ModuleDoc, k *kind.Kind) {
 	env := NewEnv(k)
 	c.letStates = map[string]*letState{}
 	defer func() { c.letStates = nil }()
-	c.uses(doc.Uses)
+	c.uses(doc.Uses, env)
 	c.lets(doc.Lets, env)
+	c.pubLets(doc.Lets)
+	c.exported = c.buildExported(doc.Name.String(), true, env, nil)
 }
 
 // checkKind reports a document written for another kind, and a pin the
@@ -78,12 +81,6 @@ func (c *Checker) checkKind(name *ast.Ident, pin *ast.IntLit, k *kind.Kind) bool
 		c.older = int(pin.Value) < k.Version
 	}
 	return true
-}
-
-func (c *Checker) uses(uses []*ast.UseStmt) {
-	for _, u := range uses {
-		c.errorf(u, "modules, imports and policy invocation come with the composition milestone", "`use` isn't supported yet")
-	}
 }
 
 // params declares the policy's params: unique names, types from the
@@ -403,6 +400,11 @@ func (c *Checker) callStmt(s *ast.CallStmt, env *Env) {
 		c.errorf(s.Name, help, "unknown decision `%s`", s.Name.Name)
 	case b.Entity == DecisionName:
 		c.constructor(s, env)
+	case b.Entity == Invocable:
+		c.invocation(s, b.Doc, env)
+	case b.Entity == Module:
+		c.errorf(s.Name, fmt.Sprintf("a module holds only lets; read one as `%s.<let>`, or import a policy to invoke", s.Name.Name),
+			"`%s` is a module and can't be invoked", s.Name.Name)
 	default:
 		c.errorf(s.Name, "only the kind's decisions can be constructed, and only imported policies invoked",
 			"`%s` is %s %s, not a decision", s.Name.Name, article(b.Entity), b.Entity)

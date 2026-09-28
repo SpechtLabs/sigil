@@ -80,7 +80,7 @@ func TestPolicyEval(t *testing.T) {
 		{
 			name: "deny outranks approve", src: production,
 			input: func(in Input) Input { in.Release.Soak = 2 * time.Hour; return in },
-			want: "deny soak_too_short 12:3 [release.soak < min_soak and not release.hotfix] *\n" +
+			want: "deny soak_too_short 12:3 [release.soak < 1d and not release.hotfix] *\n" +
 				"approve payments_sre 25:3 [cleared and \"payments-sre\" in actor.teams]",
 			winner: "deny soak_too_short", payload: map[string]any{},
 		},
@@ -125,7 +125,7 @@ func TestPolicyEval(t *testing.T) {
 				in.Actor.Teams = []string{"payments"}
 				return in
 			},
-			want:   "review service_owner 21:5 [cleared | service.tier in tiers and owns_service] *",
+			want:   "review service_owner 21:5 [cleared | service.tier in [\"standard\", \"internal\"] and owns_service] *",
 			winner: "review service_owner", payload: map[string]any{"approvers": []string{"payments-leads"}},
 			typed: ReviewData{Approvers: []string{"payments-leads"}},
 		},
@@ -301,7 +301,7 @@ func compilePolicy(t *testing.T, src string, collect bool, params map[string]eva
 	if errs := c.Errors(); errs != nil {
 		t.Fatalf("check: %v", errs)
 	}
-	p, cerr := eval.CompilePolicy(doc, "p.sigil", []byte(src), c.Info(), k, b, params)
+	p, cerr := eval.CompilePolicy(&eval.Source{Doc: doc, Info: c.Info(), File: "p.sigil", Src: []byte(src)}, k, b, nil, eval.Options{Params: params})
 	if cerr != nil {
 		t.Fatalf("compile: %v (%s)", cerr, cerr.Help)
 	}

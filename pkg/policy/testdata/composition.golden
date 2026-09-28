@@ -1,0 +1,49 @@
+== compile payments.production ==
+ok
+
+== a short soak is denied through the guardrails ==
+decision  deny
+reason    soak_too_short
+policy    payments.production
+payload   (none)
+
+candidates
+  deny     soak_too_short     payments/production.sigil:7:1 → deploy/guardrails.sigil:12:3
+           release.soak < 4h and not release.hotfix
+  approve  payments_sre       payments/production.sigil:18:3  bake: 15m0s
+
+== a standard service owned by another team gets the team approval ==
+decision  approve
+reason    payments_sre
+policy    payments.production
+payload   bake: 15m0s
+
+candidates
+  approve  payments_sre       payments/production.sigil:18:3  bake: 15m0s
+           cleared and "payments-sre" in actor.teams
+
+== a pci service gets two approver groups ==
+decision  review
+reason    service_owner
+policy    payments.production
+payload   approvers: [payments-leads security-leads]
+
+candidates
+  review   service_owner      payments/production.sigil:10:3 → deploy/production.sigil:16:5  approvers: [payments-leads security-leads]
+           service.labels["compliance"] == "pci"
+           cleared
+           service.tier in ["standard", "internal"] and owns_service
+
+== release manager and payments-sre both approve ==
+decision  approve
+reason    release_manager
+policy    payments.production
+payload   bake: 1h0m0s
+
+candidates
+  approve  release_manager    payments/production.sigil:14:3 → deploy/production.sigil:11:5  bake: 1h0m0s
+           service.labels["compliance"] != "pci"
+           cleared
+           service.tier == "critical" and "release_manager" in actor.roles
+  approve  payments_sre       payments/production.sigil:18:3  bake: 15m0s
+           cleared and "payments-sre" in actor.teams

@@ -37,6 +37,11 @@ timeline:
       implemented milestones cover lands in the parser, checker and evaluator; the rest is
       tracked below.
   - date: 2026-09-28
+    title: Composition implemented
+    description: |
+      Modules, imports, invocation with bounded params, `policy.Require` with `policy.From`, the
+      bundle loader for `fs.FS` and ConfigMaps, cycle detection and `sigil explain`. M5 closes.
+  - date: 2026-09-28
     title: Rules, decisions and the trace implemented
     description: |
       `when` blocks, constructors, precedence, the default, asserts and collecting kinds
@@ -332,31 +337,32 @@ milestones:
       condition, and the host rejects it when a required guardrail is gated.
     deliverables:
       - title: param and let
-        state: DOING
+        state: DONE
         requirement: MUST
         description: |
           Params bound by invocation or by `policy.Params`, each value checked against the
-          param's type and its `min` and `max` when the policy compiles or loads. The
-          `policy.Params` side works, and lets evaluate lazily; binding params from an
-          invocation is what's left.
+          param's type and its `min` and `max` when the policy compiles or loads. Invocation
+          arguments are evaluated at compile time, so bounds are checked at the argument.
       - title: Modules and imports
-        state: TODO
+        state: DONE
         requirement: MUST
         description: |
           `module` files, whole-file, selective and aliased `use`, and only `pub let`s importable:
           a `use` that names a private `let` is a compile error.
       - title: Policy invocation
-        state: TODO
+        state: DONE
         requirement: MUST
         description: |
           Invocations at the top level and inside `when`, with named, type-checked arguments and
           the call site recorded in every candidate's trace.
       - title: policy.Require
-        state: TODO
+        state: DONE
         requirement: MUST
-        description: Load option that fails compilation unless the named policies are invoked unconditionally.
+        description: |
+          Load option that fails compilation unless the named policies are reached through
+          top-level invocations only, at any depth; a gated call is reported at the call.
       - title: Bundle loader
-        state: TODO
+        state: DONE
         requirement: MUST
         description: |
           Reads every document in every `.sigil` file of an `fs.FS`, indexes them by header name
@@ -364,19 +370,24 @@ milestones:
           `policy.MapFS` all work. Uses `fs.Stat`, so the symlinked keys of a mounted ConfigMap
           load; a test builds the real `..data` layout. Kind documents must match `Schema()`.
       - title: policy.From
-        state: TODO
+        state: DONE
         requirement: MUST
         description: |
           Takes required policies, and everything they use, from a trusted source, and makes a
           bundle document that claims a trusted name a compile error.
       - title: Cycle detection
-        state: TODO
+        state: DONE
         requirement: MUST
-        description: The `let`, import and invocation graphs must be acyclic.
+        description: |
+          The `let`, import and invocation graphs must be acyclic. An invocation needs a `use`, so
+          an invocation cycle is an import cycle, reported once at the import that closes it.
       - title: sigil explain
-        state: TODO
+        state: DONE
         requirement: MUST
-        description: Flattens a policy into its guarded decisions, with every invocation inlined and params bound.
+        description: |
+          Flattens a policy into its guarded decisions, with every invocation inlined and params
+          bound, as text or JSON. Reads the kind file and the bundle from files, directories or
+          stdin; `--input` waits for bound host functions.
 
   - title: Tooling I
     description: |
