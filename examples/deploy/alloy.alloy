@@ -44,6 +44,7 @@ prometheus.scrape "backends" {
 		{__address__ = "tempo:3200", job = "tempo"},
 		{__address__ = "loki:3100", job = "loki"},
 		{__address__ = "mimir:9009", job = "mimir"},
+		{__address__ = "pyroscope:4040", job = "pyroscope"},
 	]
 	scrape_interval = "5s"
 	scrape_timeout  = "4s"

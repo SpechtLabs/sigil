@@ -33,12 +33,13 @@ mise run up
 
 The tasks live in `examples/.mise.toml`. Run them from `examples/`, or use `mise -C examples run <task>` from the repository root.
 
-That starts deploygate on port 8080 with Alloy and single-process Loki, Tempo and Mimir. Grafana on [port 3000](http://localhost:3000/d/deploygate) has a provisioned dashboard with metrics, logs and traces. The command waits for the telemetry backends and for deploygate with both bundles loaded: its image has no shell, so compose probes it with `deploygate healthcheck`, which asks the server's own `/readyz`. Then ask for a deploy, from `examples/`:
+That starts deploygate on port 8080 with Alloy, single-process Loki, Tempo and Mimir, plus Pyroscope. Grafana on [port 3000](http://localhost:3000/d/deploygate) has a provisioned dashboard with metrics, logs, traces, profiles and k6 load measurements. The command waits for the telemetry backends and for deploygate with both bundles loaded: its image has no shell, so compose probes it with `deploygate healthcheck`, which asks the server's own `/readyz`. The example includes `demo-cli`, which stands in for the platform tooling that supplies identity and release metadata. Ask for a deploy, from `examples/`:
 
 ```bash
-curl -si -X POST localhost:8080/api/v1/teams/payments/deployments \
-  -H 'Content-Type: application/json' -d @requests/owner.json
+mise run demo deploy owner --json
 ```
+
+Omit `--json` for a readable summary, or use `--explain` to include the winning rules and their source locations. `mise run demo scenarios` lists the built-in deployment and access scenarios. The CLI also accepts `--file` for your own JSON and `--url` to select another deploygate instance.
 
 The request describes the actor by their groups, `"groups": ["payments"]`, not by roles. deploygate evaluates the access policy first, which makes a member of the `payments` group a reader and a deployer, then the team's deploy policy with those roles. It answers `202 Accepted` with the decision, its reason, the payload, the trace and the roles it decided with:
 
@@ -86,17 +87,17 @@ Roles combine instead of competing: a payments engineer on the platform team is 
 The first rule belongs to the host and changes with a release; the second is platform policy that reloads like any other document. `POST /api/v1/access/grants` runs the access stage on its own:
 
 ```bash
-curl -s -X POST localhost:8080/api/v1/access/grants \
-  -H 'Content-Type: application/json' -d @requests/access-member.json
+mise run demo access member
 ```
 
-Excerpt from `grants`:
-
-```json
-[
-  {"role": "reader", "reason": "team_member"},
-  {"role": "deployer", "reason": "team_member", "ttl": "8h"}
-]
+```text
+HTTP 200 OK
+Team: payments
+Environment: production
+Access policy: access.main
+Roles:
+  reader: team_member
+  deployer: team_member, expires in 8h
 ```
 
 It answers `200` when at least one role is granted and `403` with the same body, and an empty `grants`, when none is. The README walks through the conflict and the failed assert with their full responses.
@@ -106,7 +107,7 @@ It answers `200` when at least one role is granted and `403` with the same body,
 The compose stack mounts `examples/policies/teams` and `examples/policies/access` into the container, the way ConfigMaps would be mounted in a cluster. Edit a team policy or the access policy, then reload:
 
 ```bash
-curl -s -X POST localhost:8080/api/v1/policies/reload
+mise run demo policies reload
 ```
 
 The next request sees the change. Break a file instead, and the reload answers `500` with the compiler's diagnostics while deploygate keeps serving the bundle it loaded last. The `deploygate_policy_reloads_total{result="failure"}` counter goes up for that kind, and that's the one to alert on. deploygate also reloads on `SIGHUP`, and whenever a poll finds a directory's content changed: every 5 seconds in the compose stack, every 30 by default.
@@ -131,7 +132,13 @@ mise run sigilc explain --kind policies/access_grant.sigil \
 
 ## Tests
 
-The example has table-driven unit tests, the policy tests run from `go test` with `policytest` for both kinds, a Ginkgo integration suite against the real stores and server in process, and a Ginkgo end-to-end suite against the compose stack. The two Ginkgo suites share one table of requests and expected decisions and grants. `mise run test` runs everything that needs no Docker; `mise run e2e` brings the stack up and runs the end-to-end suite, which also checks metrics in Mimir, spans in Tempo, logs in Loki and Grafana datasource health.
+The example has table-driven unit tests, the policy tests run from `go test` with `policytest` for both kinds, a Ginkgo integration suite against the real stores and server in process, and a Ginkgo end-to-end suite against the compose stack. The two Ginkgo suites share one table of requests and expected decisions and grants. `mise run test` runs everything that needs no Docker; `mise run e2e` brings the stack up and runs the end-to-end suite, which also checks metrics in Mimir, spans in Tempo, logs in Loki, profiles in Pyroscope and Grafana datasource health.
+
+## Load tests and profiles
+
+From `examples/`, run `mise run loadtest-smoke` to verify the eight request cases, or `DURATION=15m RATE=100 mise run loadtest` to generate sustained traffic. `mise run loadtest-stress` ramps to five times the configured rate. The scripts check policy outcomes as well as HTTP responses, apply latency budgets, send measurements to Mimir and write a JSON report under `examples/results/`.
+
+Select a **Load run** in Grafana to inspect achieved throughput, p95/p99, incorrect outcomes and dropped iterations. The **Sigil evaluation performance** section shows throughput and latency around the policy evaluator itself. CPU and runtime flame graphs show where the service spends resources; **Runtime profile** selects memory, goroutine, mutex, blocking or detected leak profiles. Follow a Loki log's trace link into Tempo, then open the surrounding service profile in Pyroscope. The load measurements include the full HTTP service and telemetry; their interpretation and configuration are covered in the [example README](https://github.com/SpechtLabs/sigil/tree/main/examples#generate-load-with-k6).
 
 ## Further reading
 

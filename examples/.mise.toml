@@ -3,8 +3,12 @@
 # Tool versions and the lint-build task are inherited from ../.mise.toml.
 
 [tasks.build]
-description = "Build deploygate and sigilc into examples/bin/"
+description = "Build deploygate, demo-cli and sigilc into examples/bin/"
 run = "go build -o bin/ ./cmd/..."
+
+[tasks.demo]
+description = "Run the demo deployment CLI"
+run = "go run ./cmd/demo-cli/"
 
 [tasks.sigilc]
 description = "Run the example sigilc host binary with go run"
@@ -55,7 +59,7 @@ run = "docker compose down -v"
 [tasks.e2e]
 description = "Start the compose stack and run the black-box e2e suite against it"
 depends = ["up"]
-env = { DEPLOYGATE_URL = "http://localhost:8080", TEMPO_URL = "http://localhost:3200", LOKI_URL = "http://localhost:3100", MIMIR_URL = "http://localhost:9009", GRAFANA_URL = "http://localhost:3000" }
+env = { DEPLOYGATE_URL = "http://localhost:8080", TEMPO_URL = "http://localhost:3200", LOKI_URL = "http://localhost:3100", MIMIR_URL = "http://localhost:9009", GRAFANA_URL = "http://localhost:3000", PYROSCOPE_URL = "http://localhost:4040" }
 # -count=1: the suite checks a running stack, not the code, so a cached pass
 # from an earlier run would say nothing about the stack that's up now.
 run = "go test -count=1 -tags e2e ./test/e2e/..."
@@ -65,9 +69,30 @@ description = "Validate the examples' GoReleaser config"
 run = "goreleaser check --config .goreleaser.yaml"
 
 [tasks.snapshot]
-description = "Build local GoReleaser snapshots of deploygate and sigilc into examples/dist/"
+description = "Build local GoReleaser snapshots of deploygate, demo-cli and sigilc into examples/dist/"
 run = "goreleaser build --snapshot --clean --config .goreleaser.yaml"
 
 [tasks.check]
 description = "Every gate CI runs on the examples module"
 depends = ["lint", "test", "policies", "release-check"]
+
+[tasks.loadtest]
+description = "Run k6 against deploygate, send measurements to Mimir and save a JSON report"
+depends = ["up"]
+run = "bash test/load/run.sh"
+
+[tasks.loadtest-smoke]
+description = "Check all eight k6 request cases once"
+env = { TEST_MODE = "smoke" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-stress]
+description = "Ramp k6 from RATE to five times RATE and back over three minutes"
+env = { TEST_MODE = "stress", VUS = "50", MAX_VUS = "200" }
+run = [{ task = "loadtest" }]
+
+# Benchmarks of the compiled policies through the store, without HTTP or
+# telemetry: the cost of one evaluation per request shape.
+[tasks.bench]
+description = "Run the examples' Go benchmarks: policy evaluation through the store, serial and parallel"
+run = "go test -run '^$' -bench . -benchmem ./..."

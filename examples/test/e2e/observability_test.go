@@ -15,8 +15,8 @@ import (
 	"github.com/spechtlabs/sigil/examples/test/internal/fixture"
 )
 
-// Alloy scrapes and batches asynchronously. Poll for stored data, not just
-// healthy backend processes.
+// Alloy scrapes and batches asynchronously, and the profiler uploads every
+// 15s. Poll for stored data, not just healthy backend processes.
 const (
 	backendTimeout = 60 * time.Second
 	backendPolling = time.Second
@@ -147,6 +147,24 @@ var _ = Describe("Observability backends", func() {
 		})
 	})
 
+	Context("Pyroscope", func() {
+		It("receives deploygate goroutine profiles", func() {
+			Eventually(func(g Gomega) {
+				resp, body := pyroscope.PostJSON(g, "/querier.v1.QuerierService/LabelValues", map[string]any{
+					"name":     "__profile_type__",
+					"matchers": []string{`{service_name="deploygate"}`},
+					"start":    time.Now().Add(-time.Minute).UnixMilli(),
+					"end":      time.Now().UnixMilli(),
+				})
+				g.Expect(resp).To(HaveHTTPStatus(http.StatusOK))
+				res := fixture.Decode[struct {
+					Names []string `json:"names"`
+				}](g, body)
+				g.Expect(res.Names).To(ContainElement("goroutines:goroutine:count:goroutine:count"))
+			}).WithTimeout(backendTimeout).WithPolling(backendPolling).Should(Succeed())
+		})
+	})
+
 	Context("Grafana", func() {
 		DescribeTable("connects to each provisioned datasource", func(uid string) {
 			Eventually(func(g Gomega) {
@@ -157,7 +175,7 @@ var _ = Describe("Observability backends", func() {
 				}](g, body)
 				g.Expect(res.Status).To(Equal("OK"))
 			}).WithTimeout(backendTimeout).WithPolling(backendPolling).Should(Succeed())
-		}, Entry("Mimir", "mimir"), Entry("Tempo", "tempo"), Entry("Loki", "loki"))
+		}, Entry("Mimir", "mimir"), Entry("Tempo", "tempo"), Entry("Loki", "loki"), Entry("Pyroscope", "pyroscope"))
 	})
 })
 
