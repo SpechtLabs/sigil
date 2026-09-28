@@ -24,6 +24,14 @@ authors:
 
 timeline:
   - date: 2026-09-28
+    title: Hardening tests and fuzz campaigns implemented
+    description: |
+      Fuzz targets cover the language pipeline, kind export/import, Go bindings, input decoding,
+      composition, decision resolution and tooling. CI runs smoke campaigns and a scheduled
+      workflow supports longer runs. Printing, export, float validation, trusted filesystem and test-file
+      parsing fixes accompany the tests. M7 stays open until its remaining deliverables and
+      day-long fuzzing criterion have evidence.
+  - date: 2026-09-28
     title: Tooling I implemented
     description: |
       `sigil fmt`, `check` with lints and `sigil.yaml`, `eval`, `test` with `*_test.yaml` files,
@@ -278,8 +286,9 @@ milestones:
         state: DONE
         requirement: MUST
         description: |
-          A `collect all` kind returns every candidate that fired, sorted by the kind's declaration
-          order, and an empty outcome on a runtime error. `outcome` holds every distinct decision.
+          A `collect all` kind returns every folded candidate without precedence, or every folded
+          candidate at the top rank with precedence. Errors return an empty outcome.
+          `outcome` holds the distinct decisions in that result.
           `Decision[T].MatchAll` reads the grants of one decision with typed payloads.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/evaluation.md
       - title: Assertions
@@ -451,25 +460,52 @@ milestones:
 
   - title: Hardening
     description: |
-      The round-trip property test guards the kind export, and fuzzing guards the parser against
-      inputs nobody thought to write a test for.
+      Generated contracts check kind export/import. Fuzzing covers the lexer, parser and AST,
+      formatter, checker, constants, kind model, Go bindings, evaluator, composition, decision
+      resolution, diagnostics and tooling. Both arbitrary source and valid generated inputs
+      exercise the language. Short campaigns run in CI; longer campaigns run on a schedule.
 
       **Done when** a day of fuzzing finds no panics, and `Import(Export(k)) == k` holds.
+      The tests and campaign runner are implemented. The day-long criterion has not yet been
+      demonstrated; no short local or CI run closes it.
     deliverables:
       - title: LoadKind
-        state: TODO
+        state: DOING
         requirement: MUST
+        description: |
+          The internal kind-file loader and synthesized Go binding already support the CLI and
+          have fuzz coverage. Public dynamic `policy.LoadKind` and its function-binding API
+          remain planned.
       - title: Round-trip property test
+        state: DONE
+        requirement: MUST
+        description: |
+          Generated kind models and reflected Go payloads export and reload with equal contracts,
+          with version acceptance normalized. Covers nested collections, optional structs,
+          defaults, reasons, precedence, exclusivity and both collection modes.
+      - title: Fuzzing across language and tooling layers
+        state: DONE
+        requirement: MUST
+        description: |
+          Native Go fuzz targets include arbitrary source, grammar fixtures, valid generated
+          contracts and semantic oracles for arithmetic, collection operators and resolution.
+          `mise run fuzz` discovers every target. CI runs smoke campaigns and preserves failing
+          inputs; the scheduled workflow retains its corpus and campaign logs.
+      - title: Day-long fuzz campaign
         state: TODO
         requirement: MUST
-      - title: Parser fuzzing
-        state: TODO
-        requirement: MUST
-        description: "`go test -fuzz` on the parser."
+        description: |
+          Record a continuous 24-hour campaign that exercises every target for at least an hour,
+          with the revision, toolchain, durations and results. Parallel target-hours do not
+          substitute for elapsed campaign time. Fix and retain every failure before rerunning
+          the campaign and claiming the milestone's exit criterion.
       - title: Static cost analysis
         state: TODO
         requirement: SHOULD
-        description: Worst-case cost from declared collection sizes, with a budget the host can enforce.
+        description: |
+          Deferred from this fuzzing and correctness pass. Collection-size declarations,
+          host-function costs and the budget API still need a design. Neither the compiler nor
+          `sigil check` currently computes or enforces a cost budget.
 
   - title: Tooling II
     description: |

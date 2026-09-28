@@ -34,5 +34,9 @@ func (l *Lexer) float(start token.Pos) token.Token {
 		return l.fail(start, "a duration can't have a fractional component",
 			"write the fraction as a smaller unit, like `1h30m` instead of `1.5h`")
 	}
-	return l.emit(token.Float, start)
+	t := l.emit(token.Float, start)
+	if _, err := ParseFloat(t.Text); err != nil {
+		return l.fail(start, err.Msg, err.Help)
+	}
+	return t
 }

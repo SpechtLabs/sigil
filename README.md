@@ -2,16 +2,16 @@
 
 A small, statically typed policy language for Go hosts.
 
-![Status: tooling works](https://img.shields.io/badge/status-tooling%20works-yellow)
+![Status: hardening](https://img.shields.io/badge/status-hardening-yellow)
 ![Language: Go](https://img.shields.io/badge/host-Go-00ADD8?logo=go&logoColor=white)
 [![Go Reference](https://pkg.go.dev/badge/github.com/spechtlabs/sigil.svg)](https://pkg.go.dev/github.com/spechtlabs/sigil)
 
 📖 **Language documentation:** [the docs site](./docs) &nbsp;·&nbsp; 🧭 **Where it stands:** [roadmap](./roadmap.yml) and [open questions](./docs/project/open-questions.md)
 
-Sigil lets engineers write rules that evaluate host-provided input to a typed decision such as `approve`, `deny` or `review`. Every decision carries a reason and a payload, every policy is type-checked against a contract the host defines in Go, and every evaluation is guaranteed to halt. It ships as an importable Go library, in the spirit of [filt-rs](https://github.com/SierraSoftworks/filters), and it's meant to replace the YAML rule engines with label-selector matchers that teams keep rebuilding.
+Sigil lets engineers write rules that evaluate host-provided input to a typed decision such as `approve`, `deny` or `review`. Every decision carries a reason and a payload, and every policy is type-checked against a contract the host defines in Go. The language terminates on finite inputs when its host functions terminate. It ships as an importable Go library, in the spirit of [filt-rs](https://github.com/SierraSoftworks/filters), and it's meant to replace the YAML rule engines with label-selector matchers that teams keep rebuilding.
 
 > [!IMPORTANT]
-> Sigil is being designed documentation-first. **The language is implemented through composition: a bundle of policies and modules loads from an `fs.FS`, imports and invocations resolve, required guardrails are enforced, and a policy evaluates to a decision with its trace through `pkg/policy`. The `sigil` CLI formats, checks, lints, evaluates, explains and tests policies from the exported kind file, and a host builds its own `sigil` binary to evaluate with its real host functions; the editor tooling is not there yet.** The [documentation](./docs) is the specification, and it'll change as the [open questions](./docs/project/open-questions.md) get settled. Feedback on the language design is the most useful contribution right now; please [open an issue](https://github.com/SpechtLabs/sigil/issues).
+> The language, composition, Go API and CLI are implemented through M6. M7 Hardening adds fuzz targets across the language and tooling, generated round-trip properties, and CI fuzz campaigns. The day-long fuzzing exit criterion has not yet been demonstrated. Public dynamic `policy.LoadKind`, static cost budgets and editor tooling remain planned. The [documentation](./docs) describes the implementation and labels planned features; the [testing guide](./docs/guides/testing.md) explains how to run and extend the checks.
 
 ## What it looks like
 
@@ -173,7 +173,7 @@ if r, ok := Review.Match(res); ok {
 ## Design goals
 
 - **Readable on first contact.** Terse is fine; Rego-style logic programming isn't.
-- **Finite and halting by design.** No loops, no recursion, no user-defined functions, so evaluation cost depends only on list sizes and can be bounded before a policy ships.
+- **Finite and halting by design.** No loops, no recursion, no user-defined functions. Quantifiers range over finite collections. Host functions must terminate; static cost budgets are still planned.
 - **Typed against the host's contract.** Unknown fields, type mismatches and wrong payload keys fail at compile time. A typo can't silently switch a deny rule off.
 - **Self-describing decisions.** A mandatory, literal reason on every decision, plus a typed payload the host acts on.
 - **Composable from day one.** Typed `param`s, `use` imports and policy invocation replace text templating for per-team variants, and `sigil explain` flattens any composition back into the rules it adds up to.
@@ -203,7 +203,7 @@ The host gets back the winning decision, its reason and payload, the policy that
 | --- | --- | --- |
 | [filt-rs](https://github.com/SierraSoftworks/filters) | Friendly expression syntax, `in`/`like`/`contains`, durations, parse once / eval many, errors with a fix hint | Unknown properties resolving to `null`, which makes deny rules fail open |
 | [Cedar](https://www.cedarpolicy.com/) | Schema-checked policies, forbid overrides permit, templates with slots | A principal/action/resource model too narrow for arbitrary host inputs |
-| [CEL](https://github.com/google/cel-go) | Non-Turing-complete by construction, static cost estimation, host-declared variables and functions | Being an expression language only, with no rules, decisions or composition |
+| [CEL](https://github.com/google/cel-go) | Non-Turing-complete by construction, planned static cost estimation, host-declared variables and functions | Being an expression language only, with no rules, decisions or composition |
 | [Rego (OPA)](https://www.openpolicyagent.org/docs/latest/policy-language/) | The lesson about learning curves | Datalog semantics, implicit iteration, partial rule sets |
 | HCL / YAML DSLs | The declarative feel | Nesting that fights templating, anchors as reuse, stringly typed matchers |
 
@@ -260,7 +260,7 @@ mise run docs-dev
 
 ## Roadmap
 
-Documentation came first. The hand-written parser (recursive descent for statements, Pratt parsing for expressions) is in, under `internal/`, and so are `NewKind`, `Compile` and `Eval` in `pkg/policy`, the type checker and the evaluator, `Load` with `Require` and `From`, and the CLI a policy repository runs in CI. Hardening is next.
+The language, Go API, composition and CLI are implemented through M6. Hardening is in progress, with fuzz targets and generated properties covering the lexer, parser, AST, formatter, checker, kind models, Go bindings, constants, evaluator, bundles, lints, diagnostics, configuration, test files and public policy API. Static cost analysis remains separate work.
 
 | Milestone | Scope | State |
 | --- | --- | --- |
@@ -270,12 +270,14 @@ Documentation came first. The hand-written parser (recursive descent for stateme
 | M4 Policies | `when`, decision constructors, precedence, default, trace | Done |
 | M5 Composition | `param`, `let`, modules and imports, policy invocation, `Require`, bundle loader, cycle detection, `sigil explain` | Done |
 | M6 Tooling I | `sigil fmt`, kind export, `sigil check` with lints, `sigil eval`, `sigil test`, `policytest` | Done |
-| M7 Hardening | `LoadKind`, round-trip property tests, parser fuzzing, cost analysis | Planned |
+| M7 Hardening | Round-trip properties and fuzzing across layers; public `LoadKind`, a day-long campaign and cost analysis remain | In progress |
 | M8 Tooling II | `sigil lsp`, `sigil gen go`, `sigil breaking` | Planned |
 
 The roadmap lives in [`roadmap.yml`](./roadmap.yml) in the [roadmap-md](https://roadmap.sierrasoftworks.com/) format, with every deliverable and what "done" means for each milestone; open it in the [roadmap viewer](https://roadmap.sierrasoftworks.com/viewer/github.com#SpechtLabs/sigil) for the rendered version.
 
 ## Contributing
+
+Run `mise run test` for the race-enabled test suite, `mise run fuzz` for ten seconds of mutation fuzzing per target, and `mise run check` for the repository checks. See [Testing and fuzzing](./docs/guides/testing.md) for longer campaigns, targeted runs and regression inputs.
 
 The design is open. The most valuable contributions right now are challenges to it: an example that reads badly, a semantic corner the spec doesn't cover, or an answer to one of the [open questions](./docs/project/open-questions.md). Open an [issue](https://github.com/SpechtLabs/sigil/issues) or a pull request against `docs/`. Contributions are accepted under the project's license, as section 5 of the Apache License describes.
 

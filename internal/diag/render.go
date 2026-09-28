@@ -157,9 +157,11 @@ func underline(line string, e *Error) (lead, carets string) {
 		return "", ""
 	}
 	var b strings.Builder
+	end := utf8.RuneCountInString(line) + 1
+	start := max(1, min(e.Pos.Column, end))
 	col := 1
 	for _, r := range line {
-		if col >= e.Pos.Column {
+		if col >= start {
 			break
 		}
 		if r == '\t' {
@@ -170,14 +172,10 @@ func underline(line string, e *Error) (lead, carets string) {
 		col++
 	}
 
-	width := utf8.RuneCountInString(line) - e.Pos.Column + 1
-	if e.End.Line == e.Pos.Line && e.End.Column > e.Pos.Column {
-		width = e.End.Column - e.Pos.Column
+	if e.End.Line == e.Pos.Line && e.End.Column > start {
+		end = min(end, e.End.Column)
 	}
-	if width < 1 {
-		width = 1
-	}
-	return b.String(), strings.Repeat("^", width)
+	return b.String(), strings.Repeat("^", max(1, end-start))
 }
 
 func identity(s string) string { return s }

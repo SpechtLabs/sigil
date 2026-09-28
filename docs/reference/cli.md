@@ -6,7 +6,7 @@ permalink: /reference/cli/
 ---
 
 ::: warning Partly implemented
-`sigil fmt`, `check`, `eval`, `explain`, `test` and `export` exist, and so does the `policytest` package. `sigil breaking`, `sigil gen go` and `sigil lsp` are planned, and so is `explain --input`. Flags and output formats may still change before the first release.
+`sigil fmt`, `check`, `eval`, `explain`, `test` and `export` exist, and so does the `policytest` package. `sigil breaking`, `sigil gen go` and `sigil lsp` are planned, and so is `explain --input`. Flags and output formats may still change before a stable 1.0 release.
 :::
 
 All tooling reads the exported kind file (`deploy_approval.sigil` in the running example), so it works in a team's policy repository without the host's Go code. One `sigil` binary covers the command line.
