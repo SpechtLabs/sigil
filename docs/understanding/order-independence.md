@@ -29,24 +29,24 @@ Here's what that looks like with the `deploy.production` policy:
 
 ```sigil
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 
 when cleared {
   when service.tier == "critical"
     and "release_manager" in actor.roles {
-    approve("release_manager")
+    approve(release_manager)
   }
 }
 ```
 
-A release manager shipping a service that isn't managed by Argo CD produces two candidates, `deny("not_eligible")` and `approve("release_manager")`. Deny wins. Swap the two blocks and deny still wins, because the file order was never consulted.
+A release manager shipping a service that isn't managed by Argo CD produces two candidates, `deny(not_eligible)` and `approve(release_manager)`. Deny wins. Swap the two blocks and deny still wins, because the file order was never consulted.
 
 ## Nesting is conjunction, not sequence
 
 A nested `when` fires only if every enclosing condition holds. The inner block above is shorthand for `cleared and service.tier == "critical" and ...`. Nesting exists to avoid repeating shared conditions, not to express "check this first, then that". Nothing short-circuits across blocks, and a decision reached in one block doesn't stop evaluation of the others.
 
-That also means decisions don't `return`. `deny("soak_too_short")` builds a value, the way `Err("...")` does in Rust; the host acts on the winner after evaluation finishes.
+That also means decisions don't `return`. `deny(soak_too_short)` builds a value, the way `Err("...")` does in Rust; the host acts on the winner after evaluation finishes.
 
 ## Why there's no `else`
 
@@ -56,11 +56,11 @@ Sigil asks you to write the negation out:
 
 ```sigil
 when eligible {
-  review("eligible", approvers: approvers)
+  review(eligible, approvers: approvers)
 }
 
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 ```
 
@@ -72,15 +72,13 @@ Because every block runs, the evaluator can report every candidate, not just the
 
 A first-match engine can't give you that. It stopped looking after the first match.
 
-## The one place order still leaks
+## Ties within one decision
 
-Precedence settles conflicts between different decisions. It doesn't settle ties within one decision. If two `approve` rules fire with different bake times, something has to pick.
+Precedence settles conflicts between different decisions. It doesn't settle ties within one decision: if two `approve` rules fire with different bake times, something has to happen, and picking the earlier one in the file would be the order dependence this page exists to rule out.
 
-For the MVP, the earliest source position wins. A rule reached through an invocation takes its call site's position first, then its own position in the invoked file. It's a deterministic rule, so the same input still always produces the same result, and the trace shows every tied candidate so nothing hides. But it is an order dependence, and it's the only one left.
+Sigil answers with the kind, not with a position. Reasons are declared on each decision and can be ranked there, so `approve(release_manager)` and `approve(payments_sre)` compete the same way `deny` and `approve` do, by a line in the kind. Two candidates with the same decision and reason and the same payload are one outcome. Two with the same reason and different payloads are a contradiction, and the kind says what that means: a `collect one` kind refuses with a conflict error, a `collect all` kind hands both to the host. The [resolution rule](/reference/evaluation/#resolution) is fold, check `exclusive`, rank, count, and no step reads a position.
 
-It bites in the canonical example. Take a critical service and an actor who is a release manager and also in the `payments-sre` team. `deploy.production`'s `approve("release_manager")` (bake 1h, the kind's default) and the team's `approve("payments_sre", bake: 15m)` both fire. The team file invokes `production(...)` above its own rule, so the release manager's approval counts as earlier and wins: the team asked for a 15-minute bake and the deploy gets an hour.
-
-A [collecting kind](/reference/evaluation/#collecting-kinds) doesn't have this problem, because it returns every candidate and picks none. For a kind with `precedence`, the cleaner answer is a merge function declared in the kind: take the minimum `bake`, or the union of `approvers`. That would remove the last trace of order from the language. It's listed under "Ties within one decision" in the [open questions](/project/open-questions/), and the normative rules live in [Evaluation semantics](/reference/evaluation/).
+Take the canonical example, a critical service deployed by someone who is a release manager and also on `payments-sre`. `deploy.production`'s `approve(release_manager)` (bake 1h, the kind's default) and the team's `approve(payments_sre, bake: 15m)` both fire. With `precedence approve: release_manager > payments_sre` in the kind, the release manager's approval wins, wherever the two rules sit. Without that line, the deploy kind has chosen `collect all`, and the host takes the shorter bake in two lines of Go over `Approve.MatchAll`. Either way, moving the team rule above the call changes nothing.
 
 ## What you give up
 

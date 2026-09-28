@@ -38,13 +38,23 @@ input environment: string
 
 fn split(string, string) -> list<string>
 
-decision deny(reason: string)
-decision review(reason: string, approvers: list<string>)
-decision approve(reason: string, bake: duration = 1h)
+decision deny {
+  not_eligible
+  soak_too_short
+  no_rule_matched
+}
+decision review(approvers: list<string>) {
+  service_owner
+}
+decision approve(bake: duration = 1h) {
+  release_manager
+  payments_sre
+}
 
 collect one
 precedence deny > review > approve
-default deny("no_rule_matched")
+precedence approve: release_manager > payments_sre
+default deny(no_rule_matched)
 ```
 
 Reading top to bottom:
@@ -96,11 +106,11 @@ use deploy.common.{eligible}
 param min_soak: duration = 24h
 
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 ```
 
@@ -108,7 +118,7 @@ when release.soak < min_soak and not release.hotfix {
 
 `param min_soak` is a knob a team can turn, with a default of a day.
 
-A `when` block fires when its condition holds. Every `when` is evaluated, independently, and the order they appear in the file doesn't matter. Both rules here deny. `deny("not_eligible")` is a decision constructor. It doesn't return or stop anything; it adds a candidate to the pile. The argument is the reason, always a string literal, so you can grep for it and count it in metrics.
+A `when` block fires when its condition holds. Every `when` is evaluated, independently, and the order they appear in the file doesn't matter. Both rules here deny. `deny(not_eligible)` is a decision constructor. It doesn't return or stop anything; it adds a candidate to the pile. The argument is the reason, always a string literal, so you can grep for it and count it in metrics.
 
 There's no `else`. If you want "the other case", you write `when not x`, which says the same thing without implying an order.
 
@@ -127,12 +137,12 @@ param tiers: list<string> = ["standard", "internal"]
 when cleared {
   when service.tier == "critical"
     and "release_manager" in actor.roles {
-    approve("release_manager")
+    approve(release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review("service_owner", approvers: approvers)
+    review(service_owner, approvers: approvers)
   }
 }
 ```
@@ -141,7 +151,7 @@ when cleared {
 
 The outer `when cleared` is a container: its nested rules only fire if `cleared` holds too, because nesting means "and". Inside it, a release manager shipping a critical service gets an approval with the kind's default bake, and a service owner shipping a standard or internal service gets sent to review.
 
-`review("service_owner", approvers: approvers)` passes the reason and then a named payload field from the kind. `approve("release_manager")` passes no payload at all, so `bake` takes its default.
+`review(service_owner, approvers: approvers)` passes the reason and then a named payload field from the kind. `approve(release_manager)` passes no payload at all, so `bake` takes its default.
 
 ## The team policy
 
@@ -165,7 +175,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve("payments_sre", bake: 15m)
+  approve(payments_sre, bake: 15m)
 }
 ```
 
@@ -348,7 +358,7 @@ candidates
   approve  payments_sre      payments/production.sigil:18:3
 ```
 
-Precedence can't separate two candidates of the same decision, so for now the earliest source position wins. An invoked rule's position is its call site first, and `production(...)` is called on line 14, above the team rule on line 18. The release manager's approval wins with a bake of one hour (the kind's default), even though the team's own rule asked for 15 minutes. Here the tie happens to land on the more cautious payload, but that's luck: the rule looks at position, not at what's safer. Whether ties should instead merge, for example by taking the longest `bake`, is an [open question](/project/open-questions/).
+Precedence over decisions can't separate two `approve` candidates, so the kind ranks their reasons: `precedence approve: release_manager > payments_sre`. The release manager's approval wins with a bake of one hour (the kind's default), even though the team's own rule asked for 15 minutes, and it would win the same way if the team rule were written above the call. If the platform team would rather hand both approvals to the host, the kind says `collect all` instead and the host picks in Go. See [Resolution](/reference/evaluation/#resolution).
 :::
 
 ## What to read next

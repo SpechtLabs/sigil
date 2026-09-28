@@ -33,11 +33,11 @@ Two rules from the platform's guardrails give a feel for the syntax:
 
 ```sigil
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 ```
 

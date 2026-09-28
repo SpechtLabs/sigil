@@ -83,12 +83,18 @@ type Resource {
 
 input resource: Resource
 
-decision review(reason: string, approvers: list<string>)
-decision deny(reason: string)
+decision review(approvers: list<string>) {
+  service_owner
+}
+decision deny {
+  not_eligible
+  soak_too_short
+  no_rule_matched
+}
 
 collect one
 precedence deny > review
-default deny("no_rule_matched")
+default deny(no_rule_matched)
 
 ---
 
@@ -96,7 +102,7 @@ policy jit.sandbox: JIT_Approval@1
 
 when resource.kind == "kube_cluster"      // field access after `.`
   and resource.policy != "" {
-  review("cluster_access", approvers: ["sre-leads"])
+  review(cluster_access, approvers: ["sre-leads"])
 }
 ```
 
@@ -123,7 +129,7 @@ RuleItem     ::= WhenStmt | LetStmt | AssertStmt | Call
 AssertStmt   ::= "assert" "(" String "," Expr ","? ")"
 
 Call         ::= Ident "(" CallArgs? ")"
-CallArgs     ::= Expr ( "," NamedArg )* ","?       /* decision constructor */
+CallArgs     ::= Ident ( "," NamedArg )* ","?      /* decision constructor: the reason first */
                | NamedArgs                         /* policy invocation */
 
 NamedArgs    ::= NamedArg ( "," NamedArg )* ","?
@@ -131,7 +137,7 @@ NamedArg     ::= Name ":" Expr
 Name         ::= Ident | Keyword          /* field and payload names */
 ```
 
-A `Call` is either a decision constructor or a policy invocation, and the parser doesn't need to know which. The checker decides by the name: a decision of the kind makes it a constructor, whose first argument must be a string literal reason; an imported policy makes it an invocation, whose arguments must all be named. Anything else is a compile error.
+A `Call` is either a decision constructor or a policy invocation, and the parser doesn't need to know which. The checker decides by the name: a decision of the kind makes it a constructor, whose first argument is a bare name, one of the decision's declared reasons; an imported policy makes it an invocation, whose arguments must all be named. Anything else is a compile error. (The parser accepted a string literal reason before reasons were declared in the kind; that form is a parse error with a hint now.)
 
 A `LetStmt` in a `RuleItem` is a scoped let and can't be `pub`; the parser reports a `pub` there and keeps the let, so its uses still resolve. That scoped let names are unique per document, and that a `pub let` in a policy can't read a param, are checked after parsing. See [Scoped lets](/reference/policy-files/#scoped-lets).
 
@@ -157,20 +163,22 @@ KindDoc      ::= KindHeader KindStmt*
 KindHeader   ::= "kind" Ident "version" Int ( "," "accepts" ":" Int )?   /* "accepts" is an identifier */
 
 KindStmt     ::= TypeDecl | InputDecl | FnDecl | DecisionDecl
-               | PrecedenceDecl | CollectDecl | DefaultDecl
+               | PrecedenceDecl | ExclusiveDecl | CollectDecl | DefaultDecl
 
 TypeDecl     ::= "type" Ident ( "{" FieldDecl* "}" | "ordered" )   /* "ordered" is proposed */
 FieldDecl    ::= Name ":" Type
 InputDecl    ::= "input" Ident ":" Type
 FnDecl       ::= "fn" Ident "(" ( Type ( "," Type )* ","? )? ")" "->" Type
-DecisionDecl ::= "decision" Ident "(" DecisionField ( "," DecisionField )* ","? ")"
+DecisionDecl ::= "decision" Ident ( "(" DecisionField ( "," DecisionField )* ","? ")" )? "{" Ident+ "}"
 DecisionField ::= Name ":" Type ( "=" Expr )?
-PrecedenceDecl ::= "precedence" Ident ( ">" Ident )*
+PrecedenceDecl ::= "precedence" ( Ident ":" )? Ident ( ">" Ident )*   /* "d:" scopes it to d's reasons */
+ExclusiveDecl ::= "exclusive" Outcome ( "," Outcome )+
+Outcome      ::= Ident ( "." Ident )?                 /* a decision, or one of its reasons */
 CollectDecl  ::= "collect" ( "one" | "all" )
 DefaultDecl  ::= "default" Constructor
 ```
 
-That `DecisionDecl` starts with `reason: string`, that a kind declares `collect` once, that `collect one` comes with a `precedence` and `collect all` without one, that `precedence` names every decision once, and that defaults are constants are semantic rules, checked after parsing. See [Kind files](/reference/kind-files/).
+That a `DecisionDecl` declares at least one reason, that a kind declares `collect` once, that `collect one` comes with a `precedence` over decisions, that `precedence` names every decision (or every reason of its decision) once, that an `ExclusiveDecl` names declared outcomes, and that defaults are constants are semantic rules, checked after parsing. See [Kind files](/reference/kind-files/).
 
 ## Types
 
@@ -211,7 +219,7 @@ MapLit       ::= "{" ( MapEntry ( "," MapEntry )* ","? )? "}"
 MapEntry     ::= Coalesce ":" Expr
 ```
 
-Syntax alone accepts a few things the checker rejects: `outcome` outside an `assert` condition, a call expression on anything but a host function name, a call statement on anything but a decision or an imported policy, a non-literal pattern after `like` or `matches`, a non-literal reason in a constructor, and `.name` on something that isn't a struct or a whole-module import. Leaving those to the checker gives better error messages than a parse failure would.
+Syntax alone accepts a few things the checker rejects: `outcome` outside an `assert` condition, a call expression on anything but a host function name, a call statement on anything but a decision or an imported policy, a non-literal pattern after `like` or `matches`, an undeclared reason in a constructor, and `.name` on something that isn't a struct or a whole-module import. Leaving those to the checker gives better error messages than a parse failure would.
 
 ## Operator precedence
 
@@ -281,7 +289,7 @@ It stops at a token that can't continue an expression: `)`, `]`, `}`, `,`, `{` i
 Newlines never end anything. Every top-level statement starts with a keyword (`policy`, `use`, `param`, `let`, `pub`, `when`, `assert` in policy files; `module`, `use`, `let`, `pub` in module files; `kind`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default` in kind files), or, in a policy file, with an identifier followed by `(`, which is a policy invocation. None of those keywords can continue an expression, and an expression never continues with a bare identifier, so when the parser is inside a `let` expression and meets `let`, `when` or `guardrails(`, the expression is over. A header keyword or a `---` ends the whole document the same way. No other statement starts with an identifier, so the parse stays unambiguous. This is what makes the files safe to indent or join however a text templater likes.
 
 ```sigil
-let a = environment == "production" let b = "deployer" in actor.roles guardrails(min_soak: 4h) when a and b { review("service_owner", approvers: approvers) }
+let a = environment == "production" let b = "deployer" in actor.roles guardrails(min_soak: 4h) when a and b { review(service_owner, approvers: approvers) }
 ```
 
 That line parses the same as the formatted version, although `sigil fmt` would never produce it.
@@ -293,7 +301,7 @@ Two other boundaries work the same way:
 
 ### Calls
 
-A `Call`'s arguments are either one positional reason followed by named payload fields, or named arguments only. The parser tells the two apart at the first argument: a `Name` followed by `:` starts a named argument, anything else starts the positional reason. That's the one place the grammar needs two tokens of lookahead. An expression can't start with an identifier followed by `:`, so the choice is never ambiguous.
+A `Call`'s arguments are either one positional reason followed by named payload fields, or named arguments only. The parser tells the two apart at the first argument: a `Name` followed by `:` starts a named argument, a bare `Ident` followed by `,` or `)` is the reason. That's the one place the grammar needs two tokens of lookahead, and it's never ambiguous.
 
 ### Keywords as field names
 

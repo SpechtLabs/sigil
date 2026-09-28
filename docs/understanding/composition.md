@@ -46,11 +46,11 @@ use deploy.common.{eligible}
 param min_soak: duration = 24h
 
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 ```
 
@@ -65,12 +65,12 @@ param tiers: list<string> = ["standard", "internal"]
 when cleared {
   when service.tier == "critical"
     and "release_manager" in actor.roles {
-    approve("release_manager")
+    approve(release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review("service_owner", approvers: approvers)
+    review(service_owner, approvers: approvers)
   }
 }
 ```
@@ -97,7 +97,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve("payments_sre", bake: 15m)
+  approve(payments_sre, bake: 15m)
 }
 ```
 
@@ -171,4 +171,4 @@ Invocation makes composition flexible, so tooling has to make it transparent. [`
 
 Union-only composition means a team can't carve out an exception to a required deny. If payments genuinely needs a deny lifted, the change belongs in the guardrails, reviewed by whoever owns them. Some teams will find that frustrating. The alternative, letting composed policies override base rules, would make every guardrail conditional on every team's edits, and the whole point of a guardrail is that its denies hold.
 
-Tie-breaking is the other rough edge. When two rules approve with different bake times, the MVP picks the earliest source position, where an invoked rule's position is its call site first. In `payments.production`, `production(...)` is invoked above the team's own rule, so `deploy.production`'s `approve("release_manager")` with its default 1h bake wins over the team's 15m. That's predictable, and a team can see it by reading its own file top to bottom, but it's not obviously what a team expects; merge functions in the kind would fix it and are on the [open questions](/project/open-questions/) page.
+Ties are the other place composition shows. When two rules approve with different reasons, the kind's ranking of `approve`'s reasons decides, and when they approve with the same reason and different payloads, a `collect one` kind reports a conflict. Nothing in `payments.production` can make its own approval beat `deploy.production`'s by being written above or below the call; see [Resolution](/reference/evaluation/#resolution).

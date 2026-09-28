@@ -5,7 +5,7 @@ createTime: 2026/09/24 22:30:00
 permalink: /guides/patterns/
 ---
 
-Short recipes for things policy authors do all the time. Most use the `DeployApproval` kind from the [tour](/getting-started/tour/). When a recipe needs something that kind doesn't declare, it shows the kind lines to add, because in Sigil nothing exists in a policy unless the kind says so.
+Short recipes for things policy authors do all the time. Most use the `DeployApproval` kind from the [tour](/getting-started/tour/). When a recipe needs something that kind doesn't declare, it shows the kind lines to add, because in Sigil nothing exists in a policy unless the kind says so. That includes reasons: every reason a recipe constructs is assumed to be declared on its decision in the kind.
 
 ## Match a set of labels
 
@@ -32,7 +32,7 @@ Keys with dots or slashes always go through a map literal or `[...]`. `service.l
 ```sigil
 // Approves services with no team label at all.
 when service.labels["team"] != "payments" {
-  approve("not_payments")
+  approve(not_payments)
 }
 ```
 
@@ -82,7 +82,7 @@ You can't compare an optional directly. Unwrap it with `??` and a fallback:
 
 ```sigil
 when release.hotfix and (release.ticket ?? "") == "" {
-  deny("hotfix_without_ticket")
+  deny(hotfix_without_ticket)
 }
 ```
 
@@ -147,7 +147,7 @@ Subtracting two timestamps gives a duration, which compares with duration litera
 
 ```sigil
 when now - release.built_at > 30d {
-  deny("stale_build")
+  deny(stale_build)
 }
 ```
 
@@ -168,7 +168,7 @@ The eligibility check in `deploy.guardrails` shows the shape:
 
 ```sigil
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 ```
 
@@ -189,7 +189,7 @@ pub let cleared =
 use deploy.common.{cleared}
 
 when cleared and "payments-sre" in actor.teams {
-  approve("payments_sre", bake: 15m)
+  approve(payments_sre, bake: 15m)
 }
 ```
 
@@ -221,7 +221,7 @@ String comparison is case-sensitive: `"Production" == "production"` is false. Ku
 
 ```sigil
 when service.tier matches `(?i)^critical$` {
-  review("critical_any_case", approvers: approvers)
+  review(critical_any_case, approvers: approvers)
 }
 ```
 

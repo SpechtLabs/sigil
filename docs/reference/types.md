@@ -70,9 +70,9 @@ Indexing a map with a missing key yields the zero value of `V`. Use `m has "k"` 
 
 ## `decision`
 
-Every decision the kind declares is also a value of type `decision`, written as its bare name: `approve`, `customer_data_writer`. The constructor `approve("release_manager")` builds a candidate; the bare `approve` only names the decision. The type is closed: its values are exactly the kind's decisions, so a misspelled decision name is a compile error like any other unknown name.
+Every decision the kind declares is also a value of type `decision`, written as its bare name, `approve`, or with one of its declared reasons, `approve.release_manager`. The constructor `approve(release_manager)` builds a candidate; the value only names the outcome. The type is closed: its values are exactly the kind's decisions and their reasons, so a misspelled name is a compile error like any other unknown name.
 
-`decision` values support `==`, `!=` and the list operators, and appear in list literals such as `[read, write, admin]`. The one place they come from evaluation is [`outcome`](/reference/expressions/#decision-values-and-outcome), a `list<decision>` that only `assert` conditions can read.
+`decision` values support `==`, `!=` and the list operators, and appear in list literals such as `[read, write, admin]`. Over `outcome` the list operators match: a bare decision matches any of its reasons. The one place decision values come from evaluation is [`outcome`](/reference/expressions/#decision-values-and-outcome), a `list<decision>` that only `assert` conditions can read.
 
 A param can't have type `decision` or `list<decision>`, and a `decision` has no zero value, so it can't be a map value. Like `outcome`, a bare decision name is only a value inside an `assert` condition.
 
@@ -135,7 +135,7 @@ fn semver(string) -> Version
 ```sigil
 // policy
 when semver(release.version) < semver("1.4.0") {
-  deny("client_too_old")
+  deny(client_too_old)
 }
 ```
 

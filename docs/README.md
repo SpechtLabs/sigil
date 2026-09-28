@@ -93,13 +93,23 @@ input service: Service
 input actor: Actor
 input environment: string
 
-decision deny(reason: string)
-decision review(reason: string, approvers: list<string>)
-decision approve(reason: string, bake: duration = 1h)
+decision deny {
+  not_eligible
+  soak_too_short
+  no_rule_matched
+}
+decision review(approvers: list<string>) {
+  service_owner
+}
+decision approve(bake: duration = 1h) {
+  release_manager
+  payments_sre
+}
 
 collect one
 precedence deny > review > approve
-default deny("no_rule_matched")
+precedence approve: release_manager > payments_sre
+default deny(no_rule_matched)
 ```
 
 A platform team writes rules against it. Each `when` block that holds produces a candidate decision, and the highest-precedence candidate wins. Denies go in a guardrails policy:
@@ -110,7 +120,7 @@ policy deploy.guardrails: DeployApproval@1
 param min_soak: duration = 24h
 
 when release.soak < min_soak and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 ```
 
@@ -122,7 +132,7 @@ policy deploy.production: DeployApproval@1
 param approvers: list<string>
 
 when actor.teams any in service.owners {
-  review("service_owner", approvers: approvers)
+  review(service_owner, approvers: approvers)
 }
 ```
 
@@ -145,7 +155,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when "payments-sre" in actor.teams {
-  approve("payments_sre", bake: 15m)
+  approve(payments_sre, bake: 15m)
 }
 ```
 
@@ -184,11 +194,11 @@ use deploy.common.{eligible}
 param min_soak: duration = 24h
 
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 ```
 
@@ -205,12 +215,12 @@ param tiers: list<string> = ["standard", "internal"]
 when cleared {
   when service.tier == "critical"
     and "release_manager" in actor.roles {
-    approve("release_manager")
+    approve(release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review("service_owner", approvers: approvers)
+    review(service_owner, approvers: approvers)
   }
 }
 ```
@@ -235,7 +245,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve("payments_sre", bake: 15m)
+  approve(payments_sre, bake: 15m)
 }
 ```
 

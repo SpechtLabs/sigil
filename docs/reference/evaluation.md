@@ -15,8 +15,9 @@ Evaluation takes a compiled policy and one input value and produces an outcome: 
 flowchart LR
   A[Input] --> I[Check input<br/>asserts]
   I --> B[Evaluate every<br/>when block]
-  B --> C{Any candidates?}
-  C -- yes --> D[Pick highest<br/>precedence]
+  B --> X[Fold equal candidates,<br/>check exclusive sets]
+  X --> C{Any candidates?}
+  C -- yes --> D[Rank, then<br/>count the top]
   C -- no --> E[Kind default]
   D --> O[Check outcome<br/>asserts]
   E --> O
@@ -28,35 +29,40 @@ flowchart LR
 1. Every top-level `when` block is evaluated, independently and in no particular order. That includes the blocks brought in by [policy invocations](#invocation), each with its call's enclosing conditions added.
 2. A nested `when` fires only if its own condition and every enclosing condition hold. Nesting is conjunction: `when a { when b { ... } }` behaves like `when a and b { ... }`.
 3. Each decision constructor reached in a firing block becomes a candidate carrying its decision name, reason, payload, source position, policy and call chain.
-4. The winner is the candidate whose decision ranks highest in the kind's `precedence`.
-5. If several candidates share the winning decision, the one with the earliest source position wins. For a rule reached through an invocation, the position is its call site first, then its position in the invoked file.
-6. If there are no candidates at all, the result is the kind's `default`.
+4. The candidates are resolved into the outcome, as [Resolution](#resolution) describes: equal candidates fold into one, `exclusive` sets are checked, the candidates are ranked, and the top rank is what the host gets.
+5. If there are no candidates at all, the result is the kind's `default`.
 
-Rules 4 to 6 apply to kinds with `precedence`. A collecting kind replaces them; see [Collecting kinds](#collecting-kinds). Input asserts run before rule 1 and outcome asserts after the outcome is known; see [Assertions](#assertions).
+Input asserts run before rule 1 and outcome asserts after rule 4; see [Assertions](#assertions).
 
 There's no `else`, no early return and no fall-through. `when not x` expresses the negative case without implying an order between blocks.
 
-Rule order in a file doesn't change which decision wins. It can only matter in rule 5, when two candidates of the same decision carry different payloads.
+Rule order in a file never changes the outcome. Nothing in resolution reads a position; positions only appear in the trace and in error messages.
 
-### Ordering for ties
+## Resolution
 
-Rule 5 needs a total order over source positions across files. A candidate's position is the list of positions along its call chain: the call site in the evaluated file, then the call site in the invoked file if that one invokes further, and finally the constructor itself. Two positions compare element by element, by line and then column, like strings compare character by character.
+Resolution turns the candidates into what the host gets back. It runs in four steps, and none of them looks at where a candidate came from.
 
-So a policy invoked on line 7 contributes candidates that all sort before a constructor on line 18 of the same file, and after one on line 3. Where a call sits in the file decides where its rules sort, which is what a reader scanning the file would expect.
+1. **Fold.** Candidates with the same decision, reason and payload are one outcome. Two branches that both say `deny(soak_too_short)`, or a policy invoked twice with the same params, produce one candidate here. The trace still lists every constructor that fired.
+2. **Check `exclusive` sets.** If candidates remain from two members of one [`exclusive`](/reference/kind-files/#exclusive) set, the evaluation fails with a conflict, whatever else fired. A contradiction between two rules is a defect in the policy, and no ranking hides it.
+3. **Rank.** Candidates are ordered by their decision's position in `precedence`, then by their reason's position in the decision's scoped `precedence` when it has one. Without `precedence`, in a `collect all` kind, every candidate is at the top rank.
+4. **Count.** What's left at the top rank is the outcome. A `collect all` kind returns all of it. A `collect one` kind returns it when it's one candidate, and fails with a conflict when it's more: two candidates with the same decision and reason but different payloads, or two reasons the kind didn't rank.
+
+A conflict makes `Eval` return a `*ConflictError` naming the candidates on each side, with a result holding the kind's default for `collect one` and an empty outcome for `collect all`, the same shape a failed assert returns. The trace lists every candidate.
+
+The design goal behind these steps is that no candidate is ever merged, changed or invented. What the host gets is always something a rule produced, with its reason and position intact, and the only questions the language answers are which candidates count and whether they can stand together. Anything else, such as taking the shortest `bake` of two approvals, is the host's decision over `MatchAll`, in code that can be tested.
 
 ::: tip Proposed
-Comparing whole call chains element by element is proposed here; the design only fixes that the call site comes first and the callee position second. Replacing positional tie-breaking with merge functions declared in the kind, such as the minimum `bake` or the union of `approvers`, is an [open question](/project/open-questions/).
+Fold, `exclusive`, reason ranking and the count rule are proposed here and replace the earlier positional tie-break. They settle [Ties within one decision](/project/open-questions/#ties-within-one-decision).
 :::
 
 ## Collecting kinds
 
-A kind that declares [`collect all`](/reference/kind-files/#collect) has no winner. Rules 1 to 3 are unchanged, and the rest change:
+A kind that declares [`collect all`](/reference/kind-files/#collect) has no winner. Rules 1 to 3 are unchanged, and resolution ends differently:
 
-- In place of rule 4, the outcome is every candidate, sorted by the kind's declaration order of decisions, then by source position as in [Ordering for ties](#ordering-for-ties).
-- In place of rule 5, candidates aren't merged or deduplicated. If `admin` fires from two branches with different `ttl` payloads, the host gets both and decides what two grants of the same role mean.
-- In place of rule 6, if there are no candidates, the outcome is the kind's `default` if it declares one, and empty otherwise.
-
-Nothing is picked, so nothing is tie-broken, and rule order has no effect at all: the sort only fixes the order the host reads the candidates in. The one place order leaks in a kind with `precedence` doesn't exist here.
+- Without `precedence`, every candidate left after the fold and the `exclusive` check is the outcome, sorted by the kind's declaration order of decisions, then by source position within a decision. The sort only fixes the order the host reads the candidates in.
+- With `precedence`, every candidate at the top rank is the outcome, in the same order. A `collect all` kind with `precedence deny > review > approve` returns every `review` that fired when no `deny` did, so two reviews with different approvers both reach the host.
+- Candidates aren't merged. If `admin` fires from two branches with different `ttl` payloads, the host gets both and decides what two grants of the same role mean.
+- If there are no candidates, the outcome is the kind's `default` if it declares one, and empty otherwise.
 
 ```sigil
 policy access.engineering: AccessGrant@1
@@ -66,19 +72,19 @@ use access.guardrails
 guardrails()
 
 when "engineering" in actor.groups {
-  read("engineering_member")
+  read(engineering_member)
 }
 
 when "platform" in actor.groups {
-  write("platform_member")
-  development_environment_writer("platform_member")
+  write(platform_member)
+  development_environment_writer(platform_member)
 }
 ```
 
-For a member of both groups, the outcome is `read("engineering_member")`, `write("platform_member")` and `development_environment_writer("platform_member")`, in that order. The body under `"platform"` holds two constructors, which a collecting kind makes natural; whether that's allowed is still [open](/project/open-questions/#multiple-decisions-per-block).
+For a member of both groups, the outcome is `read(engineering_member)`, `write(platform_member)` and `development_environment_writer(platform_member)`, in that order. The body under `"platform"` holds two constructors, which a collecting kind makes natural.
 
 ::: tip Implemented as proposed
-Collecting kinds, their ordering and the empty outcome are implemented as described here. The parts still open are listed under [Collecting kinds](/project/open-questions/#collecting-kinds).
+Collecting kinds without `precedence`, their ordering and the empty outcome are implemented. `collect all` with `precedence` is proposed with the resolution rule above.
 :::
 
 ## Assertions
@@ -137,12 +143,12 @@ when service.labels["compliance"] != "pci" {
   when cleared {
     when service.tier == "critical"
       and "release_manager" in actor.roles {
-      approve("release_manager")
+      approve(release_manager)
     }
 
     when service.tier in ["standard", "internal"]
       and owns_service {
-      review("service_owner", approvers: ["payments-leads"])
+      review(service_owner, approvers: ["payments-leads"])
     }
   }
 }
@@ -174,13 +180,13 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve("payments_sre", bake: 15m)
+  approve(payments_sre, bake: 15m)
 }
 ```
 
 Take an otherwise eligible deploy of a release that has soaked for `2h`, not marked as a hotfix, by a cleared member of `payments-sre`. Two blocks fire: `deploy.guardrails`'s `soak_too_short` deny, since `2h < 4h`, and the team's `payments_sre` approve. With `precedence deny > review > approve` the deny wins. The trace still lists both candidates.
 
-For the same person deploying a release that has soaked for `6h`, to a `standard` service without a `compliance` label, owned by another team, only the team rule fires and the result is `approve("payments_sre", bake: 15m)`.
+For the same person deploying a release that has soaked for `6h`, to a `standard` service without a `compliance` label, owned by another team, only the team rule fires and the result is `approve(payments_sre, bake: 15m)`.
 
 ## Composition
 

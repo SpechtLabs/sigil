@@ -15,7 +15,7 @@ Imagine this rule, a variant of the deploy gate used throughout these docs, in a
 
 ```sigil
 when service.teir == "critical" and not release.hotfix {
-  deny("critical_needs_hotfix_flag")
+  deny(critical_needs_hotfix_flag)
 }
 ```
 
@@ -65,7 +65,7 @@ Where a Go host uses a pointer field, the kind exposes `?T`, an optional. The co
 
 ```sigil
 when (release.ticket ?? "") == "" {
-  deny("no_ticket")
+  deny(no_ticket)
 }
 ```
 

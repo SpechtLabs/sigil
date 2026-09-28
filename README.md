@@ -46,13 +46,23 @@ input environment: string
 
 fn split(string, string) -> list<string>
 
-decision deny(reason: string)
-decision review(reason: string, approvers: list<string>)
-decision approve(reason: string, bake: duration = 1h)
+decision deny {
+  not_eligible
+  soak_too_short
+  no_rule_matched
+}
+decision review(approvers: list<string>) {
+  service_owner
+}
+decision approve(bake: duration = 1h) {
+  release_manager
+  payments_sre
+}
 
 collect one
 precedence deny > review > approve
-default deny("no_rule_matched")
+precedence approve: release_manager > payments_sre
+default deny(no_rule_matched)
 ```
 
 **A module** holds shared matchers. `let`s name conditions; a module has nothing else, so importing from it can never change a decision.
@@ -82,11 +92,11 @@ use deploy.common.{eligible}
 param min_soak: duration = 24h
 
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 ```
 
@@ -101,12 +111,12 @@ param tiers: list<string> = ["standard", "internal"]
 when cleared {
   when service.tier == "critical"
     and "release_manager" in actor.roles {
-    approve("release_manager")
+    approve(release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review("service_owner", approvers: approvers)
+    review(service_owner, approvers: approvers)
   }
 }
 ```
@@ -131,7 +141,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve("payments_sre", bake: 15m)
+  approve(payments_sre, bake: 15m)
 }
 ```
 
@@ -167,7 +177,7 @@ Out of scope: general computation, evaluators in languages other than Go (for no
 
 ## How evaluation works
 
-Every `when` block is evaluated, independently and in no particular order. Each decision constructor reached becomes a candidate, and the candidate whose decision ranks highest in the kind's `precedence` wins. If nothing fires, the kind's `default` applies. Rule order never changes which decision wins (it only breaks ties between candidates of the same decision, an [open question](./docs/project/open-questions.md)), and there's no `else`: `when not x` says the same thing without implying order.
+Every `when` block is evaluated, independently and in no particular order. Each decision constructor reached becomes a candidate, and the candidate whose decision ranks highest in the kind's `precedence` wins. If nothing fires, the kind's `default` applies. Rule order never changes the outcome: candidates of the same decision rank by the reasons the kind declares, equal ones fold into one, and a contradiction the kind hasn't ranked is a conflict error rather than a pick by position. There's no `else`: `when not x` says the same thing without implying order.
 
 ```mermaid
 flowchart LR
