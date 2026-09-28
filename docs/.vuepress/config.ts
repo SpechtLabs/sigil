@@ -115,6 +115,7 @@ export default defineUserConfig({
             { text: "Per-team policies", link: "team-policies", icon: "mdi:account-group" },
             { text: "Common patterns", link: "patterns", icon: "mdi:puzzle" },
             { text: "Evolve a kind safely", link: "evolve-a-kind", icon: "mdi:source-branch" },
+            { text: "Testing and fuzzing", link: "testing", icon: "mdi:test-tube" },
           ],
         },
       ],
@@ -137,7 +138,7 @@ export default defineUserConfig({
         },
       ],
 
-      // Reference: the language specification, then the planned host API and tooling.
+      // Reference: the language specification, host API and tooling.
       "/reference/": [
         {
           text: "Language",
@@ -161,8 +162,8 @@ export default defineUserConfig({
           collapsed: false,
           prefix: "/reference/",
           items: [
-            { text: "Go API", link: "go-api", icon: "mdi:language-go", badge: "planned" },
-            { text: "CLI & editor tooling", link: "cli", icon: "mdi:console", badge: "planned" },
+            { text: "Go API", link: "go-api", icon: "mdi:language-go" },
+            { text: "CLI & editor tooling", link: "cli", icon: "mdi:console" },
           ],
         },
       ],

@@ -29,7 +29,7 @@ This goal wins most arguments about syntax. It's why the language uses `and`/`or
 
 ### Finite and halting by design
 
-No loops, no recursion, no user-defined functions. Every policy terminates, and its worst-case cost is computable before it ever runs. A policy engine sits on a request path; an author who accidentally writes something quadratic shouldn't be able to take the host down. [Halting by construction](/understanding/halting/) covers how the language enforces this.
+No loops, no recursion, no user-defined functions. The language terminates on finite inputs when its host functions terminate. Static cost analysis is a goal, not an implemented safeguard: hosts must currently bound inputs and host-function work themselves. [Halting by construction](/understanding/halting/) explains the guarantees and limits.
 
 ### Typed against a host-defined contract
 

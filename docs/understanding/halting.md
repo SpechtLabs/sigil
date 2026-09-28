@@ -5,9 +5,9 @@ createTime: 2026/09/24 22:30:00
 permalink: /understanding/halting/
 ---
 
-Every Sigil policy terminates, and the compiler can tell you roughly how long it'll take before it ever runs. That isn't enforced with a timeout or a step counter. The language just doesn't contain the constructs you'd need to write something that loops forever.
+Sigil's language constructs terminate on finite inputs, provided host functions terminate too. The language has no unbounded loops or recursive policies. The compiler does not currently estimate execution cost or enforce a budget.
 
-A policy engine runs on a request path, often on every request. A policy author who accidentally writes something slow shouldn't be able to take the host down, and a host author shouldn't need to isolate policies in a separate process to protect themselves. So the guarantee has to come from the language, not from runtime defences.
+A policy engine often runs on every request. Termination alone does not protect that request path from expensive policies. Hosts still need to bound input sizes and review host functions while cost analysis remains on the roadmap.
 
 ## What's missing, on purpose
 
@@ -19,11 +19,11 @@ A policy engine runs on a request path, often on every request. A policy author 
 
 **No backtracking regexes.** `matches` uses Go's RE2 engine, which runs in time linear in the input. The pattern must be a literal, so it compiles once when the policy loads, and a catastrophic pattern like `(a+)+$` can't blow up at evaluation time the way it would under a backtracking engine.
 
-## Cost is bounded, and computable
+## Static cost analysis is planned
 
-With those pieces gone, each expression node runs at most once per `when` block evaluation, and the only multipliers are quantifiers over input lists. A policy without nested quantifiers costs policy size times input size. Nested quantifiers multiply: `any a in xs: any b in ys: a == b` costs `len(xs) * len(ys)`, and a third level would multiply again. The nesting depth is fixed in the source, so the cost is always a polynomial the compiler can read off the policy, never something that depends on the data's shape beyond list lengths. (An earlier draft of this design called the cost "linear"; that's too strong, and the [open questions](/project/open-questions/) track it.)
+Nested quantifiers multiply work. `any a in xs: any b in ys: a == b` may compare every pair, costing `len(xs) * len(ys)`. List membership and distinct-element operators also scan collections, and policy invocations repeat work for each instantiation. Strings, patterns and host functions have costs of their own. A general promise of linear evaluation cost would be wrong.
 
-That makes static cost estimation possible, the same trick CEL uses. If the host declares a maximum size for each collection, the compiler can walk the policy and compute a worst-case cost. The host can then set a budget and reject policies that exceed it at load time. Suppose the payments team appended a rule to `payments/production.sigil` that spells out the ownership check by hand:
+The proposed analyzer would combine declared collection limits with operator and host-function costs, then reject policies over a host's budget. The declarations and budget API are not designed yet. This is an illustration of a future diagnostic:
 
 ```text
 payments/production.sigil:21:6: error: estimated worst-case cost 1048576 exceeds budget 100000
@@ -33,7 +33,7 @@ payments/production.sigil:21:6: error: estimated worst-case cost 1048576 exceeds
    = help: nested quantifiers multiply; actor.teams (max 1024) x service.owners (max 1024)
 ```
 
-The collection limits in that example are made up to show the shape; `DeployApproval` doesn't declare any. `sigil check` reports the estimated cost for every policy, so authors see it creep up in review before a budget ever trips.
+The collection limits and diagnostic in that example are illustrative. `DeployApproval` declares no size limits, and `sigil check` does not report estimated costs today.
 
 ## What this costs authors
 
@@ -43,6 +43,6 @@ That's a deliberate trade. A host function is reviewed by the people who own the
 
 ## Where the guarantee has limits
 
-The halting guarantee covers the language. It can't cover host functions, since those are arbitrary Go. The kind's contract says they must be pure and should be cheap, but the compiler can't verify either. A host that binds a function doing a network call has stepped outside the model, and the cost estimate won't know about it.
+The halting guarantee covers the language. It cannot cover host functions, since those are arbitrary Go. The kind's contract says they must be pure and should be cheap, but the compiler cannot verify either. Hosts are responsible for terminating their functions and controlling any external work.
 
-Static cost also depends on the host declaring collection limits. Without them, the compiler can still prove termination but can only report cost in terms of input sizes, not as a number it can compare against a budget.
+Future static cost analysis will need explicit limits and function costs. Fuzzing exercises correctness and catches crashes; passing fuzz campaigns does not establish a resource bound. See [Testing and fuzzing](/guides/testing/) for the properties currently checked.

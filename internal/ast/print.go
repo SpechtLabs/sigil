@@ -95,7 +95,15 @@ func sprintPostfix(b *strings.Builder, n Node) {
 	}
 	switch n := n.(type) {
 	case *SelectorExpr:
-		sprint(b, n.X)
+		_, integer := n.X.(*IntLit)
+		if integer && !n.Optional {
+			// A dot touching an integer starts a float token.
+			b.WriteByte('(')
+			sprint(b, n.X)
+			b.WriteByte(')')
+		} else {
+			sprint(b, n.X)
+		}
 		if n.Optional {
 			b.WriteByte('?')
 		}

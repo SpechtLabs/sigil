@@ -207,10 +207,14 @@ func evalArith(x *ast.BinaryExpr, want types.Basic) (any, *diag.Error) {
 		}
 		return v, nil
 	case float64:
+		v := l + r.(float64)
 		if sub {
-			return l - r.(float64), nil
+			v = l - r.(float64)
 		}
-		return l + r.(float64), nil
+		if math.IsInf(v, 0) || math.IsNaN(v) {
+			return nil, errorf(x, "constant floats must be finite so the kind can be exported", "float overflow in constant")
+		}
+		return v, nil
 	case time.Duration:
 		v, ok := AddInt(int64(l), int64(r.(time.Duration)), sub)
 		if !ok {

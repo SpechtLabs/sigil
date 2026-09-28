@@ -1,0 +1,64 @@
+package kind_test
+
+import (
+	"reflect"
+	"testing"
+	"time"
+
+	"github.com/spechtlabs/sigil/internal/check"
+	"github.com/spechtlabs/sigil/internal/kind"
+	"github.com/spechtlabs/sigil/internal/types"
+)
+
+// Generate valid contracts directly so mutations exercise export/import on
+// every run, including nested types, defaults and both resolution modes.
+func FuzzKindRoundTrip(f *testing.F) {
+	f.Add([]byte{0, 1, 2, 3, 4, 5}, int64(42), "hello", false)
+	f.Add([]byte{5, 4, 3, 2, 1}, int64(-9223372036854775808), "\x00\xff", true)
+	f.Fuzz(func(t *testing.T, shape []byte, n int64, s string, all bool) {
+		var typ types.Type = types.Int
+		for _, b := range shape[:min(len(shape), 8)] {
+			switch b % 3 {
+			case 0:
+				typ = &types.List{Elem: typ}
+			case 1:
+				typ = &types.Map{Key: types.String, Value: typ}
+			case 2:
+				typ = &types.Map{Key: types.Int, Value: typ}
+			}
+		}
+		st := &types.Struct{Name: "Record", Fields: []*types.Field{{Name: "values", Type: typ}, {Name: "label", Type: types.String}}}
+		k := &kind.Kind{
+			Name: "Generated", Version: 3, Accepts: 2, Collect: kind.CollectOne,
+			Types:  []*types.Struct{st},
+			Inputs: []*kind.Input{{Name: "record", Type: &types.Optional{Elem: st}}},
+			Funcs:  []*kind.Func{{Name: "lookup", Params: []types.Type{types.String, typ}, Result: types.Bool}},
+			Decisions: []*kind.Decision{
+				{Name: "deny", Reasons: []string{"fallback", "blocked"}, Ranked: []string{"blocked", "fallback"}},
+				{Name: "allow", Reasons: []string{"ok"}, Fields: []*kind.Field{
+					{Name: "count", Type: types.Int, HasDefault: true, Default: n},
+					{Name: "text", Type: types.String, HasDefault: true, Default: s},
+					{Name: "ttl", Type: types.Duration, HasDefault: true, Default: time.Duration(n / 1000000 * 1000000)},
+					{Name: "tags", Type: &types.List{Elem: types.String}, HasDefault: true, Default: []any{s}},
+				}},
+			},
+			Precedence: []string{"deny", "allow"},
+			Exclusive:  [][]kind.Outcome{{{Decision: "deny", Reason: "blocked"}, {Decision: "allow"}}},
+			Default:    &kind.Default{Decision: "deny", Reason: "fallback", Args: map[string]any{}},
+		}
+		if all {
+			k.Collect, k.Precedence, k.Default = kind.CollectAll, nil, nil
+		}
+		if errs := k.Validate(nil); errs != nil {
+			t.Fatal(errs)
+		}
+		src := k.Source()
+		got, errs := check.LoadKind("generated.sigil", []byte(src))
+		if errs != nil {
+			t.Fatalf("export did not load: %v\n%s", errs, src)
+		}
+		if !reflect.DeepEqual(k, got) {
+			t.Fatalf("export/import changed contract:\n%s\nthen:\n%s", src, got.Source())
+		}
+	})
+}

@@ -156,4 +156,4 @@ Changing a field's type follows the same pattern: add a field with the new type 
 
 ## Remember the other evaluators
 
-Other Go services may load your kind file with `LoadKind` and evaluate policies themselves. For them, "compatible" has one more condition. Adding a host function doesn't break any policy, but a service that evaluates policies must bind an implementation for every function the kind declares, and `Eval` refuses to run until it has. Before you add a `fn`, make sure every evaluating service can bind it, or coordinate the rollout with them. Services that only type-check, like a CI linter, don't care.
+Adding a host function does not break existing policies, but any service evaluating policies that call it needs its implementation. The stock CLI returns a runtime error when it reaches an unbound function. Coordinate the rollout before policies start using a new `fn`. Services that only type-check can use its exported signature immediately. Public dynamic `policy.LoadKind` is still planned; hosts currently link their functions through `NewKind` and `pkg/cli`.

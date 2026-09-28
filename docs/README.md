@@ -7,7 +7,7 @@ config:
     hero:
       name: Sigil
       text: A small, typed policy language for Go hosts
-      tagline: Write rules that turn host-provided input into a typed decision like approve, deny or review. Every decision carries a reason and a payload, every policy is type-checked against the host's contract, and every evaluation halts.
+      tagline: Write rules that turn host-provided input into a typed decision like approve, deny or review. Every decision carries a reason and a payload, and every policy is type-checked against the host's contract.
       actions:
         - text: Take the tour →
           link: /getting-started/tour/
@@ -28,7 +28,7 @@ config:
 
       - title: Halts by construction
         icon: mdi:timer-sand-complete
-        details: No loops, no recursion, no user-defined functions. Quantifiers range over finite input lists and regexes run on RE2, so the compiler can compute a worst-case cost and reject a policy before it ships.
+        details: No loops, no recursion, no user-defined functions. Quantifiers range over finite lists and regexes use RE2. Host functions must terminate. Static cost budgets are planned.
 
       - title: Rule order never matters
         icon: mdi:sort-variant-off
@@ -370,6 +370,6 @@ What the `[1]` to `[4]` markers point at:
 
 :::
 
-::: warning Design phase
-Sigil is being designed documentation-first. The front end, kind definition, the type checker and the evaluator are implemented; composition and the CLI are not. These pages **are** the specification, and they will change as the [open questions](/project/open-questions/) get answered. If something reads wrong, [open an issue](https://github.com/SpechtLabs/sigil/issues).
+::: info Project status
+The language, Go API, composition and CLI are implemented through M6. M7 Hardening adds fuzzing across the language and tooling, generated round-trip properties and CI campaigns. Its day-long fuzzing criterion has not yet been demonstrated. Public dynamic `policy.LoadKind`, static cost budgets and editor tooling remain planned. See the [roadmap](/project/roadmap/) and [Testing and fuzzing](/guides/testing/).
 :::

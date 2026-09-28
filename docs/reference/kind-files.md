@@ -11,18 +11,19 @@ This page specifies the language as designed. The language is implemented throug
 
 A kind is the contract between a Go host and the policies it evaluates. It declares what input looks like, which host functions exist, which decisions a policy can produce, and whether one of them wins or all of them apply. Every policy names exactly one kind in its header and gets type-checked against it.
 
-Kinds are defined in Go and exported to a kind file, the same way Go structs become an OpenAPI spec. Kind files use the same `.sigil` extension as policies and modules; the `kind` header tells them apart, and by convention the file is named after the kind (`deploy_approval.sigil`). Nobody writes a kind file by hand. The defining host never loads one; everyone else can.
+Kinds are defined in Go and exported to a kind file, the same way Go structs become an OpenAPI spec. Kind files use the same `.sigil` extension as policies and modules; the `kind` header tells them apart, and by convention the file is named after the kind (`deploy_approval.sigil`). The defining host uses its Go definition; the CLI loads the exported file.
 
 ```mermaid
 flowchart LR
   A[Go structs] --> B[policy.NewKind]
   B -- Schema --> C[deploy_approval.sigil]
-  C --> D[LoadKind<br/>dynamic check + eval]
-  C --> E[sigil gen go<br/>typed Go code]
-  C --> F[CLI, LSP, CI]
+  C --> D[policy.LoadKind<br/>planned]
+  C --> E[sigil gen go<br/>planned]
+  C --> F[CLI and CI]
+  C --> G[LSP<br/>planned]
 ```
 
-The exported kind file is the wire contract. Other Go services can load it dynamically or generate typed code from it, and tooling uses it without importing the host.
+The exported kind file is the contract the CLI uses without importing the host. Public dynamic loading, typed code generation and LSP support are planned.
 
 ## A complete kind
 
@@ -159,7 +160,7 @@ Declares a decision constructor: its payload schema in parentheses, and the reas
 - Every parameter is a payload field with a type and an optional default. A field without a default is required at every call site. Defaults must be constants, and field names must be unique within a decision.
 - A decision with no payload leaves the parentheses out.
 
-Declaring reasons in the kind is what makes a reason a compile-time name instead of a string: a typo in a reason can't create a new metric series, `sigil breaking` sees a removed reason, and asserts and `exclusive` can name a reason. The cost is that a new reason is a kind change, like a new decision. See [Reasons declared in the kind](/project/open-questions/#reasons-declared-in-the-kind).
+Declaring reasons in the kind makes a reason a compile-time name: a typo cannot create a new metric series, and asserts and `exclusive` can name a reason. Removing a reason is a breaking change that the planned `sigil breaking` command will detect. Adding a reason changes the kind, like adding a decision. See [Reasons declared in the kind](/project/open-questions/#reasons-declared-in-the-kind).
 
 How policies call these is on [Decisions](/reference/decisions/).
 
@@ -203,7 +204,7 @@ exclusive grant_a, grant_b
 exclusive approve.release_manager, approve.lgtm
 ```
 
-Declares that at most one of the listed outcomes may fire in one evaluation. Candidates from two of them together are a conflict, the evaluation fails with a `*ConflictError`, and the host gets the default. It's the same relation `exclusive in` tests over `outcome`, declared by the host in the kind, where no `when` can gate it and no policy has to be required to carry it.
+Declares that at most one of the listed outcomes may fire in one evaluation. Candidates from two of them together are a conflict, and evaluation fails with a `*ConflictError`. The host gets the default for `collect one` and an empty outcome for `collect all`. It's the same relation `exclusive in` tests over `outcome`, declared by the host in the kind, where no `when` can gate it and no policy has to be required to carry it.
 
 - Each entry is a decision, matching any of its reasons, or a decision with one reason.
 - A set names at least two entries. A kind may declare any number of sets, and one outcome may appear in several.
@@ -214,7 +215,7 @@ In `collect one`, the relative rank of an exclusive pair is unobservable, since 
 
 ### Collecting kinds
 
-A `collect all` kind is a collecting kind: instead of one winner, the host gets every candidate that fired.
+A `collect all` kind returns every candidate after folding duplicates when it has no precedence. With precedence, it returns every folded candidate at the top rank. Exclusive conflicts still fail evaluation before ranking.
 
 Collecting fits decisions that combine instead of competing, such as roles a user can hold at the same time:
 
@@ -322,13 +323,9 @@ The reason is implicit on every decision and never appears in a payload struct.
 
 ## Host functions across the boundary
 
-A client that loads a kind can always type-check policies against it, because the `fn` signatures are in the file. Evaluating needs more: the client must bind a Go implementation for every declared function.
+The stock CLI loads a kind and type-checks policies from its `fn` signatures alone. It also evaluates policies until execution reaches an unbound host function, which returns a runtime error. A function in an unused branch does not prevent evaluation. Build a host binary with `pkg/cli` to link real implementations.
 
-- `LoadKind` returns the kind and the list of functions still unbound.
-- `Compile` works without bindings.
-- `Eval` refuses to run until every function is bound.
-
-A CI linter only needs the first half. A second service that evaluates policies needs both. See the [Go API](/reference/go-api/).
+Public dynamic `policy.LoadKind` and its function-binding API are still planned. See the [Go API](/reference/go-api/#loading-a-kind-elsewhere).
 
 ## Versioning
 
@@ -353,7 +350,7 @@ The host never keeps old kinds around. Its whole cost is two numbers, set with `
 - Every change to the contract bumps `version`, including compatible ones. The [namespace rule](#adding-a-name-never-breaks-a-policy) relies on that.
 - A breaking change also raises `accepts` to the new version.
 
-`sigil breaking old/deploy_approval.sigil deploy_approval.sigil` enforces both in CI, modeled on `buf breaking`: it fails when the contract changed and `version` didn't, and when a change is breaking and `accepts` wasn't raised. It needs nothing but the two kind files.
+The planned `sigil breaking old/deploy_approval.sigil deploy_approval.sigil` command will enforce both rules in CI from the two kind files. Until it is implemented, review the version and acceptance changes manually.
 
 | Change                                         | Effect                                                         |
 | ---------------------------------------------- | -------------------------------------------------------------- |

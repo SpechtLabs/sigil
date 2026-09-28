@@ -95,6 +95,11 @@ func Parse(file string, src []byte) (*Suite, humane.Error) {
 	if err := dec.Decode(s); err != nil {
 		return nil, &Error{File: file, Msg: "not a valid test file: " + yamlMessage(err), Help: "a test file holds `policy:` and a list of `cases:`, each with `name`, `input` or `input_file`, and `expect`"}
 	}
+	for i, c := range s.Cases {
+		if c == nil {
+			return nil, &Error{File: file, Msg: fmt.Sprintf("case %d is null", i+1), Help: "each case must be an object with name, input or input_file, and expect"}
+		}
+	}
 	var root yaml.Node
 	if err := yaml.Unmarshal(src, &root); err == nil {
 		lines(&root, s)

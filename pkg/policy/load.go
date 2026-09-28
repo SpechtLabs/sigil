@@ -2,6 +2,8 @@ package policy
 
 import (
 	"io/fs"
+	"reflect"
+	"slices"
 	"testing/fstest"
 
 	"github.com/spechtlabs/sigil/internal/bundle"
@@ -57,12 +59,12 @@ func (k *Kind[In]) Compile(src, name string, opts ...LoadOption) (*Policy[In], e
 // requirements may share a source; each source is read once.
 func (k *Kind[In]) trust(b *bundle.Bundle, o *loadOptions) error {
 	var trusted *bundle.Bundle
-	seen := map[fs.FS]bool{}
+	var seen []fs.FS
 	for _, r := range o.requires {
-		if r.from == nil || seen[r.from] {
+		if r.from == nil || slices.ContainsFunc(seen, func(prev fs.FS) bool { return sameSource(prev, r.from) }) {
 			continue
 		}
-		seen[r.from] = true
+		seen = append(seen, r.from)
 		if trusted == nil {
 			trusted = bundle.New(k.kind)
 		}
@@ -74,6 +76,21 @@ func (k *Kind[In]) trust(b *bundle.Bundle, o *loadOptions) error {
 		b.Trust(trusted)
 	}
 	return nil
+}
+
+// Filesystems can be map-backed values, such as fstest.MapFS. They can't
+// be interface map keys. Compare those by map identity, and comparable
+// implementations by value. Other value implementations have no identity;
+// callers can pass a pointer to share one across several requirements.
+func sameSource(a, b fs.FS) bool {
+	x, y := reflect.ValueOf(a), reflect.ValueOf(b)
+	if x.Type() != y.Type() {
+		return false
+	}
+	if x.Comparable() && y.Comparable() {
+		return a == b
+	}
+	return x.Kind() == reflect.Map && x.Pointer() == y.Pointer()
 }
 
 // MapFS turns a map of file names to contents, such as a ConfigMap's

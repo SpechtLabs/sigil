@@ -88,6 +88,8 @@ jobs:
         run: |
           echo "::add-matcher::.github/actionlint-matcher.json"
           mise run actionlint
+          mise run shell-lint
+          mise run workflow-test
 
   test:
     name: Unit Tests
@@ -116,6 +118,7 @@ jobs:
     needs:
       - lint
       - test
+      - fuzz
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -137,3 +140,32 @@ jobs:
 
       - name: Build with GoReleaser (snapshot)
         run: mise run snapshot
+
+  fuzz:
+    name: Fuzz smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FUZZTIME: 5s
+      FUZZTIMEOUT: 1m
+      FUZZPARALLEL: "2"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: go
+
+      - name: Fuzz every target
+        timeout-minutes: 5
+        run: mise run fuzz
+
+      - name: Keep failing inputs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-regressions
+          path: '**/testdata/fuzz/**'
+          if-no-files-found: ignore

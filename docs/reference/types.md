@@ -42,6 +42,8 @@ Two distinct numeric types. `3 == 3.0` is a compile error, and so is `count + 0.
 
 `int` is a signed 64-bit integer. Overflow in `+` or `-` is a runtime error. The Go mapping (`int` and `int64` both become `int`) is on [Kind files](/reference/kind-files/).
 
+The lexer checks an integer literal before applying unary minus. Write the minimum signed value as `(-9223372036854775807 - 1)`; kind export uses that spelling. Float literals must fit in a `float64`, and constant arithmetic that produces a non-finite float is a compile error. Exported floats use decimal notation because Sigil has no exponent syntax.
+
 ### `string`
 
 A sequence of bytes, normally UTF-8. Equality is byte-for-byte and case-sensitive.

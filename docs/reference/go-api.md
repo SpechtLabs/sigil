@@ -6,7 +6,7 @@ permalink: /reference/go-api/
 ---
 
 ::: warning Partly implemented
-Defining a kind exists: `NewKind`, `Decision`, `None`, the `With` options and `Schema()`. So do `Compile`, `Params`, `Eval`, `Result`, `Match` and `MatchAll`, and the `*CompileError`, `*RuntimeError` and `*AssertionError` types. Declared reasons (`NewDecision` with reasons, `WithExclusive`, `WithReasonPrecedence`, `WithPrecedence` and `*ConflictError`) exist too. So do `Load`, `Require`, `From` and `MapFS`, and the `policytest` and `cli` packages the tooling builds on. `LoadKind` and `Resolver` don't exist yet. The rest of this page describes the API as designed, so the language reference has a concrete host to point at; names and signatures may still change before the first release.
+Defining a kind exists: `NewKind`, `Decision`, `None`, the `With` options and `Schema()`. So do `Compile`, `Params`, `Eval`, `Result`, `Match` and `MatchAll`, and the `*CompileError`, `*RuntimeError` and `*AssertionError` types. Declared reasons (`NewDecision` with reasons, `WithExclusive`, `WithReasonPrecedence`, `WithPrecedence` and `*ConflictError`) exist too. So do `Load`, `Require`, `From` and `MapFS`, and the `policytest` and `cli` packages the tooling builds on. `LoadKind` and `Resolver` don't exist yet. The rest of this page describes the API as designed, so the language reference has a concrete host to point at; names and signatures may still change before a stable 1.0 release.
 :::
 
 The API mirrors `regexp`: define a kind once at package level, compile policies once, and evaluate them many times from any goroutine. Everything lives in package `policy`, import path `github.com/spechtlabs/sigil/pkg/policy`.
@@ -53,7 +53,7 @@ var (
 )
 ```
 
-The reasons are plain strings here because `Result.Reason` is one; `sigil gen go` can emit typed constants for hosts that want the compiler to check them.
+The reasons are plain strings here because `Result.Reason` is one. Typed constants are planned as part of `sigil gen go`.
 
 `NewKind` ties it together:
 
@@ -272,7 +272,7 @@ type Candidate struct {
 }
 ```
 
-For a kind with `precedence`, `Decision`, `Reason`, `Policy` and `Payload` describe the winner and `Outcome` holds that one entry. For a collecting kind the single fields are empty and `Outcome` holds everything. One `Result` type serves both; whether a collecting kind should get its own is still [open](/project/open-questions/#collecting-kinds).
+For `collect one`, `Decision`, `Reason` and `Payload` describe the winner and `Outcome` holds that one entry. For `collect all`, those single fields are empty. `Outcome` holds every folded candidate without precedence, or every folded candidate at the top rank with precedence. `Policy` always names the root policy the host evaluated. One `Result` type serves both modes; whether a collecting kind should get its own is still [open](/project/open-questions/#collecting-kinds).
 
 `Policy` on the result names the policy the host evaluated. When the host evaluates `payments.production` and the `service_owner` review wins, that rule lives in `deploy.production`, reached through an invocation, so the entry and the trace candidate name `deploy.production` instead, and their call chain says how it was reached. `Trace` lists every candidate by policy name, reason and call chain, with each step's file, line, column and document name (for example `payments/production.sigil:14:3 → deploy/production.sigil:16:5`), and records which conditions held for every candidate of the winning decision; `Candidate.Location()` renders the chain. See [Evaluation semantics](/reference/evaluation/) for how the winner is picked.
 
@@ -300,11 +300,11 @@ for _, g := range Admin.MatchAll(res) {
 }
 ```
 
-`Match` on a collecting kind's result is a runtime panic, because "the" match isn't defined.
+`Match` on a `collect all` kind without precedence panics. Use `MatchAll` for that mode.
 
 ## Dynamic input
 
-Sometimes input doesn't arrive as a Go struct, for example a JSON webhook body. A `Resolver` supplies values by path, the same idea as filt-rs's `Filterable`:
+`Resolver` is a proposed interface, not an exported API. Today, Go hosts decode external input into their declared input struct, while the CLI uses its internal JSON/YAML decoder. The proposal would supply values by path:
 
 ```go
 type Resolver interface {
@@ -312,7 +312,7 @@ type Resolver interface {
 }
 ```
 
-The evaluator checks every resolved value against the kind's schema. A resolver that returns a `string` where the kind declares `list<string>` fails loudly with an error naming the path, instead of coercing it or treating it as absent.
+The proposed evaluator would check each resolved value against the kind's schema and reject type mismatches with the failing path. The interface and integration remain undecided.
 
 ## Hot reload
 
@@ -345,7 +345,7 @@ At startup there's no last good policy, so a failed `Load` should stop the proce
 
 ## Exporting the kind
 
-`Deploy.Schema()` returns the kind file text. A `go generate` step writes it into the policy repository as `deploy_approval.sigil`, where the `sigil` CLI, the LSP server and other services pick it up without importing the host's code. The defining host never loads a kind file itself; its Go definition is the source of truth.
+`Deploy.Schema()` returns the kind file text. A `go generate` step can write it into the policy repository as `deploy_approval.sigil`, where the `sigil` CLI reads it without importing the host's code. LSP support and public dynamic loading remain planned. The defining host uses its Go definition as the source of truth.
 
 The simplest way to write it is the host's own `sigil` binary, built with package `cli` (see [Host binaries](/reference/cli/#host-functions-and-host-binaries)), whose `sigil export` writes the linked kind's `Schema()`:
 
@@ -382,6 +382,8 @@ Each `*_test.yaml` file becomes a subtest, and each case a subtest of it. The te
 
 ## Loading a kind elsewhere
 
-Other Go services can load an exported kind dynamically with `policy.LoadKind`. Because the `fn` signatures are in the file, a loaded kind can always type-check policies. Evaluating needs an implementation for every declared function: `LoadKind` returns the list of unbound functions, `Compile` works without them, and `Eval` refuses until they're bound. A CI linter needs only the first half; a second evaluating service needs both.
+Public dynamic `policy.LoadKind` is planned; it is not an exported API today. Its function-binding API is also unfinished. The internal kind-file loader already supports the CLI and has export/import property tests and fuzz coverage.
+
+The stock CLI can check an exported kind's policies without the host's Go code. It can also evaluate policies whose execution does not call a host function; reaching an unbound function returns a runtime error. Build a host binary with `pkg/cli` to supply real implementations. The CLI does not refuse every evaluation merely because the kind declares a function.
 
 For services that want typed payload structs instead of a dynamic kind, the planned `sigil gen go` command generates Go code from a kind file. See [CLI & editor tooling](/reference/cli/).

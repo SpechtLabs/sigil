@@ -7,8 +7,8 @@ permalink: /getting-started/overview/
 
 Sigil is a small, statically typed policy language that you embed in a Go application. Engineers write rules that read host-provided input and produce a typed decision such as `approve`, `deny` or `review`. Every decision carries a reason and a payload, so the host always knows what was decided, why, and with which parameters.
 
-::: info Design phase
-The front end, kind definition, the type checker and the evaluator are implemented; composition and the CLI are not. These pages are the specification, written before the first line of code. If an example here looks wrong, surprising or hard to read, that's exactly the feedback the design needs: [open an issue](https://github.com/SpechtLabs/sigil/issues).
+::: info Project status
+The language, Go API, composition and CLI are implemented through M6. M7 Hardening adds fuzzing and round-trip properties across the language and tooling. Public dynamic kind loading, static cost budgets and editor tooling remain planned. See the [roadmap](/project/roadmap/) for remaining work and [Testing and fuzzing](/guides/testing/) for the checks. The language is still evolving; report problems through [GitHub issues](https://github.com/SpechtLabs/sigil/issues).
 :::
 
 ## The problem it replaces
@@ -41,13 +41,13 @@ when release.soak < min_soak and not release.hotfix {
 }
 ```
 
-Every statement starts with a keyword, rules are `when` blocks, and decisions are constructor calls with a string-literal reason. There are no loops, no user-defined functions and no `else`. A team policy reuses these rules by importing the policy with `use` and invoking it like a constructor, `guardrails(min_soak: 4h)`, and the host requires that call so no team can switch the denies off.
+Declarations start with keywords, rules are `when` blocks, and decision constructors name a reason declared in the kind. There are no loops, no user-defined functions and no `else`. A team policy reuses these rules by importing the policy with `use` and invoking it like a constructor, `guardrails(min_soak: 4h)`. The host can require that call so no team can switch the denies off.
 
 ## Who writes what
 
 Host engineers own the Go side. They describe the input as Go structs, declare the decisions and their payloads, and call `policy.NewKind`. The kind exports itself as a `.sigil` file that starts with the `kind` keyword, and that file is what everyone else works against.
 
-Policy authors never touch Go. They write policy files (also `.sigil`, starting with the `policy` keyword), check them against the exported kind file, and ship test cases next to them. Tooling (the `sigil` CLI and its LSP server) reads the kind file too, so a policy repo lints in CI without importing the host's code.
+Policy authors write `.sigil` policy files, check them against the exported kind file, and ship test cases next to them. The `sigil` CLI reads the kind file, so a policy repo lints in CI without importing the host's code. LSP support is planned.
 
 ```mermaid
 flowchart LR

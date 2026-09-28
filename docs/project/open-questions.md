@@ -26,7 +26,7 @@ If you have an opinion on any of these, [open an issue](https://github.com/Spech
 
 ## Decision values and `outcome`
 
-**Blocks: M5** (the namespace question)
+**Blocks: nothing in the implemented milestones**. Alternative namespaces would be a future language change.
 
 An assert that checks what evaluation decided has to name decisions as values: `[customer_data_writer, development_environment_writer] exclusive in outcome`. A bare decision name is a value of a closed `decision` type and `outcome` a `list<decision>`, and only assert conditions can read either (see [Types](/reference/types/#decision)).
 
@@ -51,13 +51,13 @@ A kind that declares `collect all` returns every candidate that fired, not one w
 
 ## Pinned params on required policies
 
-**Blocks: M5**
+**Blocks: nothing in the implemented milestones**. Deferred beyond M5.
 
 Params with an order, such as durations and numbers, are covered by [bounds](/reference/policy-files/#bounds). Params without one, such as `approvers: list<string>`, aren't: a team can bind an empty list. Options are a `pinned` modifier that forbids overriding entirely, a non-empty requirement, or leaving it to review and CI.
 
 ## String literals for host-ordered types
 
-**Blocks: M4**
+**Blocks: nothing in the implemented milestones**. Deferred beyond M4.
 
 [Host-ordered types](/reference/types/#host-ordered-types) decode from JSON through `encoding.TextUnmarshaler` when the Go type implements it. Should a string literal in a policy be parsed into the type the same way, at load time? That would allow `param min_version: Version = "1.4.0"`.
 
@@ -84,7 +84,7 @@ Whatever the answer, it has to cover `exclusive in` and `one in` as well, which 
 
 **Blocks: M7**
 
-An earlier draft of this design called evaluation cost linear in policy size times input size. That holds for a single quantifier, but a quantifier nested in another's body costs the product of both list sizes, so `all a in xs: any b in ys: a == b` is quadratic. The static cost estimate still works (it multiplies the declared maximum sizes), but the budget has to be expressed in those terms, and the docs shouldn't promise "linear".
+An earlier draft of this design called evaluation cost linear in policy size times input size. That holds for a single quantifier, but a quantifier nested in another's body costs the product of both list sizes, so `all a in xs: any b in ys: a == b` is quadratic. A future static estimate must account for these products, list membership, repeated invocations and host-function costs. Size declarations and the budget API remain undecided. No static cost estimate or enforcement exists today.
 
 ## Reasons declared in the kind
 
@@ -97,7 +97,7 @@ Reasons are declared per decision in the kind, and constructors name one of them
 
 ## Input-dependent invocation arguments
 
-**Blocks: M5**
+**Blocks: nothing in the implemented milestones**. Deferred beyond M5.
 
 Invocation arguments may reference constants and the invoking policy's own params, but not inputs. That keeps every invocation a static instantiation: `sigil explain` can print concrete values, and bounds on params (see [Bounds](/reference/policy-files/#bounds)) can be checked at compile time. `production(approvers: service.owners)` would turn a param into a per-evaluation value, which blurs the line between a param and a `let`.
 
@@ -105,7 +105,7 @@ The workaround is a `when` per case, as the PCI split in the canonical example d
 
 ## Invoking the same policy twice
 
-**Blocks: M5**
+**Blocks: nothing in the implemented milestones**. Deferred beyond M5.
 
 A policy may invoke the same policy more than once with different arguments, for example `deploy.regional` once for `eu-1` and once for `us-1`. Each call is a separate instantiation, and each candidate records its call chain, so the trace can tell the instances apart; that part is implemented. One problem remains, because composition is a union: any rule the invoked policy doesn't scope fires for every call. If `deploy.regional` had `when not in_scope { deny(out_of_region) }`, the `eu-1` call would deny every deploy the `us-1` call was meant to review. Policies meant to be invoked more than once have to scope every rule to their own params, or callers have to gate each call, and nothing enforces either. A lint for unscoped denies in a policy that's invoked twice could.
 
@@ -117,7 +117,7 @@ A host could layer a required policy itself, with something like `policy.Base("d
 
 ## Re-exports
 
-**Blocks: M5**
+**Blocks: nothing in the implemented milestones**. Deferred beyond M5.
 
 Should a module be able to re-export names it imports, so a team gets one `use` line instead of several? Leaning no, because it hides where names come from, which is exactly what banning wildcard imports protects.
 

@@ -50,7 +50,16 @@ func (p *printer) expr(x ast.Expr, indent int) {
 	case *ast.BinaryExpr:
 		p.binary(x, indent)
 	case *ast.SelectorExpr:
-		p.expr(x.X, indent)
+		_, integer := x.X.(*ast.IntLit)
+		if integer && !x.Optional {
+			// Preserve the token boundary in source such as `0 .field`.
+			// The checker will reject the field access after formatting.
+			p.write("(")
+			p.expr(x.X, indent)
+			p.write(")")
+		} else {
+			p.expr(x.X, indent)
+		}
 		if x.Optional {
 			p.write("?.")
 		} else {

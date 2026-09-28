@@ -62,7 +62,7 @@ func TestFormat(t *testing.T) {
 		{int64(-3), "-3"},
 		{0.5, "0.5"},
 		{3.0, "3.0"},
-		{1e21, "1e+21"},
+		{1e21, "1000000000000000000000.0"},
 		{"deployer", `"deployer"`},
 		{"say \"hi\"\n", `"say \"hi\"\n"`},
 		{time.Duration(0), "0s"},

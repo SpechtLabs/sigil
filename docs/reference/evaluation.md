@@ -110,7 +110,7 @@ Checking input asserts first is what makes them useful as preconditions. With `a
 
 Every failing assert of the phase is reported, sorted by source position, not just the first one found. Stopping at the first failure would make the error depend on evaluation order. A phase that fails ends the evaluation, so a failed input assert hides outcome asserts, which never get an outcome to check.
 
-When an assert fails, `Eval` returns an assertion error and a result whose outcome is the kind's `default` for a kind with `precedence`, and empty for a collecting kind. The host never sees a partial outcome it could act on by mistake. The trace lists every candidate the rules produced, none if an input assert failed, and the error names each failing assert by reason and call chain. For an assert over `outcome`, it also names the candidates that made it fail:
+When an assert fails, `Eval` returns an assertion error and a result whose outcome is the kind's `default` for `collect one`, and empty for `collect all`. The host never sees a partial outcome it could act on by mistake. The trace lists every candidate the rules produced, none if an input assert failed, and the error names each failing assert by reason and call chain. For an assert over `outcome`, it also names the candidates that made it fail:
 
 ```text
 error: assertion "sod_customer_dev" failed
@@ -246,18 +246,18 @@ Work skipped by short-circuiting (`and`, `or`, `??`, quantifiers stopping early,
 
 ## Halting and cost
 
-Evaluation always terminates:
+The language terminates when its host functions terminate:
 
 - There are no loops. Quantifiers iterate over finite input lists.
 - There's no recursion. `let` bindings, imports and policy invocations must each form a DAG, and cycles are compile errors.
 - There are no user-defined functions. Host functions are declared in the kind and must be pure.
 - `matches` uses Go's RE2 engine, which runs in linear time.
 
-Evaluation cost grows with policy size times input size. Given a host-declared maximum collection size, the compiler computes a static worst-case cost per policy, as CEL does, and a host can reject policies over a budget. `sigil check` reports the figure; see [CLI & editor tooling](/reference/cli/).
+Termination does not mean evaluation is cheap. Nested quantifiers multiply collection sizes: two nested quantifiers over lists of size `n` can take `n²` comparisons. List membership operators also compare elements across collections, and repeated policy invocations add work.
 
-A quantifier nested inside another quantifier multiplies the collection sizes, so the worst case for two nested quantifiers over lists of size `n` is `n²`. The static estimate accounts for that.
+Static cost analysis is planned. The compiler does not currently compute or enforce a budget, and `sigil check` does not report one. Hosts must bound their inputs and the work done by host functions themselves.
 
-::: warning Unspecified
+::: warning Planned
 How the budget is expressed, where the maximum collection size gets declared, and what a host function costs are all open. See [Halting by construction](/understanding/halting/) for the reasoning and [Open questions](/project/open-questions/) for what's undecided.
 :::
 

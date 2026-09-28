@@ -11,7 +11,7 @@ Sigil borrows heavily. Its closest relative is Cedar, for schema validation and 
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | [filt-rs](https://github.com/SierraSoftworks/filters) | Friendly expression syntax, `in`/`like`/`contains`, durations, single-method object interface, parse once / eval many, errors with line, column and a fix hint | Unknown properties resolving to `null`. Fine for filters, but it makes deny rules fail open |
 | [Cedar](https://www.cedarpolicy.com/)                 | Schema-checked policies, forbid overrides permit, policy templates with slots                                                                                    | Its principal/action/resource model is too narrow for arbitrary host inputs                 |
-| [CEL](https://github.com/google/cel-go)               | Non-Turing-complete by construction, static cost estimation, host-declared variables and functions                                                               | It's an expression language only, with no notion of rules, decisions or composition         |
+| [CEL](https://github.com/google/cel-go)               | Non-Turing-complete by construction, planned static cost estimation, host-declared variables and functions                                                               | It's an expression language only, with no notion of rules, decisions or composition         |
 | [Rego](https://www.openpolicyagent.org/docs/policy-language) | Nothing syntactic. The lesson is the learning curve                                                                                                       | Datalog semantics, implicit iteration, partial rule sets that engineers struggle to read    |
 | HCL / YAML DSLs                                       | Declarative feel                                                                                                                                                 | Block nesting that fights templating, anchors as a reuse mechanism, stringly-typed matchers |
 
@@ -35,7 +35,7 @@ What Sigil can't take is Cedar's fixed data model. Every Cedar request is a prin
 
 ## CEL
 
-[CEL](https://github.com/google/cel-go) proved that a non-Turing-complete expression language can be pleasant to use and cheap to embed. Two ideas carry over directly: the host declares the variables and functions an expression can use, and the compiler estimates the worst-case cost of an expression statically so a host can reject expensive ones before they run.
+[CEL](https://github.com/google/cel-go) influenced Sigil's finite expression language and host-declared inputs and functions. CEL's static cost estimation also informs a planned feature: Sigil does not yet compute or enforce cost budgets.
 
 CEL stops at expressions, though. It has no rules, no decisions, no notion of combining several conditions into an outcome and no composition story. Every project that embeds CEL for policies ends up building those pieces around it, which is the same rebuild-it-again problem Sigil exists to stop.
 

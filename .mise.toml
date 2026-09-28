@@ -48,6 +48,10 @@ run = "go run -buildvcs=true ./cmd/sigil/"
 description = "Run the test suite with race detector and coverage"
 run = "go test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.txt ./..."
 
+[tasks.fuzz]
+description = "Fuzz every target; FUZZTIME sets the duration per target (default 10s)"
+run = "bash scripts/fuzz.sh"
+
 # `mise run fmt` rewrites everything that has a canonical form; `mise run
 # lint` checks the same things without touching a file. The steps run in
 # order, because go mod tidy may rewrite go.mod while sigil fmt builds.
@@ -133,6 +137,14 @@ run = "yamllint --strict ."
 description = "Lint the GitHub Actions workflows"
 run = "actionlint"
 
+[tasks.shell-lint]
+description = "Lint the fuzz runner and issue reporter"
+run = "shellcheck scripts/*.sh"
+
+[tasks.workflow-test]
+description = "Test automated fuzz failure reporting without contacting GitHub"
+run = "python3 -B -m unittest discover -s scripts -p '*_test.py'"
+
 [tasks.release-check]
 description = "Validate the GoReleaser config"
 run = "goreleaser check"
@@ -143,7 +155,7 @@ run = "goreleaser build --snapshot --clean"
 
 [tasks.check]
 description = "The definition of done: every gate CI runs on the Go code"
-depends = ["lint", "mod-tidy", "test", "yaml-lint", "actionlint", "release-check"]
+depends = ["lint", "mod-tidy", "test", "fuzz", "yaml-lint", "actionlint", "shell-lint", "workflow-test", "release-check"]
 
 [tasks.update-gha]
 description = "Pin GitHub Actions to commit SHAs (Renovate keeps them current afterwards)"

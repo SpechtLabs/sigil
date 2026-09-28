@@ -3,8 +3,10 @@ package constant
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -76,10 +78,16 @@ func Format(v any) string {
 	case bool:
 		return fmt.Sprint(v)
 	case int64:
+		// The lexer validates the unsigned literal before unary minus.
+		// Spell the minimum as arithmetic over representable literals.
+		if v == math.MinInt64 {
+			return "(-9223372036854775807 - 1)"
+		}
 		return fmt.Sprint(v)
 	case float64:
-		s := fmt.Sprintf("%g", v)
-		if !strings.ContainsAny(s, ".e") {
+		// Sigil has decimal floats, without exponent notation.
+		s := strconv.FormatFloat(v, 'f', -1, 64)
+		if !strings.Contains(s, ".") {
 			s += ".0"
 		}
 		return s
