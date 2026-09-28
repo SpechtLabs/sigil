@@ -25,13 +25,67 @@ authors:
     contact: cedric@specht-labs.de
 
 timeline:
-  - date: 2026-09-28
-    title: deploygate, an example host service
+  - date: 2026-09-24
+    title: Documentation-first design starts
     description: |
-      `examples/` runs the deploy gate from these docs as a Go service: both kinds defined in Go,
-      the guardrails embedded and required, team policies that reload from a directory, typed
-      matching, `policytest` and ginkgo suites, and metrics, traces, logs and profiles for every
-      decision. It's the first host outside the test suite.
+      The language design moves into this documentation site. Nothing is implemented; the docs are
+      the specification until M1 closes.
+  - date: 2026-09-25
+    title: Imports and policy invocation specified
+    description: |
+      `use` becomes import-only, modules hold the shared `let`s, a policy invokes another the way
+      it calls a decision constructor, optionally under `when`, and the host protects its
+      guardrails with `policy.Require`. One file can hold several documents.
+  - date: 2026-09-27
+    title: Front end implemented
+    description: |
+      The lexer, the Pratt expression parser and the document parser land under `internal/`, with
+      golden tests for every document form and every error message. M2 closes.
+  - date: 2026-09-28
+    title: Kinds, the type checker and expression evaluation implemented
+    description: |
+      M3 closes: a policy is checked against its kind with a hint for every typo and type
+      mismatch, and its expressions evaluate against the host's Go structs.
+  - date: 2026-09-28
+    title: Assertions, collecting kinds, lets and optional structs settled
+    description: |
+      A second pass over the open questions: `assert("reason", cond)` with input and outcome
+      phases, `collect one` and `collect all`, scoped and `pub` lets, optional chaining with
+      `present`, scalar-only equality, param bounds and kind version pins land in the parser and
+      the checker.
+  - date: 2026-09-28
+    title: Rules, decisions and the trace implemented
+    description: |
+      `when` blocks, constructors, precedence, the default, asserts and collecting kinds
+      evaluate, and `Compile`, `Eval`, `Result` and `Match` land in `pkg/policy`.
+  - date: 2026-09-28
+    title: Declared reasons and the resolution rule implemented
+    description: |
+      Kinds declare each decision's reasons, so a misspelled reason fails to compile. `exclusive`
+      names outcomes that can't fire together, and resolution becomes fold, check exclusive,
+      rank, count, which replaces the positional tie-break. M4 closes apart from host-ordered
+      types.
+  - date: 2026-09-28
+    title: Composition implemented
+    description: |
+      Modules, imports, invocation with bounded params, `policy.Require` with `policy.From`, the
+      bundle loader for `fs.FS` and ConfigMaps, cycle detection and `sigil explain`. M5 closes.
+  - date: 2026-09-28
+    title: v0.1.0 released
+    description: |
+      The first tagged release: the language, the Go API and composition.
+  - date: 2026-09-28
+    title: Tooling I implemented
+    description: |
+      `sigil fmt`, `check` with lints and `sigil.yaml`, `eval`, `test` with `*_test.yaml` files,
+      `export`, and the `policytest` and `cli` packages. The stock binary evaluates against the
+      kind file and fails only when a rule calls a host function; a host builds its own binary with
+      its functions linked in. M6 closes.
+  - date: 2026-09-28
+    title: v0.2.0 released, and sigil on Homebrew
+    description: |
+      v0.2.0 ships the Tooling I commands, and from v0.2.1 on every release publishes the `sigil`
+      CLI to the [Specht Labs tap](https://github.com/SpechtLabs/homebrew-tap).
   - date: 2026-09-28
     title: Hardening tests and fuzz campaigns implemented
     description: |
@@ -41,46 +95,17 @@ timeline:
       test-file parsing fixes accompany the tests. M7 stays open until its remaining deliverables
       and day-long fuzzing criterion have evidence.
   - date: 2026-09-28
-    title: Tooling I implemented
+    title: deploygate, an example host service
     description: |
-      `sigil fmt`, `check` with lints and `sigil.yaml`, `eval`, `test` with `*_test.yaml` files,
-      `export`, and the `policytest` and `cli` packages. The stock binary evaluates against the
-      kind file and fails only when a rule calls a host function; a host builds its own binary with
-      its functions linked in. M6 closes.
+      `examples/` runs the deploy gate from these docs as a Go service: both kinds defined in Go,
+      the guardrails embedded and required, team policies that reload from a directory, typed
+      matching, `policytest` and ginkgo suites, and metrics, traces, logs and profiles for every
+      decision. It's the first host outside the test suite.
   - date: 2026-09-28
-    title: Composition implemented
+    title: Evaluation performance measured
     description: |
-      Modules, imports, invocation with bounded params, `policy.Require` with `policy.From`, the
-      bundle loader for `fs.FS` and ConfigMaps, cycle detection and `sigil explain`. M5 closes.
-  - date: 2026-09-28
-    title: Rules, decisions and the trace implemented
-    description: |
-      `when` blocks, constructors, precedence, the default, asserts and collecting kinds
-      evaluate, and `Compile`, `Eval`, `Result` and `Match` land in `pkg/policy`. M4 closes.
-  - date: 2026-09-28
-    title: Assertions, collecting kinds, lets and optional structs settled
-    description: |
-      A second pass over the open questions: `assert("reason", cond)` with input and outcome
-      phases, `collect one` and `collect all`, scoped and `pub` lets, optional chaining with
-      `present`, scalar-only equality, and host-ordered types for versions. Everything the
-      implemented milestones cover lands in the parser, checker and evaluator; the rest is
-      tracked below.
-  - date: 2026-09-28
-    title: Kinds, the type checker and expression evaluation implemented
-    description: |
-      M3 closes: a policy is checked against its kind with a hint for every typo and type
-      mismatch, and its expressions evaluate against the host's Go structs.
-  - date: 2026-09-27
-    title: Front end implemented
-    description: |
-      The lexer, the Pratt expression parser and the document parser land under `internal/`, with
-      golden tests for every document form and every error message. Type checking and evaluation
-      are next.
-  - date: 2026-09-24
-    title: Documentation-first design starts
-    description: |
-      The language design moves into this documentation site. Nothing is implemented; the docs are
-      the specification until M1 closes.
+      Evaluation allocates less, CI fails a pull request whose benchmarks regress, and the
+      [performance](/reference/performance/) page records what compiling and evaluating cost.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -237,14 +262,14 @@ milestones:
           Every expression gets a type by the operator tables, empty literals take theirs from
           context, lets are typed in dependency order with cycles reported, and constructors are
           checked against their decision's payload. Unknown names and fields get a did-you-mean
-          hint. Imports and invocations are reported as unsupported until M5.
+          hint.
       - title: Evaluator over Go structs
         state: DONE
         requirement: MUST
         description: |
           A checked expression compiles once into closures that read the host's own Go values in
           place through the field paths NewKind recorded. Runtime errors point at the expression
-          that failed. Rules, precedence and the trace come with M4.
+          that failed.
       - title: Optional structs and presence
         state: DONE
         requirement: MUST
@@ -260,8 +285,7 @@ milestones:
         description: |
           A `let` inside a `when` body is visible there only, can't shadow anything and has a name
           unique in its document. A `let` is private unless it's `pub let`, and a policy's
-          `pub let` can't read a param. Evaluating scoped lets comes with M4, the import side
-          with M5.
+          `pub let` can't read a param.
       - title: Element comparison
         state: DONE
         requirement: MUST
@@ -348,8 +372,8 @@ milestones:
         description: |
           `Compile` over a one-file bundle with every document checked, `Params` type-checked
           against the declarations, `Eval` with typed `*CompileError`, `*RuntimeError` and
-          `*AssertionError`, and `Match` and `MatchAll` for typed payloads. `Load` over an
-          `fs.FS` comes with the bundle loader.
+          `*AssertionError`, and `Match` and `MatchAll` for typed payloads. `Load` reads an
+          `fs.FS` through the bundle loader.
 
   - title: Composition
     description: |
@@ -412,7 +436,7 @@ milestones:
         description: |
           Flattens a policy into its guarded decisions, with every invocation inlined and params
           bound, as text or JSON. Reads the kind file and the bundle from files, directories or
-          stdin; `--input` waits for bound host functions.
+          stdin; `--input`, which would mark the rules that fired, is planned.
 
   - title: Tooling I
     description: |
