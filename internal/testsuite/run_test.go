@@ -159,8 +159,15 @@ func TestRunCase(t *testing.T) {
 			if res.Err != nil {
 				t.Fatalf("RunCase() error = %v", res.Err)
 			}
-			if !reflect.DeepEqual(res.Failures, tt.want) {
-				t.Errorf("failures =\n%q\nwant\n%q", res.Failures, tt.want)
+			var texts []string
+			for _, f := range res.Failures {
+				texts = append(texts, f.Text)
+				if (f.Got == "") != (f.Want == "") {
+					t.Errorf("failure %q has got %q and want %q, want both or neither", f.Text, f.Got, f.Want)
+				}
+			}
+			if !reflect.DeepEqual(texts, tt.want) {
+				t.Errorf("failures =\n%q\nwant\n%q", texts, tt.want)
 			}
 			if res.Passed() != (len(tt.want) == 0) {
 				t.Errorf("Passed() = %v", res.Passed())

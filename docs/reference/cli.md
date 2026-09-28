@@ -158,21 +158,21 @@ Cost reporting comes with the static cost analysis on the [roadmap](/project/roa
 
 ## `sigil eval`
 
-Evaluates a policy against a JSON input and prints the result and the full trace: every candidate, the outcome, which conditions held for each candidate of the winning decision, and any failing asserts. Candidates in the outcome are marked with `*`.
+Evaluates a policy against a JSON input and prints the result and the full trace: every candidate, the outcome, which conditions held for each candidate of the winning decision, and any failing asserts. Candidates read the way a policy writes them, `review(service_owner)`, with the conditions that held after `when` and the payload beneath; the ones in the outcome are marked with `*`.
 
 ```text
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
-payments.production: review service_owner
+payments.production: review(service_owner)
   approvers = ["payments-leads"]
 
 trace: 2 candidates
-* review   service_owner     payments/production.sigil:14:3 → deploy/production.sigil:16:5
-           service.labels["compliance"] != "pci"
-           and cleared
-           and service.tier in ["standard", "internal"] and owns_service
-           approvers = ["payments-leads"]
-  approve  payments_sre      payments/production.sigil:18:3
-           bake = 15m
+  * review(service_owner)  payments/production.sigil:14:3 → deploy/production.sigil:16:5
+      when service.labels["compliance"] != "pci"
+       and cleared
+       and service.tier in ["standard", "internal"] and owns_service
+      approvers = ["payments-leads"]
+    approve(payments_sre)  payments/production.sigil:18:3
+      bake = 15m
 ```
 
 The input is a JSON object with one key per input the kind declares, and `--input -` reads it from stdin. The decoding is strict where a mistake would go unnoticed and lenient where Go is:
@@ -194,40 +194,40 @@ Flattens a policy into one list of guarded decisions. Every invocation is inline
 $ sigil explain --kind deploy_approval.sigil --policy payments.production deploy/ payments/
 payments.production: 7 rules from 4 policies
 
-deny     not_eligible      payments.production:7 → guardrails:8
-         not eligible
+  deny(not_eligible)        payments.production:7 → guardrails:8
+    when not eligible
 
-deny     soak_too_short    payments.production:7 → guardrails:12
-         release.soak < 4h and not release.hotfix
+  deny(soak_too_short)      payments.production:7 → guardrails:12
+    when release.soak < 4h and not release.hotfix
 
-approve  release_manager   payments.production:10 → deploy.production:11
-         service.labels["compliance"] == "pci"
-         and cleared
-         and service.tier == "critical" and "release_manager" in actor.roles
+  approve(release_manager)  payments.production:10 → deploy.production:11
+    when service.labels["compliance"] == "pci"
+     and cleared
+     and service.tier == "critical" and "release_manager" in actor.roles
 
-review   service_owner     payments.production:10 → deploy.production:16
-         service.labels["compliance"] == "pci"
-         and cleared
-         and service.tier in ["standard", "internal"] and owns_service
-         approvers = ["payments-leads", "security-leads"]
+  review(service_owner)     payments.production:10 → deploy.production:16
+    when service.labels["compliance"] == "pci"
+     and cleared
+     and service.tier in ["standard", "internal"] and owns_service
+    with approvers = ["payments-leads", "security-leads"]
 
-approve  release_manager   payments.production:14 → deploy.production:11
-         service.labels["compliance"] != "pci"
-         and cleared
-         and service.tier == "critical" and "release_manager" in actor.roles
+  approve(release_manager)  payments.production:14 → deploy.production:11
+    when service.labels["compliance"] != "pci"
+     and cleared
+     and service.tier == "critical" and "release_manager" in actor.roles
 
-review   service_owner     payments.production:14 → deploy.production:16
-         service.labels["compliance"] != "pci"
-         and cleared
-         and service.tier in ["standard", "internal"] and owns_service
-         approvers = ["payments-leads"]
+  review(service_owner)     payments.production:14 → deploy.production:16
+    when service.labels["compliance"] != "pci"
+     and cleared
+     and service.tier in ["standard", "internal"] and owns_service
+    with approvers = ["payments-leads"]
 
-approve  payments_sre      payments.production:18
-         cleared and "payments-sre" in actor.teams
-         bake = 15m
+  approve(payments_sre)     payments.production:18
+    when cleared and "payments-sre" in actor.teams
+    with bake = 15m
 ```
 
-Each entry names the decision, the reason and the call chain that reaches the rule, then the rule's full condition. A document is named by its last segment, or its full name when two documents share one, so `payments.production` and `deploy.production` read `payments.production:7 → deploy.production:16`. Asserts appear as entries too, marked `assert` in the decision column and `input` or `outcome` after the reason, so a reader can tell which ones run before the rules, with the condition under which they're checked and the condition they check: every `when` around every call on the chain, joined with `and`. Params show as their bound values, which is why invocation arguments can't depend on inputs. `let`s stay by name, so a condition reads the way its author wrote it.
+Each entry names the rule the way a policy writes it, `deny(not_eligible)`, then the call chain that reaches it, the full condition it fires under after `when`, and its payload after `with`. A document is named by its last segment, or its full name when two documents share one, so `payments.production` and `deploy.production` read `payments.production:7 → deploy.production:16`. Asserts appear as entries too, `assert named_actor (input)` or `(outcome)`, so a reader can tell which ones run before the rules, with the condition under which they're checked after `when` and the condition they check after `check`: every `when` around every call on the chain, joined with `and`. Params show as their bound values, which is why invocation arguments can't depend on inputs. `let`s stay by name, so a condition reads the way its author wrote it.
 
 A policy explained on its own, without a policy that invokes it, shows a required param by its name, `approvers = approvers`, since nothing binds it. A planned `--input` flag will also mark which rules fired and which candidate won; like `eval`, that needs a host binary for policies that call host functions.
 
@@ -275,7 +275,8 @@ Every path is a file or a directory, searched recursively; with no paths, `test`
 ```text
 $ sigil test --kind deploy_approval.sigil
 --- FAIL: payments/production_test.yaml:10: a short soak is denied
-      got deny(soak_too_short), want deny(not_eligible)
+      want deny(not_eligible)
+      got  deny(soak_too_short)
 FAIL  payments/production_test.yaml  1 of 3 cases failed
 ✗ 1 of 3 test cases failed in 1 file
 ```

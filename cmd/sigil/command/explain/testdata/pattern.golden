@@ -1,18 +1,18 @@
 deploy.guardrails: 2 rules from 2 policies
 
-deny     not_eligible      guardrails:8
-         not eligible
+  deny(not_eligible)    guardrails:8
+    when not eligible
 
-deny     soak_too_short    guardrails:12
-         release.soak < 1d and not release.hotfix
+  deny(soak_too_short)  guardrails:12
+    when release.soak < 1d and not release.hotfix
 
 deploy.production: 2 rules from 2 policies
 
-approve  release_manager   production:11
-         cleared
-         and service.tier == "critical" and "release_manager" in actor.roles
+  approve(release_manager)  production:11
+    when cleared
+     and service.tier == "critical" and "release_manager" in actor.roles
 
-review   service_owner     production:16
-         cleared
-         and service.tier in ["standard", "internal"] and owns_service
-         approvers = approvers
+  review(service_owner)     production:16
+    when cleared
+     and service.tier in ["standard", "internal"] and owns_service
+    with approvers = approvers

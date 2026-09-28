@@ -1,4 +1,4 @@
-access.main: an assert failed, the host falls back to deny no_rule_matched (the kind's default)
+access.main: an assert failed, the host falls back to deny(no_rule_matched), the kind's default
 
 assert named_user failed at testdata/access/main.sigil:3:1
   = help: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong

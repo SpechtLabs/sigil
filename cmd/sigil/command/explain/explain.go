@@ -234,38 +234,74 @@ func conds(cs []*eval.Cond) []string {
 }
 
 // writeText prints an explanation in the layout the documentation shows,
-// styled by t. Columns are padded before they're styled, so they line up
-// on a terminal too.
+// styled by t: each rule as it's written in a policy, `deny(reason)`,
+// with the conditions it fires under, its payload, and the call chain
+// that reaches it.
+//
+//	payments.production: 9 rules from 4 policies
+//
+//	  deny(not_eligible)           payments.production:7 → guardrails:8
+//	    when not eligible
+//
+//	  review(service_owner)        payments.production:10 → deploy.production:16
+//	    when service.labels["compliance"] == "pci"
+//	     and cleared
+//	    with approvers = ["payments-leads", "security-leads"]
+//
+//	  assert named_actor (input)   payments.production:21
+//	    check actor.name != ""
 func writeText(b *strings.Builder, t pretty.Theme, e Explanation) {
 	docs := "policy"
 	if e.Documents != 1 {
 		docs = "policies"
 	}
 	fmt.Fprintf(b, "%s: %s\n", t.Accent(e.Policy), t.Bold(fmt.Sprintf("%d rules from %d %s", len(e.Rules), e.Documents, docs)))
-	for _, r := range e.Rules {
+	heads := make([]string, len(e.Rules))
+	width := 0
+	for i, r := range e.Rules {
+		heads[i] = head(r)
+		width = max(width, len(heads[i]))
+	}
+	for i, r := range e.Rules {
 		b.WriteString("\n")
-		head := t.Bold(fmt.Sprintf("%-8s", r.Decision))
-		reason := r.Reason
+		h := fmt.Sprintf("%-*s", width, heads[i])
 		if r.Kind == kindAssert {
-			head = t.Warn(fmt.Sprintf("%-8s", kindAssert))
-			reason += " (" + r.Phase + ")"
+			h = t.Warn(h)
+		} else {
+			h = t.Bold(h)
 		}
-		fmt.Fprintf(b, "%s %-17s %s\n", head, reason, t.Location(strings.Join(r.Chain, " → ")))
+		fmt.Fprintf(b, "  %s  %s\n", h, t.Location(strings.Join(r.Chain, " → ")))
 		if len(r.Conditions) == 0 && r.Kind == kindDecision {
-			b.WriteString("         " + t.Muted("always") + "\n")
+			b.WriteString("    " + t.Muted("always") + "\n")
 		}
-		for i, c := range r.Conditions {
-			if i > 0 {
-				c = t.Muted("and") + " " + c
-			}
-			b.WriteString("         " + c + "\n")
-		}
+		writeConditions(b, t, "    ", r.Conditions)
 		if r.Check != "" {
-			b.WriteString("         " + t.Muted("check") + " " + r.Check + "\n")
+			b.WriteString("    " + t.Muted("check") + " " + r.Check + "\n")
 		}
 		for _, p := range r.Payload {
 			name, value, _ := strings.Cut(p, " = ")
-			b.WriteString("         " + t.Key(name+" =") + " " + value + "\n")
+			b.WriteString("    " + t.Muted("with") + " " + t.Key(name+" =") + " " + value + "\n")
 		}
+	}
+}
+
+// head names a rule the way a policy writes it: `deny(not_eligible)`,
+// or `assert named_actor (input)`.
+func head(r Entry) string {
+	if r.Kind == kindAssert {
+		return "assert " + r.Reason + " (" + r.Phase + ")"
+	}
+	return r.Decision + "(" + r.Reason + ")"
+}
+
+// writeConditions writes the conditions a rule fires under, `when` the
+// first and `and` each one after, aligned on the expressions.
+func writeConditions(b *strings.Builder, t pretty.Theme, indent string, conds []string) {
+	for i, c := range conds {
+		if i == 0 {
+			b.WriteString(indent + t.Muted("when") + " " + c + "\n")
+			continue
+		}
+		b.WriteString(indent + " " + t.Muted("and") + " " + c + "\n")
 	}
 }

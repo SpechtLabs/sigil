@@ -99,20 +99,23 @@ func New(k *project.Kind, res *result.Result) *Report {
 	return r
 }
 
-// Text renders the report for a human, styled by t:
+// Text renders the report for a human, styled by t. Candidates read the
+// way a policy writes them, `allow(admin)`, with the conditions that held
+// and the payload beneath, and the ones in the outcome marked `*`:
 //
-//	access.main: allow admin
+//	access.main: allow(admin)
 //	  ttl = 8h
 //
 //	trace: 2 candidates
-//	* allow    admin             access/main.sigil:6:3
-//	           user.admin
-//	           ttl = 8h
-//	  deny     too_old           access/main.sigil:14:3
+//	  * allow(admin)      access/main.sigil:6:3
+//	      when user.admin
+//	      ttl = 8h
+//	    deny(too_old)     access/main.sigil:14:3
 //
 // A failed evaluation leads with why, then the fallback the host acts on.
 func (r *Report) Text(t pretty.Theme) string {
 	var b strings.Builder
+	width := r.width()
 	switch {
 	case r.Error != nil:
 		fmt.Fprintf(&b, "%s: %s, the host falls back to %s\n", t.Accent(r.Policy), t.Fail(r.Error.headline()), r.summary(t))
@@ -126,12 +129,12 @@ func (r *Report) Text(t pretty.Theme) string {
 	}
 	if r.Collect && r.Error == nil {
 		for _, e := range r.Outcome {
-			b.WriteString("  " + row(t, e.Decision, e.Reason, e.Position, true) + "\n")
-			writePayload(&b, t, "           ", e)
+			b.WriteString("  " + row(t, width, e, e.Position, true) + "\n")
+			writePayload(&b, t, "    ", e)
 		}
 	}
 	if r.Error != nil {
-		b.WriteString("\n" + r.Error.text(t))
+		b.WriteString("\n" + r.Error.text(t, width))
 	}
 	b.WriteString("\n")
 	if len(r.Trace) == 0 {
@@ -140,24 +143,42 @@ func (r *Report) Text(t pretty.Theme) string {
 	}
 	fmt.Fprintf(&b, "%s %d %s\n", t.Accent("trace:"), len(r.Trace), plural(len(r.Trace), "candidate", "candidates"))
 	for _, e := range r.Trace {
-		mark := " "
+		mark := "    "
 		if e.Outcome {
-			mark = t.Ok("*")
+			mark = "  " + t.Ok("*") + " "
 		}
-		b.WriteString(mark + " " + row(t, e.Decision, e.Reason, e.location(), e.Outcome) + "\n")
-		writeConditions(&b, t, "           ", e.Conditions)
-		writePayload(&b, t, "           ", e)
+		b.WriteString(mark + row(t, width, e, e.location(), e.Outcome) + "\n")
+		writeConditions(&b, t, "      ", e.Conditions)
+		writePayload(&b, t, "      ", e)
 	}
 	return b.String()
+}
+
+// width is the widest candidate head in the report, so their locations
+// line up in one column.
+func (r *Report) width() int {
+	w := 0
+	for _, e := range r.Outcome {
+		w = max(w, len(e.head()))
+	}
+	for _, e := range r.Trace {
+		w = max(w, len(e.head()))
+	}
+	if r.Error != nil {
+		for _, e := range r.Error.Candidates {
+			w = max(w, len(e.head()))
+		}
+	}
+	return w
 }
 
 // summary names the outcome: the decision and reason, or how many
 // decisions a collecting kind returned.
 func (r *Report) summary(t pretty.Theme) string {
 	if !r.Collect {
-		s := t.Bold(r.Decision) + " " + r.Reason
+		s := t.Bold(r.Decision + "(" + r.Reason + ")")
 		if len(r.Outcome) == 1 && r.Outcome[0].Position == "" {
-			s += " " + t.Muted("(the kind's default)")
+			s += ", " + t.Muted("the kind's default")
 		}
 		return s
 	}
@@ -183,7 +204,7 @@ func (f *Failure) headline() string {
 }
 
 // text details the failure, ending with what to do about it.
-func (f *Failure) text(t pretty.Theme) string {
+func (f *Failure) text(t pretty.Theme, width int) string {
 	var b strings.Builder
 	switch f.Kind {
 	case FailAssertion:
@@ -196,7 +217,7 @@ func (f *Failure) text(t pretty.Theme) string {
 	case FailConflict:
 		b.WriteString(t.Fail("conflict:") + " " + f.Message + "\n")
 		for _, c := range f.Candidates {
-			b.WriteString("  " + row(t, c.Decision, c.Reason, c.location(), false) + "\n")
+			b.WriteString("    " + row(t, width, c, c.location(), false) + "\n")
 		}
 	default:
 		b.WriteString(t.Fail("runtime error:") + " " + f.Message + "\n")
@@ -218,15 +239,20 @@ func help(kind string) string {
 	return "fix the expression the runtime error points at, or the input it read"
 }
 
-// row lays out a candidate: the decision and reason in fixed columns,
-// then where it came from. Padding comes before styling, so the
-// columns line up on a terminal too.
-func row(t pretty.Theme, decision, reason, location string, emphasize bool) string {
-	d := fmt.Sprintf("%-8s", decision)
+// head names a candidate the way a policy writes it: `allow(admin)`.
+func (e Entry) head() string {
+	return e.Decision + "(" + e.Reason + ")"
+}
+
+// row lays out a candidate: its head padded to width, then where it
+// came from. Padding comes before styling, so the column lines up on a
+// terminal too.
+func row(t pretty.Theme, width int, e Entry, location string, emphasize bool) string {
+	h := fmt.Sprintf("%-*s", width, e.head())
 	if emphasize {
-		d = t.Bold(d)
+		h = t.Bold(h)
 	}
-	return d + " " + fmt.Sprintf("%-17s", reason) + " " + t.Location(location)
+	return h + "  " + t.Location(location)
 }
 
 func (e Entry) location() string {
@@ -322,14 +348,15 @@ func Plain(v any) any { //nolint:emptyinterface // canonical values are dynamica
 	return v
 }
 
-// writeConditions writes the conditions that held, one per line, joined
-// with `and`.
+// writeConditions writes the conditions that held, `when` the first and
+// `and` each one after, aligned on the expressions.
 func writeConditions(b *strings.Builder, t pretty.Theme, indent string, conds []string) {
 	for i, c := range conds {
-		if i > 0 {
-			c = t.Muted("and") + " " + c
+		if i == 0 {
+			b.WriteString(indent + t.Muted("when") + " " + c + "\n")
+			continue
 		}
-		b.WriteString(indent + c + "\n")
+		b.WriteString(indent + " " + t.Muted("and") + " " + c + "\n")
 	}
 }
 

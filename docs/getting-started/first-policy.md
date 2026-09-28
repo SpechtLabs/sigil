@@ -71,7 +71,7 @@ A policy with no rules is valid. Evaluate it:
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
-deploy.production: deny no_rule_matched (the kind's default)
+deploy.production: deny(no_rule_matched), the kind's default
 
 trace: no rule fired
 ```
@@ -98,11 +98,11 @@ when release.soak < 24h and not release.hotfix {
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
-deploy.production: deny soak_too_short
+deploy.production: deny(soak_too_short)
 
 trace: 1 candidate
-* deny     soak_too_short    deploy/production.sigil:4:3
-           release.soak < 24h and not release.hotfix
+  * deny(soak_too_short)  deploy/production.sigil:4:3
+      when release.soak < 24h and not release.hotfix
 ```
 
 :::
@@ -156,13 +156,13 @@ In a YAML matcher, or in a language where unknown fields resolve to `null`, this
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input wrong-lifecycle.json deploy/production.sigil
-deploy.production: deny not_eligible
+deploy.production: deny(not_eligible)
 
 trace: 2 candidates
-* deny     not_eligible      deploy/production.sigil:12:3
-           not eligible
-  deny     soak_too_short    deploy/production.sigil:16:3
-           release.soak < 24h and not release.hotfix
+  * deny(not_eligible)    deploy/production.sigil:12:3
+      when not eligible
+    deny(soak_too_short)  deploy/production.sigil:16:3
+      when release.soak < 24h and not release.hotfix
 ```
 
 :::
@@ -316,16 +316,16 @@ when "payments-sre" in actor.teams {
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
-payments.production: review service_owner
+payments.production: review(service_owner)
   approvers = ["payments-leads"]
 
 trace: 2 candidates
-* review   service_owner     payments/production.sigil:5:1 → deploy/production.sigil:34:5
-           cleared
-           and service.tier in ["standard", "internal"] and owns_service
-           approvers = ["payments-leads"]
-  approve  payments_sre      payments/production.sigil:11:3
-           bake = 15m
+  * review(service_owner)  payments/production.sigil:5:1 → deploy/production.sigil:34:5
+      when cleared
+       and service.tier in ["standard", "internal"] and owns_service
+      approvers = ["payments-leads"]
+    approve(payments_sre)  payments/production.sigil:11:3
+      bake = 15m
 ```
 
 :::
@@ -455,17 +455,17 @@ Here the `when` around `production(...)` is exactly what you want: the block's c
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
-payments.production: review service_owner
+payments.production: review(service_owner)
   approvers = ["payments-leads"]
 
 trace: 2 candidates
-* review   service_owner     payments/production.sigil:14:3 → deploy/production.sigil:16:5
-           service.labels["compliance"] != "pci"
-           and cleared
-           and service.tier in ["standard", "internal"] and owns_service
-           approvers = ["payments-leads"]
-  approve  payments_sre      payments/production.sigil:18:3
-           bake = 15m
+  * review(service_owner)  payments/production.sigil:14:3 → deploy/production.sigil:16:5
+      when service.labels["compliance"] != "pci"
+       and cleared
+       and service.tier in ["standard", "internal"] and owns_service
+      approvers = ["payments-leads"]
+    approve(payments_sre)  payments/production.sigil:18:3
+      bake = 15m
 ```
 
 :::

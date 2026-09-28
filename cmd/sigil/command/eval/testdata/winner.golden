@@ -1,10 +1,10 @@
-access.main: allow admin
+access.main: allow(admin)
   ttl = 8h
   scopes = ["*"]
 
 trace: 1 candidate
-* allow    admin             testdata/access/main.sigil:6:3
-           user.admin
-           ttl = 8h
-           scopes = ["*"]
+  * allow(admin)  testdata/access/main.sigil:6:3
+      when user.admin
+      ttl = 8h
+      scopes = ["*"]
 --- ok ---

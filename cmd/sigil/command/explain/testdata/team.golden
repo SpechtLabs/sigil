@@ -1,40 +1,40 @@
 payments.production: 9 rules from 4 policies
 
-deny     not_eligible      payments.production:7 → guardrails:8
-         not eligible
+  deny(not_eligible)                payments.production:7 → guardrails:8
+    when not eligible
 
-deny     soak_too_short    payments.production:7 → guardrails:12
-         release.soak < 4h and not release.hotfix
+  deny(soak_too_short)              payments.production:7 → guardrails:12
+    when release.soak < 4h and not release.hotfix
 
-approve  release_manager   payments.production:10 → deploy.production:11
-         service.labels["compliance"] == "pci"
-         and cleared
-         and service.tier == "critical" and "release_manager" in actor.roles
+  approve(release_manager)          payments.production:10 → deploy.production:11
+    when service.labels["compliance"] == "pci"
+     and cleared
+     and service.tier == "critical" and "release_manager" in actor.roles
 
-review   service_owner     payments.production:10 → deploy.production:16
-         service.labels["compliance"] == "pci"
-         and cleared
-         and service.tier in ["standard", "internal"] and owns_service
-         approvers = ["payments-leads", "security-leads"]
+  review(service_owner)             payments.production:10 → deploy.production:16
+    when service.labels["compliance"] == "pci"
+     and cleared
+     and service.tier in ["standard", "internal"] and owns_service
+    with approvers = ["payments-leads", "security-leads"]
 
-approve  release_manager   payments.production:14 → deploy.production:11
-         service.labels["compliance"] != "pci"
-         and cleared
-         and service.tier == "critical" and "release_manager" in actor.roles
+  approve(release_manager)          payments.production:14 → deploy.production:11
+    when service.labels["compliance"] != "pci"
+     and cleared
+     and service.tier == "critical" and "release_manager" in actor.roles
 
-review   service_owner     payments.production:14 → deploy.production:16
-         service.labels["compliance"] != "pci"
-         and cleared
-         and service.tier in ["standard", "internal"] and owns_service
-         approvers = ["payments-leads"]
+  review(service_owner)             payments.production:14 → deploy.production:16
+    when service.labels["compliance"] != "pci"
+     and cleared
+     and service.tier in ["standard", "internal"] and owns_service
+    with approvers = ["payments-leads"]
 
-approve  payments_sre      payments.production:18
-         cleared and "payments-sre" in actor.teams
-         bake = 15m
+  approve(payments_sre)             payments.production:18
+    when cleared and "payments-sre" in actor.teams
+    with bake = 15m
 
-assert   named_actor (input) payments.production:21
-         check actor.name != ""
+  assert named_actor (input)        payments.production:21
+    check actor.name != ""
 
-assert   hotfix_approved (outcome) payments.production:24
-         release.hotfix
-         check approve in outcome
+  assert hotfix_approved (outcome)  payments.production:24
+    when release.hotfix
+    check approve in outcome

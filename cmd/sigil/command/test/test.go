@@ -116,12 +116,13 @@ type SuiteResult struct {
 
 // CaseResult is one test case's run.
 type CaseResult struct {
-	Name     string           `json:"name" yaml:"name"`
-	Error    string           `json:"error,omitempty" yaml:"error,omitempty"`
-	Failures []string         `json:"failures,omitempty" yaml:"failures,omitempty"`
-	Line     int              `json:"line" yaml:"line"`
-	Passed   bool             `json:"passed" yaml:"passed"`
-	problem  *testsuite.Error // what's behind Error
+	Name     string              `json:"name" yaml:"name"`
+	Error    string              `json:"error,omitempty" yaml:"error,omitempty"`
+	Failures []string            `json:"failures,omitempty" yaml:"failures,omitempty"`
+	Line     int                 `json:"line" yaml:"line"`
+	Passed   bool                `json:"passed" yaml:"passed"`
+	problem  *testsuite.Error    // what's behind Error
+	diffs    []testsuite.Failure // what's behind Failures
 }
 
 // osFS reads input files by their paths on disk, relative to the working
@@ -208,7 +209,10 @@ func runSuite(ctx context.Context, runner *testsuite.Runner, b *bundle.Bundle, f
 			continue
 		}
 		r := runner.RunCase(ctx, s, c, evaluate)
-		cr := CaseResult{Name: c.Name, Line: c.Line, Passed: r.Passed(), Failures: r.Failures, problem: r.Err}
+		cr := CaseResult{Name: c.Name, Line: c.Line, Passed: r.Passed(), problem: r.Err, diffs: r.Failures}
+		for _, f := range r.Failures {
+			cr.Failures = append(cr.Failures, f.Text)
+		}
 		if r.Err != nil {
 			cr.Error = r.Err.Msg
 			if r.Err.Help != "" {
@@ -416,8 +420,13 @@ func writeSuite(b *strings.Builder, t pretty.Theme, s SuiteResult, verbose bool)
 		if c.problem != nil {
 			b.WriteString(indent(problem(t, c.problem.Msg, c.problem.Help), "      ") + "\n")
 		}
-		for _, msg := range c.Failures {
-			b.WriteString(indent(msg, "      ") + "\n")
+		for _, f := range c.diffs {
+			if f.Want == "" {
+				b.WriteString(indent(f.Text, "      ") + "\n")
+				continue
+			}
+			b.WriteString("      " + t.Key("want") + " " + f.Want + "\n")
+			b.WriteString("      " + t.Key("got ") + " " + t.Fail(f.Got) + "\n")
 		}
 	}
 	if failed > 0 {
