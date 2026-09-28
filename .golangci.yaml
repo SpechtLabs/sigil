@@ -91,6 +91,14 @@ linters:
         text: "^fieldalignment:"
         path: _test\.go
 
+      # The examples module is linted with this config from examples/, and its
+      # kind structs mirror the documentation: the field order is the order of
+      # the inputs in the exported kind file, so it isn't free to change.
+      - linters:
+          - govet
+        text: "^fieldalignment:"
+        path: ^examples/
+
       # types mirrors go/types; the singular would read as a variable name.
       - linters:
           - golint-sl

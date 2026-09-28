@@ -1,0 +1,127 @@
+# deploygate with its observability stack: traces go through an OpenTelemetry
+# Collector to Jaeger, Prometheus scrapes the service and the collector, and
+# Grafana shows both. Run it from examples/:
+#
+#   docker compose up --build --wait
+#
+# | Service        | Host port  | What for                                   |
+# | -------------- | ---------- | ------------------------------------------ |
+# | deploygate     | 8080       | API, /healthz, /readyz, /metrics           |
+# | otel-collector | 4317, 4318 | OTLP gRPC and HTTP                         |
+# | jaeger         | 16686      | Trace UI and /api/traces                   |
+# | prometheus     | 9090       | Metrics UI and API                         |
+# | grafana        | 3000       | The deploygate dashboard, no login         |
+#
+# ./policies/teams is mounted read-only as the team bundle. Edit a team policy
+# on the host and deploygate picks it up within DEPLOYGATE_RELOAD_INTERVAL, or
+# at once with `curl -X POST localhost:8080/api/v1/policies/reload`.
+
+name: deploygate
+
+services:
+  deploygate:
+    build:
+      # The repository root: the examples module builds against the library
+      # through `replace ../`, so the library sources must be in the context.
+      context: ..
+      dockerfile: examples/Dockerfile
+      args:
+        VERSION: compose
+    image: deploygate:compose
+    ports:
+      - "8080:8080"
+    environment:
+      DEPLOYGATE_POLICIES: /etc/deploygate/policies
+      DEPLOYGATE_TEAMS: payments,checkout
+      # Short, so a policy edit on the host shows up while you watch.
+      DEPLOYGATE_RELOAD_INTERVAL: 5s
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_SERVICE_NAME: deploygate
+    volumes:
+      - ./policies/teams:/etc/deploygate/policies:ro
+    # The image has no shell or HTTP client, so the binary probes its own
+    # /readyz. It turns healthy once the team bundle has loaded, which is
+    # what `up --wait` and the e2e suite wait for.
+    healthcheck:
+      test: ["CMD", "/deploygate", "healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    depends_on:
+      otel-collector:
+        condition: service_started
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - ./deploy/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    # No healthcheck: the image holds nothing but the collector binary, so
+    # there is no shell or HTTP client to run one with. `up --wait` treats a
+    # service without a healthcheck as ready once it runs, and Prometheus
+    # shows whether the collector is up.
+    depends_on:
+      jaeger:
+        condition: service_healthy
+    restart: unless-stopped
+
+  jaeger:
+    # Jaeger v2: OTLP on 4317/4318 and in-memory storage out of the box. Only
+    # the UI is published; the collector reaches OTLP on the compose network.
+    # Held at 2.20: 2.21 removed the v1 HTTP API (/api/services, /api/traces),
+    # which Grafana's Jaeger datasource and the e2e suite still query.
+    image: jaegertracing/jaeger:2.20.0
+    ports:
+      - "16686:16686"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:16686/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.2
+    ports:
+      - "3000:3000"
+    environment:
+      # A local demo: anyone who reaches port 3000 is an admin, and there is
+      # no login screen in the way.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/deploygate.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    restart: unless-stopped

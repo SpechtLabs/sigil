@@ -170,6 +170,8 @@ if r, ok := Review.Match(res); ok {
 }
 ```
 
+[`examples/`](./examples) turns these documents into a running service, deploygate, with the guardrails embedded, team policies that reload in place, and a metric and a trace for every decision. `mise run examples-up` starts it.
+
 ## Design goals
 
 - **Readable on first contact.** Terse is fine; Rego-style logic programming isn't.
@@ -246,7 +248,7 @@ The docs site lives in [`docs/`](./docs) and follows the [Diátaxis](https://dia
 | Section | What's there |
 | --- | --- |
 | [Getting started](./docs/getting-started/overview.md) | What Sigil is, a tour of the language, and a first policy built step by step |
-| [Guides](./docs/guides/team-policies.md) | Per-team policies, common patterns, evolving a kind without breaking policies |
+| [Guides](./docs/guides/team-policies.md) | Per-team policies, [the example service](./docs/guides/example-service.md), common patterns, evolving a kind without breaking policies |
 | [Understanding](./docs/understanding/design-goals.md) | Why the language is shaped this way: order independence, strictness, halting, composition and required guardrails |
 | [Reference](./docs/reference/policy-files.md) | The language specification: lexical structure, statements, expressions, types, decisions, evaluation, kind files, grammar |
 | [Project](./docs/project/open-questions.md) | Open design questions, plus the roadmap rendered from [`roadmap.yml`](./roadmap.yml) |

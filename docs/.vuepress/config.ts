@@ -113,6 +113,7 @@ export default defineUserConfig({
           prefix: "/guides/",
           items: [
             { text: "Per-team policies", link: "team-policies", icon: "mdi:account-group" },
+            { text: "The example service", link: "example-service", icon: "mdi:rocket-launch-outline" },
             { text: "Common patterns", link: "patterns", icon: "mdi:puzzle" },
             { text: "Evolve a kind safely", link: "evolve-a-kind", icon: "mdi:source-branch" },
             { text: "Testing and fuzzing", link: "testing", icon: "mdi:test-tube" },
