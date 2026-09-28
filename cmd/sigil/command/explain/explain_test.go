@@ -29,6 +29,7 @@ func TestExplain(t *testing.T) {
 		{name: "pattern", pattern: "deploy.*", format: output.Text, paths: []string{"testdata"}},
 		{name: "no match", pattern: "nope.*", paths: []string{"testdata"}, err: `no policy matches "nope.*"`},
 		{name: "unknown kind file", pattern: "", paths: []string{"testdata"}, err: "the kind file couldn't be read"},
+		{name: "no policies", paths: []string{"testdata/deploy_approval.sigil"}, err: "the bundle holds no policies"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

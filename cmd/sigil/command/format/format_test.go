@@ -117,6 +117,26 @@ func TestRun(t *testing.T) {
 			paths: []string{"nope.sigil"},
 			err:   "nope.sigil can't be read",
 		},
+		{
+			name:  "no files warns",
+			files: map[string]string{"notes.txt": "not sigil"},
+			paths: []string{"."},
+			mode:  modeCheck,
+			out:   "! no .sigil files found, so nothing was formatted\n  name the files, or a directory that holds them\n",
+		},
+		{
+			name:  "printing stops at a file that doesn't parse",
+			files: map[string]string{"a.sigil": "policy a: K@1\nlet = 1\n", "b.sigil": messy},
+			paths: []string{"."},
+			out: tidy +
+				"a.sigil:2:5: error: expected a name after `let`, found `=`\n" +
+				"  |\n" +
+				"2 | let = 1\n" +
+				"  |     ^\n" +
+				"  = help: a let is written `let name = expression`\n\n" +
+				"✗ 1 file has syntax errors\n",
+			err: "1 file has syntax errors",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

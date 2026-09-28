@@ -252,3 +252,10 @@ func runner(t *testing.T, src string, fsys fstest.MapFS) *testsuite.Runner {
 	k := loadKind(t, src)
 	return &testsuite.Runner{Kind: k, Binding: gokind.Synthesize(k), FS: fsys}
 }
+
+func TestFailureString(t *testing.T) {
+	f := testsuite.Failure{Text: "got a, want b", Got: "a", Want: "b"}
+	if got := f.String(); got != "got a, want b" {
+		t.Errorf("String() = %q", got)
+	}
+}

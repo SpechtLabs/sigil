@@ -120,3 +120,21 @@ func golden(t *testing.T, name, got string) {
 		t.Errorf("output differs from %s (run with -update to accept):\n--- got ---\n%s\n--- want ---\n%s", path, got, want)
 	}
 }
+
+// TestNoFiles checks that a directory without .sigil files is a warning,
+// not a pass.
+func TestNoFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	format := output.Text
+	var out bytes.Buffer
+	err := run(&out, &options{output: &format}, filepath.Join("testdata", "config", "defaults.yaml"), filepath.Join("testdata", "deploy_approval.sigil"), project.Sources{Paths: []string{dir}}, nil, nil)
+	if err != nil {
+		t.Fatalf("run() = %v", err)
+	}
+	if want := "! no .sigil files found, so nothing was checked\n"; !strings.HasPrefix(out.String(), want) {
+		t.Errorf("output = %q, want it to start with %q", out.String(), want)
+	}
+}

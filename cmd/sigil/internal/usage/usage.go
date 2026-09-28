@@ -20,7 +20,7 @@ func None() cobra.PositionalArgs {
 		if len(args) == 0 {
 			return nil
 		}
-		return humane.New(fmt.Sprintf("%s takes no arguments, got %d", cmd.Name(), len(args)), helpAdvice(cmd)...)
+		return humane.New(fmt.Sprintf("%s takes no arguments, got %d", name(cmd), len(args)), helpAdvice(cmd)...)
 	}
 }
 
@@ -31,29 +31,29 @@ func Exactly(names ...string) cobra.PositionalArgs {
 		if len(args) == len(names) {
 			return nil
 		}
-		return humane.New(fmt.Sprintf("%s needs %s, got %d", cmd.Name(), list(names), len(args)), helpAdvice(cmd)...)
+		return humane.New(fmt.Sprintf("%s needs %s, got %d", name(cmd), list(names), len(args)), helpAdvice(cmd)...)
 	}
 }
 
 // AtLeast returns a validator for a command that takes n or more
-// arguments called name.
-func AtLeast(n int, name string) cobra.PositionalArgs {
+// arguments called what.
+func AtLeast(n int, what string) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
 		if len(args) >= n {
 			return nil
 		}
-		return humane.New(fmt.Sprintf("%s needs at least %s", cmd.Name(), number(n, name)), helpAdvice(cmd)...)
+		return humane.New(fmt.Sprintf("%s needs at least %s", name(cmd), number(n, what)), helpAdvice(cmd)...)
 	}
 }
 
 // AtMost returns a validator for a command that takes up to n arguments
-// called name.
-func AtMost(n int, name string) cobra.PositionalArgs {
+// called what.
+func AtMost(n int, what string) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
 		if len(args) <= n {
 			return nil
 		}
-		return humane.New(fmt.Sprintf("%s takes at most %s, got %d", cmd.Name(), number(n, name), len(args)), helpAdvice(cmd)...)
+		return humane.New(fmt.Sprintf("%s takes at most %s, got %d", name(cmd), number(n, what), len(args)), helpAdvice(cmd)...)
 	}
 }
 
@@ -65,12 +65,17 @@ func Humanize(root *cobra.Command, args []string, err error) humane.Error {
 	if err == nil {
 		return nil
 	}
-	if he, ok := errors.AsType[humane.Error](err); ok {
-		return he
-	}
 	cmd := root
 	if found, _, ferr := root.Find(args); ferr == nil && found != nil {
 		cmd = found
+	}
+	// A flag's own error wraps the humane one its value returned, so the
+	// flag errors come before the passthrough.
+	if translated := translateFlag(cmd, err); translated != nil {
+		return translated
+	}
+	if he, ok := errors.AsType[humane.Error](err); ok {
+		return he
 	}
 	if translated := translate(cmd, err); translated != nil {
 		return translated
@@ -78,14 +83,8 @@ func Humanize(root *cobra.Command, args []string, err error) humane.Error {
 	return humane.Wrap(err, err.Error(), helpAdvice(cmd)...)
 }
 
-var (
-	unknownCommand = regexp.MustCompile(`^unknown command "([^"]*)" for "([^"]*)"`)
-	requiredFlags  = regexp.MustCompile(`^required flag\(s\) "(.*)" not set$`)
-	exclusiveFlags = regexp.MustCompile(`^if any flags in the group \[[^\]]*\] are set none of the others can be; \[([^\]]*)\] were all set$`)
-)
-
-// translate rewrites one of the known usage errors, or returns nil.
-func translate(cmd *cobra.Command, err error) humane.Error {
+// translateFlag rewrites the typed errors pflag reports, or returns nil.
+func translateFlag(cmd *cobra.Command, err error) humane.Error {
 	var notExist *pflag.NotExistError
 	var valueRequired *pflag.ValueRequiredError
 	var invalidValue *pflag.InvalidValueError
@@ -94,14 +93,36 @@ func translate(cmd *cobra.Command, err error) humane.Error {
 		return unknownFlag(cmd, notExist)
 	case errors.As(err, &valueRequired):
 		flag := valueRequired.GetFlag()
-		advice := []string{}
-		if flag != nil && flag.Usage != "" {
+		var advice []string
+		if flag != nil {
 			advice = append(advice, "--"+flag.Name+" takes "+describe(flag))
 		}
-		return humane.New("--"+flagName(valueRequired.GetFlag(), valueRequired.GetSpecifiedName())+" needs a value", append(advice, helpAdvice(cmd)...)...)
+		return humane.New("--"+flagName(flag, valueRequired.GetSpecifiedName())+" needs a value", append(advice, helpAdvice(cmd)...)...)
 	case errors.As(err, &invalidValue):
 		return invalidFlagValue(cmd, invalidValue)
 	}
+	return nil
+}
+
+// name is how a message refers to the command: its path without the
+// program's name, `gen go`.
+func name(cmd *cobra.Command) string {
+	_, rest, ok := strings.Cut(cmd.CommandPath(), " ")
+	if !ok {
+		return cmd.Name()
+	}
+	return rest
+}
+
+var (
+	unknownCommand = regexp.MustCompile(`^unknown command "([^"]*)" for "([^"]*)"`)
+	requiredFlags  = regexp.MustCompile(`^required flag\(s\) "(.*)" not set$`)
+	exclusiveFlags = regexp.MustCompile(`^if any flags in the group \[[^\]]*\] are set none of the others can be; \[([^\]]*)\] were all set$`)
+)
+
+// translate rewrites the usage errors cobra reports as plain text, or
+// returns nil.
+func translate(cmd *cobra.Command, err error) humane.Error {
 	text := err.Error()
 	if m := unknownCommand.FindStringSubmatch(text); m != nil {
 		return unknownSubcommand(cmd, m[1], m[2], text)

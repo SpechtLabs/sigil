@@ -32,6 +32,7 @@ func TestTest(t *testing.T) {
 		{name: "failures_json", paths: []string{policies, "testdata/failing"}, format: output.JSON},
 		{name: "failures_yaml", paths: []string{policies, "testdata/failing"}, format: output.YAML},
 		{name: "run_filter", paths: []string{policies, "testdata/failing"}, run: "^wrong", verbose: true},
+		{name: "run_filter_none", paths: []string{"testdata/access"}, run: "matches nothing"},
 		{name: "one_file", paths: []string{policies, "testdata/access/main_test.yaml"}},
 		{name: "invalid", paths: []string{policies, "testdata/invalid"}},
 		{name: "bad_yaml", paths: []string{policies, "testdata/badyaml"}},
