@@ -47,7 +47,7 @@ jobs:
       - name: Set up mise
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          install_args: go golangci-lint yamllint actionlint
+          install_args: go golangci-lint yamllint actionlint shellcheck
 
       - name: Restore custom-gcl cache
         id: custom-gcl-cache
@@ -71,8 +71,12 @@ jobs:
       - name: Lint YAML
         run: mise run yaml-lint
 
+      # The matcher turns actionlint's output into annotations on the PR diff.
+      # shellcheck is installed above, so the `run:` scripts are checked too.
       - name: Lint workflows
-        run: mise run actionlint
+        run: |
+          echo "::add-matcher::.github/actionlint-matcher.json"
+          mise run actionlint
 
   test:
     name: Unit Tests
