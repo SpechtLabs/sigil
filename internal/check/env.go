@@ -29,6 +29,8 @@ const (
 	Param
 	Let
 	QuantVar
+	Module    // a whole import of a module: a qualifier for its pub lets
+	Invocable // a whole import of a policy: a name to invoke
 )
 
 var entityNames = [...]string{
@@ -39,6 +41,8 @@ var entityNames = [...]string{
 	Param:        "param",
 	Let:          "let",
 	QuantVar:     "quantifier variable",
+	Module:       "module",
+	Invocable:    "imported policy",
 }
 
 func (e Entity) String() string {
@@ -48,10 +52,14 @@ func (e Entity) String() string {
 	return "unknown"
 }
 
-// Binding is what a name resolves to.
+// Binding is what a name resolves to. An imported name carries the
+// document it came from: a whole import binds Doc alone, and a
+// selectively imported let binds Doc and Let, the let's name there.
 type Binding struct {
 	Type   types.Type // nil for a host function; see Func
 	Func   *kind.Func // set for a host function
+	Doc    *Exported  // set for an import
+	Let    string     // the imported let's own name, for a selective import
 	Entity Entity
 }
 

@@ -1,0 +1,9 @@
+policy payments.production: DeployApproval@1
+
+use deploy.guardrails
+
+param soak: duration = 30m
+
+guardrails(min_soak: 0s)
+guardrails(min_soak: soak)
+guardrails(min_soak: 49h)

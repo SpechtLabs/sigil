@@ -22,7 +22,9 @@ type Rule struct {
 	Reason   string
 	Policy   string // the document the constructor is in
 	File     string
-	Conds    []*Cond // enclosing conditions, outermost first
+	Conds    []*Cond // enclosing conditions, outermost first, the invoking blocks' included
+	Chain    []Site  // the invocations the rule was reached through, outermost first
+	Args     []Arg   // the payload arguments as written, for explain
 	fields   []payloadField
 	Pos      token.Pos // of the constructor
 	End      token.Pos
@@ -33,6 +35,13 @@ type Rule struct {
 // Outcome renders the candidate's decision and reason as a decision
 // value: `approve.release_manager`.
 func (r *Rule) Outcome() string { return r.Decision.Name + "." + r.Reason }
+
+// Arg is one payload argument as written, with params replaced by their
+// bound values.
+type Arg struct {
+	Name string
+	Text string
+}
 
 // payloadField is how one payload field's value is produced when the
 // rule fires: from its argument's expression, or from the kind's default.

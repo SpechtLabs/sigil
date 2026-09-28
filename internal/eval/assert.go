@@ -13,7 +13,9 @@ type Assert struct {
 	Reason       string
 	Policy       string
 	File         string
+	Text         string // the condition as written, params substituted
 	Conds        []*Cond
+	Chain        []Site
 	Pos          token.Pos
 	End          token.Pos
 	ReadsOutcome bool

@@ -1,0 +1,6 @@
+== compile p ==
+modules.sigil:19:1: import cycle: a -> b -> c -> a
+   |
+19 | use a.{x}
+   | ^^^^^^^^^
+   = help: imports form a directed acyclic graph; move the shared lets to a module both can import

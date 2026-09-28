@@ -39,7 +39,7 @@ func TestCompilePolicyErrors(t *testing.T) {
 			if tt.checked {
 				c.Policy(doc, k)
 			}
-			_, err := eval.CompilePolicy(doc, "p.sigil", []byte(src), c.Info(), k, b, tt.params)
+			_, err := eval.CompilePolicy(&eval.Source{Doc: doc, Info: c.Info(), File: "p.sigil", Src: []byte(src)}, k, b, nil, eval.Options{Params: tt.params})
 			if err == nil || err.Error() != tt.err {
 				t.Fatalf("CompilePolicy() error = %v, want %q", err, tt.err)
 			}

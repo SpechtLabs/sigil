@@ -13,7 +13,9 @@ type Info struct {
 	Types        map[ast.Expr]types.Type
 	Params       map[*ast.ParamStmt]types.Type
 	Constructors map[*ast.CallStmt]*kind.Decision
-	Lets         []*ast.LetStmt // in an order where every let follows the lets it reads
+	Invocations  map[*ast.CallStmt]string // the invoked policy's name
+	Reads        map[ast.Expr]Read        // imported lets, by the identifier or `qualifier.let` that reads them
+	Lets         []*ast.LetStmt           // in an order where every let follows the lets it reads
 	// Shadows are the document's names that take the name of an input,
 	// host function or decision the kind added after the document's pin.
 	// The shadowed-kind-name lint reports them.

@@ -1,0 +1,21 @@
+policy a: DeployApproval@1
+
+use b
+
+b()
+
+---
+
+policy b: DeployApproval@1
+
+use c
+
+when release.hotfix { c() }
+
+---
+
+policy c: DeployApproval@1
+
+use a
+
+a()

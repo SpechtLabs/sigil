@@ -72,6 +72,16 @@ func (c *compiler) expr(x ast.Expr) Expr {
 	return nil
 }
 
+// fieldIndex looks a field path up in the binding, which a static
+// compile doesn't have.
+func (c *compiler) fieldIndex(key string) ([]int, bool) {
+	if c.scope.binding == nil {
+		return nil, false
+	}
+	idx, ok := c.scope.binding.Fields[key]
+	return idx, ok
+}
+
 func constExpr(v any) Expr {
 	val := reflect.ValueOf(v)
 	return func(*Frame) Value { return val }
@@ -84,20 +94,18 @@ func (c *compiler) ident(x *ast.Ident) Expr {
 	if v, ok := c.scope.consts[x.Name]; ok {
 		return func(*Frame) Value { return v }
 	}
+	if rd, ok := c.info.Reads[x]; ok {
+		return c.imported(x, rd)
+	}
 	if i, ok := c.scope.names[x.Name]; ok {
 		s := c.scope
-		return func(f *Frame) Value {
-			if !f.done[i] {
-				f.lets[i] = s.lets[i](f)
-				f.done[i] = true
-			}
-			return f.lets[i]
-		}
+		s.ensure(i)
+		return func(f *Frame) Value { return s.value(f, i) }
 	}
 	if slot, ok := c.scope.slots[x.Name]; ok {
 		return func(f *Frame) Value { return f.slots[slot] }
 	}
-	if idx, ok := c.scope.binding.Fields["."+x.Name]; ok {
+	if idx, ok := c.fieldIndex("." + x.Name); ok {
 		return func(f *Frame) Value { return f.Input.FieldByIndex(idx) }
 	}
 	if c.typeOf(x) == types.Decision {
@@ -482,10 +490,31 @@ func (c *compiler) arith(x *ast.BinaryExpr) Expr {
 // decision value with its reason, `approve.release_manager`, which is
 // its own string.
 func (c *compiler) selector(x *ast.SelectorExpr) Expr {
+	if rd, ok := c.info.Reads[x]; ok {
+		return c.imported(x, rd)
+	}
 	if id, ok := x.X.(*ast.Ident); ok && c.typeOf(x) == types.Decision {
 		return constExpr(id.Name + "." + x.Sel.Name)
 	}
 	return c.chain(x)
+}
+
+// imported compiles a read of another document's pub let: the let is
+// evaluated in that document's own frame, once per evaluation.
+func (c *compiler) imported(x ast.Expr, rd check.Read) Expr {
+	if c.scope.inst == nil || c.scope.inst.imports == nil {
+		throwf(x, "imported let `%s` read outside a policy", rd.Let)
+	}
+	target := c.scope.inst.imports[rd.Doc]
+	if target == nil {
+		throwf(x, "document %s isn't linked", rd.Doc)
+	}
+	i, ok := target.scope.names[rd.Let]
+	if !ok {
+		throwf(x, "document %s has no let `%s`", rd.Doc, rd.Let)
+	}
+	target.scope.ensure(i)
+	return func(f *Frame) Value { return target.scope.value(f.frameOf(target), i) }
 }
 
 // index compiles `x[i]`, the end of a chain.
@@ -526,7 +555,7 @@ func (c *compiler) link(x ast.Expr) func(*Frame) (Value, bool) {
 			t = opt.Elem
 		}
 		s := t.(*types.Struct)
-		idx, ok := c.scope.binding.Fields[s.Name+"."+x.Sel.Name]
+		idx, ok := c.fieldIndex(s.Name + "." + x.Sel.Name)
 		if !ok {
 			throwf(x.Sel, "no binding for field %s.%s", s.Name, x.Sel.Name)
 		}
@@ -611,7 +640,11 @@ func (c *compiler) indexer(x *ast.IndexExpr) func(*Frame, Value) Value {
 // result becomes a runtime error.
 func (c *compiler) call(x *ast.CallExpr) Expr {
 	name := x.Fun.(*ast.Ident).Name
-	fn, ok := c.scope.binding.Funcs[name]
+	var fn reflect.Value
+	ok := false
+	if c.scope.binding != nil {
+		fn, ok = c.scope.binding.Funcs[name]
+	}
 	if !ok {
 		throwf(x.Fun, "no implementation bound for host function %s", name)
 	}
@@ -689,8 +722,10 @@ func (c *compiler) zero(t types.Type) Value {
 	case *types.Map:
 		return reflect.ValueOf(map[any]any{})
 	case *types.Struct:
-		if gt, ok := c.scope.binding.Structs[t.Name]; ok {
-			return reflect.Zero(gt)
+		if c.scope.binding != nil {
+			if gt, ok := c.scope.binding.Structs[t.Name]; ok {
+				return reflect.Zero(gt)
+			}
 		}
 	case *types.Optional:
 		return Value{}

@@ -1,0 +1,13 @@
+policy payments.production: DeployApproval@1
+
+use deploy.guardrails
+
+when service.labels["compliance"] == "pci" {
+  guardrails(min_soak: 4h)
+}
+
+when service.tier == "critical" {
+  when release.hotfix {
+    guardrails()
+  }
+}

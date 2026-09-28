@@ -19,7 +19,7 @@ payload   (none)
 
 candidates
   deny     soak_too_short     24:3 (payments.production)
-           release.soak < min_soak and not release.hotfix
+           release.soak < 4h and not release.hotfix
   approve  payments_sre       40:3 (payments.production)  bake: 15m0s
 
 == a hotfix skips the soak ==
@@ -41,7 +41,7 @@ payload   approvers: [payments-leads]
 candidates
   review   service_owner      35:5 (payments.production)  approvers: [payments-leads]
            cleared
-           service.tier in tiers and owns_service
+           service.tier in ["standard", "internal"] and owns_service
 
 == a tie goes to the earliest constructor ==
 decision  approve

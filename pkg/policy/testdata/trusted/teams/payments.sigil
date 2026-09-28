@@ -1,0 +1,13 @@
+// The team's bundle claims a trusted name: a compile error, not an
+// override of the platform's module.
+module deploy.common: DeployApproval@1
+
+pub let eligible = true
+
+---
+
+policy payments.production: DeployApproval@1
+
+use deploy.guardrails
+
+guardrails()

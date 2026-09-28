@@ -3,6 +3,7 @@ package constant
 import (
 	"cmp"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -155,4 +156,22 @@ func formatMap(m map[any]any) string { //nolint:emptyinterface // constants are 
 	}
 	sort.Strings(parts)
 	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+// Ordered returns a Go value of an ordered type in the representation
+// Compare takes: int64, float64 or time.Duration. Anything else comes
+// back unchanged.
+func Ordered(v any) any { //nolint:emptyinterface // constants are typed by their Sigil type; see Conforms
+	switch x := v.(type) {
+	case time.Duration, int64, float64:
+		return x
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Int, reflect.Int64:
+		return rv.Int()
+	case reflect.Float64:
+		return rv.Float()
+	}
+	return v
 }

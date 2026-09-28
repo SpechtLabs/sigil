@@ -38,7 +38,7 @@ func (p *Policy[In]) Eval(ctx context.Context, input In) (*Result, error) {
 	ae := &AssertionError{}
 	for _, fl := range out.Failed {
 		a := fl.Assert
-		f := AssertFailure{Reason: a.Reason, Policy: a.Policy, Position: position(a.File, a.Policy, a.Pos)}
+		f := AssertFailure{Reason: a.Reason, Policy: a.Policy, Position: position(a.File, a.Policy, a.Pos), CallChain: sites(a.Chain)}
 		if a.ReadsOutcome {
 			f.Outcome = p.outcomeCandidates(out)
 		}
@@ -112,13 +112,25 @@ func (p *Policy[In]) entry(c *eval.Candidate) Entry {
 }
 
 func (p *Policy[In]) candidate(c *eval.Candidate, withConds bool) Candidate {
-	out := Candidate{Decision: c.Decision.Name, Reason: c.Reason, Policy: c.Policy, Payload: c.Payload, Position: position(c.File, c.Policy, c.Pos)}
+	out := Candidate{Decision: c.Decision.Name, Reason: c.Reason, Policy: c.Policy, Payload: c.Payload, Position: position(c.File, c.Policy, c.Pos), CallChain: sites(c.Chain)}
 	if !withConds {
 		return out
 	}
 	out.Conditions = make([]Condition, 0, len(c.Conds))
 	for _, cond := range c.Conds {
 		out.Conditions = append(out.Conditions, Condition{Text: cond.Text, Position: position(c.File, c.Policy, cond.Pos)})
+	}
+	return out
+}
+
+// sites converts a call chain.
+func sites(chain []eval.Site) []Position {
+	if len(chain) == 0 {
+		return nil
+	}
+	out := make([]Position, len(chain))
+	for i, s := range chain {
+		out[i] = position(s.File, s.Policy, s.Pos)
 	}
 	return out
 }

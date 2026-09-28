@@ -6,7 +6,7 @@ permalink: /reference/cli/
 ---
 
 ::: warning Planned tooling
-None of these tools exist yet. Commands, flags and output formats will change. This page records what the tooling is meant to do so the language design accounts for it.
+Of these tools only `sigil explain` exists, without `--input`. Commands, flags and output formats will change. This page records what the tooling is meant to do so the language design accounts for it.
 :::
 
 All tooling reads the exported kind file (`deploy_approval.sigil` in the running example), so it works in a team's policy repository without the host's Go code. One `sigil` binary covers the command line.
@@ -106,9 +106,9 @@ approve  payments_sre      payments:18
 ...
 ```
 
-Each entry names the decision, the reason and the call chain that reaches the rule, then the rule's full condition. Asserts appear as entries too, marked `assert` in the decision column and `input` or `outcome` after the reason, so a reader can tell which ones run before the rules, with the condition under which they're checked and the condition they check: every `when` around every call on the chain, joined with `and`. Params show as their bound values, which is why invocation arguments can't depend on inputs. `let`s stay by name, so a condition reads the way its author wrote it.
+Each entry names the decision, the reason and the call chain that reaches the rule, then the rule's full condition. A document is named by its last segment, or its full name when two documents share one, so `payments.production` and `deploy.production` read `payments.production:7 → deploy.production:16`. Asserts appear as entries too, marked `assert` in the decision column and `input` or `outcome` after the reason, so a reader can tell which ones run before the rules, with the condition under which they're checked and the condition they check: every `when` around every call on the chain, joined with `and`. Params show as their bound values, which is why invocation arguments can't depend on inputs. `let`s stay by name, so a condition reads the way its author wrote it.
 
-With `--input`, the output also marks which rules fired and which candidate won. Like `eval`, that needs bound functions; without `--input`, `explain` needs only the kind file.
+A policy explained on its own, without a policy that invokes it, shows a required param by its name, `approvers = approvers`, since nothing binds it. With `--input`, the output also marks which rules fired and which candidate won (planned). Like `eval`, that needs bound functions; without `--input`, `explain` needs only the kind file.
 
 ```text
 sigil explain --kind deploy_approval.sigil --input release.json --policy payments.production deploy/ payments/

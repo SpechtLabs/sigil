@@ -1,0 +1,19 @@
+// The same policy invoked twice with different params: two instances,
+// told apart by their call chains.
+policy deploy.regional: DeployApproval@1
+
+param region: string
+param approvers: list<string>
+
+when region in actor.regions {
+  review(service_owner, approvers: approvers)
+}
+
+---
+
+policy payments.regions: DeployApproval@1
+
+use deploy.regional
+
+regional(region: "eu-1", approvers: ["eu-leads"])
+regional(region: "us-1", approvers: ["us-leads"])
