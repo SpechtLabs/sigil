@@ -51,6 +51,7 @@ export const navbar = defineNavbarConfig([
       { text: "Kind files", link: "/reference/kind-files", icon: "mdi:file-certificate-outline" },
       { text: "Grammar", link: "/reference/grammar", icon: "mdi:code-braces" },
       { text: "Go API", link: "/reference/go-api", icon: "mdi:language-go" },
+      { text: "Performance", link: "/reference/performance", icon: "mdi:speedometer" },
       { text: "CLI & editor tooling", link: "/reference/cli", icon: "mdi:console" },
     ],
   },
