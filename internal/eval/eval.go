@@ -149,6 +149,39 @@ func norm(v Value) Value {
 	return v
 }
 
+// optional returns v as an optional value: v itself when it's a pointer
+// already, which a nil one keeps absent, and otherwise a pointer to it.
+func optional(v Value) Value {
+	v = norm(v)
+	if !v.IsValid() || v.Kind() == reflect.Pointer {
+		return v
+	}
+	if v.CanAddr() {
+		return v.Addr()
+	}
+	p := reflect.New(v.Type())
+	p.Elem().Set(v)
+	return p
+}
+
+// optionalChain reports whether the chain of links ending at x holds a
+// `?.`, which makes the whole chain optional.
+func optionalChain(x ast.Expr) bool {
+	for {
+		switch n := x.(type) {
+		case *ast.SelectorExpr:
+			if n.Optional {
+				return true
+			}
+			x = n.X
+		case *ast.IndexExpr:
+			x = n.X
+		default:
+			return false
+		}
+	}
+}
+
 var timeType = reflect.TypeOf(time.Time{})
 
 // zero returns the zero value of a Sigil type, as a missing map key

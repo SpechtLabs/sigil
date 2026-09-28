@@ -64,10 +64,10 @@ when cleared {
   }
 }`},
 		{name: "asserts read outcome and decisions", src: `policy access.guardrails: Test
-assert [deny, approve] exclusive in outcome, "one_of"
+assert("one_of", [deny, approve] exclusive in outcome)
 when true {
-  assert deny not in outcome or actor.name != "", "named"
-  assert release.soak >= 0s, "soak"
+  assert("named", deny not in outcome or actor.name != "")
+  assert("soak", release.soak >= 0s)
 }`},
 		{name: "lets in any order", src: `policy p: Test
 let a = b and c
@@ -78,6 +78,22 @@ when a { deny("x") }`, lets: "c b a"},
 param min_soak: duration
 let short = release.soak < min_soak
 when short { deny("x") }`, lets: "short"},
+		{name: "scoped let in any order", src: `policy p: Test
+when release.hotfix {
+  when sre and environment == "production" { approve("sre_hotfix") }
+  let sre = any r in actor.roles: r like "sre-*"
+}`, lets: "sre"},
+		{name: "scoped lets read outer lets", src: `policy p: Test
+let prod = environment == "production"
+when true {
+  let a = prod and release.hotfix
+  when a {
+    let b = a and not prod
+    when b { deny("x") }
+  }
+}`, lets: "prod a b"},
+		{name: "pub let", src: "policy p: Test\npub let a = release.hotfix\nwhen a { deny(\"x\") }", lets: "a"},
+		{name: "pub let in a module", src: "module m: Test\npub let a = release.hotfix\nlet b = a", lets: "a b"},
 		{name: "payload with defaults left out", src: "policy p: Test\nwhen true { approve(\"ok\") }"},
 		{name: "payload keyword field name", src: "policy p: Test\nwhen true { review(\"r\", approvers: [\"a\"]) }"},
 		{name: "empty list argument typed by the field", src: "policy p: Test\nwhen true { review(\"r\", approvers: []) }"},
@@ -99,6 +115,13 @@ when short { deny("x") }`, lets: "short"},
 		{name: "optional param", src: "policy p: Test\nparam a: ?string", errs: []string{"2:10: a param can't be optional"}, help: "an optional param is a param with a default; write `param a: string = <default>`"},
 		{name: "param default of the wrong type", src: "policy p: Test\nparam a: duration = 24", errs: []string{"2:21: expected duration, found int"}},
 		{name: "param default not constant", src: "policy p: Test\nparam a: string = environment", errs: []string{"2:19: `environment` isn't a constant"}},
+		{name: "param bounds", src: "policy p: Test\nparam m: duration = 24h, min: 1h, max: 48h\nparam n: int, max: 5\nparam r: float = 0.5, min: 0.0, max: 1.0"},
+		{name: "param bounds on a string", src: "policy p: Test\nparam s: string = \"a\", min: \"a\"", errs: []string{"2:29: a param of type string can't have bounds"}, help: "bounds apply to int, float and duration params"},
+		{name: "param bound of the wrong type", src: "policy p: Test\nparam n: int, min: 1h", errs: []string{"2:20: expected int, found duration"}},
+		{name: "param bound not constant", src: "policy p: Test\nparam n: int, max: count", errs: []string{"2:20: `count` isn't a constant"}},
+		{name: "param max below min", src: "policy p: Test\nparam n: int, min: 5, max: 1", errs: []string{"2:28: max 1 is below min 5"}},
+		{name: "param default below min", src: "policy p: Test\nparam m: duration = 30m, min: 1h", errs: []string{"2:21: default 30m is below the minimum 1h"}, help: "a default has to be a value the param accepts"},
+		{name: "param default above max", src: "policy p: Test\nparam m: duration = 72h, min: 1h, max: 48h", errs: []string{"2:21: default 72h is above the maximum 48h"}},
 		{name: "param default typed list", src: "policy p: Test\nparam a: list<string> = [1]", errs: []string{"2:26: expected string, found int"}},
 
 		// Lets.
@@ -112,11 +135,28 @@ when short { deny("x") }`, lets: "short"},
 		{name: "let type error", src: "policy p: Test\nlet a = service.teir == \"x\"", errs: []string{"2:17: unknown field \"teir\" on type Service"}, help: "did you mean \"tier\"? Service declares: name, tier, owners, labels, owner, scores, counts, by_id"},
 		{name: "let error reported once through dependents", src: "policy p: Test\nlet a = servce.tier\nlet b = a == \"x\"\nlet c = b and true", errs: []string{"2:9: unknown name `servce`"}},
 
+		// Scoped lets.
+		{name: "scoped let not visible in its condition", src: "policy p: Test\nwhen s { let s = true deny(\"x\") }", errs: []string{"2:6: unknown name `s`"}},
+		{name: "scoped let not visible after its body", src: "policy p: Test\nwhen true { let s = true }\nwhen s { deny(\"x\") }", errs: []string{"3:6: unknown name `s`"}},
+		{name: "scoped let named like one in another body", src: "policy p: Test\nwhen true { let s = true when s { deny(\"a\") } }\nwhen false { let s = false when s { deny(\"b\") } }",
+			errs: []string{"3:18: `s` is already the name of a let in another `when` body"}, help: "let names are unique in a document, so a trace can name each one; rename one of them"},
+		{name: "scoped let shadows a top-level let", src: "policy p: Test\nlet s = true\nwhen s { let s = false }", errs: []string{"3:14: `s` is already the name of a let"}},
+		{name: "scoped let collides with a later top-level let", src: "policy p: Test\nwhen true { let s = false }\nlet s = true", errs: []string{"2:17: `s` is already the name of a let"}},
+		{name: "scoped let shadows an outer scoped let", src: "policy p: Test\nwhen true { let s = true when s { let s = false } }", errs: []string{"2:39: `s` is already the name of a let"}},
+		{name: "scoped let collides with an input", src: "policy p: Test\nwhen true { let actor = 1 }", errs: []string{"2:17: `actor` is already the name of an input"}},
+		{name: "scoped lets in a cycle", src: "policy p: Test\nwhen true { let a = b let b = a }", errs: []string{"2:31: let `a` depends on itself"}},
+
+		// Pub lets.
+		{name: "pub let reads a param", src: "policy p: Test\nparam min_soak: duration\npub let short = release.soak < min_soak",
+			errs: []string{"3:9: let `short` can't be `pub`: it reads param `min_soak`"}, help: "a param has no value outside an invocation; move the let to a module, or drop `pub`"},
+		{name: "pub let reads a param through a let", src: "policy p: Test\nparam m: duration\npub let also = short and true\nlet short = release.soak < m",
+			errs: []string{"3:9: let `also` can't be `pub`: it reads param `m`"}},
+
 		// Rules and asserts.
 		{name: "when condition not bool", src: "policy p: Test\nwhen actor.roles { deny(\"x\") }", errs: []string{"2:6: expected bool, found list<string>"}},
 		{name: "nested when condition", src: "policy p: Test\nwhen true { when 1 { deny(\"x\") } }", errs: []string{"2:18: expected bool, found int"}},
-		{name: "assert condition not bool", src: "policy p: Test\nassert environment, \"r\"", errs: []string{"2:8: expected bool, found string"}},
-		{name: "assert empty reason", src: "policy p: Test\nassert true, \"\"", errs: []string{"2:14: an assert's reason can't be empty"}},
+		{name: "assert condition not bool", src: "policy p: Test\nassert(\"r\", environment)", errs: []string{"2:13: expected bool, found string"}},
+		{name: "assert empty reason", src: "policy p: Test\nassert(\"\", true)", errs: []string{"2:8: an assert's reason can't be empty"}},
 		{name: "outcome in a when", src: "policy p: Test\nwhen deny in outcome { deny(\"x\") }", errs: []string{"2:6: `deny` is a decision, not a value here", "2:14: `outcome` can only be read in an assert condition"}},
 		{name: "quantifier variable collides with let", src: "policy p: Test\nlet r = 1\nwhen any r in actor.roles: true { deny(\"x\") }", errs: []string{"3:10: `r` is already the name of a let"}},
 

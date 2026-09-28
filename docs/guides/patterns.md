@@ -89,7 +89,7 @@ when release.hotfix and (release.ticket ?? "") == "" {
 `??` binds tighter than `==`, so the parentheses aren't required, but they make the intent obvious. Writing `release.ticket == "CHG-1234"` without `??` is a compile error that tells you to unwrap it.
 
 ::: info Optional structs
-This works for scalar optionals. A pointer to a struct, say `?Release`, can't be unwrapped yet, because there's no struct literal to use as a fallback. How optional structs should work is an [open question](/project/open-questions/).
+A pointer to a struct, say `?Release`, has no literal to use as a fallback. Read its fields with [optional chaining](/reference/expressions/#optional-chaining) instead: `release?.ticket ?? ""` is absent-safe whether the release or the ticket is missing.
 :::
 
 ## Test every element, or any element
@@ -181,7 +181,7 @@ Define a matcher once as a `let` in a module and import it wherever it's needed:
 ```sigil
 module deploy.common: DeployApproval
 
-let cleared =
+pub let cleared =
   split(service.labels["regions"], ",") all in actor.regions
 ```
 
@@ -193,7 +193,7 @@ when cleared and "payments-sre" in actor.teams {
 }
 ```
 
-A module holds `let`s and nothing else, so importing from it never brings rules along. `use deploy.common` without braces works too, and then the matcher reads `common.cleared`. A policy's own `let`s can be imported the same way as long as they don't read a param; one that does has no value outside an invocation. [Per-team policies](/guides/team-policies/) covers imports in more detail.
+A module holds `let`s and nothing else, so importing from it never brings rules along. `use deploy.common` without braces works too, and then the matcher reads `common.cleared`. Only `pub let`s can be imported, from a module or a policy, and a policy's `pub let` can't read a param, because a param has no value outside an invocation. [Per-team policies](/guides/team-policies/) covers imports in more detail.
 
 ## Add conditions to a shared policy
 

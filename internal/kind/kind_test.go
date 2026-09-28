@@ -70,6 +70,7 @@ func deploy() *kind.Kind {
 			{Name: "approve", Fields: []*kind.Field{{Name: "bake", Type: types.Duration, Default: time.Hour, HasDefault: true}}},
 		},
 		Precedence: []string{"deny", "review", "approve"},
+		Collect:    kind.CollectOne,
 		Default:    &kind.Default{Decision: "deny", Reason: "no_rule_matched"},
 	}
 }
@@ -93,6 +94,6 @@ func access() *kind.Kind {
 			{Name: "customer_data_writer"},
 			{Name: "development_environment_writer"},
 		},
-		Collect: true,
+		Collect: kind.CollectAll,
 	}
 }

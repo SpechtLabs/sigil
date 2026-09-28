@@ -19,9 +19,13 @@ func (c *Checker) Policy(doc *ast.PolicyDoc, k *kind.Kind) {
 		return
 	}
 	env := NewEnv(k)
+	c.letStates = map[string]*letState{}
+	defer func() { c.letStates = nil }()
 	c.uses(doc.Uses)
 	c.params(doc.Stmts, env)
-	c.lets(letsOf(doc.Stmts), env)
+	lets := letsOf(doc.Stmts)
+	c.lets(lets, env)
+	c.pubLets(lets)
 	for _, s := range doc.Stmts {
 		switch s := s.(type) {
 		case *ast.WhenStmt:
@@ -40,6 +44,8 @@ func (c *Checker) Module(doc *ast.ModuleDoc, k *kind.Kind) {
 		return
 	}
 	env := NewEnv(k)
+	c.letStates = map[string]*letState{}
+	defer func() { c.letStates = nil }()
 	c.uses(doc.Uses)
 	c.lets(doc.Lets, env)
 }
@@ -64,7 +70,7 @@ func (c *Checker) uses(uses []*ast.UseStmt) {
 }
 
 // params declares the policy's params: unique names, types from the
-// kind, constant defaults of the declared type.
+// kind, constant defaults of the declared type, and bounds around them.
 func (c *Checker) params(stmts []ast.Stmt, env *Env) {
 	for _, s := range stmts {
 		p, ok := s.(*ast.ParamStmt)
@@ -82,13 +88,56 @@ func (c *Checker) params(stmts []ast.Stmt, env *Env) {
 			t = types.Invalid
 		}
 		c.declare(p.Name, env, Binding{Entity: Param, Type: t})
-		if p.Default != nil && t != types.Invalid {
-			if _, err := constant.Eval(p.Default, t); err != nil {
-				err.File = c.file
-				c.errs = append(c.errs, err)
-			}
+		if t == types.Invalid {
+			continue
 		}
+		c.bounds(p, t, c.constant(p.Default, t))
 	}
+}
+
+// bounds checks a param's `min` and `max`: constants of an ordered type
+// with a literal, in order, with def, the default's value if it has one,
+// between them. Invocation arguments are checked against them where the
+// policy is invoked.
+func (c *Checker) bounds(p *ast.ParamStmt, t types.Type, def any) {
+	if p.Min == nil && p.Max == nil {
+		return
+	}
+	if t != types.Int && t != types.Float && t != types.Duration {
+		at := p.Min
+		if at == nil {
+			at = p.Max
+		}
+		c.errorf(at, "bounds apply to int, float and duration params", "a param of type %s can't have bounds", t)
+		return
+	}
+	lo, hi := c.constant(p.Min, t), c.constant(p.Max, t)
+	if lo != nil && hi != nil && constant.Compare(lo, hi) > 0 {
+		c.errorf(p.Max, "", "max %s is below min %s", ast.Sprint(p.Max), ast.Sprint(p.Min))
+		return
+	}
+	switch {
+	case def == nil:
+	case lo != nil && constant.Compare(def, lo) < 0:
+		c.errorf(p.Default, "a default has to be a value the param accepts", "default %s is below the minimum %s", ast.Sprint(p.Default), ast.Sprint(p.Min))
+	case hi != nil && constant.Compare(def, hi) > 0:
+		c.errorf(p.Default, "a default has to be a value the param accepts", "default %s is above the maximum %s", ast.Sprint(p.Default), ast.Sprint(p.Max))
+	}
+}
+
+// constant evaluates x as a constant of type t and returns its value, or
+// nil when x is nil or isn't a constant of t, which it reports.
+func (c *Checker) constant(x ast.Expr, t types.Type) any { //nolint:emptyinterface // constants are typed by their Sigil type; see constant.Conforms
+	if x == nil {
+		return nil
+	}
+	v, err := constant.Eval(x, t)
+	if err != nil {
+		err.File = c.file
+		c.errs = append(c.errs, err)
+		return nil
+	}
+	return v
 }
 
 func isDecisionList(t types.Type) bool {
@@ -174,23 +223,58 @@ func letsOf(stmts []ast.Stmt) []*ast.LetStmt {
 type letState struct {
 	stmt  *ast.LetStmt
 	env   *Env
-	state uint8 // 0 unchecked, 1 checking, 2 done
+	param string // the first param the let reads, directly or through other lets
+	state uint8  // 0 unchecked, 1 checking, 2 done
 }
 
-// lets declares every let, then types each one, following references to
-// other lets as it meets them so declaration order doesn't matter. A let
-// that reaches itself is a cycle, reported once at the let that closes it.
+// lets declares the lets of one scope, the top level or a `when` body, then
+// types each one, following references to other lets as it meets them so
+// declaration order doesn't matter. A let that reaches itself is a cycle,
+// reported once at the let that closes it. A let named like one in another
+// `when` body is an error even though the two scopes don't overlap: names
+// are unique per document, so a trace can name every let unambiguously.
 func (c *Checker) lets(lets []*ast.LetStmt, env *Env) {
-	c.letStates = map[string]*letState{}
 	for _, l := range lets {
+		name := l.Name.Name
+		if other, taken := c.letStates[name]; taken && other.env != env {
+			if _, visible := env.Lookup(name); !visible {
+				c.errorf(l.Name, "let names are unique in a document, so a trace can name each one; rename one of them",
+					"`%s` is already the name of a let in another `when` body", name)
+				env.names[name] = Binding{Entity: Let, Type: types.Invalid}
+				continue
+			}
+		}
 		if c.declare(l.Name, env, Binding{Entity: Let}) {
-			c.letStates[l.Name.Name] = &letState{stmt: l, env: env}
+			c.letStates[name] = &letState{stmt: l, env: env}
 		}
 	}
 	for _, l := range lets {
-		c.checkLet(l.Name.Name, nil)
+		if st, ok := c.letStates[l.Name.Name]; ok && st.stmt == l {
+			c.checkLet(l.Name.Name, nil)
+		}
 	}
-	c.letStates = nil
+}
+
+// pubLets reports a `pub let` that reads a param. A param has no value
+// outside an invocation, so a document importing the let couldn't
+// evaluate it.
+func (c *Checker) pubLets(lets []*ast.LetStmt) {
+	for _, l := range lets {
+		st, ok := c.letStates[l.Name.Name]
+		if !l.Pub || !ok || st.stmt != l || st.param == "" {
+			continue
+		}
+		c.errorf(l.Name, "a param has no value outside an invocation; move the let to a module, or drop `pub`",
+			"let `%s` can't be `pub`: it reads param `%s`", l.Name.Name, st.param)
+	}
+}
+
+// readParam records that the let being typed reads param, directly or
+// through another let.
+func (c *Checker) readParam(param string) {
+	if c.typing != nil && c.typing.param == "" {
+		c.typing.param = param
+	}
 }
 
 // checkLet types the let called name, if it hasn't been yet, and returns
@@ -214,7 +298,10 @@ func (c *Checker) checkLet(name string, use *ast.Ident) types.Type {
 		return types.Invalid
 	}
 	st.state = 1
+	outer := c.typing
+	c.typing = st
 	t := c.Expr(st.stmt.Value, st.env)
+	c.typing = outer
 	st.state = 2
 	if _, done := st.env.names[name]; done && st.env.names[name].Type == nil {
 		st.env.names[name] = Binding{Entity: Let, Type: t}
@@ -223,10 +310,15 @@ func (c *Checker) checkLet(name string, use *ast.Ident) types.Type {
 	return st.env.names[name].Type
 }
 
-// when checks a rule: a bool condition and a body of rules, asserts and
-// constructors.
+// when checks a rule: a bool condition and a body of rules, lets, asserts
+// and constructors. The body's lets are visible in the body only, not in
+// the condition.
 func (c *Checker) when(s *ast.WhenStmt, env *Env) {
 	c.ExprAs(s.Cond, env, types.Bool)
+	if lets := letsOf(s.Body); len(lets) > 0 {
+		env = env.Child()
+		c.lets(lets, env)
+	}
 	for _, inner := range s.Body {
 		switch inner := inner.(type) {
 		case *ast.WhenStmt:

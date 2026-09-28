@@ -347,10 +347,10 @@ The shared matchers move to a module, a file that holds `let`s and nothing else.
 ```sigil
 module deploy.common: DeployApproval
 
-let owns_service = actor.teams any in service.owners
-let cleared =
+pub let owns_service = actor.teams any in service.owners
+pub let cleared =
   split(service.labels["regions"], ",") all in actor.regions
-let eligible =
+pub let eligible =
   "deployer" in actor.roles
   and environment == "production"
   and service.labels has {

@@ -10,6 +10,16 @@ package kind
 
 import "github.com/spechtlabs/sigil/internal/types"
 
+// How many candidates a kind returns, from its `collect` declaration.
+const (
+	CollectUnset Collect = iota // not declared, which Validate rejects
+	CollectOne                  // one winner, ranked by precedence
+	CollectAll                  // every candidate that fired
+)
+
+// Collect is how many candidates a kind returns.
+type Collect int
+
 // Kind is one contract.
 type Kind struct {
 	Default    *Default // nil only for a collecting kind without one
@@ -20,7 +30,7 @@ type Kind struct {
 	Decisions  []*Decision
 	Precedence []string // decision names, highest first; empty for a collecting kind
 	Version    int
-	Collect    bool // every fired decision applies, instead of one winner
+	Collect    Collect
 }
 
 // Type returns the struct type called name, or nil.

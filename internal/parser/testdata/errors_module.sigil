@@ -10,7 +10,7 @@ when owns_service {
   deny("no_rules_in_modules")
 }
 
-assert owns_service, "no_asserts_either"
+assert("no_asserts_either", owns_service)
 
 guardrails(min_soak: 4h)
 

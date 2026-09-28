@@ -172,12 +172,16 @@ func (p *parser) parsePrecedence() *ast.PrecedenceDecl {
 	return d
 }
 
-// parseCollect parses `collect all`.
+// parseCollect parses `collect one` or `collect all`.
 func (p *parser) parseCollect() *ast.CollectDecl {
 	kw := p.tok
 	p.next()
-	all := p.expect(token.KwAll, "a collecting kind is declared with `collect all`")
-	return &ast.CollectDecl{Span: ast.Span{From: kw.Pos, To: all.End}}
+	if p.tok.Kind != token.KwOne && p.tok.Kind != token.KwAll {
+		p.unexpected("`one` or `all`", "`collect one` returns the highest-ranked decision, `collect all` every decision that fired")
+	}
+	d := &ast.CollectDecl{All: p.tok.Kind == token.KwAll, Span: ast.Span{From: kw.Pos, To: p.tok.End}}
+	p.next()
+	return d
 }
 
 // parseDefault parses `default deny("reason", field: value)`.

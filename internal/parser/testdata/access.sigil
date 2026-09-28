@@ -20,13 +20,14 @@ collect all
 
 policy access.guardrails: AccessGrant
 
-assert [customer_data_writer, development_environment_writer] exclusive in outcome,
-  "sod_customer_dev"
+assert("sod_customer_dev",
+  [customer_data_writer, development_environment_writer] exclusive in outcome)
 
-assert customer_data_writer not in outcome or actor.clearance == "pii",
-  "pii_needs_clearance"
+assert("pii_needs_clearance",
+  customer_data_writer not in outcome or actor.clearance == "pii",
+)
 
-assert all g in actor.groups: g != "root", "no_root"
+assert("no_root", all g in actor.groups: g != "root")
 
 ---
 
@@ -39,5 +40,5 @@ guardrails()
 when "platform" in actor.groups {
   write("platform_member")
   development_environment_writer("platform_member")
-  assert actor.name != "", "actor_named"
+  assert("actor_named", actor.name != "")
 }

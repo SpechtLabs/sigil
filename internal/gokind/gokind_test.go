@@ -74,6 +74,7 @@ decision deny(reason: string)
 decision review(reason: string, approvers: list<string>)
 decision approve(reason: string, bake: duration = 1h)
 
+collect one
 precedence deny > review > approve
 default deny("no_rule_matched")
 `
@@ -151,14 +152,16 @@ func TestBuild(t *testing.T) {
 			Next *Node `policy:"next"`
 		}
 		Unsupported struct {
-			I32  int32    `policy:"i32"`
-			U    uint     `policy:"u"`
-			F32  float32  `policy:"f32"`
-			Ch   chan int `policy:"ch"`
-			Fn   func()   `policy:"f"`
-			Arr  [2]int   `policy:"arr"`
-			Any  any      `policy:"iface"`
-			PP   **int    `policy:"pp"`
+			I32  int32           `policy:"i32"`
+			U    uint            `policy:"u"`
+			F32  float32         `policy:"f32"`
+			Ch   chan int        `policy:"ch"`
+			Fn   func()          `policy:"f"`
+			Arr  [2]int          `policy:"arr"`
+			Any  any             `policy:"iface"`
+			PP   **int           `policy:"pp"`
+			PS   *[]int          `policy:"ps"`
+			PM   *map[string]int `policy:"pm"`
 			Anon struct {
 				X int `policy:"x"`
 			} `policy:"anon"`
@@ -219,7 +222,7 @@ func TestBuild(t *testing.T) {
 		{name: "defaults of every shape", mutate: func(o *gokind.Options) {
 			o.Decisions = []gokind.Decision{{Name: "d", Payload: typeOf[Defaults]()}}
 			o.Default = &gokind.Default{Decision: "d", Reason: "x"}
-		}, want: "decision d(reason: string, bake: duration = 1h30m, tags: list<string> = [\"a\", \"b\"], limit: int = -3, tiers: map<string, int> = {\"a\": 1}, ratio: float = 0.75, flag: bool = true, opt: ?string = \"x\")\n\nprecedence d\ndefault d(\"x\")\n"},
+		}, want: "decision d(reason: string, bake: duration = 1h30m, tags: list<string> = [\"a\", \"b\"], limit: int = -3, tiers: map<string, int> = {\"a\": 1}, ratio: float = 0.75, flag: bool = true, opt: ?string = \"x\")\n\ncollect one\nprecedence d\ndefault d(\"x\")\n"},
 		{name: "collecting kind", mutate: func(o *gokind.Options) {
 			o.Collect = true
 			o.Default = nil
@@ -261,6 +264,8 @@ func TestBuild(t *testing.T) {
 			"arr: unsupported type [2]int",
 			"iface: unsupported type interface {}",
 			"pp: **int is a pointer to a pointer",
+			"ps: *[]int is a pointer to a slice",
+			"pm: *map[string]int is a pointer to a map",
 			"anon: anonymous struct types can't be exported",
 			`input "keyed": map key type can't be Release`,
 		}, help: "policies read bool, int, int64, float64, string, time.Duration, time.Time, slices, maps, pointers and tagged structs"},
@@ -298,7 +303,7 @@ func TestBuild(t *testing.T) {
 		{name: "no decisions", mutate: func(o *gokind.Options) {
 			o.Decisions = nil
 			o.Default = nil
-		}, errs: []string{"kind DeployApproval declares no decisions", "kind DeployApproval has neither precedence nor collect all", "kind DeployApproval has no default decision"}},
+		}, errs: []string{"kind DeployApproval declares no decisions", "kind DeployApproval doesn't declare how many decisions it returns", "kind DeployApproval has no default decision"}},
 		{name: "decision declared twice", mutate: func(o *gokind.Options) {
 			o.Decisions = append(o.Decisions, gokind.Decision{Name: "deny", Payload: typeOf[None]()})
 		}, errs: []string{`decision "deny" is declared twice`, `precedence names "deny" twice`}},

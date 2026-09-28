@@ -97,16 +97,14 @@ Allowing it is more general and costs nothing in the evaluator, since each const
 
 **Blocks: M4**
 
-The syntax is settled and parsed: `assert cond, "reason"`, with the comma ending the condition. The rest below is open.
+The syntax is settled and parsed: `assert("reason", cond)`, with the reason first as in a decision constructor, and `)` ending the condition. An earlier draft used Python's `assert cond, "reason"`; the constructor shape won because an assert behaves like one (it only counts when reached, under its enclosing conditions, and its reason is what traces and metrics key on), and a long condition no longer pushes the reason to the end. Settled too: an assert that reads `outcome` is checked after the outcome exists, and every other assert is checked before any rule runs, so an input precondition reports its own reason instead of a rule's runtime error. The checker infers which from the condition; there's no keyword for it (a `defer assert` was considered and dropped, see [Evaluation semantics](/reference/evaluation/#assertions)). The rest below is open.
 
-`assert <condition>, "<reason>"` fails the evaluation loudly when its condition is false, and it's the guardrail mechanism for [collecting kinds](#collecting-kinds), which have no deny that outranks a grant. The proposal is spread across [Policy files](/reference/policy-files/#assert), [Expressions](/reference/expressions/#decision-values-and-outcome) and [Evaluation semantics](/reference/evaluation/#assertions). Still open:
+`assert("<reason>", <condition>)` fails the evaluation loudly when its condition is false, and it's the guardrail mechanism for [collecting kinds](#collecting-kinds), which have no deny that outranks a grant. The proposal is spread across [Policy files](/reference/policy-files/#assert), [Expressions](/reference/expressions/#decision-values-and-outcome) and [Evaluation semantics](/reference/evaluation/#assertions). Still open:
 
-- **Syntax.** The proposal is Python's `assert cond, "reason"`, where the `,` also ends a quantifier body. The reason comes last, unlike a decision constructor's. `assert("reason", cond)` would match constructors but looks like a call.
-- **Dynamic text.** A reason is a literal. A failing assert may still want to say which value was wrong, the way a decision's `detail` field does. An optional third part, `assert cond, "reason", detail: expr`, would do it, and the expression would only be evaluated on failure.
+- **Dynamic text.** A reason is a literal. A failing assert may still want to say which value was wrong, the way a decision's `detail` field does. A named argument, `assert("reason", cond, detail: expr)`, would do it the way constructors do, and the expression would only be evaluated on failure. Today an assert takes the reason and the condition only.
 - **Asserts in kind files.** Today a host protects an assert by putting it in a policy it requires with `policy.Require`, the same way it protects denies. An assert declared in the kind would need no `Require`, but it brings expressions into kind files, which are pure declarations now, and the Go side would have to carry Sigil source in a string to define one. Deferred until `Require` proves too clumsy.
 - **Reason identity.** Whether assert reasons share the `duplicate-reason` lint and metric space with decision reasons, or live on their own. The proposal keeps them apart: `policy_assert_failures_total{reason="sod_customer_dev"}`.
 - **Static checks.** The proposal only rejects the obvious case: one block constructing two decisions that an `exclusive in outcome` assert forbids together, since that assert always fails when the block fires. Anything more would need the solver-style analysis the language otherwise avoids.
-- **Runtime errors first.** A runtime error aborts evaluation and hides every failing assert. That's simple, but an input with both a bad index and a violated invariant then only reports the index.
 
 ## Decision values and `outcome`
 
@@ -130,74 +128,53 @@ Two more gaps:
 
 **Blocks: M4**
 
-A kind that declares `collect all` instead of `precedence` returns every candidate that fired, not one winner: roles a user can hold at the same time, feature flags, labels to attach. See [Kind files](/reference/kind-files/#collect) and [Evaluation semantics](/reference/evaluation/#collecting-kinds). Still open:
+A kind that declares `collect all` returns every candidate that fired, not one winner: roles a user can hold at the same time, feature flags, labels to attach. See [Kind files](/reference/kind-files/#collect) and [Evaluation semantics](/reference/evaluation/#collecting-kinds).
 
-- **Spelling.** `collect all` is explicit so that a missing line can't turn a single-winner kind into a multi-grant one. Treating a kind without `precedence` as collecting would be shorter and would make that mistake silent.
+Settled: the spelling. Every kind declares `collect one` or `collect all`, and `collect one` requires `precedence`. A missing line is an error instead of silently picking one mode, and the result's shape reads off one line. `collect one` without `precedence` is an error, because the only thing left to choose a winner by would be source position. Still open:
 - **Duplicates.** The proposal returns every candidate and leaves it to the host to decide what two `admin` grants with different payloads mean. Deduplicating or merging would bring back the tie-breaking problem from [Ties within one decision](#ties-within-one-decision).
 - **The result type.** The proposal keeps one `Result` with an `Outcome` list for both kinds. A separate type for collecting kinds would make `Match` on a collecting result a compile error instead of a runtime panic.
-- **Precedence tiers.** `precedence suspended > {read, write, admin}` would return every candidate in the highest tier that has any, so a `suspended` decision could wipe all grants as a decision, not as an assert failure. Flat `collect all` is then a single tier. Deferred: not needed for the first collecting kinds, and it can be added later without breaking them.
+- **`collect all` with `precedence`.** Reserved: a compile error today. The intended meaning keeps the two lines independent: `precedence` ranks, and `collect` says how many candidates of the top rank come back. `collect all` with `precedence deny > review > approve` would return every candidate of the highest-ranked decision that fired, so two `review`s with different approvers both reach the host instead of one winning by source position (see [Ties within one decision](#ties-within-one-decision)).
+- **Precedence tiers.** `precedence suspended > {read, write, admin}` would rank groups of decisions. With `collect all` it would return every candidate in the highest tier that has any, so a `suspended` decision could wipe all grants as a decision, not as an assert failure, and when nothing is suspended every grant comes back. Plain `collect all` without `precedence` is then a single tier. Tiers are what make the reserved combination useful for roles, which is why the two should be designed together. Neither is needed for the first collecting kinds, and both can be added later without breaking them.
 
 ## Scoped `let`
 
 **Blocks: M5**
 
-The parser rejects a `let` inside a `when` body with a hint to move it to the top level, as decided for now.
-
-Only top-level `let` exists for now. Block-scoped bindings would help deeply nested rules that compute the same sub-expression in several inner blocks:
-
-```sigil
-when active {
-  let sre = any r in actor.roles: r like "sre-*"
-  when sre and release.hotfix { approve("sre_hotfix") }
-  when sre and not release.hotfix { review("sre_change", approvers: approvers) }
-}
-```
-
-The cost is scoping rules: shadowing (which the flat namespace currently forbids), whether a scoped binding can be imported, and how the trace names it. Top-level `let` plus nesting covers every example written so far, so this stays closed unless real policies need it.
+Settled and implemented in the parser and checker. A `let` inside a `when` body is visible in that body and the blocks nested in it. It can't shadow anything, it can't be `pub`, and its name is unique in the whole document, even against a `let` in an unrelated body, so a trace and `sigil explain` name every `let` the same way. See [Scoped lets](/reference/policy-files/#scoped-lets).
 
 ## Pinned params on required policies
 
-**Blocks: M5** (and the grammar of `param`, so it touches M2)
+**Blocks: M5**
 
-A team invoking `guardrails(min_soak: 0s)` switches the `soak_too_short` deny off, even though the host requires `deploy.guardrails`. `policy.Require` guarantees the guardrails' candidates are always in the set; it says nothing about the values they compare against. [Composition without templating](/understanding/composition/) explains why the union-of-candidates guarantee doesn't cover params.
+Settled for ordered params: bounds in the declaration, written as named arguments, `param min_soak: duration = 24h, min: 1h, max: 48h`. Named arguments keep `min` and `max` out of the keywords, so a kind can still declare `fn max`. Because invocation arguments are constants, bounds are checked when the policy compiles, at the offending argument, not at evaluation time as an assert would be. Host-side bounds, `policy.Require("deploy.guardrails", policy.Min("min_soak", time.Hour))`, were dropped: with `policy.From`, the bounds in a trusted file are just as trustworthy and stay next to the rule that reads the param. The declaration checks are implemented; checking arguments and `policy.Params` comes with invocation. See [Bounds](/reference/policy-files/#bounds).
 
-Two places could hold the bound:
-
-```sigil
-param min_soak: duration = 24h min 1h
-```
-
-```go
-policy.Require("deploy.guardrails", policy.Min("min_soak", time.Hour))
-```
-
-Bounds in the policy keep the contract visible in the file, next to the rule that reads the param. Bounds set by the host keep it with whoever owns the guardrail, and don't need grammar. Either way, bounds are checked at compile time, since invocation arguments are constants; for params bound from Go with `policy.Params`, `Load` checks them when binding. Other options: a `pinned` modifier that forbids overriding entirely, or leaving it to review and CI. Bounds only make sense for ordered types (`int`, `float`, `duration`), so lists like `approvers` would need a different mechanism, if any.
+Still open: params without an order, such as `approvers: list<string>`. A team can bind an empty list. Options are a `pinned` modifier that forbids overriding entirely, a non-empty requirement, or leaving it to review and CI.
 
 ## Optional structs
 
 **Blocks: M3**
 
-A Go pointer field becomes `?T` in the kind, and a `?T` has to be unwrapped with `??` before use. That works for scalars: a `?string` field unwraps with `field ?? ""`. It doesn't work for structs, because Sigil has no struct literal to put on the right of `??`. A Go host with a `*Release` field produces an input policies can't read at all.
+Settled and implemented: optional chaining. `release?.soak` reads a field of a `?Release` and is a `?duration`, unwrapped with `??` as usual. As in TypeScript, a `?.` that finds its operand absent makes the rest of the chain absent, so `release.parent?.author.name` needs no second `?.` when `author` isn't optional. `?.` on a value that can't be absent is a compile error. A Go pointer to a slice or a map, and `?list<T>` or `?map<K, V>` in a kind file, are rejected, because an absent collection would read the same as an empty one. See [Optional chaining](/reference/expressions/#optional-chaining).
 
-Options:
-
-- **Optional chaining**: `release?.soak` yields `?duration`, which then unwraps normally with `??`. Familiar from TypeScript and Kotlin, and composes cleanly.
-- **Presence test with narrowing**: `when release != none { ... }` (or `present(release)`) and inside that block the compiler treats `release` as `Release`. More powerful, but flow-sensitive typing is a big step up in type-checker complexity.
-- **Forbid pointer-to-struct** in `NewKind`, so hosts model absence with a flag field instead. Simplest, but it pushes awkwardness onto every host that already has pointer structs.
-
-Optional chaining looks like the smallest change that works.
+Settled too: the presence test. `present release` is `true` when the optional holds a value, so `when not present release { deny("no_release") }` tells an absent release from one with a zero soak. It's a prefix keyword that binds like unary minus and needs an optional operand. It doesn't narrow the type: fields are still read with `?.`. Flow typing, where `release` would become `Release` inside `when present release { ... }`, stays out until real policies need it. See [Presence](/reference/expressions/#presence-present).
 
 ## Composite values: equality, ordering and recursion
 
 **Blocks: M4**
 
-The checker rejects `==` on lists, maps and structs and `<` on strings, so a policy can't depend on either until this settles.
+Settled:
 
-The current design says comparisons are strictly typed but doesn't say which types support which comparisons. Unsettled:
+- `==` and `!=` work on scalars only, not on lists, maps or structs. A policy rarely means "identical", and one operator would hide a walk over a nested value.
+- `in`, the list operators and `has` keep comparing elements structurally, so `["eu-1"] in [["eu-1"], ["us-1"]]` works. Elements that are or contain structs are a compile error: structs have no equality, and the evaluator used to answer `false` for them without saying so.
+- Strings aren't ordered. `"v10" < "v9"` would be true byte-wise, which is the kind of result that makes a version rule wrong.
+- Versions and other domain orderings come from [host-ordered types](/reference/types/#host-ordered-types): `type Version ordered` in the kind, backed by a Go type with a mandatory `Compare(T) int` method, compared with the ordinary operators. The method is never exposed as an `fn` in the kind. A built-in `version` type was rejected, because semver's ordering rules aren't a parse layout and the language would own them forever. Until host-ordered types are implemented, a host can declare `fn semver_cmp(string, string) -> int` and policies write `semver_cmp(release.version, "1.4.0") >= 0`.
+- Recursive kind types are rejected, naming the cycle, since a policy could only read one to a fixed depth. Map keys follow Go's rule: any scalar.
 
-- Does `==` work on lists, maps and structs? Structural equality is easy to define, but it's rarely what a policy wants and it hides cost in a single operator.
-- Can strings be ordered with `<`? Byte-wise ordering is well defined in Go, but `"v10" < "v9"` is true, which is the kind of result that makes a version rule wrong.
-- Recursive kind types are settled: `NewKind` and the kind loader reject them, naming the cycle, since a policy could only read one to a fixed depth. Map keys are settled too, on Go's rule: any scalar can be a key.
+Settled for host-ordered types, not implemented yet:
+
+- Registration is explicit: `policy.WithOrdered[*semver.Version]("Version")`. Recognising a `Compare` method automatically was rejected: adding a method in Go would change the policy contract without anything in the kind code showing it, a tagged struct that gained `Compare` would turn opaque, and most version libraries put `Compare` on a pointer, which collides with `*T` meaning `?T`. The registered Go type is exact, so a registered pointer type is the ordered value, one pointer deeper is optional, and a nil value in a comparison is a runtime error.
+- Printing prefers `encoding.TextMarshaler`, falls back to `fmt.Stringer`, and a type with neither is rejected at registration. Go's `%v` is never used, because it can print a pointer's address and break determinism. JSON input decodes through `encoding/json`, so `encoding.TextUnmarshaler` is what lets `sigil eval` and `sigil test` read the type from a string; it's optional.
+- Still open: parsing a string literal into the type at load time through `TextUnmarshaler`, which would allow `param min_version: Version = "1.4.0"`.
 
 ## What the kind version means
 
@@ -314,7 +291,7 @@ A host could layer a required policy itself, with something like `policy.Base("d
 
 **Blocks: M5**
 
-Every `let` in a module is exported. If modules turn out to need private helpers, a `let` other lets build on but importers shouldn't use, the options are a `pub` marker (as in Rust) or an underscore prefix. Neither is needed by any example written so far.
+Settled: a `let` is private unless it's declared `pub let`, in modules and policies alike. A policy's `pub let` can't read a param, which the checker reports at the declaration. What's left for the composition milestone is the import side: a `use` that names a private `let` is a compile error. See [Exporting lets](/reference/policy-files/#exporting-lets).
 
 ## Re-exports
 

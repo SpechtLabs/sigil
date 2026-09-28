@@ -49,6 +49,7 @@ const (
 	Minus     // -
 	Coalesce  // ??
 	Question  // ?
+	OptDot    // ?.
 	Dot       // .
 	Comma     // ,
 	Colon     // :
@@ -72,6 +73,7 @@ const (
 	KwAs
 	KwParam
 	KwLet
+	KwPub
 	KwWhen
 	KwAssert
 
@@ -99,6 +101,7 @@ const (
 	KwHas
 	KwLike
 	KwMatches
+	KwPresent
 
 	// Values.
 	KwTrue
@@ -132,6 +135,7 @@ var names = [...]string{
 	Minus:     "-",
 	Coalesce:  "??",
 	Question:  "?",
+	OptDot:    "?.",
 	Dot:       ".",
 	Comma:     ",",
 	Colon:     ":",
@@ -151,6 +155,7 @@ var names = [...]string{
 	KwAs:         "as",
 	KwParam:      "param",
 	KwLet:        "let",
+	KwPub:        "pub",
 	KwWhen:       "when",
 	KwAssert:     "assert",
 	KwKind:       "kind",
@@ -174,6 +179,7 @@ var names = [...]string{
 	KwHas:        "has",
 	KwLike:       "like",
 	KwMatches:    "matches",
+	KwPresent:    "present",
 	KwTrue:       "true",
 	KwFalse:      "false",
 	KwOutcome:    "outcome",

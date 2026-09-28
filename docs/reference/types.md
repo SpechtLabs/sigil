@@ -23,8 +23,9 @@ Sigil is statically typed. The compiler knows the type of every input, param, le
 | `timestamp`    | none           | Go zero time   | Comes from input only                                                    |
 | `list<T>`      | `["a", "b"]`   | `[]`           |                                                                          |
 | `map<K, V>`    | `{"k": "v"}`   | `{}`           | Missing key yields the zero value of `V`, like Go                        |
-| `?T`           | none           | absent         | Optional, from Go pointer fields. Must be unwrapped with `??` before use |
+| `?T`           | none           | absent         | Optional, from Go pointer fields. Unwrapped with `??`; an optional struct is read with `?.` |
 | Struct types   | none           | all fields zero | Declared in the kind, reached with `.field`                             |
+| Ordered types  | none           | none           | Opaque, declared in the kind, ordered by the host (proposed)             |
 | `decision`     | `approve`      | none           | A decision's name as a value; only useful in `assert` (proposed)         |
 
 Zero values matter in one place: a missing map key. `service.labels["absent"]` is `""`, and indexing a missing key in a `map<string, int>` gives `0`.
@@ -77,7 +78,7 @@ A param can't have type `decision` or `list<decision>`, and a `decision` has no 
 
 ## Optional types: `?T`
 
-An optional value is either a `T` or absent. Optional types come from Go pointer fields in the kind (`*string` becomes `?string`); policies can't write optional literals, and params can't be declared optional.
+An optional value is either a `T` or absent. Optional types come from Go pointer fields in the kind (`*string` becomes `?string`); policies can't write optional literals, and params can't be declared optional. Lists and maps can't be optional: a Go pointer to a slice or a map is rejected by `NewKind`, and `?list<T>` or `?map<K, V>` is an error in a kind file, because an absent collection would read the same as an empty one.
 
 An optional must be unwrapped with `??` before anything else touches it:
 
@@ -89,9 +90,14 @@ release.ticket == "CHG-1042"                // compile error: ?string vs string
 
 The compiler rejects comparisons, operators, indexing, field access and function arguments that receive a `?T` where a `T` is required.
 
-::: warning Open question: optional structs
-Struct types have no literal, so there's nothing to put on the right of `??` for a `?Release`. As specified, an optional struct field can't be used at all. The candidates are optional chaining (`release?.soak` yielding `?duration`), a presence test with flow typing (`when present(release) { ... }`), or having `NewKind` reject pointer-to-struct fields. See [Open questions](/project/open-questions/).
-:::
+An optional struct has no literal to put on the right of `??`, so its fields are read with [optional chaining](/reference/expressions/#optional-chaining) instead. `release?.soak` is a `?duration`, which then unwraps as usual:
+
+```sigil
+// assuming the kind declares `release: ?Release`
+release?.soak ?? 0s >= 24h
+```
+
+`present x` tests whether an optional holds a value, without unwrapping it; see [Presence](/reference/expressions/#presence-present).
 
 ## Struct types
 
@@ -110,19 +116,61 @@ Policies reach fields with `.field` and can't construct struct values. Accessing
 
 Struct names and field names are identifiers. Struct types are nominal: two struct types with the same fields are still different types.
 
+Structs have no equality. `==` doesn't apply to them, and neither do `in` and the list operators when the elements are structs: `service.owner in owners` is a compile error that suggests comparing a field that identifies them, such as `service.owner.name in owner_names`.
+
+## Host-ordered types
+
+::: tip Proposed
+Host-ordered types are the chosen direction for versions and other domain values with their own ordering. They aren't implemented yet.
+:::
+
+Some values have an order the language can't know: semantic versions, calendar versions, a vendor's release numbers. A host declares a type for them in the kind, and the ordering comes from Go:
+
+```sigil
+// kind file
+type Version ordered
+fn semver(string) -> Version
+```
+
+```sigil
+// policy
+when semver(release.version) < semver("1.4.0") {
+  deny("client_too_old")
+}
+```
+
+- **The Go side.** The host registers the Go type explicitly, and names it for policies:
+
+  ```go
+  policy.WithOrdered[*semver.Version]("Version")
+  ```
+
+  The type needs a method `Compare(T) int` that returns a negative number, zero or a positive number, the convention `time.Time`, `netip.Addr` and most version libraries already follow. The method is mandatory: `NewKind` panics if the type lacks it. It's never declared as an `fn` in the kind, so the kind file only says that the type is ordered, not how.
+- **Pointers.** The registered Go type is exact. Most version libraries put `Compare` on a pointer, so registering `*semver.Version` makes that pointer type the ordered `Version`, and a field one pointer deeper, `**semver.Version`, is `?Version`. A nil value of a registered pointer type that reaches a comparison is a runtime error; a field that can really be missing should be declared one pointer deeper, as an optional. A type that isn't registered keeps its usual mapping even if it has a `Compare` method, so adding a method in Go never changes the contract by itself.
+- **Text.** Traces, errors and test output print a value as text. `NewKind` picks the method once, when the type is registered: `MarshalText` from `encoding.TextMarshaler` if the type has it, otherwise `String` from `fmt.Stringer`. A type with neither makes `NewKind` panic, because the fallback, Go's `%v`, can print a pointer's address and would break [determinism](/reference/evaluation/#determinism). If `MarshalText` returns an error for a value, `String` is used when the type has it, and otherwise the text is `<Version: error text>`, so printing a trace never fails an evaluation.
+- **JSON input.** `sigil eval` and `sigil test` read input through `encoding/json`, so a field of the type decodes from a JSON string when the type implements `encoding.TextUnmarshaler` (or `json.Unmarshaler`). Nothing requires it, but without it an input file can't set the field.
+- **Operators.** `<`, `<=`, `>`, `>=`, `==` and `!=` call `Compare`. So do `in` and the list operators when the elements are of the type. Only values of the same type compare: a `Version` never compares with another ordered type or with a string.
+- **Opaque.** A policy can't read inside the value, has no literal for it and can't declare a param of the type. Values come from inputs and host functions, such as `semver` above. Parsing stays with the host, so semver, calver or a custom scheme are all just Go.
+- **Errors.** A string the parsing function rejects is that function's error, which is a [runtime error](/reference/evaluation/#runtime-errors). `Compare` must be a total order, pure and deterministic, the same contract as a host function.
+- **Map keys.** An ordered type can't be a map key.
+
+A built-in `version` type was considered and rejected. Semver's order isn't a layout that a `time.Parse`-style format string could describe: prereleases sort before releases, their identifiers compare numerically or lexically depending on their content, and build metadata is ignored. The language would have to own those rules, and every other scheme's, forever.
+
 ## Type rules by operator
 
 The rules for each operator are on [Expressions](/reference/expressions/). In short:
 
 | Operation                   | Allowed types                                                             |
 | --------------------------- | ------------------------------------------------------------------------- |
-| `==` `!=`                   | same type on both sides; `bool`, `int`, `float`, `string`, `duration`, `timestamp`, `decision` |
-| `<` `<=` `>` `>=`           | same type on both sides; `int`, `float`, `duration`, `timestamp`          |
+| `==` `!=`                   | same type on both sides; `bool`, `int`, `float`, `string`, `duration`, `timestamp`, `decision`, ordered types |
+| `<` `<=` `>` `>=`           | same type on both sides; `int`, `float`, `duration`, `timestamp`, ordered types |
 | `and` `or` `xor` `not`      | `bool`                                                                    |
-| `in`                        | `T in list<T>`, `K in map<K, V>`, `string in string`                      |
+| `in`                        | `T in list<T>`, `K in map<K, V>`, `string in string`; `T` without structs |
 | `all in` `any in`           | `list<T>` on both sides                                                   |
 | `one in` `exclusive in`     | `list<T>` on both sides                                                   |
 | `has`                       | `map<K, V> has map<K, V>`, `map<K, V> has K`                              |
+
+`in`, the list operators and `has` compare elements structurally: two lists are equal when they have the same elements in the same order, two maps when they have the same keys with equal values. That's what makes `["eu-1"] in [["eu-1"], ["us-1"]]` work. Elements that are or contain structs can't be compared, because structs have no equality.
 | `like` `matches`            | `string` and a string literal                                             |
 | `??`                        | `?T ?? T`, result `T`                                                     |
 | `+` `-`                     | see the arithmetic table on [Expressions](/reference/expressions/)        |

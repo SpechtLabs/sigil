@@ -24,10 +24,10 @@ Sigil splits reuse along two lines that templating mixes up: sharing names and s
 ```sigil
 module deploy.common: DeployApproval
 
-let owns_service = actor.teams any in service.owners
-let cleared =
+pub let owns_service = actor.teams any in service.owners
+pub let cleared =
   split(service.labels["regions"], ",") all in actor.regions
-let eligible =
+pub let eligible =
   "deployer" in actor.roles
   and environment == "production"
   and service.labels has {
@@ -136,13 +136,13 @@ Protection is explicit now: the host decides which policies are guardrails, inst
 
 ### Collecting kinds
 
-A [collecting kind](/reference/kind-files/#collect) returns every decision that fired, and nothing outranks anything, so the union of candidates can only add grants. A guardrail can't cancel a team's grant with a deny. It can fail the evaluation with an [assert](/reference/policy-files/#assert) instead:
+A [collecting kind](/reference/kind-files/#collecting-kinds) returns every decision that fired, and nothing outranks anything, so the union of candidates can only add grants. A guardrail can't cancel a team's grant with a deny. It can fail the evaluation with an [assert](/reference/policy-files/#assert) instead:
 
 ```sigil
 policy access.guardrails: AccessGrant
 
-assert [customer_data_writer, development_environment_writer] exclusive in outcome,
-  "sod_customer_dev"
+assert("sod_customer_dev",
+  [customer_data_writer, development_environment_writer] exclusive in outcome)
 ```
 
 `outcome` is the whole root's outcome, so this assert sees every grant any team adds. Required with `policy.Require`, it runs on every evaluation, and a composition that grants both roles fails loudly instead of granting them. The guarantee has the same shape as for denies, and the same host-side step makes it hold.
@@ -155,7 +155,7 @@ Three things sit outside it, and all are easy to miss.
 
 **The kind's default.** When no rule fires, the kind's `default` applies, typically a deny. That default isn't a decision any policy made explicitly, so a team rule can turn it into an approve. That's by design: it's exactly how teams add approvals the platform didn't anticipate. But it means "no policy has an approve rule for X" doesn't imply "X will be denied". If the platform wants something denied no matter what teams add, it has to say so with an explicit `deny` in a required policy.
 
-**Params.** A team binds params, so a team can lower `min_soak` from 24 hours to 4, or to zero, and the `soak_too_short` deny moves with it. The union-of-candidates argument doesn't help here because the team didn't add a rule; it changed an input to an existing one. Letting a required policy bound its params, either in the file (`param min_soak: duration = 24h min 1h`) or from the host, is an [open question](/project/open-questions/).
+**Params.** A team binds params, so a team can lower `min_soak` from 24 hours to 4, or to zero, and the `soak_too_short` deny moves with it. The union-of-candidates argument doesn't help here because the team didn't add a rule; it changed an input to an existing one. A required policy closes that gap by bounding its params: with `param min_soak: duration = 24h, min: 1h`, a team can move the threshold but not below an hour, and `guardrails(min_soak: 0s)` fails to compile. See [Bounds](/reference/policy-files/#bounds). Lists such as `approvers` have no bounds, so those still rest on review.
 
 ## Seeing the whole picture
 

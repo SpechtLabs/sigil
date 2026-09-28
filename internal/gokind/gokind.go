@@ -69,7 +69,7 @@ type Binding struct {
 // host fixes its types in one round.
 func Build(o Options) (*kind.Kind, *Binding, diag.ErrorList) {
 	b := &builder{
-		kind: &kind.Kind{Name: o.Name, Version: o.Version, Collect: o.Collect},
+		kind: &kind.Kind{Name: o.Name, Version: o.Version, Collect: collect(o)},
 		binding: &Binding{
 			Input:    o.Input,
 			Structs:  map[string]reflect.Type{},
@@ -189,8 +189,15 @@ func (b *builder) convert(t reflect.Type, path string) types.Type {
 	case reflect.Map:
 		return &types.Map{Key: b.convert(t.Key(), path), Value: b.convert(t.Elem(), path)}
 	case reflect.Pointer:
-		if t.Elem().Kind() == reflect.Pointer {
+		switch t.Elem().Kind() {
+		case reflect.Pointer:
 			b.errorf("optionals don't nest; use a single pointer", "%s: %v is a pointer to a pointer", path, t)
+			return types.Invalid
+		case reflect.Slice:
+			b.errorf("use the slice itself; a nil slice already reads as an empty list", "%s: %v is a pointer to a slice", path, t)
+			return types.Invalid
+		case reflect.Map:
+			b.errorf("use the map itself; a nil map already reads as an empty map", "%s: %v is a pointer to a map", path, t)
 			return types.Invalid
 		}
 		return &types.Optional{Elem: b.convert(t.Elem(), path)}
@@ -305,4 +312,17 @@ func (b *builder) fn(f Func) {
 		b.errorf("a host function returns a value, or a value and an error", "function %s: unsupported results %v", f.Name, t)
 		fn.Result = types.Invalid
 	}
+}
+
+// collect maps the options to the kind's collect mode: WithCollect is
+// `collect all`, and ranked decisions are `collect one` with precedence.
+// A kind without decisions leaves it unset, which Validate reports.
+func collect(o Options) kind.Collect {
+	switch {
+	case o.Collect:
+		return kind.CollectAll
+	case len(o.Decisions) > 0:
+		return kind.CollectOne
+	}
+	return kind.CollectUnset
 }

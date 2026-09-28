@@ -29,7 +29,8 @@ func (i *Info) TypeOf(x ast.Expr) types.Type {
 // what it finds.
 type Checker struct {
 	info      *Info
-	letStates map[string]*letState // while lets are being typed
+	letStates map[string]*letState // every let of the document being checked; names are unique per document
+	typing    *letState            // the let whose value is being typed, if any
 	file      string
 	errs      diag.ErrorList
 }

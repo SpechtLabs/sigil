@@ -1,4 +1,4 @@
-kind JIT_Approval version 1 [3:1-18:32]
+kind JIT_Approval version 1 [3:1-19:32]
   type Resource { [5:1-10:2]
     kind: string
     policy: string
@@ -8,13 +8,14 @@ kind JIT_Approval version 1 [3:1-18:32]
   input resource: Resource [12:1-12:25]
   decision review(reason: string, approvers: list<string>, kind: string = "") [14:1-14:76]
   decision deny(reason: string) [15:1-15:30]
-  precedence deny > review [17:1-17:25]
-  default deny("no_rule_matched") [18:1-18:32]
+  collect one [17:1-17:12]
+  precedence deny > review [18:1-18:25]
+  default deny("no_rule_matched") [19:1-19:32]
 ---
-policy jit.sandbox: JIT_Approval [21:1-27:2]
-  when (((resource.kind == "kube_cluster") and (resource.policy != "")) and ((resource.module ?? "") == "")) { [23:1-27:2]
-    review("cluster_access", approvers: ["sre-leads"], kind: resource.kind) [26:3-26:74]
+policy jit.sandbox: JIT_Approval [22:1-28:2]
+  when (((resource.kind == "kube_cluster") and (resource.policy != "")) and ((resource.module ?? "") == "")) { [24:1-28:2]
+    review("cluster_access", approvers: ["sre-leads"], kind: resource.kind) [27:3-27:74]
   }
 ---
-module jit.common: JIT_Approval [31:1-33:49]
-  let is_cluster = (resource.kind == "kube_cluster") [33:1-33:49]
+module jit.common: JIT_Approval [32:1-34:53]
+  pub let is_cluster = (resource.kind == "kube_cluster") [34:1-34:53]

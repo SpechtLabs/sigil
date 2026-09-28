@@ -101,7 +101,7 @@ func (p *parser) parsePolicyStmt() ast.Stmt {
 	switch p.tok.Kind {
 	case token.KwParam:
 		return p.parseParam()
-	case token.KwLet:
+	case token.KwLet, token.KwPub:
 		return p.parseLet()
 	case token.KwWhen:
 		return p.parseWhen()
@@ -121,6 +121,7 @@ func (p *parser) parsePolicyStmt() ast.Stmt {
 // parseParam parses `param name: type` with an optional `= default`.
 func (p *parser) parseParam() *ast.ParamStmt {
 	const shape = "a param is written `param name: type` or `param name: type = default`"
+	const bounds = "a param's bounds are written `, min: value` and `, max: value`, like `param min_soak: duration = 24h, min: 1h`"
 	kw := p.tok
 	p.next()
 	s := &ast.ParamStmt{Name: p.expectIdent("a name after `param`", shape)}
@@ -133,20 +134,49 @@ func (p *parser) parseParam() *ast.ParamStmt {
 		s.Default = p.parseExpr(lowest)
 		end = s.Default.End()
 	}
+	for p.tok.Kind == token.Comma {
+		p.next()
+		name := p.expectIdent("`min` or `max` after `,`", bounds)
+		var slot *ast.Expr
+		switch name.Name {
+		case "min":
+			slot = &s.Min
+		case "max":
+			slot = &s.Max
+		default:
+			p.errorAt(name.Pos(), name.End(), fmt.Sprintf("a param has no option `%s`", name.Name), bounds)
+		}
+		p.expect(token.Colon, bounds)
+		p.after = ast.OpInvalid
+		v := p.parseExpr(lowest)
+		if *slot != nil {
+			p.report(name.Pos(), name.End(), fmt.Sprintf("`%s` is given twice", name.Name), "give each bound once")
+		}
+		*slot = v
+		end = v.End()
+	}
 	s.Span = ast.Span{From: kw.Pos, To: end}
 	return s
 }
 
-// parseLet parses `let name = value`.
+// parseLet parses `let name = value`, with `pub` in front for a let other
+// documents may import.
 func (p *parser) parseLet() *ast.LetStmt {
 	const shape = "a let is written `let name = expression`"
-	kw := p.tok
+	start := p.tok
+	pub := p.tok.Kind == token.KwPub
+	if pub {
+		p.next()
+		if p.tok.Kind != token.KwLet {
+			p.unexpected("`let` after `pub`", "only a let can be exported: `pub let name = expression`")
+		}
+	}
 	p.next()
-	s := &ast.LetStmt{Name: p.expectIdent("a name after `let`", shape)}
+	s := &ast.LetStmt{Name: p.expectIdent("a name after `let`", shape), Pub: pub}
 	p.expect(token.Assign, shape)
 	p.after = ast.OpInvalid
 	s.Value = p.parseExpr(lowest)
-	s.Span = ast.Span{From: kw.Pos, To: s.Value.End()}
+	s.Span = ast.Span{From: start.Pos, To: s.Value.End()}
 	return s
 }
 
@@ -189,7 +219,7 @@ func (p *parser) skipToBrace() {
 	for {
 		switch p.tok.Kind {
 		case token.LBrace, token.RBrace, token.EOF, token.Separator,
-			token.KwUse, token.KwParam, token.KwLet, token.KwWhen, token.KwAssert:
+			token.KwUse, token.KwParam, token.KwLet, token.KwPub, token.KwWhen, token.KwAssert:
 			return
 		}
 		if p.atHeader(p.tok) {
@@ -223,53 +253,69 @@ func (p *parser) parseBody(open token.Token) []ast.Stmt {
 // statement found here is parsed and dropped, with an error saying where
 // it belongs, so the rest of the body still parses.
 func (p *parser) parseBodyStmt() ast.Stmt {
+	const want = "a decision constructor, invocation, `when`, `let` or `assert`"
 	switch p.tok.Kind {
 	case token.KwWhen:
 		return p.parseWhen()
+	case token.KwLet:
+		return p.parseLet()
+	case token.KwPub:
+		// A scoped let is kept, so its uses in the body still resolve.
+		kw := p.tok
+		p.report(kw.Pos, kw.End, "a let inside a `when` body can't be `pub`",
+			"only top-level lets can be exported; remove `pub`")
+		return p.parseLet()
 	case token.KwAssert:
 		return p.parseAssert()
 	case token.Ident:
 		if p.peek().Kind == token.LParen {
 			return p.parseCall()
 		}
-	case token.KwLet, token.KwParam:
+	case token.KwParam:
 		kw := p.tok
-		p.report(kw.Pos, kw.End,
-			fmt.Sprintf("expected a decision constructor, invocation, `when` or `assert`, found `%s`", kw.Text),
-			fmt.Sprintf("`%s` is only allowed at the top level; move it outside the `when` block", kw.Text))
+		p.report(kw.Pos, kw.End, fmt.Sprintf("expected %s, found `param`", want),
+			"`param` is only allowed at the top level; move it outside the `when` block")
 		p.parsePolicyStmt()
 		return nil
 	case token.KwUse:
 		kw := p.tok
-		p.report(kw.Pos, kw.End,
-			"expected a decision constructor, invocation, `when` or `assert`, found `use`",
+		p.report(kw.Pos, kw.End, fmt.Sprintf("expected %s, found `use`", want),
 			"`use` is only allowed right after the header; move it up")
 		p.parseUse()
 		return nil
 	}
-	p.unexpected("a decision constructor, invocation, `when` or `assert`", "")
+	p.unexpected(want, "")
 	return nil
 }
 
-// parseAssert parses `assert cond, "reason"`. The comma ends the
-// condition, including a quantifier body that would otherwise run on.
+// parseAssert parses `assert("reason", cond)`. The reason comes first, as
+// in a decision constructor, and `)` ends the condition, including a
+// quantifier body that would otherwise run on.
 func (p *parser) parseAssert() *ast.AssertStmt {
-	const shape = "an assert is written `assert condition, \"reason\"`"
+	const shape = "an assert is written `assert(\"reason\", condition)`"
 	kw := p.tok
 	p.next()
+	open := p.expect(token.LParen, shape)
 	s := &ast.AssertStmt{}
-	p.after = ast.OpInvalid
-	s.Cond = p.parseExpr(lowest)
-	p.expect(token.Comma, shape)
 	switch p.tok.Kind {
 	case token.String:
 		s.Reason = p.parsePrimary().(*ast.StringLit)
 	case token.RawString:
 		p.errorTok(p.tok, "the reason must be a double-quoted string", "raw strings are for patterns; write the reason as \"...\"")
 	default:
-		p.unexpected("a string literal reason", shape)
+		p.unexpected("a string literal reason", "the reason comes first, as in a decision constructor: `assert(\"reason\", condition)`")
 	}
-	s.Span = ast.Span{From: kw.Pos, To: s.Reason.End()}
+	p.expect(token.Comma, shape)
+	p.after = ast.OpInvalid
+	s.Cond = p.parseExpr(lowest)
+	if p.tok.Kind == token.Comma {
+		p.next()
+		if p.tok.Kind != token.RParen {
+			p.unexpected("`)`", "an assert takes a reason and a condition, nothing else")
+		}
+	}
+	closing := p.expectClosing(token.RParen, open)
+	s.Span = ast.Span{From: kw.Pos, To: closing.End}
 	return s
 }
 

@@ -9,16 +9,18 @@ permalink: /reference/evaluation/
 This page specifies the language as designed. Syntax, kinds, type checking and expression evaluation are implemented; rules and decisions, composition and the CLI aren't yet. See [Open questions](/project/open-questions/).
 :::
 
-Evaluation takes a compiled policy and one input value and produces an outcome: exactly one decision for a kind with `precedence`, and every decision that fired for a [collecting kind](#collecting-kinds). Asserts then check the outcome and the input. The rules on this page are the whole algorithm. For why it works this way, read [Why rule order never matters](/understanding/order-independence/).
+Evaluation takes a compiled policy and one input value and produces an outcome: exactly one decision for a kind with `precedence`, and every decision that fired for a [collecting kind](#collecting-kinds). Asserts check the input before any rule runs, and the outcome once it exists. The rules on this page are the whole algorithm. For why it works this way, read [Why rule order never matters](/understanding/order-independence/).
 
 ```mermaid
 flowchart LR
-  A[Input] --> B[Evaluate every<br/>when block]
+  A[Input] --> I[Check input<br/>asserts]
+  I --> B[Evaluate every<br/>when block]
   B --> C{Any candidates?}
   C -- yes --> D[Pick highest<br/>precedence]
   C -- no --> E[Kind default]
-  D --> F[Result + trace]
-  E --> F
+  D --> O[Check outcome<br/>asserts]
+  E --> O
+  O --> F[Result + trace]
 ```
 
 ## The rules
@@ -30,7 +32,7 @@ flowchart LR
 5. If several candidates share the winning decision, the one with the earliest source position wins. For a rule reached through an invocation, the position is its call site first, then its position in the invoked file.
 6. If there are no candidates at all, the result is the kind's `default`.
 
-Rules 4 to 6 apply to kinds with `precedence`. A collecting kind replaces them; see [Collecting kinds](#collecting-kinds). Asserts run after the outcome is known; see [Assertions](#assertions).
+Rules 4 to 6 apply to kinds with `precedence`. A collecting kind replaces them; see [Collecting kinds](#collecting-kinds). Input asserts run before rule 1 and outcome asserts after the outcome is known; see [Assertions](#assertions).
 
 There's no `else`, no early return and no fall-through. `when not x` expresses the negative case without implying an order between blocks.
 
@@ -81,17 +83,28 @@ Collecting kinds, their ordering and the empty outcome are proposed. See [Open q
 
 ## Assertions
 
-An [`assert`](/reference/policy-files/#assert) is checked after the outcome is known, so its condition can read `outcome` along with the input:
+An [`assert`](/reference/policy-files/#assert) is checked as soon as what it reads is ready. The checker sorts every assert into one of two groups by its condition alone:
 
-1. Every block is evaluated and the outcome is picked or collected, as above.
-2. Every assert whose enclosing conditions all hold is checked, independently and in no particular order. Asserts reached through invocations are included, with their call's enclosing conditions added, exactly as for decisions.
-3. If any assert's condition is false, the evaluation fails with an assertion error.
+- An **input assert** doesn't read `outcome`. It checks the input, params and lets, which are all known before any rule runs.
+- An **outcome assert** reads `outcome`. It can only be checked once the outcome exists.
+
+Nothing else can make an assert depend on the outcome, because `when` conditions and lets can't read `outcome`. There's no keyword to pick the group: it would repeat what the checker already sees, and the only group that makes sense for an assert is the earliest one it can run in.
+
+Evaluation then runs in three phases:
+
+1. **Input asserts.** Every input assert whose enclosing conditions all hold is checked, independently and in no particular order. If any fails, the evaluation fails here and no rule runs.
+2. **Rules.** Every block is evaluated and the outcome is picked or collected, as above. If a rule raises a [runtime error](#runtime-errors), the evaluation fails here and there's no outcome to check.
+3. **Outcome asserts.** Every outcome assert whose enclosing conditions all hold is checked, the same way. If any fails, the evaluation fails.
+
+In every phase, asserts reached through invocations are included, with their call's enclosing conditions added, exactly as for decisions. An assert whose condition or enclosing conditions raise a runtime error counts as failed, and its failure carries the runtime error.
+
+Checking input asserts first is what makes them useful as preconditions. With `assert("critical_needs_team_label", "team" in service.labels)` in place, an input without the label fails with that reason. Without it, a rule reading `service.labels["team"]` would get `""` from the missing key and decide on it, and a rule indexing a list the input left short would fail with a bare index error. It also means no rule and no host function call runs on input the policy has declared invalid.
 
 `outcome` is the whole root's outcome, including an assert in an invoked policy. That's what lets a required guardrail policy check what every other policy in the composition granted. It also means an assert can fail because of a rule in a policy it has never seen, which is the point.
 
-Every failing assert is reported, sorted by source position, not just the first one found. Stopping at the first failure would make the error depend on evaluation order.
+Every failing assert of the phase is reported, sorted by source position, not just the first one found. Stopping at the first failure would make the error depend on evaluation order. A phase that fails ends the evaluation, so a failed input assert hides outcome asserts, which never get an outcome to check.
 
-When an assert fails, `Eval` returns an assertion error and a result whose outcome is the kind's `default` for a kind with `precedence`, and empty for a collecting kind. The host never sees a partial outcome it could act on by mistake. The trace still lists every candidate, and the error names each failing assert by reason and call chain. For an assert over `outcome`, it also names the candidates that made it fail:
+When an assert fails, `Eval` returns an assertion error and a result whose outcome is the kind's `default` for a kind with `precedence`, and empty for a collecting kind. The host never sees a partial outcome it could act on by mistake. The trace lists every candidate the rules produced, none if an input assert failed, and the error names each failing assert by reason and call chain. For an assert over `outcome`, it also names the candidates that made it fail:
 
 ```text
 error: assertion "sod_customer_dev" failed
@@ -193,14 +206,14 @@ Every candidate a required policy produces is then always in the candidate set, 
 
 The requirement names a policy, and policies are found by the name in their header, not by file path (see [Bundles and resolution](/reference/policy-files/#bundles-and-resolution)). On its own, the check proves that some policy called `deploy.guardrails` is invoked, not which one. `policy.From` pins a required policy, and everything it imports, to a source the host trusts, and makes a bundle document that claims one of those names a compile error. See [Where required policies come from](/reference/go-api/#where-required-policies-come-from).
 
-Params are still outside the guarantee. A team binds `min_soak` when it invokes `guardrails`, so it can loosen it. Letting a required policy bound its params is an [open question](/project/open-questions/), and so is whether a requirement may be met through a chain of other policies rather than directly in the root file.
+Params are covered by [bounds](/reference/policy-files/#bounds). A team binds `min_soak` when it invokes `guardrails`, and with `param min_soak: duration = 24h, min: 1h` it can tighten the soak but not loosen it below an hour. Lists such as `approvers` have no bounds. Whether a requirement may be met through a chain of other policies rather than directly in the root file is an [open question](/project/open-questions/).
 
 ## Lets
 
 A `let` has no side effects and host functions are pure, so when a let gets evaluated is unobservable except through runtime errors.
 
 ::: tip Proposed
-Lets are evaluated lazily, at most once per evaluation, on first use. A let that no firing path reaches never runs, so it can't raise a runtime error.
+Lets are evaluated lazily, at most once per evaluation, on first use. A let that no firing path reaches never runs, so it can't raise a runtime error. A [scoped let](/reference/policy-files/#scoped-lets) can only be used inside its `when` body, so it only runs when every enclosing condition holds: the guard around it is guaranteed by the language, not by the author remembering where the let is used.
 :::
 
 ## Determinism
@@ -221,9 +234,9 @@ Static typing removes most failure modes. What's left:
 
 A missing map key isn't an error; it yields the zero value. An absent optional isn't an error either, because the compiler already forced a `??`.
 
-A runtime error anywhere aborts the evaluation. `Eval` returns the error together with a result holding the kind's default decision, so a host that fails closed can use the result directly. For a collecting kind the result's outcome is empty, even if the kind declares a default, because a default grant on an error would fail open. (proposed)
+A runtime error in a rule, a payload or a let a rule reads aborts the evaluation. `Eval` returns the error together with a result holding the kind's default decision, so a host that fails closed can use the result directly. For a collecting kind the result's outcome is empty, even if the kind declares a default, because a default grant on an error would fail open. (proposed)
 
-A runtime error takes priority over failed asserts: once one occurs, `Eval` returns it and doesn't report asserts. An assert whose own condition raises a runtime error reports that runtime error. Since every block is evaluated, the outcome doesn't depend on block order: an input that triggers a runtime error always does.
+A runtime error in a rule ends the evaluation after the input asserts have passed, so it never hides a failing input assert, and outcome asserts don't run because there's no outcome. A runtime error inside an assert is reported as that assert's failure; see [Assertions](#assertions). Since every block is evaluated, the outcome doesn't depend on block order: an input that triggers a runtime error always does.
 
 Work skipped by short-circuiting (`and`, `or`, `??`, quantifiers stopping early, a `when` whose condition is false) never runs and can't raise an error.
 

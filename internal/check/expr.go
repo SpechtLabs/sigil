@@ -77,12 +77,19 @@ func (c *Checker) ident(x *ast.Ident, env *Env) types.Type {
 		c.errorf(x, fmt.Sprintf("call it with its arguments; it's declared as: %s", b.Func.Signature()),
 			"`%s` is a host function, not a value", x.Name)
 		return types.Invalid
+	case Param:
+		c.readParam(x.Name)
 	case Let:
 		// A let read before it's typed is typed now, so declaration order
 		// doesn't matter; a let that reaches itself this way is a cycle.
-		if b.Type == nil {
-			return c.checkLet(x.Name, x)
+		t := b.Type
+		if t == nil {
+			t = c.checkLet(x.Name, x)
 		}
+		if st, ok := c.letStates[x.Name]; ok {
+			c.readParam(st.param)
+		}
+		return t
 	case DecisionName:
 		// A decision's name is a value only where outcome is: an assert
 		// condition. Anywhere else it's a constructor that lost its call.
@@ -222,8 +229,21 @@ func (c *Checker) fitsValue(e ast.Expr, t, val types.Type) bool {
 }
 
 func (c *Checker) unary(x *ast.UnaryExpr, env *Env) types.Type {
-	if x.Op == ast.OpNot {
+	switch x.Op {
+	case ast.OpNot:
 		if c.ExprAs(x.X, env, types.Bool) == types.Invalid {
+			return types.Invalid
+		}
+		return types.Bool
+	case ast.OpPresent:
+		// `present` tests an optional without unwrapping it, so like `??`
+		// and `?.` it only applies to a value that can be absent.
+		t := c.Expr(x.X, env)
+		if t == types.Invalid {
+			return types.Invalid
+		}
+		if !isOptional(t) {
+			c.errorf(x.X, "only an optional value can be absent", "`%s` is %s, which is always present", ast.Sprint(x.X), t)
 			return types.Invalid
 		}
 		return types.Bool
@@ -346,6 +366,9 @@ func (c *Checker) membership(x *ast.BinaryExpr, env *Env) types.Type {
 			c.errorf(x, sameTypeHint(l, elem), "`%s` needs an element of the list's type, found %s in list<%s>", x.Op, l, elem)
 			return types.Invalid
 		}
+		if !c.comparable(x, elem) {
+			return types.Invalid
+		}
 	case *types.Map:
 		if untyped(l) || !types.Identical(l, rt.Key) {
 			c.errorf(x, "", "`%s` needs the map's key type, found %s in %s", x.Op, describe(l), rt)
@@ -391,7 +414,21 @@ func (c *Checker) listOp(x *ast.BinaryExpr, env *Env) types.Type {
 		c.errorf(x, "", "`%s` needs lists of one element type, found %s and %s", x.Op, l, r)
 		return types.Invalid
 	}
+	if !c.comparable(x, l.(*types.List).Elem) {
+		return types.Invalid
+	}
 	return types.Bool
+}
+
+// comparable reports whether elements of type elem can be compared by x,
+// and reports it at x when they can't.
+func (c *Checker) comparable(x *ast.BinaryExpr, elem types.Type) bool {
+	if types.IsComparable(elem) {
+		return true
+	}
+	c.errorf(x, "structs have no equality; compare a field that identifies them, such as a name",
+		"`%s` can't compare elements of type %s", x.Op, elem)
+	return false
 }
 
 // has checks `m has {...}` and `m has k`.
@@ -409,7 +446,7 @@ func (c *Checker) has(x *ast.BinaryExpr, env *Env) types.Type {
 	// wrong value is reported at the value; anything else must be the map's
 	// type or its key type.
 	if isMapLit(x.Y) {
-		if c.ExprAs(x.Y, env, m) == types.Invalid {
+		if c.ExprAs(x.Y, env, m) == types.Invalid || !c.comparable(x, m.Value) {
 			return types.Invalid
 		}
 		return types.Bool
@@ -418,8 +455,11 @@ func (c *Checker) has(x *ast.BinaryExpr, env *Env) types.Type {
 	switch {
 	case r == types.Invalid:
 		return types.Invalid
-	case !types.Identical(r, m) && !types.Identical(r, m.Key):
+	case types.Identical(r, m.Key):
+	case !types.Identical(r, m):
 		c.errorf(x.Y, "", "`has` needs %s or a key of type %s, found %s", m, m.Key, r)
+		return types.Invalid
+	case !c.comparable(x, m.Value):
 		return types.Invalid
 	}
 	return types.Bool
@@ -527,9 +567,72 @@ func (c *Checker) arith(x *ast.BinaryExpr, env *Env) types.Type {
 	return types.Invalid
 }
 
-// selector checks `x.name`: a field of a struct value.
+// selector checks `x.name` or `x?.name`, the end of a chain; see chain.
 func (c *Checker) selector(x *ast.SelectorExpr, env *Env) types.Type {
-	base := c.Expr(x.X, env)
+	return c.chain(x, env)
+}
+
+// chain types the end of an optional chain: a run of `.name`, `?.name`
+// and `[index]` that no parentheses break. A `?.` whose operand is absent
+// makes the whole run absent, as in TypeScript, so the chain's type is
+// its last link's type made optional as soon as the run holds a `?.`.
+// `release?.meta.owner` is then `?string` even though `meta` isn't
+// optional. An optional link still needs its own `?.`: if `meta` were
+// `?Meta`, reading `.owner` from it would be an error.
+func (c *Checker) chain(x ast.Expr, env *Env) types.Type {
+	t, short := c.link(x, env)
+	if !short || t == types.Invalid {
+		return t
+	}
+	if isOptional(t) {
+		return t
+	}
+	return &types.Optional{Elem: t}
+}
+
+// link types one link of a chain as if no `?.` before it found its
+// operand absent, and reports whether one can.
+func (c *Checker) link(x ast.Expr, env *Env) (types.Type, bool) {
+	switch x := x.(type) {
+	case *ast.SelectorExpr:
+		base, short := c.linkBase(x.X, env)
+		t, opt := c.field(x, base, env)
+		return t, short || opt
+	case *ast.IndexExpr:
+		base, short := c.linkBase(x.X, env)
+		return c.indexOf(x, base, env), short
+	}
+	return c.Expr(x, env), false
+}
+
+// linkBase types the operand of a link. The previous link of the same
+// chain is recorded with its link type, which is what the evaluator
+// compiles it by; anything else is an ordinary expression.
+func (c *Checker) linkBase(x ast.Expr, env *Env) (types.Type, bool) {
+	switch x.(type) {
+	case *ast.SelectorExpr, *ast.IndexExpr:
+		t, short := c.link(x, env)
+		return c.record(x, t), short
+	}
+	return c.Expr(x, env), false
+}
+
+// field types the field x selects from base, and reports whether x is a
+// `?.`, which reads the field from the struct inside an optional base.
+func (c *Checker) field(x *ast.SelectorExpr, base types.Type, env *Env) (types.Type, bool) {
+	if base == types.Invalid {
+		return types.Invalid, false
+	}
+	operand := ast.Sprint(x.X)
+	if x.Optional {
+		opt, ok := base.(*types.Optional)
+		if !ok {
+			c.errorf(x.Sel, fmt.Sprintf("read the field with `%s.%s`; `?.` is for a struct that may be absent", operand, x.Sel.Name),
+				"`%s` isn't optional", operand)
+			return types.Invalid, false
+		}
+		base = opt.Elem
+	}
 	switch t := base.(type) {
 	case *types.Struct:
 		decl := env.Kind().Type(t.Name)
@@ -537,26 +640,27 @@ func (c *Checker) selector(x *ast.SelectorExpr, env *Env) types.Type {
 			decl = t
 		}
 		if f := decl.Field(x.Sel.Name); f != nil {
-			return f.Type
+			return f.Type, x.Optional
 		}
 		help := fmt.Sprintf("%s declares: %s", decl.Name, decl.FieldNames())
 		if closest, ok := c.closestField(decl, x.Sel.Name); ok {
 			help = fmt.Sprintf("did you mean %q? %s", closest, help)
 		}
 		c.errorf(x.Sel, help, "unknown field %q on type %s", x.Sel.Name, decl.Name)
-		return types.Invalid
+		return types.Invalid, false
 	case *types.Optional:
 		if _, ok := t.Elem.(*types.Struct); ok {
-			c.errorf(x.X, "an optional struct has nothing to unwrap it with; see the open question on optional structs",
-				"`%s` is %s, and fields of an optional struct can't be read yet", ast.Sprint(x.X), t)
-			return types.Invalid
+			c.errorf(x.Sel, fmt.Sprintf("read the field with `%s?.%s`", operand, x.Sel.Name),
+				"`%s` is %s, which may be absent", operand, t)
+			return types.Invalid, false
 		}
 	}
-	if base == types.Invalid {
-		return types.Invalid
+	if x.Optional {
+		c.errorf(x.Sel, "", "`%s` holds %s, which has no fields", operand, base)
+		return types.Invalid, false
 	}
-	c.errorf(x.Sel, c.unwrapHint(x.X, base), "`%s` is %s, which has no fields", ast.Sprint(x.X), base)
-	return types.Invalid
+	c.errorf(x.Sel, c.unwrapHint(x.X, base), "`%s` is %s, which has no fields", operand, base)
+	return types.Invalid, false
 }
 
 func (c *Checker) closestField(s *types.Struct, name string) (string, bool) {
@@ -567,9 +671,14 @@ func (c *Checker) closestField(s *types.Struct, name string) (string, bool) {
 	return nearest(name, names)
 }
 
-// index checks `x[i]`: a map by its key type, or a list by an int.
+// index checks `x[i]`, the end of a chain; see chain.
 func (c *Checker) index(x *ast.IndexExpr, env *Env) types.Type {
-	base := c.Expr(x.X, env)
+	return c.chain(x, env)
+}
+
+// indexOf types `x[i]` on base: a map by its key type, or a list by an
+// int.
+func (c *Checker) indexOf(x *ast.IndexExpr, base types.Type, env *Env) types.Type {
 	switch t := base.(type) {
 	case *types.Map:
 		if c.ExprAs(x.Index, env, t.Key) == types.Invalid {

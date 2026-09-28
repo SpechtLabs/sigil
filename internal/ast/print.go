@@ -53,7 +53,7 @@ func sprint(b *strings.Builder, n Node) {
 	case *UnaryExpr:
 		b.WriteByte('(')
 		b.WriteString(n.Op.String())
-		if n.Op == OpNot {
+		if n.Op == OpNot || n.Op == OpPresent {
 			b.WriteByte(' ')
 		}
 		sprint(b, n.X)
@@ -96,6 +96,9 @@ func sprintPostfix(b *strings.Builder, n Node) {
 	switch n := n.(type) {
 	case *SelectorExpr:
 		sprint(b, n.X)
+		if n.Optional {
+			b.WriteByte('?')
+		}
 		b.WriteByte('.')
 		b.WriteString(n.Sel.Name)
 

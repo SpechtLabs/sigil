@@ -97,6 +97,7 @@ decision deny(reason: string)
 decision review(reason: string, approvers: list<string>)
 decision approve(reason: string, bake: duration = 1h)
 
+collect one
 precedence deny > review > approve
 default deny("no_rule_matched")
 ```
@@ -163,9 +164,9 @@ The platform team's shared matchers:
 ```sigil title="deploy/common.sigil"
 module deploy.common: DeployApproval
 
-let owns_service = actor.teams any in service.owners
-let cleared = split(service.labels["regions"], ",") all in actor.regions
-let eligible = "deployer" in actor.roles
+pub let owns_service = actor.teams any in service.owners
+pub let cleared = split(service.labels["regions"], ",") all in actor.regions
+pub let eligible = "deployer" in actor.roles
   and environment == "production"
   and service.labels has {
     "app.kubernetes.io/managed-by": "argocd",

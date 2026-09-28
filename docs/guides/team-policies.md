@@ -173,7 +173,7 @@ use deploy.common.{owns_service as owner}    // renamed: owner
 
 Imported names live in the same top-level namespace as inputs, params and lets. Importing something as `release` or `actor` is a compile error, because it would collide with an input.
 
-A policy's own `let`s can be imported the same way, as long as they don't read a param. A param has no value outside an invocation, so the compiler rejects the import and suggests moving the `let` to a module.
+Only `pub let`s can be imported, and a policy can mark its own lets `pub` too, as long as they don't read a param. A param has no value outside an invocation, so the compiler rejects such a `pub let` where it's declared and suggests moving it to a module.
 
 ## Invoke the same policy twice
 
@@ -226,7 +226,7 @@ Composition adds candidates and never removes them. Combined with the kind's `pr
 
 The first row is the point of the whole mechanism: the guardrails' `not_eligible` and `soak_too_short` denies hold no matter what a team adds. The [tour](/getting-started/tour/#the-same-release-after-two-hours) shows a team approval losing to a guardrail deny.
 
-The fourth row is the gap. A team can invoke `guardrails(min_soak: 0s)`, and the `soak_too_short` rule dutifully compares against zero, which switches the soak requirement off. Constraining params, either with bounds in the declaration like `param min_soak: duration = 24h min 1h` or with bounds the host sets alongside `Require`, is an [open question](/project/open-questions/). Until that's settled, review team policies that change safety-relevant params, or bind those params from Go where the platform controls the values.
+The fourth row is the gap, and [bounds](/reference/policy-files/#bounds) close it. Without them, a team can invoke `guardrails(min_soak: 0s)`, and the `soak_too_short` rule dutifully compares against zero, which switches the soak requirement off. Declare `param min_soak: duration = 24h, min: 1h` in the guardrail and that invocation fails to compile. Lists such as `approvers` can't be bounded, so review team policies that change them, or bind them from Go where the platform controls the values.
 
 ## Further reading
 

@@ -29,6 +29,14 @@ timeline:
       The language design moves into this documentation site. Nothing is implemented; the docs are
       the specification until M1 closes.
   - date: 2026-09-28
+    title: Assertions, collecting kinds, lets and optional structs settled
+    description: |
+      A second pass over the open questions: `assert("reason", cond)` with input and outcome
+      phases, `collect one` and `collect all`, scoped and `pub` lets, optional chaining with
+      `present`, scalar-only equality, and host-ordered types for versions. Everything the
+      implemented milestones cover lands in the parser, checker and evaluator; the rest is
+      tracked below.
+  - date: 2026-09-28
     title: Kinds, the type checker and expression evaluation implemented
     description: |
       M3 closes: a policy is checked against its kind with a hint for every typo and type
@@ -103,8 +111,11 @@ milestones:
         requirement: MUST
         description: |
           Settled with the parser: quantifier body extent, chained comparisons, keywords as field
-          names and the `assert` syntax. Boolean operator spelling is settled: words. Still open:
-          glob syntax (M3) and multiple decisions per block (M4); the parser accepts several.
+          names, `assert("reason", cond)` with the reason first, `collect one` and `collect all`,
+          scoped lets and `pub let`, optional chaining with `?.` and `present`, and param bounds
+          as `, min: value, max: value`. Boolean operator
+          spelling is settled: words. Still open: glob syntax (M3) and multiple decisions per
+          block (M4); the parser accepts several.
       - title: Published documentation site
         state: DONE
         requirement: SHOULD
@@ -189,6 +200,30 @@ milestones:
           A checked expression compiles once into closures that read the host's own Go values in
           place through the field paths NewKind recorded. Runtime errors point at the expression
           that failed. Rules, precedence and the trace come with M4.
+      - title: Optional structs and presence
+        state: DONE
+        requirement: MUST
+        description: |
+          `release?.soak` reads a field of an optional struct, and a `?.` that finds its operand
+          absent makes the rest of the chain absent, as in TypeScript. `present x` tests an
+          optional without unwrapping it. Pointers to slices and maps are rejected, since an
+          absent collection would read the same as an empty one.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/expressions.md
+      - title: Scoped and exported lets in the checker
+        state: DONE
+        requirement: MUST
+        description: |
+          A `let` inside a `when` body is visible there only, can't shadow anything and has a name
+          unique in its document. A `let` is private unless it's `pub let`, and a policy's
+          `pub let` can't read a param. Evaluating scoped lets comes with M4, the import side
+          with M5.
+      - title: Element comparison
+        state: DONE
+        requirement: MUST
+        description: |
+          `==` works on scalars only and strings aren't ordered. `in`, the list operators and
+          `has` compare lists and maps structurally and reject struct elements, which the
+          evaluator used to answer `false` for without saying so.
 
   - title: Policies
     description: |
@@ -203,6 +238,40 @@ milestones:
       - title: Precedence and default
         state: TODO
         requirement: MUST
+        description: |
+          A `collect one` kind returns its highest-ranked candidate, or the default when nothing
+          fires.
+      - title: Collecting kinds
+        state: TODO
+        requirement: MUST
+        description: |
+          A `collect all` kind returns every candidate that fired, sorted by the kind's declaration
+          order, and an empty outcome on a runtime error. `outcome` holds every distinct decision.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/evaluation.md
+      - title: Assertions
+        state: TODO
+        requirement: MUST
+        description: |
+          Input asserts, whose condition doesn't read `outcome`, run before any rule; outcome
+          asserts run once the outcome exists. A failing phase ends the evaluation with a
+          `*policy.AssertionError` listing every failure of that phase, and an assert whose own
+          condition raises a runtime error counts as failed.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/evaluation.md
+      - title: Scoped lets at evaluation
+        state: TODO
+        requirement: MUST
+        description: |
+          A `let` inside a `when` body is evaluated lazily, at most once per evaluation, and only
+          when its body is reached.
+      - title: Host-ordered types
+        state: TODO
+        requirement: SHOULD
+        description: |
+          `policy.WithOrdered[*semver.Version]("Version")` and `type Version ordered` give a Go
+          type with `Compare(T) int` the ordinary comparison operators, printed through
+          `MarshalText` or `String`. Deploy gates often compare versions, so the port below is
+          likely to need it. Nothing else blocks it: kinds, the checker and the evaluator exist.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/types.md
       - title: Evaluation trace
         state: TODO
         requirement: MUST
@@ -224,12 +293,16 @@ milestones:
       - title: param and let
         state: TODO
         requirement: MUST
+        description: |
+          Params bound by invocation or by `policy.Params`, each value checked against the
+          param's `min` and `max` when the policy compiles or loads. Declaring bounds and
+          checking them against the default already works.
       - title: Modules and imports
         state: TODO
         requirement: MUST
         description: |
-          `module` files, whole-file, selective and aliased `use`, and the rule that a policy's
-          `let` can only be imported if it doesn't read a param.
+          `module` files, whole-file, selective and aliased `use`, and only `pub let`s importable:
+          a `use` that names a private `let` is a compile error.
       - title: Policy invocation
         state: TODO
         requirement: MUST
@@ -283,6 +356,15 @@ milestones:
       - title: sigil eval and sigil test
         state: TODO
         requirement: MUST
+      - title: Lints
+        state: TODO
+        requirement: SHOULD
+        description: |
+          The lints on the CLI page, reported by `sigil check` as warnings: `unused-import`,
+          `unused-let`, `gated-assert`, `gated-deny`, `duplicate-invocation`, `duplicate-reason`,
+          `qualified-imports` and `path-matches-name`, and a way for a repository to promote one
+          to an error.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/cli.md
       - title: policytest package for go test
         state: TODO
         requirement: SHOULD

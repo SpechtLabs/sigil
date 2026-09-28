@@ -15,7 +15,7 @@ import (
 // timestamps, an optional struct, an int-keyed map and a second function.
 const testKind = `kind Test version 1
 type Release { soak: duration hotfix: bool ticket: ?string built_at: timestamp parent: ?Commit }
-type Commit { id: int }
+type Commit { id: int author: Actor merged_by: ?Actor note: ?string }
 type Service { name: string tier: string owners: list<string> labels: map<string, string> owner: Actor scores: map<string, int> counts: list<int> by_id: map<int, string> }
 type Actor { name: string teams: list<string> roles: list<string> regions: list<string> }
 input release: Release
@@ -31,6 +31,7 @@ fn now_fn() -> timestamp
 decision deny(reason: string)
 decision review(reason: string, approvers: list<string>)
 decision approve(reason: string, bake: duration = 1h)
+collect one
 precedence deny > review > approve
 default deny("no_rule_matched")
 `
@@ -190,7 +191,38 @@ func TestExpr(t *testing.T) {
 		{src: "actor.email", msg: `unknown field "email" on type Actor`, help: "Actor declares: name, teams, roles, regions", span: "1:7-1:12"},
 		{src: "environment.name", msg: "`environment` is string, which has no fields", span: "1:13-1:17"},
 		{src: "actor.roles.first", msg: "`actor.roles` is list<string>, which has no fields", span: "1:13-1:18"},
-		{src: "release.parent.id", msg: "`release.parent` is ?Commit, and fields of an optional struct can't be read yet", help: "an optional struct has nothing to unwrap it with; see the open question on optional structs", span: "1:1-1:15"},
+		{src: "release.parent.id", msg: "`release.parent` is ?Commit, which may be absent", help: "read the field with `release.parent?.id`", span: "1:16-1:18"},
+
+		// Presence.
+		{src: "present release.ticket", want: "bool"},
+		{src: "present release.parent", want: "bool"},
+		{src: "present release.parent?.author", want: "bool"},
+		{src: "not present release.parent and cleared", want: "bool"},
+		{src: "present release.soak", msg: "`release.soak` is duration, which is always present", help: "only an optional value can be absent", span: "1:9-1:21"},
+		{src: "present release.ticket ?? \"\"", msg: "`??` needs an optional on the left, found bool", span: "1:1-1:23"},
+
+		// Element comparison.
+		{src: `["eu-1"] in [["eu-1"], ["us-1"]]`, want: "bool"},
+		{src: `service.owner in [service.owner]`, msg: "`in` can't compare elements of type Actor", help: "structs have no equality; compare a field that identifies them, such as a name", span: "1:1-1:33"},
+		{src: `[service.owner] any in [service.owner]`, msg: "`any in` can't compare elements of type Actor", span: "1:1-1:39"},
+		{src: `[[service.owner]] all in [[service.owner]]`, msg: "`all in` can't compare elements of type list<Actor>", span: "1:1-1:43"},
+		{src: `service.labels has service.labels`, want: "bool"},
+
+		// Optional chaining.
+		{src: "release.parent?.id", want: "?int"},
+		{src: "release.parent?.id ?? 0", want: "int"},
+		{src: "release.parent?.id ?? 0 > 3", want: "bool"},
+		{src: "release.parent?.note", want: "?string"},
+		{src: "release.parent?.author.name", want: "?string"},
+		{src: "release.parent?.author.roles[0]", want: "?string"},
+		{src: "release.parent?.merged_by?.name", want: "?string"},
+		{src: `release.parent?.author.roles ?? [] any in ["a"]`, want: "bool"},
+		{src: `release.parent?.author.roles any in ["a"]`, msg: "`any in` needs lists on both sides, found ?list<string>", help: "unwrap it with `??`, like `release.parent?.author.roles ?? <default>`", span: "1:1-1:29"},
+		{src: "release.parent?.merged_by.name", msg: "`release.parent?.merged_by` is ?Actor, which may be absent", help: "read the field with `release.parent?.merged_by?.name`", span: "1:27-1:31"},
+		{src: "(release.parent?.author).name", msg: "`(release.parent?.author)` is ?Actor, which may be absent", span: "1:26-1:30"},
+		{src: "release?.soak", msg: "`release` isn't optional", help: "read the field with `release.soak`; `?.` is for a struct that may be absent", span: "1:10-1:14"},
+		{src: "release.ticket?.id", msg: "`release.ticket` holds string, which has no fields", span: "1:17-1:19"},
+		{src: "release.parent?.nope", msg: `unknown field "nope" on type Commit`, span: "1:17-1:21"},
 		{src: "servce.tier", msg: "unknown name `servce`", span: "1:1-1:7"},
 
 		// Indexing and calls.

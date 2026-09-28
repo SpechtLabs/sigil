@@ -33,11 +33,11 @@ errors_kind.sigil:15:51: expected `>`, found `)`
    |                                                   ^
    = help: to close the `<` at 15:44
 
-errors_kind.sigil:18:1: expected `all`, found `default`
+errors_kind.sigil:18:1: expected `one` or `all`, found `default`
    |
 18 | default "no_rule_matched"
    | ^^^^^^^
-   = help: a collecting kind is declared with `collect all`
+   = help: `collect one` returns the highest-ranked decision, `collect all` every decision that fired
 
 errors_kind.sigil:18:9: expected a decision constructor, found `"no_rule_matched"`
    |

@@ -165,6 +165,8 @@ func TestLex(t *testing.T) {
 			{kind: token.RBrace},
 		}},
 		{name: "coalesce then question", src: "???", want: []tok{{kind: token.Coalesce}, {kind: token.Question}}},
+		{name: "optional chaining", src: "a?.b", want: []tok{{kind: token.Ident, text: "a"}, {kind: token.OptDot}, {kind: token.Ident, text: "b"}}},
+		{name: "coalesce then dot", src: "??.", want: []tok{{kind: token.Coalesce}, {kind: token.Dot}}},
 		{name: "triple equals", src: "===", want: []tok{{kind: token.Eq}, {kind: token.Assign}}},
 
 		// Minus, arrow and the document separator.

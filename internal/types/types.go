@@ -43,8 +43,8 @@ func Identical(a, b Type) bool {
 }
 
 // IsKey reports whether t can be a map key. Go's rule applies: the
-// comparable types, which in Sigil are the scalars. Structs wait on the
-// open question of composite equality, and decision can't be data at all.
+// comparable types, which in Sigil are the scalars. Structs have no
+// equality, and decision can't be data at all.
 func IsKey(t Type) bool {
 	switch t {
 	case Bool, Int, Float, String, Duration, Timestamp:
@@ -62,9 +62,28 @@ func IsOrdered(t Type) bool {
 	return false
 }
 
-// IsEquatable reports whether t supports `==` and `!=`. Lists, maps and
-// structs don't, until the open question on composite equality settles.
+// IsEquatable reports whether t supports `==` and `!=`: the scalars.
+// Lists, maps and structs don't, because a policy rarely means "these are
+// identical", and one operator would hide a walk over a nested value.
 func IsEquatable(t Type) bool {
 	b, ok := t.(Basic)
 	return ok && b != Invalid
+}
+
+// IsComparable reports whether values of t can be compared as elements by
+// `in`, the list operators and `has`: the scalars, and lists, maps and
+// optionals built from them, which compare structurally. A struct, or
+// anything holding one, can't, because structs have no equality.
+func IsComparable(t Type) bool {
+	switch t := t.(type) {
+	case Basic:
+		return t != Invalid
+	case *List:
+		return IsComparable(t.Elem)
+	case *Map:
+		return IsComparable(t.Value)
+	case *Optional:
+		return IsComparable(t.Elem)
+	}
+	return false
 }

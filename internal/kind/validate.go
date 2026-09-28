@@ -162,7 +162,7 @@ func contains(xs []string, x string) bool {
 }
 
 // typeResolves checks that every struct type inside t is declared, and
-// that t is well-formed: no nested optionals, no decision-typed data,
+// that t is well-formed: no nested optionals, no optional lists or maps, no decision-typed data,
 // scalar map keys. key locates the type in source; where names it in the
 // message. types.Invalid passes: a loader puts it where a name didn't
 // resolve, and has already reported that at the name.
@@ -182,8 +182,13 @@ func (v *validator) typeResolves(t types.Type, key, where string) {
 		}
 		v.typeResolves(t.Value, key, where)
 	case *types.Optional:
-		if _, nested := t.Elem.(*types.Optional); nested {
+		switch t.Elem.(type) {
+		case *types.Optional:
 			v.errorf(key, "write `?T` with a single `?`", "%s: optional types don't nest", where)
+		case *types.List:
+			v.errorf(key, "use `list<T>`; an absent list already reads as an empty one", "%s: a list can't be optional", where)
+		case *types.Map:
+			v.errorf(key, "use `map<K, V>`; an absent map already reads as an empty one", "%s: a map can't be optional", where)
 		}
 		v.typeResolves(t.Elem, key, where)
 	case *types.Struct:
@@ -273,16 +278,20 @@ func (v *validator) decisions() {
 func (v *validator) resolution() {
 	k := v.kind
 	switch {
-	case k.Collect && len(k.Precedence) > 0:
-		v.errorf("collect", "a kind resolves decisions one way: rank them with `precedence`, or apply all with `collect all`", "kind %s has both precedence and collect all", k.Name)
-	case !k.Collect && len(k.Precedence) == 0:
-		v.errorf("kind", "rank the decisions with `precedence`, or declare `collect all`", "kind %s has neither precedence nor collect all", k.Name)
-	case !k.Collect:
+	case k.Collect == CollectUnset && len(k.Precedence) > 0:
+		v.errorf("precedence", "declare `collect one` to return the highest-ranked decision", "kind %s has precedence but no collect", k.Name)
+	case k.Collect == CollectUnset:
+		v.errorf("kind", "declare `collect one` with a `precedence`, or `collect all`", "kind %s doesn't declare how many decisions it returns", k.Name)
+	case k.Collect == CollectOne && len(k.Precedence) == 0:
+		v.errorf("collect", "`collect one` returns the highest-ranked decision; rank them with `precedence deny > review > approve`, highest first", "kind %s collects one decision but has no precedence", k.Name)
+	case k.Collect == CollectOne:
 		v.precedence()
+	case len(k.Precedence) > 0:
+		v.errorf("precedence", "`collect all` with `precedence` is reserved; remove `precedence` to return every decision that fired", "kind %s has both precedence and collect all", k.Name)
 	}
 
 	if k.Default == nil {
-		if !k.Collect {
+		if k.Collect != CollectAll {
 			v.errorf("kind", "declare `default <decision>(\"<reason>\")` for the case where no rule fires", "kind %s has no default decision", k.Name)
 		}
 		return

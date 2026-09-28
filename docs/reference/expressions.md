@@ -29,8 +29,8 @@ From lowest to highest:
 | 4     | `like`, `matches`           | none            | Glob and RE2 regex; the pattern must be a literal                                         |
 | 5     | `??`                        | right           | Default for optional values                                                               |
 | 6     | `+` `-`                     | left            | Numbers, durations, timestamps                                                            |
-| 7     | `-`                         | prefix          | Unary minus                                                                               |
-| 8     | `.field` `[key]` `f(args)`  | left (postfix)  | Field access, map or list index, host function call                                       |
+| 7     | `-`, `present`              | prefix          | Unary minus; presence of an optional                                                      |
+| 8     | `.field` `?.field` `[key]` `f(args)` | left (postfix) | Field access, optional chaining, map or list index, host function call              |
 
 Parentheses override precedence as usual. Quantifiers (`any x in xs: ...`, `all x in xs: ...`) aren't in the table because they're prefix forms whose body extends as far right as possible; see [Quantifiers](#quantifiers).
 
@@ -81,9 +81,9 @@ String comparison is case-sensitive, unlike filt-rs, because Kubernetes labels a
 
 Comparing an optional (`?T`) value is a compile error until it's unwrapped with `??`.
 
-::: warning Unspecified
-The current design doesn't say whether `==` works on lists, maps or struct values, or whether strings can be ordered with `<` (where `"v10" < "v9"` would be true). Neither is allowed until that's decided.
-:::
+`==` doesn't work on lists, maps or structs. A policy rarely means "these two lists are identical"; it means subset, overlap or membership, which have their own operators. And one `==` would hide a walk over a whole nested value.
+
+Strings aren't ordered. Byte-wise order is well defined, but it makes `"v10" < "v9"` true, which is exactly the result that gets a version rule wrong. Versions compare through a type the host defines with its own ordering; see [Host-ordered types](/reference/types/#host-ordered-types).
 
 ## Membership: `in` and `not in`
 
@@ -187,7 +187,47 @@ release.ticket ?? "none"
 
 Applying `??` to a value that isn't optional is a compile error.
 
-Struct types have no literal, so an optional struct (`?Release`) can't be unwrapped with `??` today. How to fix that is an [open question](/project/open-questions/).
+Struct types have no literal, so an optional struct (`?Release`) can't be unwrapped with `??`. Its fields are read with optional chaining instead.
+
+## Optional chaining: `?.`
+
+`x?.name` reads a field of an optional struct. If `x` is absent, the result is absent; otherwise it's the field of the struct inside. The result is optional, so it's unwrapped with `??` like any other:
+
+```sigil
+// assuming the kind declares `release: ?Release`
+release?.soak ?? 5m
+```
+
+A `?.` makes the rest of its chain optional too, as in TypeScript. A chain is a run of `.name`, `?.name` and `[index]` that no parentheses break. When a `?.` finds its operand absent, nothing after it in the chain runs, so it can't fail either:
+
+```sigil
+// Release declares `parent: ?Commit`; Commit declares `author: Actor` and `merged_by: ?Actor`
+release.parent?.author.name ?? ""          // ?string, then string; `author` needs no `?.`
+release.parent?.author.roles[5] ?? ""       // no index error when there's no parent
+release.parent?.merged_by?.name ?? ""       // `merged_by` is optional itself, so it needs its own `?.`
+```
+
+- The type of a chain with a `?.` in it is its last link's type made optional. A last link that's optional already stays `?T`; optionals don't nest.
+- A `?.` only skips what comes after an absent value. A link that is optional itself still needs its own `?.`: `release.parent?.merged_by.name` is a compile error that suggests `?.name`.
+- Parentheses end a chain. `(release.parent?.author).name` reads a field of a `?Actor` and is a compile error.
+- `?.` on a value that can't be absent is a compile error, like `??` on one: `service?.name` suggests `service.name`.
+- `?.` reads struct fields only. There's no `?[` for indexing, because lists and maps can't be optional.
+
+Optional chaining can't tell an absent struct from a present one whose field is zero: with `release?.soak ?? 0s`, both give `0s`. [`present`](#presence-present) can.
+
+## Presence: `present`
+
+`present x` is `true` when the optional `x` holds a value and `false` when it's absent. It tells absence apart from a zero value, which `??` can't:
+
+```sigil
+when not present release { deny("no_release") }
+when present release.ticket { ... }                 // an empty ticket is present
+when present release.parent?.merged_by { ... }      // any optional, including a chain
+```
+
+- The operand must be optional. `present` on a value that can't be absent is a compile error, like `??` and `?.`.
+- It binds like unary minus, to one operand chain: `present release.parent and x` means `(present release.parent) and x`, and `present release.ticket ?? ""` is a compile error, because `present` applies first and yields a `bool`.
+- It only tests. Inside `when present release { ... }`, `release` is still optional, and its fields are still read with `?.`. There's no flow typing that would narrow it to `Release`.
 
 ## Arithmetic
 
@@ -277,14 +317,14 @@ Both rules, the body extending as far right as possible and no shadowing, are im
 Inside an `assert`, a policy can test what evaluation decided. Two things make that possible:
 
 - A decision's name, used as an operand, is a value of type [`decision`](/reference/types/#decision). `approve` in `approve in outcome` refers to the decision, not to a constructor call; a constructor always has parentheses. Like `outcome`, a bare decision name is only a value inside an `assert` condition: `when deny == approve` has nothing to say, so it's a compile error that points at the constructor form.
-- `outcome` is a `list<decision>` holding each distinct decision the host will get back, in the kind's declaration order. In a kind with `precedence` it holds exactly one element, the winner or the default. In a [collecting kind](/reference/kind-files/#collect) it holds every decision that fired, or the default if the kind declares one and nothing fired.
+- `outcome` is a `list<decision>` holding each distinct decision the host will get back, in the kind's declaration order. In a kind with `precedence` it holds exactly one element, the winner or the default. In a [collecting kind](/reference/kind-files/#collecting-kinds) it holds every decision that fired, or the default if the kind declares one and nothing fired.
 
 ```sigil
-assert [customer_data_writer, development_environment_writer] exclusive in outcome,
-  "sod_customer_dev"
+assert("sod_customer_dev",
+  [customer_data_writer, development_environment_writer] exclusive in outcome)
 
-assert customer_data_writer not in outcome or actor.clearance == "pii",
-  "pii_needs_clearance"
+assert("pii_needs_clearance",
+  customer_data_writer not in outcome or actor.clearance == "pii")
 ```
 
 `outcome` can only appear in an `assert` condition. A `when` condition or a `let` that read it could make a rule depend on its own result: `when admin not in outcome { admin("x") }` would fire exactly when it doesn't. See [Assertions](/reference/evaluation/#assertions) for when asserts run.

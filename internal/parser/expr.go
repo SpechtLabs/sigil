@@ -21,7 +21,7 @@ const (
 	bpCmp      = 4 // comparisons, membership, has, like, matches
 	bpCoalesce = 5 // ??
 	bpAdd      = 6 // + -
-	bpNeg      = 7 // unary minus
+	bpNeg      = 7 // unary minus, present
 )
 
 // assoc is how an operator groups with a neighbor of the same power.
@@ -155,7 +155,8 @@ func (p *parser) checkNeighbor(prev ast.Op) {
 	}
 }
 
-// parsePrefix parses the prefix forms (`not`, unary minus, quantifiers) or
+// parsePrefix parses the prefix forms (`not`, unary minus, `present`,
+// quantifiers) or
 // an operand. minBP says how tightly the surrounding operator binds: a
 // prefix form at a looser level than that can't appear here without
 // parentheses, because its operand would have to extend past the operator
@@ -173,6 +174,11 @@ func (p *parser) parsePrefix(minBP int) ast.Expr {
 		p.next()
 		p.after = ast.OpNeg
 		return &ast.UnaryExpr{Op: ast.OpNeg, OpPos: pos, X: p.parseExpr(bpNeg)}
+	case token.KwPresent:
+		pos := p.tok.Pos
+		p.next()
+		p.after = ast.OpPresent
+		return &ast.UnaryExpr{Op: ast.OpPresent, OpPos: pos, X: p.parseExpr(bpNeg)}
 	case token.KwAny, token.KwAll:
 		p.requireLevel(minBP, bpNot, "a quantifier")
 		return p.parseQuantifier()
@@ -226,7 +232,7 @@ func (p *parser) parseQuantifier() ast.Expr {
 	return q
 }
 
-// parsePostfix applies any run of `.name`, `[index]` and `(args)` to x.
+// parsePostfix applies any run of `.name`, `?.name`, `[index]` and `(args)` to x.
 // They bind tighter than every operator, so they're consumed before the
 // infix loop looks at the next token.
 func (p *parser) parsePostfix(x ast.Expr) ast.Expr {
@@ -235,6 +241,9 @@ func (p *parser) parsePostfix(x ast.Expr) ast.Expr {
 		case token.Dot:
 			p.next()
 			x = &ast.SelectorExpr{X: x, Sel: p.parseName("a field name after `.`")}
+		case token.OptDot:
+			p.next()
+			x = &ast.SelectorExpr{X: x, Sel: p.parseName("a field name after `?.`"), Optional: true}
 		case token.LBracket:
 			open := p.tok
 			p.next()

@@ -18,7 +18,7 @@ review("service_owner", approvers: approvers)
 
 ## Constructors, not calls
 
-A decision constructor builds a value the way `Err("...")` does in Rust. Nothing runs, nothing returns early, and later rules still get evaluated. Each constructor that evaluation reaches becomes a candidate. After evaluation finishes, the host acts on the winning candidate, or, for a [collecting kind](/reference/kind-files/#collect), on every candidate. How the outcome is formed is on [Evaluation semantics](/reference/evaluation/).
+A decision constructor builds a value the way `Err("...")` does in Rust. Nothing runs, nothing returns early, and later rules still get evaluated. Each constructor that evaluation reaches becomes a candidate. After evaluation finishes, the host acts on the winning candidate, or, for a [collecting kind](/reference/kind-files/#collecting-kinds), on every candidate. How the outcome is formed is on [Evaluation semantics](/reference/evaluation/).
 
 Constructors may only appear:
 
@@ -41,7 +41,7 @@ decision review(reason: string, approvers: list<string>)
 decision approve(reason: string, bake: duration = 1h)
 ```
 
-A kind file declares the decision's name, its reason, and zero or more payload fields with types and optional defaults. See [Kind files](/reference/kind-files/) for the full declaration rules, for `precedence`, which ranks decisions against each other, and for `collect all`, which applies all of them.
+A kind file declares the decision's name, its reason, and zero or more payload fields with types and optional defaults. See [Kind files](/reference/kind-files/) for the full declaration rules, for `collect one` with `precedence`, which ranks decisions against each other and returns the winner, and for `collect all`, which applies all of them.
 
 ## The reason
 
