@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/SpechtLabs/sigil/compare/v0.1.1...v0.2.0) (2026-09-28)
+
+
+### Features
+
+* **cli:** polish every command's output for a terminal ([#38](https://github.com/SpechtLabs/sigil/issues/38)) ([0417435](https://github.com/SpechtLabs/sigil/commit/041743536154cc087db275746a040641194ae83e))
+* **tooling:** sigil fmt, check, eval, test and export, with lints and policytest ([#35](https://github.com/SpechtLabs/sigil/issues/35)) ([3c033f6](https://github.com/SpechtLabs/sigil/commit/3c033f603d87fd52ddec3d94ff11fe2060b1dccd))
+
+
+### Miscellaneous Chores
+
+* go mod tidy ([3294c42](https://github.com/SpechtLabs/sigil/commit/3294c426286228d4bc6077bb78100c5017469a7d))
+
 ## [0.1.1](https://github.com/SpechtLabs/sigil/compare/v0.1.0...v0.1.1) (2026-09-28)
 
 
