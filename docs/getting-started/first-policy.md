@@ -60,7 +60,7 @@ By the end, `deploy/` will hold two more files and a `payments/` directory will 
 Every policy file starts with a `policy` line that names the policy and the kind it implements:
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 ```
 
 Other files will import it by the name `deploy.production`, not by its path. Sigil finds documents by the names in their headers, so the file could be called anything, and one file could even hold several documents separated by `---`. Keeping the name and the path aligned, `deploy.production` in `deploy/production.sigil`, is a convention that makes a repository easy to navigate.
@@ -89,7 +89,7 @@ No rule fired, so the kind's `default deny("no_rule_matched")` applies. That's y
 Require releases to soak in staging for a day before they reach production, unless they're hotfixes. Add a `when` block under the header:
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 when release.soak < 24h and not release.hotfix {
   deny("soak_too_short")
@@ -120,7 +120,7 @@ The candidate list tells you where the decision came from, down to line and colu
 Only some services go through this gate at all. Describe them once with a `let` and deny everything else:
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 let eligible =
   "deployer" in actor.roles
@@ -186,7 +186,7 @@ A few things to notice about the `let`:
 The 24-hour soak is a policy decision that teams will want to tune. Turn it into a `param` with a default:
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 param min_soak: duration = 24h
 
@@ -208,7 +208,7 @@ Behaviour doesn't change: nobody has bound `min_soak` yet, so it's `24h`. But no
 The interesting part of the policy only applies when the actor is cleared for every region the service runs in. Add two more lets, two params, and a rule with nested rules inside it. Here's the complete file, with a mistake left in:
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 param min_soak: duration = 24h
 param approvers: list<string>
@@ -290,7 +290,7 @@ deploy/production.sigil:4:7: error: required param "approvers" is not bound
 A policy with a required param is a template until someone fills it in. Create `payments/production.sigil` next to it:
 
 ```sigil
-policy payments.production: DeployApproval
+policy payments.production: DeployApproval@1
 
 use deploy.production
 
@@ -345,7 +345,7 @@ That switches off `not_eligible` and `soak_too_short` along with everything else
 The shared matchers move to a module, a file that holds `let`s and nothing else. Create `deploy/common.sigil`:
 
 ```sigil
-module deploy.common: DeployApproval
+module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
 pub let cleared =
@@ -362,7 +362,7 @@ pub let eligible =
 The two denies move to `deploy/guardrails.sigil`, together with the param they read:
 
 ```sigil
-policy deploy.guardrails: DeployApproval
+policy deploy.guardrails: DeployApproval@1
 
 use deploy.common.{eligible}
 
@@ -380,7 +380,7 @@ when release.soak < min_soak and not release.hotfix {
 `use deploy.common.{eligible}` imports one `let` by name. What's left in `deploy/production.sigil` is the approvals and reviews:
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 use deploy.common.{cleared, owns_service}
 
@@ -408,7 +408,7 @@ The host now loads every team policy with `policy.Require("deploy.guardrails")`,
 $ sigil check --kind deploy_approval.sigil --require deploy.guardrails deploy/ payments/
 payments/production.sigil:1:1: error: deploy.guardrails must be invoked unconditionally
   |
-1 | policy payments.production: DeployApproval
+1 | policy payments.production: DeployApproval@1
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = help: the host requires deploy.guardrails for every DeployApproval policy.
           Add `use deploy.guardrails` and invoke it at the top level.
@@ -419,7 +419,7 @@ payments/production.sigil:1:1: error: deploy.guardrails must be invoked uncondit
 The same check reports a second error, left out above: `deploy.production` no longer declares `min_soak`, so the call on line 5 passes an argument the policy doesn't have. The requirement check also fails if the call is there but sits inside a `when`. Update the team policy to invoke both policies. While you're at it, give services in PCI scope a second approver group, and only offer the SRE fast path to actors who are cleared for the service's regions:
 
 ```sigil
-policy payments.production: DeployApproval
+policy payments.production: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production

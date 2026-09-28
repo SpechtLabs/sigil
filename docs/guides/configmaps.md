@@ -67,7 +67,7 @@ The key names don't matter to Sigil beyond ending in `.sigil`, as long as they'r
 A key can hold several documents. Separate them with `---`, which is optional but keeps a long file scannable, and which `sigil fmt` writes for you:
 
 ```sigil title="teams/payments.sigil"
-policy payments.production: DeployApproval
+policy payments.production: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production
@@ -89,7 +89,7 @@ when cleared and "payments-sre" in actor.teams {
 
 ---
 
-policy payments.staging: DeployApproval
+policy payments.staging: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production

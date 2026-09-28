@@ -83,6 +83,10 @@ func (c *Checker) Kind(doc *ast.KindDoc) *kind.Kind {
 	}
 	l.set("kind", doc.Name)
 	l.set("kind.version", doc.Version)
+	if doc.Accepts != nil {
+		l.kind.Accepts = int(doc.Accepts.Value)
+		l.set("kind.accepts", doc.Accepts)
+	}
 
 	// Struct types can refer to each other in any order, so their shells
 	// exist before any field type is resolved.

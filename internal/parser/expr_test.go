@@ -239,8 +239,8 @@ func TestParseExprErrors(t *testing.T) {
 
 		// Lexical errors are reported once, by the lexer; the parser stays quiet.
 		{"5.", "a float literal needs digits on both sides of the point", "write `5.0`", "1:1-1:3"},
-		{"a @ b", "unexpected character `@`", "", "1:3-1:4"},
-		{"a < b @", "unexpected character `@`", "", "1:7-1:8"},
+		{"a $ b", "unexpected character `$`", "", "1:3-1:4"},
+		{"a < b $", "unexpected character `$`", "", "1:7-1:8"},
 		{`"abc`, "unterminated string literal", "close it with `\"`", "1:1-1:5"},
 		{"x && y", "unexpected character `&&`", "use `and`", "1:3-1:5"},
 		{"[1h1h]", "unit `h` appears twice in `1h1h`", "each unit may appear once in a duration; add the components together", "1:2-1:6"},
@@ -275,10 +275,10 @@ func TestParseExprErrors(t *testing.T) {
 // TestParseExprAllErrors checks that a parse error doesn't hide lexical
 // errors later in the source, and that the list comes out in source order.
 func TestParseExprAllErrors(t *testing.T) {
-	_, errs := ParseExpr("test.sigil", []byte("a == b == c @ 1h1h"))
+	_, errs := ParseExpr("test.sigil", []byte("a == b == c $ 1h1h"))
 	want := strings.Join([]string{
 		"test.sigil:1:8: `==` can't follow `==`: comparisons don't chain",
-		"test.sigil:1:13: unexpected character `@`",
+		"test.sigil:1:13: unexpected character `$`",
 		"test.sigil:1:15: unit `h` appears twice in `1h1h`",
 	}, "\n")
 	if errs.Error() != want {

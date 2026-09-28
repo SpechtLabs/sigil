@@ -73,6 +73,10 @@ func (v *validator) header() {
 	if v.kind.Version < 1 {
 		v.errorf("kind.version", "the version is a positive integer that changes when the contract does", "invalid kind version %d", v.kind.Version)
 	}
+	if v.kind.Accepts < 0 || v.kind.Accepts > v.kind.Version {
+		v.errorf("kind.accepts", "`accepts` names the oldest version policies may still pin, between 1 and the version",
+			"kind %s at version %d can't accept version %d", v.kind.Name, v.kind.Version, v.kind.Accepts)
+	}
 }
 
 // types checks that struct names are unique, unreserved identifiers, that

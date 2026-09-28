@@ -121,6 +121,13 @@ func TestOptionsCompose(t *testing.T) {
 	}
 }
 
+func TestAccepts(t *testing.T) {
+	k := policy.NewKind[Input]("K", policy.WithVersion(3), policy.WithAccepts(2), policy.WithDecisions(Deny), policy.WithDefault(Deny, "x"))
+	if !strings.HasPrefix(k.Schema(), "kind K version 3, accepts: 2\n") {
+		t.Errorf("Schema() =\n%s", k.Schema())
+	}
+}
+
 func TestCollect(t *testing.T) {
 	type AccessInput struct {
 		Actor Actor `policy:"actor"`

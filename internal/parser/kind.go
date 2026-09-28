@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"fmt"
+
 	"github.com/spechtlabs/sigil/internal/ast"
 	"github.com/spechtlabs/sigil/internal/token"
 )
@@ -10,7 +12,7 @@ import (
 // first, that precedence names every decision and the other validity rules
 // from docs/reference/kind-files.md are the checker's.
 func (p *parser) parseKind() *ast.KindDoc {
-	const shape = "a kind starts with `kind Name version N`"
+	const shape = "a kind starts with `kind Name version N`, optionally followed by `, accepts: M`"
 	kw := p.tok
 	p.next()
 	doc := &ast.KindDoc{Name: p.expectIdent("the kind's name after `kind`", shape)}
@@ -20,6 +22,19 @@ func (p *parser) parseKind() *ast.KindDoc {
 	}
 	doc.Version = p.parsePrimary().(*ast.IntLit)
 	end := doc.Version.End()
+	if p.tok.Kind == token.Comma {
+		p.next()
+		name := p.expectIdent("`accepts` after `,`", shape)
+		if name.Name != "accepts" {
+			p.errorAt(name.Pos(), name.End(), fmt.Sprintf("a kind header has no option `%s`", name.Name), shape)
+		}
+		p.expect(token.Colon, shape)
+		if p.tok.Kind != token.Int {
+			p.unexpected("the oldest version policies may pin", shape)
+		}
+		doc.Accepts = p.parsePrimary().(*ast.IntLit)
+		end = doc.Accepts.End()
+	}
 
 	for !p.atDocEnd() {
 		p.recover(func() {

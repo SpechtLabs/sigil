@@ -60,29 +60,33 @@ func (n *PolicyName) Pos() token.Pos { return n.Parts[0].Pos() }
 // End returns the end of the last part.
 func (n *PolicyName) End() token.Pos { return n.Parts[len(n.Parts)-1].End() }
 
-// PolicyDoc is `policy name: Kind` followed by imports and statements. The
-// span runs from the header keyword to the end of the last statement.
+// PolicyDoc is `policy name: Kind@N` followed by imports and statements.
+// The span runs from the header keyword to the end of the last statement.
 type PolicyDoc struct {
 	Name  *PolicyName
 	Kind  *Ident
+	Pin   *IntLit // the kind version after `@`; nil when the header has none
 	Uses  []*UseStmt
 	Stmts []Stmt
 	Span
 }
 
-// ModuleDoc is `module name: Kind` followed by imports and lets.
+// ModuleDoc is `module name: Kind@N` followed by imports and lets.
 type ModuleDoc struct {
 	Name *PolicyName
 	Kind *Ident
+	Pin  *IntLit // the kind version after `@`; nil when the header has none
 	Uses []*UseStmt
 	Lets []*LetStmt
 	Span
 }
 
-// KindDoc is `kind Name version N` followed by declarations.
+// KindDoc is `kind Name version N`, optionally with `, accepts: M`,
+// followed by declarations.
 type KindDoc struct {
 	Name    *Ident
 	Version *IntLit
+	Accepts *IntLit // the oldest version a policy may pin; nil when absent
 	Decls   []Decl
 	Span
 }

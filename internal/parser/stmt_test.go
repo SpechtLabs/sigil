@@ -21,6 +21,9 @@ func TestParseFileStatements(t *testing.T) {
 		{name: "comments only", src: "// nothing\n\n// here\n", want: ""},
 		{name: "separators only", src: "---\n---\n", want: ""},
 		{name: "policy header only", src: "policy a.b: K", want: "policy a.b: K"},
+		{name: "policy header with pin", src: "policy a.b: K@3", want: "policy a.b: K@3"},
+		{name: "module header with pin", src: "module a: K@1\nlet x = 1", want: "module a: K@1\n  let x = 1"},
+		{name: "kind header with accepts", src: "kind K version 3, accepts: 2", want: "kind K version 3, accepts: 2"},
 		{name: "module header only", src: "module a: K", want: "module a: K"},
 		{name: "kind header only", src: "kind K version 3", want: "kind K version 3"},
 		{name: "deep policy name", src: "policy a.b.c.d: K", want: "policy a.b.c.d: K"},
@@ -145,11 +148,15 @@ func TestParseFileErrors(t *testing.T) {
 	}{
 		// Headers.
 		{name: "policy without name", src: "policy", errs: []string{"1:7: expected a name after `policy`, found end of file"}},
-		{name: "policy without colon", src: "policy a b", errs: []string{"1:10: expected `:`, found `b`"}, help: "a policy starts with `policy name: Kind`"},
+		{name: "pin without version", src: "policy a: K@", errs: []string{"1:13: expected a kind version after `@`, found end of file"}, help: "a policy starts with `policy name: Kind@N`"},
+		{name: "pin not a number", src: "policy a: K@v1", errs: []string{"1:13: expected a kind version after `@`, found `v1`"}},
+		{name: "kind header unknown option", src: "kind K version 3, accept: 2", errs: []string{"1:19: a kind header has no option `accept`"}},
+		{name: "kind header accepts not a number", src: "kind K version 3, accepts: x", errs: []string{"1:28: expected the oldest version policies may pin, found `x`"}},
+		{name: "policy without colon", src: "policy a b", errs: []string{"1:10: expected `:`, found `b`"}, help: "a policy starts with `policy name: Kind@N`"},
 		{name: "policy without kind", src: "policy a:", errs: []string{"1:10: expected the kind's name after `:`, found end of file"}},
 		{name: "policy kind not identifier", src: "policy a: 1", errs: []string{"1:11: expected the kind's name after `:`, found `1`"}},
 		{name: "policy keyword name part", src: "policy a.default: K", errs: []string{"1:10: expected a name after `.`, found `default`"}},
-		{name: "kind without version", src: "kind K", errs: []string{"1:7: expected `version`, found end of file"}, help: "a kind starts with `kind Name version N`"},
+		{name: "kind without version", src: "kind K", errs: []string{"1:7: expected `version`, found end of file"}, help: "a kind starts with `kind Name version N`, optionally followed by `, accepts: M`"},
 		{name: "kind version not a number", src: "kind K version x", errs: []string{"1:16: expected a version number, found `x`"}},
 		{name: "kind version is a float", src: "kind K version 1.0", errs: []string{"1:16: expected a version number, found `1.0`"}},
 		{name: "broken header loses only its document", src: "policy : K\nlet a = b\nmodule m: K\nlet c = d",
@@ -291,7 +298,7 @@ func TestParseFileErrors(t *testing.T) {
 		{name: "keyword after separator", src: "policy p: K\n---\nlet a = b", errs: []string{"3:1: expected a document header (`policy`, `module` or `kind`), found `let`"}},
 		{name: "separator inside expression", src: "policy p: K\nlet a = b - ---c", errs: []string{"2:13: `---` separates documents and can't appear inside an expression"}},
 		{name: "lexical error only once", src: "policy p: K\nlet a = 1h1h\nlet b = 2", errs: []string{"2:9: unit `h` appears twice in `1h1h`"}, want: "policy p: K\n  let b = 2"},
-		{name: "lexical errors after a parse error", src: "policy p: K\nlet a =\nlet b = @", errs: []string{"3:1: expected an expression, found `let`", "3:9: unexpected character `@`"}},
+		{name: "lexical errors after a parse error", src: "policy p: K\nlet a =\nlet b = $", errs: []string{"3:1: expected an expression, found `let`", "3:9: unexpected character `$`"}},
 	}
 
 	for _, tt := range tests {

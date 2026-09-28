@@ -86,13 +86,33 @@ func (p *parser) atDocEnd() bool {
 	return false
 }
 
-// parseHeader parses `name: Kind` after a `policy` or `module` keyword.
-func (p *parser) parseHeader(kw token.Token) (*ast.PolicyName, *ast.Ident) {
-	shape := fmt.Sprintf("a %s starts with `%s name: Kind`", kw.Text, kw.Text)
+// parseHeader parses `name: Kind@N` after a `policy` or `module` keyword.
+// The pin is optional here; the checker reports a missing one, because
+// only it knows the kind's current version to suggest.
+func (p *parser) parseHeader(kw token.Token) (*ast.PolicyName, *ast.Ident, *ast.IntLit) {
+	shape := fmt.Sprintf("a %s starts with `%s name: Kind@N`", kw.Text, kw.Text)
 	name := p.parsePolicyName(fmt.Sprintf("a name after `%s`", kw.Text))
 	p.expect(token.Colon, shape)
 	kind := p.expectIdent("the kind's name after `:`", shape)
-	return name, kind
+	if p.tok.Kind != token.At {
+		return name, kind, nil
+	}
+	p.next()
+	if p.tok.Kind != token.Int {
+		p.unexpected("a kind version after `@`", shape)
+	}
+	return name, kind, p.parsePrimary().(*ast.IntLit)
+}
+
+// headerEnd is where a header ends: after its pin, or its kind name.
+func headerEnd(kind *ast.Ident, pin *ast.IntLit) token.Pos {
+	if pin != nil {
+		return pin.End()
+	}
+	if kind == nil {
+		return token.Pos{}
+	}
+	return kind.End()
 }
 
 // parsePolicy parses a policy document from its `policy` keyword to the
@@ -101,8 +121,8 @@ func (p *parser) parsePolicy() *ast.PolicyDoc {
 	kw := p.tok
 	p.next()
 	doc := &ast.PolicyDoc{}
-	doc.Name, doc.Kind = p.parseHeader(kw)
-	end := doc.Kind.End()
+	doc.Name, doc.Kind, doc.Pin = p.parseHeader(kw)
+	end := headerEnd(doc.Kind, doc.Pin)
 
 	for !p.atDocEnd() {
 		p.recover(func() {
@@ -131,8 +151,8 @@ func (p *parser) parseModule() *ast.ModuleDoc {
 	kw := p.tok
 	p.next()
 	doc := &ast.ModuleDoc{}
-	doc.Name, doc.Kind = p.parseHeader(kw)
-	end := doc.Kind.End()
+	doc.Name, doc.Kind, doc.Pin = p.parseHeader(kw)
+	end := headerEnd(doc.Kind, doc.Pin)
 
 	for !p.atDocEnd() {
 		p.recover(func() {

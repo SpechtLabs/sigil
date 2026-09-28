@@ -19,7 +19,7 @@ A `.sigil` file holds one or more documents, each a policy, a module or a kind. 
 
 | Statement                          | Where                   | Meaning                                                                 |
 | ---------------------------------- | ----------------------- | ----------------------------------------------------------------------- |
-| `policy <name>: <Kind>`            | first statement         | Names the policy and the kind it implements                             |
+| `policy <name>: <Kind>@<N>`        | first statement         | Names the policy, the kind it implements and the kind version it was written against |
 | `use <path>`                       | after the header        | Imports names from another policy or module. Never adds rules by itself |
 | `param <name>: <type> [= <expr>] [, min: <expr>] [, max: <expr>]` | top level | Typed input set at instantiation. No default means required; bounds limit what a caller may bind |
 | `[pub] let <name> = <expr>`        | top level or nested     | Named, reusable expression. `pub` lets other documents import it; only at the top level |
@@ -32,10 +32,18 @@ Kind files use a different set of statements; see [Kind files](/reference/kind-f
 ## `policy`
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 ```
 
 The header must be the first statement in the file, and a file must contain exactly one. The name is a dotted [policy name](/reference/lexical/) and the part after the colon names the kind whose contract the policy is checked against. Every input, host function, type and decision the policy can refer to comes from that kind.
+
+`@1` pins the kind version the policy was written against. The pin is required, and a header without one is a compile error that suggests the kind's current version. The policy always compiles against the kind the host has; the pin decides whether the host accepts it at all, and how a name the kind added later is treated:
+
+- A pin older than the kind's `accepts` is rejected, because the host has declared a breaking change since.
+- A pin newer than the kind's version is rejected, because the host doesn't have that kind yet.
+- A pin older than the kind's version, but still accepted, lets the policy keep a name the kind added since; see [Identifiers](#identifiers).
+
+Moving a pin forward is a one-line diff that says "we checked this against the new version", which is what a reviewer should look for. The versioning rules are on [Kind files](/reference/kind-files/#versioning).
 
 Referring to a kind the host doesn't know is a compile error.
 
@@ -158,10 +166,10 @@ A `let` inside a body names a sub-expression that several nested blocks share, w
 ### Exporting lets
 
 ```sigil
-module deploy.common: DeployApproval
+module deploy.common: DeployApproval@1
 
 pub let cleared = split(service.labels["regions"], ",") all in actor.regions and not restricted
-let restricted = "restricted" in service.labels
+let restricted = service.labels has "restricted"
 ```
 
 `pub let` makes a top-level `let` importable. A `let` without `pub` is private: other lets and rules in the same document can use it, and a `use` that names it is a compile error. The rule is the same for modules and policies, so a module author can refactor private helpers without breaking an importer, and a policy never exports something by accident.
@@ -198,7 +206,7 @@ Whether a single body may contain more than one decision constructor is an [open
 assert("negative_soak", release.soak >= 0s)
 
 when service.tier == "critical" {
-  assert("critical_needs_team_label", "team" in service.labels)
+  assert("critical_needs_team_label", service.labels has "team")
 }
 
 assert("sod_customer_dev",
@@ -250,10 +258,10 @@ An invocation's arguments follow the same trailing-comma and keyword-as-name rul
 
 ## Modules
 
-A module is a file of shared, typed matchers. It has no rules and no params, so importing from it can never change a decision by itself.
+A module is a file of shared, typed matchers. It has no rules and no params, so importing from it can never change a decision by itself. Its header pins a kind version the same way a policy's does.
 
 ```sigil
-module deploy.common: DeployApproval
+module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
 pub let cleared =
@@ -280,14 +288,14 @@ pub let eligible =
 A file holds one or more documents. A document is a policy, a module or a kind, and it starts with its header: `policy`, `module` or `kind`. It ends where the next header starts, or at the end of the file.
 
 ```sigil
-module deploy.common: DeployApproval
+module deploy.common: DeployApproval@1
 
 pub let cleared =
   split(service.labels["regions"], ",") all in actor.regions
 
 ---
 
-policy deploy.guardrails: DeployApproval
+policy deploy.guardrails: DeployApproval@1
 
 param min_soak: duration = 24h
 
@@ -317,7 +325,7 @@ A bundle is loaded as a whole. A syntax error in any document fails the load, ev
 ```text
 policies.sigil:42:1: error: policy payments.access is defined twice
    |
-42 | policy payments.access: DeployApproval
+42 | policy payments.access: DeployApproval@1
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = note: first defined at teams/payments.sigil:1:1
 ```
@@ -354,6 +362,8 @@ Each policy and module has one flat top-level namespace containing:
 
 Any collision between two of these is a compile error, and nothing shadows anything. A `param` named `release` in a kind that declares `input release` fails to compile, and so does a quantifier variable named `approvers` in a policy that has a param by that name.
 
+There's one exception, and it only exists so that adding a name to a kind never breaks a policy. When a document pinned below the kind's current version collides with an input, host function or decision, the kind must have added that name after the document was written, because the collision would have been an error at the pinned version. The document's own name wins, the kind's new name is out of reach in that document, and the `shadowed-kind-name` lint says so. The same collision in a document pinned to the current version is an error. Collisions between two of the document's own names are always errors.
+
 Decision names are part of that namespace, because a bare decision name is a [value](/reference/types/#decision) in `assert` conditions. A let called `deny` in a kind that declares `decision deny` is a compile error, and so is an import whose bound name is a decision: rename it with `as`. (proposed; an earlier draft kept decisions in a namespace of their own, which only worked while they appeared in constructor position alone. See [Open questions](/project/open-questions/#decision-values-and-outcome).)
 
 ::: tip Proposed
@@ -365,7 +375,7 @@ The single flat namespace and the no-shadowing rule are proposed here to close a
 The team policy from the [tour](/getting-started/tour/). It imports two platform policies and one shared matcher, invokes the guardrails unconditionally, picks approvers by compliance scope, and adds one approval of its own:
 
 ```sigil
-policy payments.production: DeployApproval
+policy payments.production: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production

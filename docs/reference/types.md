@@ -165,7 +165,7 @@ The rules for each operator are on [Expressions](/reference/expressions/). In sh
 | `==` `!=`                   | same type on both sides; `bool`, `int`, `float`, `string`, `duration`, `timestamp`, `decision`, ordered types |
 | `<` `<=` `>` `>=`           | same type on both sides; `int`, `float`, `duration`, `timestamp`, ordered types |
 | `and` `or` `xor` `not`      | `bool`                                                                    |
-| `in`                        | `T in list<T>`, `K in map<K, V>`, `string in string`; `T` without structs |
+| `in`                        | `T in list<T>`, `string in string`; `T` without structs; map keys use `has` |
 | `all in` `any in`           | `list<T>` on both sides                                                   |
 | `one in` `exclusive in`     | `list<T>` on both sides                                                   |
 | `has`                       | `map<K, V> has map<K, V>`, `map<K, V> has K`                              |

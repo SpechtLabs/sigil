@@ -176,6 +176,7 @@ production(
 | `=`                         | `let` bindings, param and payload defaults  |
 | `->`                        | Return type in `fn` declarations            |
 | `?`                         | Optional type prefix (`?string`)            |
+| `@`                         | Kind version pin in a header (`DeployApproval@2`) |
 | `---`                       | Document separator                          |
 
 The lexer uses longest match, so `??` is one token, `?.` is one token, `<=` is one token, `->` is one token, and `---` is one token.
@@ -185,13 +186,13 @@ The lexer uses longest match, so `??` is one token, `?.` is one token, `<=` is o
 A file can hold several documents, and `---` may separate them, as in YAML:
 
 ```sigil
-module deploy.common: DeployApproval
+module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
 
 ---
 
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 use deploy.common.{owns_service}
 ```

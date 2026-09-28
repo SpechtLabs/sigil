@@ -59,7 +59,7 @@ A kind that declares [`collect all`](/reference/kind-files/#collect) has no winn
 Nothing is picked, so nothing is tie-broken, and rule order has no effect at all: the sort only fixes the order the host reads the candidates in. The one place order leaks in a kind with `precedence` doesn't exist here.
 
 ```sigil
-policy access.engineering: AccessGrant
+policy access.engineering: AccessGrant@1
 
 use access.guardrails
 
@@ -98,7 +98,7 @@ Evaluation then runs in three phases:
 
 In every phase, asserts reached through invocations are included, with their call's enclosing conditions added, exactly as for decisions. An assert whose condition or enclosing conditions raise a runtime error counts as failed, and its failure carries the runtime error.
 
-Checking input asserts first is what makes them useful as preconditions. With `assert("critical_needs_team_label", "team" in service.labels)` in place, an input without the label fails with that reason. Without it, a rule reading `service.labels["team"]` would get `""` from the missing key and decide on it, and a rule indexing a list the input left short would fail with a bare index error. It also means no rule and no host function call runs on input the policy has declared invalid.
+Checking input asserts first is what makes them useful as preconditions. With `assert("critical_needs_team_label", service.labels has "team")` in place, an input without the label fails with that reason. Without it, a rule reading `service.labels["team"]` would get `""` from the missing key and decide on it, and a rule indexing a list the input left short would fail with a bare index error. It also means no rule and no host function call runs on input the policy has declared invalid.
 
 `outcome` is the whole root's outcome, including an assert in an invoked policy. That's what lets a required guardrail policy check what every other policy in the composition granted. It also means an assert can fail because of a rule in a policy it has never seen, which is the point.
 
@@ -157,7 +157,7 @@ A policy invoked twice is instantiated twice. Each instance has its own params, 
 Take `payments.production`, which invokes `deploy.guardrails` and `deploy.production` and adds one approval:
 
 ```sigil
-policy payments.production: DeployApproval
+policy payments.production: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production

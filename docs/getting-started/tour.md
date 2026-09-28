@@ -64,7 +64,7 @@ The platform team owns three files under `deploy/`. They split along the lines S
 ### Shared matchers: `deploy/common.sigil`
 
 ```sigil
-module deploy.common: DeployApproval
+module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
 pub let cleared =
@@ -78,7 +78,7 @@ pub let eligible =
   }
 ```
 
-`module deploy.common: DeployApproval` names the module and the kind its expressions are checked against. Other files find it by that name, not by its path; the convention is still to keep `deploy.common` at `deploy/common.sigil`, and a file can hold several documents if that suits you better (see [Bundles and resolution](/reference/policy-files/#bundles-and-resolution)). A module holds `let`s and nothing else, no rules and no params, so importing from it can never change a decision by itself.
+`module deploy.common: DeployApproval@1` names the module and the kind its expressions are checked against. The `@1` pins the kind version it was written against, so the host can tell a policy written for an older contract apart from a current one (see [Versioning](/reference/kind-files/#versioning)). Other files find it by that name, not by its path; the convention is still to keep `deploy.common` at `deploy/common.sigil`, and a file can hold several documents if that suits you better (see [Bundles and resolution](/reference/policy-files/#bundles-and-resolution)). A module holds `let`s and nothing else, no rules and no params, so importing from it can never change a decision by itself.
 
 A `let` names an expression so rules can refer to it, and it's evaluated against the same input as everything else. `pub` lets other files import it; a `let` without `pub` stays private to its file. A `let` can also sit inside a `when` body, where only that body sees it.
 
@@ -89,7 +89,7 @@ A `let` names an expression so rules can refer to it, and it's evaluated against
 ### Guardrails: `deploy/guardrails.sigil`
 
 ```sigil
-policy deploy.guardrails: DeployApproval
+policy deploy.guardrails: DeployApproval@1
 
 use deploy.common.{eligible}
 
@@ -104,7 +104,7 @@ when release.soak < min_soak and not release.hotfix {
 }
 ```
 
-`policy deploy.guardrails: DeployApproval` names a policy, the kind of file that holds rules. `use deploy.common.{eligible}` imports one name from the module. Every name a file uses is either defined in it or listed in a `use`, so you can always find where a name comes from.
+`policy deploy.guardrails: DeployApproval@1` names a policy, the kind of file that holds rules. `use deploy.common.{eligible}` imports one name from the module. Every name a file uses is either defined in it or listed in a `use`, so you can always find where a name comes from.
 
 `param min_soak` is a knob a team can turn, with a default of a day.
 
@@ -117,7 +117,7 @@ This file holds only denies on purpose. The host will require every policy to in
 ### Approvals: `deploy/production.sigil`
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 use deploy.common.{cleared, owns_service}
 
@@ -148,7 +148,7 @@ The outer `when cleared` is a container: its nested rules only fire if `cleared`
 The payments team ships several times a day, so they want a shorter soak, their own approvers, a second approver group for services in PCI scope, and a fast path for their SRE team. They write `payments/production.sigil`:
 
 ```sigil
-policy payments.production: DeployApproval
+policy payments.production: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production

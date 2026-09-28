@@ -22,7 +22,7 @@ Sigil splits reuse along two lines that templating mixes up: sharing names and s
 **Shared names live in modules.** A module holds typed `let`s and nothing else, so importing from it can never change a decision:
 
 ```sigil
-module deploy.common: DeployApproval
+module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
 pub let cleared =
@@ -39,7 +39,7 @@ pub let eligible =
 **Shared rules live in policies with typed params.** The platform team keeps its denies in one policy and its approvals in another:
 
 ```sigil
-policy deploy.guardrails: DeployApproval
+policy deploy.guardrails: DeployApproval@1
 
 use deploy.common.{eligible}
 
@@ -55,7 +55,7 @@ when release.soak < min_soak and not release.hotfix {
 ```
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 use deploy.common.{cleared, owns_service}
 
@@ -80,7 +80,7 @@ when cleared {
 **A team composes them by invocation.** `use` imports a name; calling it like a decision constructor adds the policy's rules with its params bound:
 
 ```sigil
-policy payments.production: DeployApproval
+policy payments.production: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production
@@ -139,7 +139,7 @@ Protection is explicit now: the host decides which policies are guardrails, inst
 A [collecting kind](/reference/kind-files/#collecting-kinds) returns every decision that fired, and nothing outranks anything, so the union of candidates can only add grants. A guardrail can't cancel a team's grant with a deny. It can fail the evaluation with an [assert](/reference/policy-files/#assert) instead:
 
 ```sigil
-policy access.guardrails: AccessGrant
+policy access.guardrails: AccessGrant@1
 
 assert("sod_customer_dev",
   [customer_data_writer, development_environment_writer] exclusive in outcome)

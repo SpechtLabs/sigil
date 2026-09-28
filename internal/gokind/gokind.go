@@ -29,6 +29,7 @@ type Options struct {
 	Decisions []Decision // precedence order, or declaration order when Collect is set
 	Funcs     []Func
 	Version   int
+	Accepts   int // the oldest version a document may pin; 0 accepts every version
 	// Ranked and Collect record which of WithDecisions and WithCollect
 	// added the decisions; both is an error.
 	Ranked  bool
@@ -69,7 +70,7 @@ type Binding struct {
 // host fixes its types in one round.
 func Build(o Options) (*kind.Kind, *Binding, diag.ErrorList) {
 	b := &builder{
-		kind: &kind.Kind{Name: o.Name, Version: o.Version, Collect: collect(o)},
+		kind: &kind.Kind{Name: o.Name, Version: o.Version, Accepts: o.Accepts, Collect: collect(o)},
 		binding: &Binding{
 			Input:    o.Input,
 			Structs:  map[string]reflect.Type{},

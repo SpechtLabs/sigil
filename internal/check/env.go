@@ -110,6 +110,13 @@ func (e *Env) Declare(name string, b Binding) (Binding, bool) {
 	return b, true
 }
 
+// Bind binds name in this scope even when the chain already holds it.
+// It's only for a document name that takes the name of something its kind
+// added after the document's pin; everything else goes through Declare.
+func (e *Env) Bind(name string, b Binding) {
+	e.names[name] = b
+}
+
 // Child returns a nested scope, for a `when` body's lets or a quantifier
 // body. It inherits InAssert.
 func (e *Env) Child() *Env {

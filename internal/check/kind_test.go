@@ -76,6 +76,10 @@ decision admin(reason: string, ttl: duration = 8h)
 
 collect all
 `},
+		{name: "kind that accepts older versions", src: "kind K version 3, accepts: 2\ndecision d(reason: string)\ncollect one\nprecedence d\ndefault d(\"x\")",
+			want: "kind K version 3, accepts: 2\n\ndecision d(reason: string)\n\ncollect one\nprecedence d\ndefault d(\"x\")\n"},
+		{name: "accepts 1 is the default", src: "kind K version 3, accepts: 1\ndecision d(reason: string)\ncollect one\nprecedence d\ndefault d(\"x\")",
+			want: "kind K version 3\n\ndecision d(reason: string)\n\ncollect one\nprecedence d\ndefault d(\"x\")\n"},
 		{name: "collecting kind with a default", src: "kind K version 1\ndecision read(reason: string)\ncollect all\ndefault read(\"everyone\")",
 			want: "kind K version 1\n\ndecision read(reason: string)\n\ncollect all\ndefault read(\"everyone\")\n"},
 		{name: "declarations in any order", src: `kind K version 3
@@ -128,11 +132,13 @@ default d("x")
 		{name: "empty file", src: "", errs: []string{"1:1: file has no kind document"}, help: "a kind file starts with `kind Name version N`"},
 		{name: "two documents", src: "kind K version 1\ndecision d(reason: string)\ncollect one\nprecedence d\ndefault d(\"x\")\n---\npolicy p: K",
 			errs: []string{"7:1: a kind file holds exactly one document"}, help: "move the other documents to their own files"},
-		{name: "policy instead of kind", src: "policy deploy.production: K\nlet a = 1", errs: []string{"1:1: expected a kind document, found policy `deploy.production`"}},
-		{name: "module instead of kind", src: "module deploy.common: K", errs: []string{"1:1: expected a kind document, found module `deploy.common`"}},
+		{name: "policy instead of kind", src: "policy deploy.production: K@1\nlet a = 1", errs: []string{"1:1: expected a kind document, found policy `deploy.production`"}},
+		{name: "module instead of kind", src: "module deploy.common: K@1", errs: []string{"1:1: expected a kind document, found module `deploy.common`"}},
 		{name: "parse errors come alone", src: "kind K version 1\ntype T { a }\ndecision d()", errs: []string{"2:12: expected `:`, found `}`", "3:12: expected a payload field like `reason: string`, found `)`"}},
 
 		// Header.
+		{name: "accepts above the version", src: "kind K version 2, accepts: 3\ndecision d(reason: string)\ncollect one\nprecedence d\ndefault d(\"x\")",
+			errs: []string{"1:28: kind K at version 2 can't accept version 3"}, help: "`accepts` names the oldest version policies may still pin, between 1 and the version"},
 		{name: "version zero", src: "kind K version 0\ndecision d(reason: string)\ncollect one\nprecedence d\ndefault d(\"x\")",
 			errs: []string{"1:16: invalid kind version 0"}, help: "the version is a positive integer that changes when the contract does"},
 

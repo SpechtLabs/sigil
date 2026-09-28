@@ -57,7 +57,7 @@ default deny("no_rule_matched")
 **A module** holds shared matchers. `let`s name conditions; a module has nothing else, so importing from it can never change a decision.
 
 ```sigil
-module deploy.common: DeployApproval
+module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
 pub let cleared =
@@ -74,7 +74,7 @@ pub let eligible =
 **Two platform policies** hold the rules: guardrails that deny, and approvals that teams tune. `use` imports names; `param`s make a policy reusable.
 
 ```sigil
-policy deploy.guardrails: DeployApproval
+policy deploy.guardrails: DeployApproval@1
 
 use deploy.common.{eligible}
 
@@ -90,7 +90,7 @@ when release.soak < min_soak and not release.hotfix {
 ```
 
 ```sigil
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 use deploy.common.{cleared, owns_service}
 
@@ -113,7 +113,7 @@ when cleared {
 **A team policy** invokes the platform's policies like decision constructors, with its own values. Inside a `when`, an invocation's rules only apply where the condition holds, so PCI-scoped services get a second approver group. The team also adds a rule of its own.
 
 ```sigil
-policy payments.production: DeployApproval
+policy payments.production: DeployApproval@1
 
 use deploy.guardrails
 use deploy.production

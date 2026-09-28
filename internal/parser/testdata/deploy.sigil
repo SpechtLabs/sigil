@@ -1,4 +1,4 @@
-module deploy.common: DeployApproval
+module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
 pub let cleared =
@@ -13,7 +13,7 @@ pub let eligible =
 
 ---
 
-policy deploy.guardrails: DeployApproval
+policy deploy.guardrails: DeployApproval@1
 
 use deploy.common.{eligible}
 
@@ -29,7 +29,7 @@ when release.soak < min_soak and not release.hotfix {
 
 ---
 
-policy deploy.production: DeployApproval
+policy deploy.production: DeployApproval@1
 
 use deploy.common.{cleared, owns_service}
 

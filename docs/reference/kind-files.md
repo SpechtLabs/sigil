@@ -66,7 +66,7 @@ default deny("no_rule_matched")
 
 | Declaration  | Example                                                    | Purpose                                  |
 | ------------ | ---------------------------------------------------------- | ---------------------------------------- |
-| `kind`       | `kind DeployApproval version 1`                            | Name and contract version                |
+| `kind`       | `kind DeployApproval version 3, accepts: 2`                | Name, contract version, and the oldest version policies may still pin |
 | `type`       | `type Release { soak: duration }`                          | Struct types reachable from inputs       |
 | `input`      | `input release: Release`                                   | Top-level names policies can read        |
 | `fn`         | `fn split(string, string) -> list<string>`         | Host function signatures                 |
@@ -79,9 +79,10 @@ default deny("no_rule_matched")
 
 ```sigil
 kind DeployApproval version 1
+kind DeployApproval version 3, accepts: 2
 ```
 
-The header must be the first statement, and a file holds exactly one kind. The name is an identifier; policies refer to the kind by it (`policy deploy.production: DeployApproval`). The version is a positive integer that changes when the contract does; see [Versioning](#versioning).
+The header must be the first statement, and a file holds exactly one kind. The name is an identifier; policies refer to it together with the version they were written against (`policy deploy.production: DeployApproval@1`). The version is a positive integer that changes whenever the contract does. `accepts` names the oldest version a policy may still pin; it's optional and defaults to 1, which accepts every version. See [Versioning](#versioning).
 
 ### `type`
 
@@ -191,7 +192,7 @@ collect all
 A policy for this kind grants each role in its own `when` block, and several can fire for one actor. Nothing ranks them and no candidate can cancel another, so a collecting kind has no `deny` in the usual sense. Its guardrails are [asserts](/reference/policy-files/#assert) instead, typically in a policy the host [requires](/reference/evaluation/#required-policies):
 
 ```sigil
-policy access.guardrails: AccessGrant
+policy access.guardrails: AccessGrant@1
 
 assert("sod_customer_dev",
   [customer_data_writer, development_environment_writer] exclusive in outcome)
@@ -214,6 +215,7 @@ A `collect one` kind must declare a default. A collecting kind may leave it out,
 A kind is valid when:
 
 - the header comes first and appears once,
+- `accepts`, if declared, is between 1 and the version,
 - every type referenced anywhere is a built-in type or a declared struct type,
 - no struct type is recursive,
 - inputs and host functions share one namespace and every name in it is unique,
@@ -266,7 +268,28 @@ A CI linter only needs the first half. A second service that evaluates policies 
 
 ## Versioning
 
-The exported kind carries a version, and `sigil breaking old/deploy_approval.sigil deploy_approval.sigil` flags incompatible changes in CI, modeled on `buf breaking`.
+A kind carries two numbers, and every policy and module pins the version it was written against:
+
+```sigil
+kind DeployApproval version 3, accepts: 2
+```
+
+```sigil
+policy deploy.production: DeployApproval@2
+```
+
+The host only ever has its current kind. Every document compiles against it, whatever its pin says; the pin is the author's statement that the document was checked against that version, and the loader uses it three ways:
+
+- A pin from `accepts` up to `version` loads normally.
+- A pin below `accepts` is a compile error. Raising `accepts` is how a host says a change needs every team to look again.
+- A pin above `version` is a compile error, because the document was written for a kind this host doesn't have yet.
+
+The host never keeps old kinds around. Its whole cost is two numbers, set with `policy.WithVersion` and `policy.WithAccepts` in Go, and the rule for changing them:
+
+- Every change to the contract bumps `version`, including compatible ones. The [namespace rule](#adding-a-name-never-breaks-a-policy) relies on that.
+- A breaking change also raises `accepts` to the new version.
+
+`sigil breaking old/deploy_approval.sigil deploy_approval.sigil` enforces both in CI, modeled on `buf breaking`: it fails when the contract changed and `version` didn't, and when a change is breaking and `accepts` wasn't raised. It needs nothing but the two kind files.
 
 | Change                                         | Effect                                                         |
 | ---------------------------------------------- | -------------------------------------------------------------- |
@@ -278,8 +301,12 @@ The exported kind carries a version, and `sigil breaking old/deploy_approval.sig
 | Reorder `precedence` or change `default`       | Breaking in behaviour, even though every policy still compiles |
 | Switch between `collect one` and `collect all` | Breaking                                                       |
 
-::: warning Adding an input or function can collide
-Inputs, host functions, params, lets and imported names share one flat namespace per policy, with no shadowing (see [Policy files](/reference/policy-files/)). A new `input approvers` therefore breaks every policy that already declares `param approvers`. `sigil breaking` only sees the two kind files, so it can't catch this; `sigil check` against the new kind can. Decision names share that namespace, because asserts use them as values, so a new decision collides the same way. (proposed)
-:::
+A breaking change that the type checker catches, such as a removed field, would fail the affected policies anyway; raising `accepts` turns a scattered set of type errors into one clear message per document. For a change that still compiles, such as a reordered `precedence`, raising `accepts` is the only thing that stops old policies from silently meaning something new.
 
-A policy's header names a kind but not a version. Whether policies should pin a kind version, and what happens when they don't match, is unspecified. For the operational side of changing a kind, see [Evolve a kind safely](/guides/evolve-a-kind/).
+### Adding a name never breaks a policy
+
+Inputs, host functions and decisions share one flat namespace with a policy's params, lets, imports and quantifier variables, and nothing shadows anything (see [Identifiers](/reference/policy-files/#identifiers)). Without pins, a new `input approvers` would break every policy that already declares `param approvers`.
+
+Pins make the collision safe to resolve. A document pinned to `@N` compiled against version N, where any collision was an error. So when a document pinned below the current version collides with an input, host function or decision, the kind must have added that name after the document was written. The document keeps its own name, the kind's new name is out of reach in that document, and the [`shadowed-kind-name`](/reference/cli/#lints) lint reports it so the team renames and raises the pin at its own pace. A document pinned to the current version gets the usual collision error, because its author wrote it knowing the name.
+
+For the operational side of changing a kind, see [Evolve a kind safely](/guides/evolve-a-kind/).

@@ -198,13 +198,13 @@ func TestEval(t *testing.T) {
 		{src: `"deployer" in actor.roles`, want: true},
 		{src: `"admin" in actor.roles`, want: false},
 		{src: `"admin" not in actor.roles`, want: true},
-		{src: `"team" in service.labels`, want: true},
-		{src: `"env" in service.labels`, want: false},
+		{src: `service.labels has "team"`, want: true},
+		{src: `not service.labels has "env"`, want: true},
 		{src: `"payments" in service.name`, want: true},
 		{src: `"billing" in service.name`, want: false},
 		{src: `service.tier in ["critical", "standard"]`, want: true},
 		{src: `service.tier in tiers`, want: false},
-		{src: "7 in service.by_id", want: true},
+		{src: "service.by_id has 7", want: true},
 		{src: "2 in service.counts", want: true},
 		{src: "approve in outcome", assert: true, want: true},
 		{src: "deny in outcome", assert: true, want: false},
@@ -335,7 +335,7 @@ func TestEvalIsRepeatable(t *testing.T) {
 }
 
 func TestNilCollections(t *testing.T) {
-	e, f := setup(t, `"a" in actor.roles or "k" in service.labels or actor.roles any in service.owners or service.labels has "k" or service.labels has {"k": "v"}`, false)
+	e, f := setup(t, `"a" in actor.roles or actor.roles any in service.owners or service.labels has "k" or service.labels has {"k": "v"}`, false)
 	empty := Input{}
 	f.Input = reflect.ValueOf(empty)
 	v, err := eval.Run(e, f)

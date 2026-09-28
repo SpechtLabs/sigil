@@ -12,10 +12,10 @@ kind JIT_Approval version 1 [3:1-19:32]
   precedence deny > review [18:1-18:25]
   default deny("no_rule_matched") [19:1-19:32]
 ---
-policy jit.sandbox: JIT_Approval [22:1-28:2]
+policy jit.sandbox: JIT_Approval@1 [22:1-28:2]
   when (((resource.kind == "kube_cluster") and (resource.policy != "")) and ((resource.module ?? "") == "")) { [24:1-28:2]
     review("cluster_access", approvers: ["sre-leads"], kind: resource.kind) [27:3-27:74]
   }
 ---
-module jit.common: JIT_Approval [32:1-34:53]
+module jit.common: JIT_Approval@1 [32:1-34:53]
   pub let is_cluster = (resource.kind == "kube_cluster") [34:1-34:53]
