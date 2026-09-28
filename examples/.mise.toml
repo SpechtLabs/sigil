@@ -1,0 +1,73 @@
+# Tasks for the examples Go module. Run these from examples/, or use
+# `mise -C examples run <task>` from the repository root.
+# Tool versions and the lint-build task are inherited from ../.mise.toml.
+
+[tasks.build]
+description = "Build deploygate and sigilc into examples/bin/"
+run = "go build -o bin/ ./cmd/..."
+
+[tasks.sigilc]
+description = "Run the example sigilc host binary with go run"
+run = "go run ./cmd/sigilc/"
+
+# The e2e suite sits behind the e2e build tag because it needs the compose
+# stack. `go test ./...` never compiles it, so it's vetted here on its own and
+# linted with the tag, or it would rot until someone next starts the stack.
+[tasks.test]
+description = "Run the examples' tests with the race detector, including every policy test file, and vet the e2e suite"
+run = [
+  "go test -race ./...",
+  "go vet -tags e2e ./test/e2e/...",
+]
+
+[tasks.lint]
+description = "Lint the examples module, e2e suite included, with the root golangci-lint config and the golint-sl plugin"
+depends = ["lint-build"]
+run = "../custom-gcl run --config ../.golangci.yaml --build-tags e2e ./..."
+
+# The check a policy repository runs in CI, once per kind: every root policy
+# type-checks with the platform's documents for its kind as the trusted source
+# and invokes the guardrails at the top level, and every test file passes
+# under the sigilc host binary. sigilc links two kinds, so each command names
+# its kind file, and each reads only that kind's trees: a bundle holding
+# documents of another kind doesn't load.
+[tasks.policies]
+description = "Check the example deploy and access policies against the platform's guardrails and run their test files with sigilc"
+run = [
+  "go run ./cmd/sigilc check --kind policies/deploy_approval.sigil --config policies/sigil.yaml --require deploy.guardrails --trusted policies/platform/deploy --policy 'payments.*' --policy 'checkout.*' -R policies/teams",
+  "go run ./cmd/sigilc check --kind policies/access_grant.sigil --config policies/sigil.yaml --require access.guardrails --trusted policies/platform/access --policy access.main policies/access",
+  "go run ./cmd/sigilc test --kind policies/deploy_approval.sigil policies/platform/deploy policies/teams",
+  "go run ./cmd/sigilc test --kind policies/access_grant.sigil policies/platform/access policies/access",
+]
+
+[tasks.generate]
+description = "Regenerate the examples' kind files from the Go types"
+run = "go generate ./cmd/sigilc"
+
+[tasks.up]
+description = "Start deploygate with Alloy and the Grafana LGTM stack, and wait until they're ready"
+run = "docker compose up --build --wait"
+
+[tasks.down]
+description = "Stop the examples' compose stack and drop its volumes"
+run = "docker compose down -v"
+
+[tasks.e2e]
+description = "Start the compose stack and run the black-box e2e suite against it"
+depends = ["up"]
+env = { DEPLOYGATE_URL = "http://localhost:8080", TEMPO_URL = "http://localhost:3200", LOKI_URL = "http://localhost:3100", MIMIR_URL = "http://localhost:9009", GRAFANA_URL = "http://localhost:3000" }
+# -count=1: the suite checks a running stack, not the code, so a cached pass
+# from an earlier run would say nothing about the stack that's up now.
+run = "go test -count=1 -tags e2e ./test/e2e/..."
+
+[tasks.release-check]
+description = "Validate the examples' GoReleaser config"
+run = "goreleaser check --config .goreleaser.yaml"
+
+[tasks.snapshot]
+description = "Build local GoReleaser snapshots of deploygate and sigilc into examples/dist/"
+run = "goreleaser build --snapshot --clean --config .goreleaser.yaml"
+
+[tasks.check]
+description = "Every gate CI runs on the examples module"
+depends = ["lint", "test", "policies", "release-check"]

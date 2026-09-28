@@ -1,0 +1,62 @@
+policy: checkout.production
+# Every decision, reason and assert checkout.production can reach has a case
+# here. checkout keeps the platform's 24h minimum soak, narrows tiers to
+# standard and asserts that every request names its actor. payments_sre is
+# payments' own rule, so it can't fire here.
+cases:
+  # assert named_actor: an input assert fails the evaluation before any rule
+  # counts, even one that would deny.
+  - name: an unnamed actor fails the named_actor assert
+    input_file: testdata/unnamed-actor.json
+    expect:
+      asserts: [named_actor]
+  - name: an unnamed actor fails the assert even when the deploy would be denied
+    input_file: testdata/unnamed-staging.json
+    expect:
+      asserts: [named_actor]
+
+  # review service_owner and approve release_manager.
+  - name: a service owner's deploy goes to review with checkout-leads
+    input_file: testdata/owner.json
+    expect:
+      decision: review
+      reason: service_owner
+      payload:
+        approvers: [checkout-leads]
+  - name: a release manager approves a critical service with the default bake
+    input_file: testdata/release-manager.json
+    expect:
+      decision: approve
+      reason: release_manager
+      payload:
+        bake: 1h
+
+  # deny no_rule_matched: internal is in the platform's default tiers, but
+  # checkout passes tiers: [standard].
+  - name: an owner's deploy of an internal service matches no rule
+    input_file: testdata/internal-tier.json
+    expect:
+      decision: deny
+      reason: no_rule_matched
+
+  # deny not_eligible and soak_too_short from the guardrails.
+  - name: an actor without the deployer role is not eligible
+    input_file: testdata/no-deployer-role.json
+    expect:
+      decision: deny
+      reason: not_eligible
+  - name: a 6h soak is denied under the platform's 24h default
+    input_file: testdata/short-soak.json
+    expect:
+      decision: deny
+      reason: soak_too_short
+  - name: a soak of exactly 24h is not denied
+    input_file: testdata/min-soak.json
+    expect:
+      decision: review
+      reason: service_owner
+  - name: a 6h soak on a hotfix is not denied
+    input_file: testdata/short-soak-hotfix.json
+    expect:
+      decision: review
+      reason: service_owner

@@ -1,0 +1,110 @@
+policy: payments.production
+# Every decision and reason payments.production can reach has a case here.
+# ledger is PCI and statements isn't; the fixtures differ from owner.json only
+# in what each case is about, so a failure points at one rule.
+cases:
+  # review service_owner: the approver groups depend on the compliance label.
+  - name: a service owner's PCI deploy goes to review with both approver groups
+    input_file: testdata/owner.json
+    expect:
+      decision: review
+      reason: service_owner
+      payload:
+        approvers: [payments-leads, security-leads]
+  - name: a service owner's non-PCI deploy goes to review with payments-leads only
+    input_file: testdata/owner-non-pci.json
+    expect:
+      decision: review
+      reason: service_owner
+      payload:
+        approvers: [payments-leads]
+  - name: an owner in payments-sre still goes to review, which outranks the SRE approval
+    input_file: testdata/owner-sre.json
+    expect:
+      decision: review
+      reason: service_owner
+      payload:
+        approvers: [payments-leads, security-leads]
+
+  # approve release_manager and approve payments_sre.
+  - name: a release manager approves a critical service with the default bake
+    input_file: testdata/release-manager.json
+    expect:
+      decision: approve
+      reason: release_manager
+      payload:
+        bake: 1h
+  - name: payments-sre approves a service it doesn't own with a 15m bake
+    input_file: testdata/sre.json
+    expect:
+      decision: approve
+      reason: payments_sre
+      payload:
+        bake: 15m
+  - name: a release manager in payments-sre gets release_manager, the higher-ranked reason
+    input_file: testdata/sre-release-manager.json
+    expect:
+      decision: approve
+      reason: release_manager
+      payload:
+        bake: 1h
+
+  # deny not_eligible: each of the three conditions of deploy.common's eligible.
+  - name: an actor without the deployer role is not eligible
+    input_file: testdata/no-deployer-role.json
+    expect:
+      decision: deny
+      reason: not_eligible
+  - name: a deploy outside production is not eligible
+    input_file: testdata/staging.json
+    expect:
+      decision: deny
+      reason: not_eligible
+  - name: a service without the ga lifecycle label is not eligible
+    input_file: testdata/beta-lifecycle.json
+    expect:
+      decision: deny
+      reason: not_eligible
+
+  # deny soak_too_short: payments lowers the platform's 24h minimum to 4h.
+  - name: a 2h soak is denied
+    input_file: testdata/short-soak.json
+    expect:
+      decision: deny
+      reason: soak_too_short
+  - name: a 2h soak on a hotfix is not denied
+    input_file: testdata/short-soak-hotfix.json
+    expect:
+      decision: review
+      reason: service_owner
+      payload:
+        approvers: [payments-leads, security-leads]
+  - name: a soak of exactly the team's 4h minimum is not denied
+    input_file: testdata/min-soak.json
+    expect:
+      decision: review
+      reason: service_owner
+
+  # deny no_rule_matched: eligible, but no rule fires, so the kind's default wins.
+  - name: an owner's deploy of a tier outside tiers matches no rule
+    input_file: testdata/batch-tier.json
+    expect:
+      decision: deny
+      reason: no_rule_matched
+  - name: a deploy by someone who doesn't own the service matches no rule
+    input_file: testdata/not-owner.json
+    expect:
+      decision: deny
+      reason: no_rule_matched
+
+  # cleared: every region in the regions label must be one of the actor's.
+  - name: an owner not cleared for every region of the service gets nothing from deploy.production
+    input_file: testdata/uncleared-region.json
+    expect:
+      decision: deny
+      reason: no_rule_matched
+  - name: payments-sre not cleared for every region of the service doesn't approve
+    input_file: testdata/uncleared-sre.json
+    expect:
+      decision: deny
+      reason: no_rule_matched

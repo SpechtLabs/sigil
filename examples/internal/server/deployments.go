@@ -1,0 +1,201 @@
+package server
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	humane "github.com/sierrasoftworks/humane-errors-go"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+
+	"github.com/spechtlabs/sigil/pkg/policy"
+
+	"github.com/spechtlabs/sigil/examples/internal/deploy"
+	"github.com/spechtlabs/sigil/examples/internal/telemetry"
+)
+
+// deployFallbackAdvice tells the client what the decision fields of a
+// failed deploy evaluation mean.
+const deployFallbackAdvice = "the decision fields hold the fallback decision; act on it"
+
+// evaluate handles POST /api/v1/teams/{team}/deployments in two stages. The
+// access policy grants the requestor roles for the team, and the team's
+// deploy policy decides with those roles as actor.roles, so a client can't
+// claim a role it wasn't granted. The status encodes the decision, so a
+// client can act on the status alone.
+func (s *Server) evaluate(c *gin.Context) {
+	team := c.Param("team")
+
+	deploySnap, ok := s.deploy.Snapshot()
+	accessSnap, accessOK := s.access.Snapshot()
+	if !ok || !accessOK {
+		writeError(c, http.StatusServiceUnavailable, errNotLoaded())
+		return
+	}
+	p, ok := deploySnap.Policy(team)
+	if !ok {
+		writeError(c, http.StatusNotFound, humane.New(fmt.Sprintf("team %q isn't served", team),
+			"served teams: "+strings.Join(deploySnap.TeamNames(), ", "),
+			"GET /api/v1/policies lists the teams and their policies"))
+		return
+	}
+	ap, ok := accessSnap.Single()
+	if !ok {
+		writeError(c, http.StatusInternalServerError, errNoAccessRoot(accessSnap.PolicyNames()))
+		return
+	}
+
+	req, herr := decodeJSON[DeploymentRequest](c, "send a JSON object with release, service, actor and environment; see the README for an example")
+	if herr == nil && req.Release.Soak < 0 {
+		herr = humane.New("release.soak is negative: "+req.Release.Soak.String(),
+			"send how long the release has soaked, zero or more, such as \"6h\"")
+	}
+	if herr != nil {
+		writeError(c, http.StatusBadRequest, herr)
+		return
+	}
+
+	ctx := c.Request.Context()
+	st := s.runAccess(ctx, ap, req.AccessInput(team))
+	if st.err != nil {
+		s.accessFailed(c, team, p.Name(), st)
+		return
+	}
+
+	roles := deployRoles(st.grants)
+	resp, status, failed := s.runDeploy(ctx, deploySnap.Kind, p, team, req.DeployInput(roles), roles)
+	resp.Access = &AccessBlock{Policy: st.policy, Grants: st.grants}
+	if failed != nil {
+		s.deployFailed(c, &resp, *failed)
+		return
+	}
+	c.JSON(status, resp)
+}
+
+// runDeploy evaluates the team's deploy policy in the deploygate.evaluate
+// span and renders the result. A failure the policy caused comes back
+// classified, with the fallback decision in the response; one it didn't is
+// answered with 500 by the caller through the failure's empty kind.
+func (s *Server) runDeploy(ctx context.Context, kind string, p *policy.Policy[deploy.Input], team string, in deploy.Input, roles []string) (DecisionResponse, int, *failure) {
+	if p == nil {
+		herr := humane.New("team "+team+" has no compiled deploy policy", "this is a bug in deploygate; please report it")
+		return fallbackResponse(team, team+".production"), http.StatusInternalServerError, &failure{herr: herr}
+	}
+
+	ctx, span := s.tracer.Start(ctx, "deploygate.evaluate", trace.WithAttributes(
+		attribute.String("sigil.kind", kind),
+		attribute.String("sigil.policy", p.Name()),
+		attribute.String("sigil.team", team),
+		attribute.StringSlice("sigil.roles", roles),
+	))
+	defer span.End()
+
+	timer := s.metrics.EvaluationTimer(team)
+	res, err := p.Eval(ctx, in)
+	took := timer.ObserveDuration()
+	if res == nil {
+		// Eval documents a result on every path; this guards the contract
+		// rather than an expected case.
+		herr := humane.Wrap(err, "evaluating "+p.Name()+" returned no result", "this is a bug in deploygate; please report it")
+		span.SetStatus(codes.Error, herr.Error())
+		return fallbackResponse(team, p.Name()), http.StatusInternalServerError, &failure{herr: herr}
+	}
+
+	resp, status := newDecisionResponse(team, p.Name(), res)
+	recordResult(span, resp)
+
+	if err != nil {
+		f := classify(p.Name(), err, deployFallbackAdvice)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, f.herr.Error())
+		return resp, http.StatusUnprocessableEntity, &f
+	}
+
+	s.metrics.ObserveDecision(team, p.Name(), res.Decision, res.Reason)
+	telemetry.FromContext(ctx).InfoContext(ctx, "deploy decision",
+		zap.String("team", team),
+		zap.String("policy", p.Name()),
+		zap.Strings("roles", roles),
+		zap.String("decision", res.Decision),
+		zap.String("reason", res.Reason),
+		zap.Duration("took", took),
+	)
+	return resp, status, nil
+}
+
+// deployFailed answers a failed deploy evaluation with 422: the fallback
+// decision the host acts on, the error, and for failed asserts which ones.
+func (s *Server) deployFailed(c *gin.Context, resp *DecisionResponse, f failure) {
+	if f.kind == "" {
+		writeError(c, http.StatusInternalServerError, f.herr)
+		return
+	}
+
+	// A policy's failure still answers with the fallback decision, so it
+	// counts as that decision too; an error that isn't the policy's, which
+	// answered 500 above, decided nothing.
+	s.metrics.ObserveEvaluationError(telemetry.StageDeploy, resp.Team, f.kind)
+	s.metrics.ObserveDecision(resp.Team, resp.Policy, resp.Decision, resp.Reason)
+	ctx := c.Request.Context()
+	telemetry.FromContext(ctx).WarnContext(ctx, "deploy evaluation failed, answering with the fallback decision",
+		zap.String("team", resp.Team),
+		zap.String("policy", resp.Policy),
+		zap.String("error_kind", f.kind),
+		zap.String("decision", resp.Decision),
+		zap.String("reason", resp.Reason),
+		zap.Error(f.herr),
+	)
+
+	resp.Error, resp.Asserts, resp.Conflict = NewErrorResponse(f.herr), f.asserts, f.conflict
+	c.JSON(http.StatusUnprocessableEntity, resp)
+}
+
+// accessFailed answers a deployment whose access stage failed, before the
+// deploy policy ran: 409 for a conflict, 422 for a failed assert or a runtime
+// error, with the deploy kind's default as the decision the host acts on.
+// The deploy stage didn't decide anything, so no decision is counted.
+func (s *Server) accessFailed(c *gin.Context, team, policyName string, st accessStage) {
+	f := classify(st.policy, st.err, "the deploy policy didn't run; the decision fields hold the fallback, deny")
+	if f.kind == "" {
+		writeError(c, http.StatusInternalServerError, f.herr)
+		return
+	}
+
+	s.metrics.ObserveEvaluationError(telemetry.StageAccess, team, f.kind)
+	ctx := c.Request.Context()
+	telemetry.FromContext(ctx).WarnContext(ctx, "access evaluation failed, denying the deployment",
+		zap.String("team", team),
+		zap.String("policy", st.policy),
+		zap.String("error_kind", f.kind),
+		zap.Error(f.herr),
+	)
+
+	resp := fallbackResponse(team, policyName)
+	resp.Access = &AccessBlock{Policy: st.policy, Grants: st.grants}
+	resp.Error, resp.Asserts, resp.Conflict = NewErrorResponse(f.herr), f.asserts, f.conflict
+	c.JSON(accessFailureStatus(f.kind), resp)
+}
+
+// recordResult puts the decision on the evaluation span, with one event per
+// trace candidate, so a trace in Tempo explains the decision on its own.
+func recordResult(span trace.Span, resp DecisionResponse) {
+	span.SetAttributes(
+		attribute.String("sigil.decision", resp.Decision),
+		attribute.String("sigil.reason", resp.Reason),
+		attribute.Int("sigil.candidates", len(resp.Trace)),
+	)
+	for _, c := range resp.Trace {
+		span.AddEvent("sigil.candidate", trace.WithAttributes(
+			attribute.String("decision", c.Decision),
+			attribute.String("reason", c.Reason),
+			attribute.String("policy", c.Policy),
+			attribute.String("location", c.Location),
+			attribute.Bool("winner", c.Winner),
+		))
+	}
+}

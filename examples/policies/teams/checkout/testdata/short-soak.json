@@ -1,0 +1,20 @@
+{
+  "release": {"soak": "6h", "hotfix": false},
+  "service": {
+    "name": "cart",
+    "tier": "standard",
+    "owners": ["checkout"],
+    "labels": {
+      "app.kubernetes.io/managed-by": "argocd",
+      "platform.example.com/lifecycle": "ga",
+      "regions": "eu,us"
+    }
+  },
+  "actor": {
+    "name": "ada",
+    "teams": ["checkout"],
+    "roles": ["deployer"],
+    "regions": ["eu", "us"]
+  },
+  "environment": "production"
+}

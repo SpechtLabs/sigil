@@ -1,0 +1,16 @@
+# examples/Dockerfile builds from the repository root because the examples
+# module replaces the library with ../. Keep the build context to what a Go
+# build can use: docs/ alone carries a node_modules tree far larger than the
+# rest of the repository.
+.git/
+.claude/
+.github/
+.vscode/
+docs/
+**/node_modules/
+**/dist/
+**/bin/
+coverage.txt
+custom-gcl
+*.test
+*.out
