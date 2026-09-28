@@ -1,11 +1,12 @@
 # deploygate and a local Grafana LGTM stack. Alloy sends traces to Tempo,
-# metrics to Mimir, and the service's Docker logs to Loki. All backends run as
-# one process with filesystem storage in named volumes.
+# metrics to Mimir, and the service's Docker logs to Loki. Pyroscope receives
+# all Go runtime profiles. All backends run as one process with filesystem
+# storage in named volumes. The optional k6 service generates measured load.
 #
 # Run from examples/: docker compose up --build --wait
 # Grafana: http://localhost:3000/d/deploygate
 # API: 8080, Alloy: 12345 and OTLP 4317/4318, Tempo: 3200, Loki: 3100,
-# Mimir: 9009.
+# Mimir: 9009, Pyroscope: 4040.
 #
 # ./policies/teams is mounted read-only as the team bundle (DeployApproval) and
 # ./policies/access as the access bundle (AccessGrant). Edit a policy in either
@@ -35,6 +36,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4317
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       OTEL_SERVICE_NAME: deploygate
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
     volumes:
       - ./policies/teams:/etc/deploygate/policies:ro
       - ./policies/access:/etc/deploygate/access:ro
@@ -104,6 +106,38 @@ services:
       - mimir-data:/data
     restart: unless-stopped
 
+  pyroscope:
+    image: grafana/pyroscope:2.3.1
+    command: [-config.file=/etc/pyroscope.yaml]
+    ports:
+      - "4040:4040"
+    volumes:
+      - ./deploy/pyroscope.yaml:/etc/pyroscope.yaml:ro
+      - pyroscope-data:/data
+      - pyroscope-metastore:/data-metastore
+      - pyroscope-compactor:/data-compactor
+    restart: unless-stopped
+
+  # Runs only when requested with `mise run loadtest` or `docker compose run`.
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: [loadtest]
+    environment:
+      BASE_URL: http://deploygate:8080
+      K6_PROMETHEUS_RW_SERVER_URL: http://mimir:9009/api/v1/push
+      K6_PROMETHEUS_RW_TREND_STATS: p(95),p(99),avg,max
+      K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+    volumes:
+      - ./test/load:/scripts:ro
+      - ./requests:/requests:ro
+      - ./results:/results
+    depends_on:
+      deploygate:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
+    command: [run, --out, experimental-prometheus-rw, /scripts/deploygate.js]
+
   grafana:
     image: grafana/grafana:13.2.2
     ports:
@@ -131,13 +165,16 @@ services:
           wget -q -O /dev/null http://alloy:12345/-/ready &&
           wget -q -O /dev/null http://tempo:3200/ready &&
           wget -q -O /dev/null http://loki:3100/ready &&
-          wget -q -O /dev/null http://mimir:9009/ready
+          wget -q -O /dev/null http://mimir:9009/ready &&
+          wget -q -O /dev/null http://pyroscope:4040/ready
       interval: 5s
       timeout: 5s
       retries: 30
       start_period: 10s
     depends_on:
       alloy:
+        condition: service_started
+      pyroscope:
         condition: service_started
     restart: unless-stopped
 
@@ -146,3 +183,6 @@ volumes:
   tempo-data:
   loki-data:
   mimir-data:
+  pyroscope-data:
+  pyroscope-metastore:
+  pyroscope-compactor:

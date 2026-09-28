@@ -34,6 +34,13 @@ datasources:
         datasourceUid: mimir
       nodeGraph:
         enabled: true
+      tracesToProfiles:
+        datasourceUid: pyroscope
+        tags:
+          - key: service.name
+            value: service_name
+        profileTypeId: process_cpu:cpu:nanoseconds:cpu:nanoseconds
+        customQuery: false
 
   - name: Loki
     uid: loki
@@ -49,3 +56,12 @@ datasources:
           datasourceUid: tempo
           url: '$${__value.raw}'
           urlDisplayLabel: View trace
+
+  - name: Pyroscope
+    uid: pyroscope
+    type: grafana-pyroscope-datasource
+    access: proxy
+    url: http://pyroscope:4040
+    editable: false
+    jsonData:
+      minStep: 15s

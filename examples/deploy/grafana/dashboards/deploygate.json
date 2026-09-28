@@ -1,11 +1,13 @@
 {
   "uid": "deploygate",
   "title": "deploygate · LGTM",
-  "description": "Sigil evaluation throughput and latency, followed by policy decisions across Mimir metrics, Tempo traces and Loki logs. Team filters evaluations and policy panels.",
+  "description": "Sigil evaluation throughput and latency, followed by HTTP load measurements and policy decisions across Mimir metrics, Tempo traces, Loki logs and Pyroscope profiles. Team filters evaluations and policy panels; Load run filters k6 panels. Profiles cover the whole process.",
   "tags": [
     "deploygate",
     "sigil",
-    "lgtm"
+    "lgtm",
+    "pyroscope",
+    "k6"
   ],
   "timezone": "browser",
   "editable": false,
@@ -33,6 +35,13 @@
       "title": "Explore logs",
       "type": "link",
       "url": "/explore?schemaVersion=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22loki%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22loki%22%2C%22uid%22%3A%22loki%22%7D%2C%22expr%22%3A%22%7Bservice_name%3D%5C%22deploygate%5C%22%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-15m%22%2C%22to%22%3A%22now%22%7D%7D%7D",
+      "targetBlank": true,
+      "icon": "external link"
+    },
+    {
+      "title": "Explore profiles",
+      "type": "link",
+      "url": "/explore?schemaVersion=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22pyroscope%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22grafana-pyroscope-datasource%22%2C%22uid%22%3A%22pyroscope%22%7D%2C%22queryType%22%3A%22both%22%2C%22profileTypeId%22%3A%22process_cpu%3Acpu%3Ananoseconds%3Acpu%3Ananoseconds%22%2C%22labelSelector%22%3A%22%7Bservice_name%3D%5C%22deploygate%5C%22%7D%22%2C%22groupBy%22%3A%5B%5D%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-15m%22%2C%22to%22%3A%22now%22%7D%7D%7D",
       "targetBlank": true,
       "icon": "external link"
     }
@@ -64,6 +73,56 @@
           "value": [
             "$__all"
           ]
+        },
+        "sort": 1
+      },
+      {
+        "name": "load_run",
+        "label": "Load run",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "query": {
+          "query": "label_values(k6_http_reqs_total, testid)",
+          "refId": "load_run"
+        },
+        "definition": "label_values(k6_http_reqs_total, testid)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 2
+      },
+      {
+        "name": "profile_type",
+        "label": "Runtime profile",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-pyroscope-datasource",
+          "uid": "pyroscope"
+        },
+        "query": {
+          "type": "profileType",
+          "refId": "profile_type"
+        },
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "selected": true,
+          "text": "memory:inuse_space:bytes:space:bytes",
+          "value": "memory:inuse_space:bytes:space:bytes"
         },
         "sort": 1
       }
@@ -370,7 +429,7 @@
       "id": 26,
       "type": "stat",
       "title": "Evaluations / second",
-      "description": "Observed rate of completed p.Eval calls across access and deploy policies over the rate window. Includes successful and failed evaluations. A deployment can contribute two evaluations. Follows Team. This is achieved throughput at the current offered load.",
+      "description": "Observed rate of completed p.Eval calls across access and deploy policies over the rate window. Includes successful and failed evaluations. A deployment can contribute two evaluations. Follows Team, independently of Load run. This is achieved throughput at the current offered load.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"
@@ -978,13 +1037,412 @@
       ]
     },
     {
+      "id": 32,
+      "type": "row",
+      "title": "HTTP load · k6",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "k6 · request rate",
+      "description": "Achieved HTTP request rate per run. Compare with the configured arrival rate; dropped iterations below expose generator saturation.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "gradientMode": "none"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "expr": "sum by (testid) (rate(k6_http_reqs_total{testid=~\"${load_run:regex}\",name!=\"readiness\"}[$__rate_interval]))",
+          "legendFormat": "{{testid}}",
+          "range": true,
+          "instant": false
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "k6 · incorrect outcomes",
+      "description": "Fraction of iterations with an unexpected status or policy result, cumulative within each run. Expected denials, conflicts and asserts count as correct. Zero is the goal.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "gradientMode": "none",
+            "axisSoftMax": 0.01
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "expr": "k6_outcome_failures_rate{testid=~\"${load_run:regex}\"}",
+          "legendFormat": "{{testid}}",
+          "range": true,
+          "instant": false
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "k6 · HTTP p95 by request",
+      "description": "Cumulative p95 for each request series within its run. Values are exported in seconds. These are separate percentiles, not a combined percentile; use the JSON report for the full-run p95. Only expected responses are included here; transport and correctness failures remain visible in the incorrect-outcomes panel.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "gradientMode": "none"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ],
+          "width": 250
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "expr": "k6_http_req_duration_p95{testid=~\"${load_run:regex}\",name!=\"readiness\",expected_response=\"true\"}",
+          "legendFormat": "{{name}} · {{status}} · {{testid}}",
+          "range": true,
+          "instant": false
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "k6 · HTTP p99 by request",
+      "description": "Cumulative p99 for each request series within its run. Includes the network, decoding, both applicable policy stages and telemetry. See the JSON report for the overall p99. Only expected responses are included here; transport and correctness failures remain visible in the incorrect-outcomes panel.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 34,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "gradientMode": "none"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ],
+          "width": 250
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "expr": "k6_http_req_duration_p99{testid=~\"${load_run:regex}\",name!=\"readiness\",expected_response=\"true\"}",
+          "legendFormat": "{{name}} · {{status}} · {{testid}}",
+          "range": true,
+          "instant": false
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "k6 · dropped iterations",
+      "description": "Reported cumulative dropped iterations observed within the selected time range. k6 only emits this counter when it drops work, so retain the last observed count. Zero is shown only for runs with iteration samples. Check the JSON report for the completed run total.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "gradientMode": "none",
+            "axisSoftMax": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "expr": "sum by (testid) (max_over_time(k6_dropped_iterations_total{testid=~\"${load_run:regex}\"}[$__range])) or on (testid) (0 * sum by (testid) (max_over_time(k6_iterations_total{testid=~\"${load_run:regex}\"}[$__range])))",
+          "legendFormat": "{{testid}}",
+          "range": true,
+          "instant": false
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "k6 · active virtual users",
+      "description": "Active virtual users reported by k6. Increase MAX_VUS only when the generator needs more concurrency, and check the load generator resources too.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 42,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "gradientMode": "none"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "expr": "k6_vus{testid=~\"${load_run:regex}\"}",
+          "legendFormat": "{{testid}}",
+          "range": true,
+          "instant": false
+        }
+      ]
+    },
+    {
       "id": 33,
       "type": "row",
       "title": "Policy outcomes and observability",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 25,
+        "y": 50,
         "w": 24,
         "h": 1
       },
@@ -1001,7 +1459,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 51,
         "w": 12,
         "h": 8
       },
@@ -1069,7 +1527,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 26,
+        "y": 51,
         "w": 12,
         "h": 8
       },
@@ -1137,7 +1595,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 59,
         "w": 12,
         "h": 8
       },
@@ -1205,7 +1663,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 34,
+        "y": 59,
         "w": 12,
         "h": 8
       },
@@ -1273,7 +1731,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 42,
+        "y": 67,
         "w": 12,
         "h": 7
       },
@@ -1351,7 +1809,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 42,
+        "y": 67,
         "w": 12,
         "h": 7
       },
@@ -1450,7 +1908,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 49,
+        "y": 74,
         "w": 24,
         "h": 9
       },
@@ -1491,7 +1949,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 58,
+        "y": 83,
         "w": 24,
         "h": 12
       },
@@ -1523,6 +1981,74 @@
       }
     },
     {
+      "id": 21,
+      "type": "flamegraph",
+      "title": "CPU profile · Pyroscope",
+      "description": "Whole-process CPU profile over the dashboard time range, including Sigil, HTTP handling and telemetry. Click a stack frame to focus it. Profiles upload every 15 seconds. Goroutine-leak capture also runs GC, and that cost is included.",
+      "datasource": {
+        "type": "grafana-pyroscope-datasource",
+        "uid": "pyroscope"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 95,
+        "w": 12,
+        "h": 14
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-pyroscope-datasource",
+            "uid": "pyroscope"
+          },
+          "queryType": "profile",
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+          "labelSelector": "{service_name=\"deploygate\"}",
+          "groupBy": []
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "flamegraph",
+      "title": "Runtime profile · Pyroscope",
+      "description": "Choose Runtime profile to inspect allocations, live heap, goroutines, mutex contention, blocking or detected goroutine leaks. Types appear after samples reach Pyroscope. Whole-process data over the selected time range; empty leak data is expected in a healthy process. Heap profiles are merged over the range; the RSS chart shows process memory.",
+      "datasource": {
+        "type": "grafana-pyroscope-datasource",
+        "uid": "pyroscope"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 95,
+        "w": 12,
+        "h": 14
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-pyroscope-datasource",
+            "uid": "pyroscope"
+          },
+          "queryType": "profile",
+          "profileTypeId": "$profile_type",
+          "labelSelector": "{service_name=\"deploygate\"}",
+          "groupBy": []
+        }
+      ]
+    },
+    {
       "id": 23,
       "type": "stat",
       "title": "Observability targets · Alloy scrape health",
@@ -1533,7 +2059,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 70,
+        "y": 109,
         "w": 12,
         "h": 8
       },
@@ -1597,7 +2123,7 @@
             "type": "prometheus",
             "uid": "mimir"
           },
-          "expr": "up{job=~\"alloy|tempo|loki|mimir\"}",
+          "expr": "up{job=~\"alloy|tempo|loki|mimir|pyroscope\"}",
           "legendFormat": "{{job}}",
           "refId": "A",
           "range": false,
@@ -1617,7 +2143,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 70,
+        "y": 109,
         "w": 12,
         "h": 8
       },

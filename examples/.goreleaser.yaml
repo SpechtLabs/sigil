@@ -1,4 +1,4 @@
-# GoReleaser config for the examples module: deploygate and sigilc.
+# GoReleaser config for the examples module: deploygate, demo-cli and sigilc.
 # It only builds locally (`mise run snapshot` from examples/) and is
 # validated in CI; nothing publishes it. The sigil release runs the root
 # .goreleaser.yaml, which never reads this file, so the examples can't leak
@@ -26,6 +26,22 @@ builds:
       - -s -w
       - -X=main.version={{ .Version }}
 
+  - id: demo-cli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    binary: demo-cli
+    main: ./cmd/demo-cli
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w
+      - -X=main.version={{ .Version }}
+
   - id: sigilc
     env:
       - CGO_ENABLED=0
@@ -47,6 +63,11 @@ archives:
     ids:
       - deploygate
     name_template: "deploygate_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+  - id: demo-cli
+    ids:
+      - demo-cli
+    name_template: "demo-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
   - id: sigilc
     ids:
