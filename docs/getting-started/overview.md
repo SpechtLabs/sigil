@@ -65,7 +65,7 @@ The host compiles each policy once and evaluates it for every request, from as m
 
 Sigil isn't a general-purpose language and it isn't meant to replace OPA or Cedar for org-wide authorization. It targets decisions that live inside one application, where the host already has the data in Go structs. For now only Go can evaluate policies; other languages can read the exported kind file and type-check against it, but not run it.
 
-Policy and kind files share the `.sigil` extension, and the CLI is called `sigil`. The remaining naming questions are in the [open questions](/project/open-questions/).
+Policy and kind files share the `.sigil` extension, and the CLI is called `sigil`.
 
 ## Where to go next
 

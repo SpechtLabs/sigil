@@ -4,6 +4,7 @@ A small, statically typed policy language for Go hosts.
 
 ![Status: front end implemented](https://img.shields.io/badge/status-front%20end%20implemented-yellow)
 ![Language: Go](https://img.shields.io/badge/host-Go-00ADD8?logo=go&logoColor=white)
+[![Go Reference](https://pkg.go.dev/badge/github.com/spechtlabs/sigil.svg)](https://pkg.go.dev/github.com/spechtlabs/sigil)
 
 📖 **Language documentation:** [the docs site](./docs) &nbsp;·&nbsp; 🧭 **Where it stands:** [roadmap](./roadmap.yml) and [open questions](./docs/project/open-questions.md)
 

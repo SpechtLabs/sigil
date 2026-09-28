@@ -49,7 +49,7 @@ Level-4 operators are non-associative. `a < b < c`, `a == b == c` and `a in b ==
 
 `and`, `or`, `xor` and `not` take `bool` operands and produce `bool`. There's no truthiness: `when approvers { ... }` is a compile error because `approvers` is a `list<string>`, not a `bool`.
 
-The operators are words, not `&&`, `||` and `!`. Words read better across multi-line conditions and pair with `not in`, `all in` and the other word operators. This is settled; see [Open questions](/project/open-questions/#boolean-operators).
+The operators are words, not `&&`, `||` and `!`. Words read better across multi-line conditions and pair with `not in`, `all in` and the other word operators.
 
 `and` and `or` short-circuit and evaluate left to right. The right operand of `a and b` is never evaluated when `a` is false, which matters for [runtime errors](/reference/evaluation/): a list index or host function call on the right can't fault when the guard on the left fails.
 

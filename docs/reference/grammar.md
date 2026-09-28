@@ -133,9 +133,9 @@ Name         ::= Ident | Keyword          /* field and payload names */
 
 A `Call` is either a decision constructor or a policy invocation, and the parser doesn't need to know which. The checker decides by the name: a decision of the kind makes it a constructor, whose first argument must be a string literal reason; an imported policy makes it an invocation, whose arguments must all be named. Anything else is a compile error.
 
-A `LetStmt` in a `RuleItem` is a scoped let and can't be `pub`; the parser reports a `pub` there and keeps the let, so its uses still resolve. That scoped let names are unique per document, and that a `pub let` in a policy can't read a param, are checked after parsing. See [Scoped lets](/reference/policy-files/#scoped-lets). (proposed)
+A `LetStmt` in a `RuleItem` is a scoped let and can't be `pub`; the parser reports a `pub` there and keeps the let, so its uses still resolve. That scoped let names are unique per document, and that a `pub let` in a policy can't read a param, are checked after parsing. See [Scoped lets](/reference/policy-files/#scoped-lets).
 
-An `AssertStmt` takes the reason first, like a decision constructor, and the reason is a plain string literal, never a raw string. The `)` ends the condition, including a quantifier body that would otherwise run on. An assert takes nothing else: no named arguments. See [Assertions](/reference/evaluation/#assertions). (proposed)
+An `AssertStmt` takes the reason first, like a decision constructor, and the reason is a plain string literal, never a raw string. The `)` ends the condition, including a quantifier body that would otherwise run on. An assert takes nothing else: no named arguments. See [Assertions](/reference/evaluation/#assertions).
 
 `UseStmt`s come before every other statement. A `use` after a `param`, `let`, rule or invocation is a parse error with a hint to move it up.
 
@@ -238,8 +238,8 @@ The expression grammar encodes this table, lowest to highest. It matches [Expres
 
 A quantifier sits at level 3 as an alternative to `not`. Its range is parsed at level 5, and its body is a full `Expr`, so the body extends as far right as the enclosing construct allows.
 
-::: tip Proposed
-Several things in this grammar are proposals rather than settled design: level 4 is non-associative, the quantifier body extends to the right, keywords are allowed as field names, and `assert`, `collect all`, `xor`, `one in`, `exclusive in` and `outcome` are new with [assertions](/project/open-questions/#assertions). The next sections explain the first three.
+::: info
+Level 4 is non-associative, the quantifier body extends to the right, and keywords are allowed as field names. All three are settled and implemented, and the next sections explain them. `assert`, `collect all`, `xor`, `one in`, `exclusive in` and `outcome` came with assertions and collecting kinds; their remaining open parts are listed under [Open questions](/project/open-questions/#assertions).
 :::
 
 ## How the parser decides
