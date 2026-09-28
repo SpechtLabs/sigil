@@ -1,5 +1,5 @@
 == compile p ==
-7:8: module m is defined twice
+7:8: error: module m is defined twice
   |
 7 | module m: DeployApproval@1
   |        ^

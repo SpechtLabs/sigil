@@ -1,10 +1,11 @@
 == compile payments.production ==
-payments.sigil:6:3 (payments.production): deploy.guardrails must be invoked unconditionally
+payments.sigil:6:3 (payments.production): error: deploy.guardrails must be invoked unconditionally
   |
 6 |   guardrails(min_soak: 4h)
   |   ^^^^^^^^^^^^^^^^^^^^^^^^
   = help: the host requires deploy.guardrails for every DeployApproval policy; move the call to the top level
-payments.sigil:11:5 (payments.production): deploy.guardrails must be invoked unconditionally
+
+payments.sigil:11:5 (payments.production): error: deploy.guardrails must be invoked unconditionally
    |
 11 |     guardrails()
    |     ^^^^^^^^^^^^

@@ -1,5 +1,5 @@
 warn shadowed-kind-name (team.old)
-old.sigil:4:5 (team.old): approvers shadows the kind's input approvers, added after the version this document pins
+old.sigil:4:5 (team.old): warning: approvers shadows the kind's input approvers, added after the version this document pins [shadowed-kind-name]
   |
 4 | let approvers = ["a"]
   |     ^^^^^^^^^

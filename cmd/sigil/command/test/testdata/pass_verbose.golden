@@ -4,4 +4,5 @@
 --- PASS: testdata/access/main_test.yaml:26: nobody gets the default
 --- PASS: testdata/access/main_test.yaml:33: an unnamed user fails the assert
 ok    testdata/access/main_test.yaml  5 cases
+✓ 5 cases passed in 1 file
 --- ok ---

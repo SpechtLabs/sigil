@@ -1,6 +1,6 @@
 == diagnostics ==
 
-errors.sigil:3:19: `<` has no right operand
+errors.sigil:3:19: error: `<` has no right operand
   |
 3 | when release.soak < {
   |                   ^

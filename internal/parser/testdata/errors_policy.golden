@@ -25,55 +25,55 @@ policy errors.rules: DeployApproval [1:1-48:21]
 
 == diagnostics ==
 
-errors_policy.sigil:6:1: `use` must come before every other statement
+errors_policy.sigil:6:1: error: `use` must come before every other statement
   |
 6 | use deploy.common.{cleared}
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = help: move it up, right after the header
 
-errors_policy.sigil:10:3: a let inside a `when` body can't be `pub`
+errors_policy.sigil:10:3: error: a let inside a `when` body can't be `pub`
    |
 10 |   pub let tmp = release.soak
    |   ^^^
    = help: only top-level lets can be exported; remove `pub`
 
-errors_policy.sigil:15:30: `<` can't follow `<`: comparisons don't chain
+errors_policy.sigil:15:30: error: `<` can't follow `<`: comparisons don't chain
    |
 15 | when release.soak < min_soak < 2h {
    |                              ^
    = help: add parentheses to say which comparison happens first, or join two comparisons with `and`
 
-errors_policy.sigil:20:33: expected `)`, found `{`
+errors_policy.sigil:20:33: error: expected `)`, found `{`
    |
 20 | when (release.hotfix or cleared {
    |                                 ^
    = help: to close the `(` at 20:6
 
-errors_policy.sigil:25:1: expected a statement, found `guardrails`
+errors_policy.sigil:25:1: error: expected a statement, found `guardrails`
    |
 25 | guardrails
    | ^^^^^^^^^^
    = help: a bare name isn't a statement; an invocation needs parentheses, like `guardrails()`
 
-errors_policy.sigil:29:17: expected a named argument, found `"extra"`
+errors_policy.sigil:29:17: error: expected a named argument, found `"extra"`
    |
 29 |   review(owner, "extra", approvers: approvers)
    |                 ^^^^^^^
    = help: after the reason, every argument is written `name: value`, like `approvers: ["payments-leads"]`
 
-errors_policy.sigil:39:19: `<` has no right operand
+errors_policy.sigil:39:19: error: `<` has no right operand
    |
 39 | when release.soak < {
    |                   ^
    = help: the `{` after it was read as a map literal; finish the condition before the rule's `{`
 
-errors_policy.sigil:42:21: `and` has no right operand
+errors_policy.sigil:42:21: error: `and` has no right operand
    |
 42 | when release.hotfix and {
    |                     ^^^
    = help: the `{` after it was read as a map literal; finish the condition before the rule's `{`
 
-errors_policy.sigil:48:21: `---` separates documents and can't appear inside an expression
+errors_policy.sigil:48:21: error: `---` separates documents and can't appear inside an expression
    |
 48 | let tight = min_soak---1h
    |                     ^^^

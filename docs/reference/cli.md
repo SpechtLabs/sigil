@@ -44,7 +44,27 @@ cat policies.sigil | sigil eval --kind deploy_approval.sigil --input release.jso
 
 `eval` needs a root policy; `check`, `fmt` and `test` don't. If the bundle holds exactly one policy, that's the root, so a single-file bundle needs no flag. Otherwise `--policy` (`-p`) names it, and leaving it out is an error that lists the policies found. `explain` is the exception: `--policy` also takes a pattern such as `'payments.*'`, and without it `explain` explains every policy in the bundle, one after another, which is handy for reviewing a whole ConfigMap. In a pattern, `*` matches any run of characters, dots included.
 
-Every command that prints a result takes `-o text` (the default), `-o json` or `-o yaml`.
+Every command that prints a result takes `-o text` (the default), `-o json` or `-o yaml`. Text output is colored on a terminal and plain when piped; `--color always` or `never` overrides that, and so does the `NO_COLOR` environment variable.
+
+Every command ends its text output with one line that sums the run up, marked `✓`, `!` or `✗`, and exits non-zero after a `✗`:
+
+```text
+✓ checked 4 files, no problems found
+! checked 4 files, 2 warnings
+✗ checked 4 files, 1 error and 2 warnings
+```
+
+That's the report; a command that couldn't do its job at all, because a flag is wrong or a file is missing, prints an `Error:` block instead that says what to do:
+
+```text
+Error: the kind file couldn't be read
+
+What you can do
+  • pass the exported kind file with --kind
+
+Caused by
+  • open deploy_approval.sigil: no such file or directory
+```
 
 ## Host functions and host binaries
 
@@ -74,7 +94,13 @@ That binary decodes inputs into the host's own Go types and calls its functions.
 
 ## `sigil fmt`
 
-Rewrites policy, module and kind documents into one canonical style. It needs nothing but the files themselves. With no paths it formats the current directory; directories are searched recursively. The formatted source is printed unless `--write` (`-w`) rewrites the files in place, which touches only files that change and keeps their permissions. `--check` prints the path of every file that isn't formatted and fails if there's one, which is what CI runs. A file that doesn't parse is reported and left alone.
+Rewrites policy, module and kind documents into one canonical style. It needs nothing but the files themselves. With no paths it formats the current directory; directories are searched recursively. The formatted source is printed unless `--write` (`-w`) rewrites the files in place, which touches only files that change, keeps their permissions, and lists what it rewrote. `--check` prints the path of every file that isn't formatted and fails if there's one, which is what CI runs. A file that doesn't parse is reported and left alone.
+
+```text
+$ sigil fmt --check .
+payments/production.sigil
+✗ 1 of 4 files is not formatted
+```
 
 The formatter matters more than it looks. Sigil's grammar is whitespace-insensitive so that templating can't break it, and a whitespace-insensitive grammar lets styles drift: one team indents continuation lines by two spaces, another by four, a third puts `and` at the end of the line. One canonical form keeps diffs across teams readable and makes the formatter's output the only style anyone has to learn.
 
@@ -101,7 +127,7 @@ sigil check --kind deploy_approval.sigil --recursive .
 
 Every document in the bundle is checked and every policy compiled, including ones no policy imports, so a broken document fails CI instead of failing the host's `Load` later. Compiling catches what type-checking can't, such as an invocation argument outside its param's `min` and `max`. A policy whose params have no defaults, like `deploy.production`, is checked and compiled with them unbound, the way `explain` shows it: it's a template, and the policies that invoke it bind the params.
 
-Errors fail the check; warnings are printed and don't. Both use the [error format](#error-messages), and a warning says which lint it comes from:
+Errors fail the check; warnings are printed and don't. Both use the [error format](#error-messages), in file and line order, and a warning says which lint it comes from. The last line counts them:
 
 ```text
 payments/production.sigil:11:3: warning: deploy.guardrails holds deny rules and is invoked under `when` [gated-deny]
@@ -109,7 +135,11 @@ payments/production.sigil:11:3: warning: deploy.guardrails holds deny rules and 
 11 |   guardrails()
    |   ^^^^^^^^^^^^
    = help: its deny rules only fire while the condition holds; invoke it at the top level, or have the host require it
+
+! checked 4 files, 1 warning
 ```
+
+A directory named on the command line contributes only the files directly inside it, so a check that finds no `.sigil` files at all says so instead of passing quietly.
 
 `-o json` and `-o yaml` print every diagnostic as a record with `severity`, `lint`, `file`, `document`, `line`, `column`, `message` and `help`, for annotating pull requests.
 
@@ -152,7 +182,7 @@ The input is a JSON object with one key per input the kind declares, and `--inpu
 - A `duration` is a string in Sigil's syntax, `"1h30m"`; a `timestamp` is an RFC 3339 string, `"2026-09-28T14:00:00Z"`. A number where a duration belongs is an error, because nobody can tell whether `90` meant seconds or nanoseconds.
 - `null` is allowed for optionals, lists and maps. Map keys of a non-string type are written the way their values are: `"3"` for an `int` key.
 
-When the evaluation fails, with a runtime error, a conflict or a failing assert, `eval` prints the fallback the host would act on, the kind's default, then why it failed, and exits non-zero.
+When the evaluation fails, with a runtime error, a conflict or a failing assert, `eval` prints the fallback the host would act on, the kind's default, then why it failed with a `= help:` line on what to do about it, and exits non-zero.
 
 Diagnostics and trace entries name the document as well as the position, `policies.sigil:42:5 (payments.production)`, so a trace stays readable when many documents share one file. The name is left out when the file's path matches the name, as in `deploy/production.sigil:16:5`. This is the text form of [`policy.Position`](/reference/go-api/); whether the CLI should always print the name is [open](/project/open-questions/#document-names-in-text-output).
 
@@ -247,13 +277,14 @@ $ sigil test --kind deploy_approval.sigil
 --- FAIL: payments/production_test.yaml:10: a short soak is denied
       got deny(soak_too_short), want deny(not_eligible)
 FAIL  payments/production_test.yaml  1 of 3 cases failed
+✗ 1 of 3 test cases failed in 1 file
 ```
 
 Like `eval`, a case that reaches a host function needs a host binary.
 
 ## `sigil export`
 
-Prints the kind file of the kind linked into a [host binary](#host-functions-and-host-binaries), the text `Schema()` returns. `--out` writes it to a file instead, leaving the file untouched when it's current, which suits `go generate`; `--check` with `--out` only compares, and fails when the file is stale. With several kinds linked, the kind's name picks one: `sigil export DeployApproval`.
+Prints the kind file of the kind linked into a [host binary](#host-functions-and-host-binaries), the text `Schema()` returns. `--out` writes it to a file instead, and says whether it wrote it or found it current, which suits `go generate`; `--check` with `--out` only compares, and fails when the file is stale. With several kinds linked, the kind's name picks one: `sigil export DeployApproval`.
 
 ```go
 //go:generate go run ./cmd/sigil export --out ../policies/deploy_approval.sigil
@@ -344,7 +375,7 @@ Planned. Generates typed Go code from a kind file, so a second Go service can co
 
 ## Error messages
 
-Error messages follow filt-rs: file, line and column, what went wrong, and a concrete fix. When the file holds more than one document, or its path doesn't match the document's name, the document's name follows the position: `policies.sigil:42:5 (payments.production): error: ...`.
+Error messages follow filt-rs: file, line and column, the severity, what went wrong, and a concrete fix. When the file holds more than one document, or its path doesn't match the document's name, the document's name follows the position: `policies.sigil:42:5 (payments.production): error: ...`. Several diagnostics are separated by a blank line.
 
 ```text
 deploy/production.sigil:9:16: error: unknown field "teir" on type Service

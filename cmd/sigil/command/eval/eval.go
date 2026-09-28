@@ -15,8 +15,10 @@ import (
 
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/report"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/usage"
 	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/eval"
 	"github.com/spechtlabs/sigil/internal/result"
@@ -63,7 +65,7 @@ sigil eval --kind deploy_approval.sigil --input release.json --policy payments.p
 
 # Read the bundle from stdin, for example a rendered ConfigMap key
 kustomize build . | yq '.data["policies.sigil"]' | sigil eval --kind deploy_approval.sigil --input release.json --policy payments.production -`,
-		Args:              cobra.MinimumNArgs(1),
+		Args:              usage.AtLeast(1, "PATH"),
 		ValidArgsFunction: complete.SigilFiles,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kindFile, _ := cmd.Flags().GetString("kind")
@@ -112,7 +114,7 @@ func run(ctx context.Context, out io.Writer, o *options, kindFile, input, name s
 		return err
 	}
 	if r.Error != nil {
-		return humane.New("the evaluation failed; the host would act on the fallback shown above", advice(r))
+		return pretty.Fail("the evaluation failed; the host would act on the fallback shown above", r.Error.Help)
 	}
 	return nil
 }
@@ -129,7 +131,7 @@ func compile(o *options, kindFile, name string, src project.Sources) (*project.K
 	}
 	b.Check()
 	if errs := b.Errors(); errs != nil {
-		return nil, nil, humane.New(b.Render(errs), "fix the documents above; eval needs a bundle that checks")
+		return nil, nil, pretty.Diagnose(b.Resolve(errs), b.SourceOf, "the bundle doesn't check, so nothing was evaluated", "fix the errors above; sigil check reports every problem in a bundle at once")
 	}
 	root, err := project.Root(b.Policies(), name)
 	if err != nil {
@@ -137,7 +139,7 @@ func compile(o *options, kindFile, name string, src project.Sources) (*project.K
 	}
 	prog, errs := b.Compile(root, bundle.Options{Binding: k.Binding})
 	if errs != nil {
-		return nil, nil, humane.New(b.Render(errs), "fix the documents above; eval needs a policy that compiles")
+		return nil, nil, pretty.Diagnose(b.Resolve(errs), b.SourceOf, "the policy doesn't compile, so nothing was evaluated", "fix the errors above; sigil check reports every problem in a bundle at once")
 	}
 	return k, prog, nil
 }
@@ -185,21 +187,11 @@ func write(out io.Writer, r *report.Report, format output.Format) humane.Error {
 		enc.SetIndent(2)
 		err = enc.Encode(r)
 	default:
-		_, err = io.WriteString(out, r.Text())
+		p := pretty.New(out)
+		return p.Print(r.Text(p.Theme()))
 	}
 	if err != nil {
 		return humane.Wrap(err, "the result couldn't be written", "check where the output is going")
 	}
 	return nil
-}
-
-// advice says what to do about a failed evaluation.
-func advice(r *report.Report) string {
-	switch r.Error.Kind {
-	case report.FailAssertion:
-		return "the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong"
-	case report.FailConflict:
-		return "a conflict is a defect in the policy: rank the reasons with precedence, or keep the exclusive outcomes' conditions apart"
-	}
-	return "fix the expression the runtime error points at, or the input it read"
 }

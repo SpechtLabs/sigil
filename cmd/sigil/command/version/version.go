@@ -12,6 +12,7 @@ import (
 
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/usage"
 )
 
 const unknown = "unknown"
@@ -47,7 +48,7 @@ sigil version
 
 # Print it as JSON, e.g. to paste into a bug report
 sigil version -o json`,
-		Args:              cobra.NoArgs,
+		Args:              usage.None(),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return run(cmd.OutOrStdout(), *o)

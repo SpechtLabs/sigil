@@ -2,6 +2,7 @@
   "error": {
     "kind": "assertion",
     "message": "assertions failed: \"named_user\"",
+    "help": "the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong",
     "asserts": [
       {
         "reason": "named_user",

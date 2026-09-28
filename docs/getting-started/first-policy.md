@@ -139,14 +139,13 @@ There's a typo on line 6. Check the file:
 
 ```shell
 $ sigil check --kind deploy_approval.sigil deploy/production.sigil
-Error: deploy/production.sigil:6:15: unknown field "lables" on type Service
+deploy/production.sigil:6:15: error: unknown field "lables" on type Service
   |
 6 |   and service.lables has {
   |               ^^^^^^
   = help: did you mean "labels"? Service declares: name, tier, owners, labels
 
-What you can do
-  • fix the documents above
+✗ checked 1 file, 1 error
 ```
 
 :::
@@ -246,19 +245,19 @@ when cleared {
 
 ```shell
 $ sigil check --kind deploy_approval.sigil deploy/production.sigil
-Error: deploy/production.sigil:34:5: decision review needs field "approvers"
+deploy/production.sigil:34:5: error: decision review needs field "approvers"
    |
 34 |     review(service_owner, approver: approvers)
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: review is declared as: decision review(approvers: list<string>) { service_owner }
-deploy/production.sigil:34:27: decision review has no payload field "approver"
+
+deploy/production.sigil:34:27: error: decision review has no payload field "approver"
    |
 34 |     review(service_owner, approver: approvers)
    |                           ^^^^^^^^
    = help: did you mean "approvers"? review is declared as: decision review(approvers: list<string>) { service_owner }
 
-What you can do
-  • fix the documents above
+✗ checked 1 file, 2 errors
 ```
 
 :::
@@ -280,14 +279,16 @@ Try to evaluate the base policy on its own:
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
-Error: deploy/production.sigil:4:1: param `approvers` has no value
+deploy/production.sigil:4:1: error: param `approvers` has no value
   |
 4 | param approvers: list<string>
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = help: bind it with policy.Params{"approvers": ...} when compiling, or give it a default
 
+Error: the policy doesn't compile, so nothing was evaluated
+
 What you can do
-  • fix the documents above; eval needs a policy that compiles
+  • fix the errors above; sigil check reports every problem in a bundle at once
 ```
 
 :::
@@ -413,14 +414,13 @@ The host now loads every team policy with `policy.Require("deploy.guardrails")`,
 
 ```shell
 $ sigil check --kind deploy_approval.sigil --require deploy.guardrails deploy/ payments/
-Error: payments/production.sigil:1:1: payments.production doesn't invoke deploy.guardrails
+payments/production.sigil:1:1: error: payments.production doesn't invoke deploy.guardrails
   |
 1 | policy payments.production: DeployApproval@1
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = help: the host requires deploy.guardrails for every DeployApproval policy; import it with `use deploy.guardrails` and invoke it at the top level
 
-What you can do
-  • fix the documents above
+✗ checked 4 files, 1 error
 ```
 
 :::
@@ -500,6 +500,7 @@ $ sigil test --kind deploy_approval.sigil -v
 --- PASS: payments/production_test.yaml:3: the owner's deploy goes to review
 --- PASS: payments/production_test.yaml:10: a beta service isn't eligible
 ok    payments/production_test.yaml  2 cases
+✓ 2 cases passed in 1 file
 ```
 
 :::

@@ -5,31 +5,31 @@ module errors.mod: DeployApproval [1:1-17:24]
 
 == diagnostics ==
 
-errors_module.sigil:5:1: `use` must come before every other statement
+errors_module.sigil:5:1: error: `use` must come before every other statement
   |
 5 | use deploy.common
   | ^^^^^^^^^^^^^^^^^
   = help: move it up, right after the header
 
-errors_module.sigil:7:1: a module can't contain `param`
+errors_module.sigil:7:1: error: a module can't contain `param`
   |
 7 | param min_soak: duration = 24h
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = help: a module holds only imports and lets; rules, params and invocations belong in a policy
 
-errors_module.sigil:9:1: a module can't contain `when`
+errors_module.sigil:9:1: error: a module can't contain `when`
   |
 9 | when owns_service {
   | ^^^^^^^^^^^^^^^^^^^
   = help: a module holds only imports and lets; rules, params and invocations belong in a policy
 
-errors_module.sigil:13:1: a module can't contain `assert`
+errors_module.sigil:13:1: error: a module can't contain `assert`
    |
 13 | assert("no_asserts_either", owns_service)
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: a module holds only imports and lets; rules, params and invocations belong in a policy
 
-errors_module.sigil:15:1: a module can't contain an invocation
+errors_module.sigil:15:1: error: a module can't contain an invocation
    |
 15 | guardrails(min_soak: 4h)
    | ^^^^^^^^^^^^^^^^^^^^^^^^

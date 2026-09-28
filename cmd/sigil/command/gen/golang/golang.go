@@ -7,6 +7,7 @@ import (
 
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/placeholder"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/usage"
 )
 
 // NewCommand returns the gen go command.
@@ -30,7 +31,7 @@ sigil gen go deploy_approval.sigil
 
 # Write it into the approval package
 sigil gen go --package approval --out approval/kind.go deploy_approval.sigil`,
-		Args:              cobra.ExactArgs(1),
+		Args:              usage.Exactly("KIND_FILE"),
 		ValidArgsFunction: complete.SigilFilesUpTo(1),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return placeholder.NotImplemented(cmd)

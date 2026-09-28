@@ -10,7 +10,9 @@ import (
 	"github.com/sierrasoftworks/humane-errors-go"
 	"github.com/spf13/cobra"
 
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/usage"
 )
 
 // NewCommand returns the export command.
@@ -42,7 +44,7 @@ sigil export --out ../policies/deploy_approval.sigil
 
 # Fail in CI when the checked-in kind file is stale
 sigil export --check --out ../policies/deploy_approval.sigil`,
-		Args: cobra.MaximumNArgs(1),
+		Args: usage.AtMost(1, "KIND"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out, _ := cmd.Flags().GetString("out")
 			check, _ := cmd.Flags().GetBool("check")
@@ -77,17 +79,22 @@ func run(stdout io.Writer, kinds []project.Linked, name, out string, check bool)
 		}
 		return nil
 	}
+	p := pretty.New(stdout)
 	current, rerr := os.ReadFile(out) //nolint:gosec // the path comes from the command line, which is the point
 	if rerr == nil && bytes.Equal(current, schema) {
-		return nil
+		return p.Ok(out + " is up to date")
 	}
 	if check {
-		return humane.New(out+" is stale: it doesn't match the kind "+k.Model.Name+" linked into this binary", "regenerate it with `sigil export --out "+out+"`")
+		msg := out + " is stale: it doesn't match the kind " + k.Model.Name + " linked into this binary"
+		if err := p.Fail(msg, "regenerate it with `sigil export --out "+out+"`"); err != nil {
+			return err
+		}
+		return pretty.Fail(msg, "regenerate it with `sigil export --out "+out+"`")
 	}
 	if err := os.WriteFile(out, schema, 0o644); err != nil { //nolint:gosec // a kind file is meant to be read by everyone
 		return humane.Wrap(err, out+" couldn't be written", "check that its directory exists and is writable")
 	}
-	return nil
+	return p.Ok("wrote " + out)
 }
 
 // pick returns the linked kind to export.

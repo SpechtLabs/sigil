@@ -3,24 +3,30 @@ testdata/lints/teams/payments.sigil:5:29: warning: eligible is imported from dep
 5 | use deploy.common.{cleared, eligible}
   |                             ^^^^^^^^
   = help: remove it from the import list
+
 testdata/lints/teams/payments.sigil:7:5: warning: let unused_tier is never read [unused-let]
   |
 7 | let unused_tier = service.tier
   |     ^^^^^^^^^^^
   = help: remove the let, or read it; a private let can't be imported
+
 testdata/lints/teams/payments.sigil:11:3: warning: deploy.guardrails holds asserts and is invoked under `when` [gated-assert]
    |
 11 |   guardrails()
    |   ^^^^^^^^^^^^
    = help: its asserts only run while the condition holds; invoke it at the top level, or have the host require it
+
 testdata/lints/teams/payments.sigil:11:3: warning: deploy.guardrails holds deny rules and is invoked under `when` [gated-deny]
    |
 11 |   guardrails()
    |   ^^^^^^^^^^^^
    = help: its deny rules only fire while the condition holds; invoke it at the top level, or have the host require it
+
 testdata/lints/teams/payments.sigil:16:1: warning: deploy.production is invoked twice with the same arguments [duplicate-invocation]
    |
 16 | production(approvers: ["a", "b"])
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: the first is on line 14; every rule it holds already fires once, so remove one, or change its arguments
+
+! checked 4 files, 5 warnings
 --- ok ---

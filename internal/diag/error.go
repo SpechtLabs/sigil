@@ -10,14 +10,34 @@ import (
 	"github.com/spechtlabs/sigil/internal/token"
 )
 
+// Severity is how serious a diagnostic is.
+type Severity int
+
+// The severities, from the most serious down. The zero value is an error,
+// so a diagnostic that says nothing is one.
+const (
+	SeverityError Severity = iota
+	SeverityWarning
+)
+
+// String names the severity the way a diagnostic's header spells it.
+func (s Severity) String() string {
+	if s == SeverityWarning {
+		return "warning"
+	}
+	return "error"
+}
+
 // Error is one diagnostic: what's wrong, where, and how to fix it.
 type Error struct {
-	File string    // the file the positions refer to; empty when unknown
-	Doc  string    // the document the position is in, when the stage knows it
-	Msg  string    // what's wrong, one sentence without a trailing period
-	Help string    // how to fix it, or empty when there's no obvious fix
-	Pos  token.Pos // start of the offending source
-	End  token.Pos // just after the offending source
+	File     string    // the file the positions refer to; empty when unknown
+	Doc      string    // the document the position is in, when the stage knows it
+	Msg      string    // what's wrong, one sentence without a trailing period
+	Help     string    // how to fix it, or empty when there's no obvious fix
+	Code     string    // the lint it comes from, or empty for a compiler error
+	Pos      token.Pos // start of the offending source
+	End      token.Pos // just after the offending source
+	Severity Severity  // an error unless a lint says otherwise
 }
 
 // Error formats e as file:line:col: msg, leaving out the file when it's
@@ -26,6 +46,12 @@ type Error struct {
 // path doesn't already say which document it is, its name follows the
 // position: `policies.sigil:42:5 (payments.production): msg`.
 func (e *Error) Error() string {
+	return e.where() + e.Msg
+}
+
+// where formats the location prefix of a message: `file:line:col (doc): `,
+// or as much of it as is known, or nothing.
+func (e *Error) where() string {
 	var b strings.Builder
 	if e.File != "" {
 		b.WriteString(e.File)
@@ -40,7 +66,6 @@ func (e *Error) Error() string {
 	} else if e.File != "" {
 		b.WriteByte(' ')
 	}
-	b.WriteString(e.Msg)
 	return b.String()
 }
 

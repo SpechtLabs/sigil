@@ -84,9 +84,10 @@ func TestConfigDiscovery(t *testing.T) {
 	}
 	t.Chdir(filepath.Join(dir, "sub"))
 	format := output.Text
-	herr := run(&bytes.Buffer{}, &options{output: &format}, "", filepath.Join("..", "deploy_approval.sigil"), project.Sources{Paths: []string{"."}}, nil, nil)
-	if herr == nil || !strings.Contains(herr.Error(), "let unused is never read [unused-let]") {
-		t.Fatalf("run() = %v, want the unused-let lint as an error", herr)
+	var out bytes.Buffer
+	herr := run(&out, &options{output: &format}, "", filepath.Join("..", "deploy_approval.sigil"), project.Sources{Paths: []string{"."}}, nil, nil)
+	if herr == nil || !strings.Contains(out.String(), "error: let unused is never read [unused-let]") {
+		t.Fatalf("run() = %v with output %q, want the unused-let lint as an error", herr, out.String())
 	}
 }
 

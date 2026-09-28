@@ -1,12 +1,12 @@
 warn duplicate-invocation (team.main)
-team.sigil:8:1 (team.main): deploy.production is invoked twice with the same arguments
+team.sigil:8:1 (team.main): warning: deploy.production is invoked twice with the same arguments [duplicate-invocation]
   |
 8 | production(tiers: ["x"], approvers: ["a"])
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = help: the first is on line 5; every rule it holds already fires once, so remove one, or change its arguments
 
 warn duplicate-invocation (team.main)
-team.sigil:14:3 (team.main): deploy.production is invoked twice with the same arguments
+team.sigil:14:3 (team.main): warning: deploy.production is invoked twice with the same arguments [duplicate-invocation]
    |
 14 |   production(approvers: ["a"], tiers: ["x"])
    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

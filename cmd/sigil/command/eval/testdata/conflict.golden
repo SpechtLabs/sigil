@@ -3,6 +3,7 @@ access.main: the candidates conflict, the host falls back to deny no_rule_matche
 conflict: collect one: 2 candidates at the top rank
   deny     too_old           testdata/access/main.sigil:14:3
   deny     banned            testdata/access/main.sigil:18:3
+  = help: a conflict is a defect in the policy: rank the reasons with precedence, or keep the exclusive outcomes' conditions apart
 
 trace: 3 candidates
   deny     too_old           testdata/access/main.sigil:14:3

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/result"
@@ -57,6 +58,7 @@ type field struct {
 type Failure struct {
 	Kind       string   `json:"kind" yaml:"kind"`
 	Message    string   `json:"message" yaml:"message"`
+	Help       string   `json:"help" yaml:"help"` // what to do about it
 	Asserts    []Assert `json:"asserts,omitempty" yaml:"asserts,omitempty"`
 	Candidates []Entry  `json:"candidates,omitempty" yaml:"candidates,omitempty"`
 }
@@ -97,67 +99,73 @@ func New(k *project.Kind, res *result.Result) *Report {
 	return r
 }
 
-// Text renders the report for a terminal.
-func (r *Report) Text() string {
+// Text renders the report for a human, styled by t:
+//
+//	access.main: allow admin
+//	  ttl = 8h
+//
+//	trace: 2 candidates
+//	* allow    admin             access/main.sigil:6:3
+//	           user.admin
+//	           ttl = 8h
+//	  deny     too_old           access/main.sigil:14:3
+//
+// A failed evaluation leads with why, then the fallback the host acts on.
+func (r *Report) Text(t pretty.Theme) string {
 	var b strings.Builder
 	switch {
 	case r.Error != nil:
-		fmt.Fprintf(&b, "%s: %s, the host falls back to %s\n", r.Policy, r.Error.headline(), r.summary())
+		fmt.Fprintf(&b, "%s: %s, the host falls back to %s\n", t.Accent(r.Policy), t.Fail(r.Error.headline()), r.summary(t))
 	default:
-		fmt.Fprintf(&b, "%s: %s\n", r.Policy, r.summary())
+		fmt.Fprintf(&b, "%s: %s\n", t.Accent(r.Policy), r.summary(t))
 	}
 	if !r.Collect && r.Error == nil {
 		for _, e := range r.Outcome {
-			writePayload(&b, "  ", e)
+			writePayload(&b, t, "  ", e)
 		}
 	}
 	if r.Collect && r.Error == nil {
 		for _, e := range r.Outcome {
-			fmt.Fprintf(&b, "  %-8s %-17s %s\n", e.Decision, e.Reason, e.Position)
-			writePayload(&b, "           ", e)
+			b.WriteString("  " + row(t, e.Decision, e.Reason, e.Position, true) + "\n")
+			writePayload(&b, t, "           ", e)
 		}
 	}
 	if r.Error != nil {
-		b.WriteString("\n" + r.Error.text())
+		b.WriteString("\n" + r.Error.text(t))
 	}
 	b.WriteString("\n")
 	if len(r.Trace) == 0 {
-		b.WriteString("trace: no rule fired\n")
+		b.WriteString(t.Accent("trace:") + " no rule fired\n")
 		return b.String()
 	}
-	fmt.Fprintf(&b, "trace: %d %s\n", len(r.Trace), plural(len(r.Trace), "candidate", "candidates"))
+	fmt.Fprintf(&b, "%s %d %s\n", t.Accent("trace:"), len(r.Trace), plural(len(r.Trace), "candidate", "candidates"))
 	for _, e := range r.Trace {
 		mark := " "
 		if e.Outcome {
-			mark = "*"
+			mark = t.Ok("*")
 		}
-		fmt.Fprintf(&b, "%s %-8s %-17s %s\n", mark, e.Decision, e.Reason, e.location())
-		for i, c := range e.Conditions {
-			if i > 0 {
-				c = "and " + c
-			}
-			b.WriteString("           " + c + "\n")
-		}
-		writePayload(&b, "           ", e)
+		b.WriteString(mark + " " + row(t, e.Decision, e.Reason, e.location(), e.Outcome) + "\n")
+		writeConditions(&b, t, "           ", e.Conditions)
+		writePayload(&b, t, "           ", e)
 	}
 	return b.String()
 }
 
 // summary names the outcome: the decision and reason, or how many
 // decisions a collecting kind returned.
-func (r *Report) summary() string {
+func (r *Report) summary(t pretty.Theme) string {
 	if !r.Collect {
-		s := r.Decision + " " + r.Reason
+		s := t.Bold(r.Decision) + " " + r.Reason
 		if len(r.Outcome) == 1 && r.Outcome[0].Position == "" {
-			s += " (the kind's default)"
+			s += " " + t.Muted("(the kind's default)")
 		}
 		return s
 	}
 	switch n := len(r.Outcome); n {
 	case 0:
-		return "no decisions"
+		return t.Bold("no decisions")
 	default:
-		return fmt.Sprintf("%d %s", n, plural(n, "decision", "decisions"))
+		return t.Bold(fmt.Sprintf("%d %s", n, plural(n, "decision", "decisions")))
 	}
 }
 
@@ -174,25 +182,51 @@ func (f *Failure) headline() string {
 	return "a runtime error stopped the evaluation"
 }
 
-func (f *Failure) text() string {
+// text details the failure, ending with what to do about it.
+func (f *Failure) text(t pretty.Theme) string {
 	var b strings.Builder
 	switch f.Kind {
 	case FailAssertion:
 		for _, a := range f.Asserts {
-			fmt.Fprintf(&b, "assert %q failed at %s\n", a.Reason, a.Position)
+			fmt.Fprintf(&b, "%s %s failed at %s\n", t.Fail("assert"), t.Bold(a.Reason), t.Location(a.Position))
 			if a.Cause != "" {
 				b.WriteString("  " + a.Cause + "\n")
 			}
 		}
 	case FailConflict:
-		b.WriteString("conflict: " + f.Message + "\n")
+		b.WriteString(t.Fail("conflict:") + " " + f.Message + "\n")
 		for _, c := range f.Candidates {
-			fmt.Fprintf(&b, "  %-8s %-17s %s\n", c.Decision, c.Reason, c.location())
+			b.WriteString("  " + row(t, c.Decision, c.Reason, c.location(), false) + "\n")
 		}
 	default:
-		b.WriteString("runtime error: " + f.Message + "\n")
+		b.WriteString(t.Fail("runtime error:") + " " + f.Message + "\n")
+	}
+	if f.Help != "" {
+		b.WriteString("  " + t.Help("= help:") + " " + f.Help + "\n")
 	}
 	return b.String()
+}
+
+// help says what to do about a failure of kind.
+func help(kind string) string {
+	switch kind {
+	case FailAssertion:
+		return "the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong"
+	case FailConflict:
+		return "a conflict is a defect in the policy: rank the reasons with precedence, or keep the exclusive outcomes' conditions apart"
+	}
+	return "fix the expression the runtime error points at, or the input it read"
+}
+
+// row lays out a candidate: the decision and reason in fixed columns,
+// then where it came from. Padding comes before styling, so the
+// columns line up on a terminal too.
+func row(t pretty.Theme, decision, reason, location string, emphasize bool) string {
+	d := fmt.Sprintf("%-8s", decision)
+	if emphasize {
+		d = t.Bold(d)
+	}
+	return d + " " + fmt.Sprintf("%-17s", reason) + " " + t.Location(location)
 }
 
 func (e Entry) location() string {
@@ -203,15 +237,15 @@ func (e Entry) location() string {
 func failure(k *project.Kind, fl *result.Failure) *Failure {
 	switch {
 	case fl.Runtime != nil:
-		return &Failure{Kind: FailRuntime, Message: runtimeText(fl.Runtime)}
+		return &Failure{Kind: FailRuntime, Message: runtimeText(fl.Runtime), Help: help(FailRuntime)}
 	case fl.Conflict != nil:
-		f := &Failure{Kind: FailConflict, Message: fl.Conflict.Msg}
+		f := &Failure{Kind: FailConflict, Message: fl.Conflict.Msg, Help: help(FailConflict)}
 		for _, c := range fl.Conflict.Candidates {
 			f.Candidates = append(f.Candidates, candidate(k, c))
 		}
 		return f
 	}
-	f := &Failure{Kind: FailAssertion}
+	f := &Failure{Kind: FailAssertion, Help: help(FailAssertion)}
 	reasons := make([]string, len(fl.Asserts))
 	for i, a := range fl.Asserts {
 		reasons[i] = strconv.Quote(a.Reason)
@@ -288,11 +322,22 @@ func Plain(v any) any { //nolint:emptyinterface // canonical values are dynamica
 	return v
 }
 
+// writeConditions writes the conditions that held, one per line, joined
+// with `and`.
+func writeConditions(b *strings.Builder, t pretty.Theme, indent string, conds []string) {
+	for i, c := range conds {
+		if i > 0 {
+			c = t.Muted("and") + " " + c
+		}
+		b.WriteString(indent + c + "\n")
+	}
+}
+
 // writePayload writes one line per payload field, in declaration order,
 // each value as a Sigil literal.
-func writePayload(b *strings.Builder, indent string, e Entry) {
+func writePayload(b *strings.Builder, t pretty.Theme, indent string, e Entry) {
 	for _, f := range e.values {
-		b.WriteString(indent + f.name + " = " + constant.Format(f.value) + "\n")
+		b.WriteString(indent + t.Key(f.name+" =") + " " + constant.Format(f.value) + "\n")
 	}
 }
 

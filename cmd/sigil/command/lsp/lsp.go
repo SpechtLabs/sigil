@@ -5,6 +5,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/placeholder"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/usage"
 )
 
 // NewCommand returns the lsp command.
@@ -26,7 +27,7 @@ go-to-definition for let bindings and use targets.
 The server talks to the editor over stdin and stdout.`,
 		Example: `# Start the language server the way an editor would
 sigil lsp --stdio`,
-		Args:              cobra.NoArgs,
+		Args:              usage.None(),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return placeholder.NotImplemented(cmd)

@@ -36,7 +36,7 @@ type Option = command.Option //nolint:optionspattern // an alias of command.Opti
 // Main runs the sigil command line with os.Args and exits: with status 1
 // when the command failed, after printing why.
 func Main(opts ...Option) {
-	os.Exit(command.Execute(context.Background(), command.NewCommand(opts...)))
+	os.Exit(command.Execute(context.Background(), command.NewCommand(opts...), nil))
 }
 
 // WithKind links a kind into the binary. Repeat it for a host with

@@ -1,5 +1,5 @@
 == compile p ==
-3:1 (p): param min_soak: expected duration, found Go type int32
+3:1 (p): error: param min_soak: expected duration, found Go type int32
   |
 3 | param min_soak: duration
   | ^^^^^^^^^^^^^^^^^^^^^^^^

@@ -59,7 +59,7 @@ func TestRun(t *testing.T) {
 			files: map[string]string{"a.sigil": messy, "b.sigil": tidy, "c/d.sigil": messy},
 			paths: []string{"."},
 			mode:  modeCheck,
-			out:   "a.sigil\nc/d.sigil\n",
+			out:   "a.sigil\nc/d.sigil\n✗ 2 of 3 files are not formatted\n",
 			err:   "2 files are not formatted",
 		},
 		{
@@ -67,13 +67,14 @@ func TestRun(t *testing.T) {
 			files: map[string]string{"a.sigil": tidy},
 			paths: []string{"."},
 			mode:  modeCheck,
+			out:   "✓ 1 file is formatted\n",
 		},
 		{
 			name:  "check names stdin",
 			paths: []string{"-"},
 			stdin: messy,
 			mode:  modeCheck,
-			out:   "<stdin>\n",
+			out:   "<stdin>\n✗ 1 of 1 file is not formatted\n",
 			err:   "1 file is not formatted",
 		},
 		{
@@ -81,7 +82,15 @@ func TestRun(t *testing.T) {
 			files: map[string]string{"a.sigil": messy, "b.sigil": tidy},
 			paths: []string{"."},
 			mode:  modeWrite,
+			out:   "✓ reformatted 1 file, 1 left unchanged\n  a.sigil\n",
 			after: map[string]string{"a.sigil": tidy, "b.sigil": tidy},
+		},
+		{
+			name:  "write reports files already formatted",
+			files: map[string]string{"a.sigil": tidy},
+			paths: []string{"."},
+			mode:  modeWrite,
+			out:   "✓ 1 file is already formatted\n",
 		},
 		{
 			name:  "write refuses stdin",
@@ -94,8 +103,14 @@ func TestRun(t *testing.T) {
 			files: map[string]string{"a.sigil": "policy a: K@1\nlet = 1\n", "b.sigil": messy},
 			paths: []string{"."},
 			mode:  modeWrite,
+			out: "a.sigil:2:5: error: expected a name after `let`, found `=`\n" +
+				"  |\n" +
+				"2 | let = 1\n" +
+				"  |     ^\n" +
+				"  = help: a let is written `let name = expression`\n\n" +
+				"✗ 1 file has syntax errors\n",
 			after: map[string]string{"a.sigil": "policy a: K@1\nlet = 1\n", "b.sigil": tidy},
-			err:   "a.sigil:2:5: expected a name after `let`",
+			err:   "1 file has syntax errors",
 		},
 		{
 			name:  "a missing path",

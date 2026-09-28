@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
 	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/format"
 )
@@ -103,7 +104,9 @@ func run(out io.Writer, stdin io.Reader, paths []string, m mode) humane.Error {
 		return humane.New("--write can't write back to stdin", "drop --write to print the result, or name the files to rewrite")
 	}
 
-	var unformatted, broken []string
+	var changed []string
+	var broken diag.ErrorList
+	files := map[string][]byte{}
 	for _, s := range sources {
 		src, name, err := read(s, stdin)
 		if err != nil {
@@ -111,25 +114,61 @@ func run(out io.Writer, stdin io.Reader, paths []string, m mode) humane.Error {
 		}
 		formatted, errs := format.Source(name, src)
 		if errs != nil {
-			broken = append(broken, render(errs, src))
+			files[name] = src
+			broken = append(broken, errs...)
 			continue
 		}
 		if !bytes.Equal(src, formatted) {
-			unformatted = append(unformatted, name)
+			changed = append(changed, name)
 		}
 		if err := emit(out, s, name, formatted, !bytes.Equal(src, formatted), m); err != nil {
 			return err
 		}
 	}
+	return summarize(out, m, len(sources), changed, broken, func(file string) []byte { return files[file] })
+}
 
-	if len(broken) > 0 {
-		return humane.New(strings.Join(broken, "\n"), "fix the syntax errors above; fmt only formats files that parse")
+// summarize prints the syntax errors and, unless fmt printed the
+// formatted sources, one line that sums the run up, and fails when a
+// file has syntax errors or, with --check, isn't formatted.
+func summarize(out io.Writer, m mode, total int, changed []string, broken diag.ErrorList, src diag.Sources) humane.Error {
+	p := pretty.New(out)
+	if err := p.Diagnostics(broken, src); err != nil {
+		return err
 	}
-	if m == modeCheck && len(unformatted) > 0 {
-		return humane.New(fmt.Sprintf("%d %s not formatted", len(unformatted), plural(len(unformatted), "file is", "files are")),
-			"run `sigil fmt --write` on them")
+	brokenFiles := map[string]bool{}
+	for _, e := range broken {
+		brokenFiles[e.File] = true
 	}
-	return nil
+	if n := len(brokenFiles); n > 0 {
+		msg := fmt.Sprintf("%d %s syntax errors", n, plural(n, "file has", "files have"))
+		if err := p.Fail(msg); err != nil {
+			return err
+		}
+		return pretty.Fail(msg, "fix the syntax errors above; fmt only formats files that parse")
+	}
+	n := len(changed)
+	if total == 0 {
+		return p.Warning("no .sigil files found, so nothing was formatted", "name the files, or a directory that holds them")
+	}
+	switch m {
+	case modeCheck:
+		if n > 0 {
+			msg := fmt.Sprintf("%d of %d %s %s not formatted", n, total, plural(total, "file", "files"), plural(n, "is", "are"))
+			if err := p.Fail(msg); err != nil {
+				return err
+			}
+			return pretty.Fail(fmt.Sprintf("%d %s not formatted", n, plural(n, "file is", "files are")), "run `sigil fmt --write` on them")
+		}
+		return p.Ok(fmt.Sprintf("%d %s formatted", total, plural(total, "file is", "files are")))
+	case modeWrite:
+		if n > 0 {
+			return p.Ok(fmt.Sprintf("reformatted %d %s, %d left unchanged", n, plural(n, "file", "files"), total-n), changed...)
+		}
+		return p.Ok(fmt.Sprintf("%d %s already formatted", total, plural(total, "file is", "files are")))
+	default:
+		return nil
+	}
 }
 
 // emit does what the mode says with one formatted source: print it, list
@@ -241,15 +280,6 @@ func rewrite(path string, src []byte) humane.Error {
 		return humane.Wrap(err, path+" couldn't be written", "check the file's permissions")
 	}
 	return nil
-}
-
-// render formats a file's parse errors the way the other commands do.
-func render(errs diag.ErrorList, src []byte) string {
-	parts := make([]string, len(errs))
-	for i, e := range errs {
-		parts[i] = diag.Render(e, src)
-	}
-	return strings.TrimRight(strings.Join(parts, ""), "\n")
 }
 
 func plural(n int, one, many string) string {

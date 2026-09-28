@@ -20,8 +20,10 @@ import (
 
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/internal/bundle"
+	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/eval"
 	"github.com/spechtlabs/sigil/internal/result"
 	"github.com/spechtlabs/sigil/internal/testsuite"
@@ -104,15 +106,22 @@ type SuiteResult struct {
 	Policy string       `json:"policy" yaml:"policy"`
 	Error  string       `json:"error,omitempty" yaml:"error,omitempty"`
 	Cases  []CaseResult `json:"cases" yaml:"cases"`
+	// What's behind Error, for the text report to render with each hint
+	// on its own line: the test file's problems, or the policy's compile
+	// errors with src finding their source lines.
+	problems []*testsuite.Error
+	diags    diag.ErrorList
+	src      diag.Sources
 }
 
 // CaseResult is one test case's run.
 type CaseResult struct {
-	Name     string   `json:"name" yaml:"name"`
-	Error    string   `json:"error,omitempty" yaml:"error,omitempty"`
-	Failures []string `json:"failures,omitempty" yaml:"failures,omitempty"`
-	Line     int      `json:"line" yaml:"line"`
-	Passed   bool     `json:"passed" yaml:"passed"`
+	Name     string           `json:"name" yaml:"name"`
+	Error    string           `json:"error,omitempty" yaml:"error,omitempty"`
+	Failures []string         `json:"failures,omitempty" yaml:"failures,omitempty"`
+	Line     int              `json:"line" yaml:"line"`
+	Passed   bool             `json:"passed" yaml:"passed"`
+	problem  *testsuite.Error // what's behind Error
 }
 
 // osFS reads input files by their paths on disk, relative to the working
@@ -148,17 +157,14 @@ func runTests(ctx context.Context, out io.Writer, o *options, kindFile, run stri
 	}
 	b.Check()
 	if errs := b.Errors(); errs != nil {
-		return humane.New(b.Render(errs), "fix the documents above; test needs a bundle that checks")
+		return pretty.Diagnose(b.Resolve(errs), b.SourceOf, "the bundle doesn't check, so no test ran", "fix the errors above; sigil check reports every problem in a bundle at once")
 	}
 	runner := &testsuite.Runner{Kind: k.Model, Binding: k.Binding, FS: osFS{}}
 	var results []SuiteResult
 	for _, file := range tests {
 		results = append(results, runSuite(ctx, runner, b, file, filter))
 	}
-	if err := write(out, results, *o.output, verbose); err != nil {
-		return err
-	}
-	return summary(results)
+	return write(out, results, *o.output, verbose)
 }
 
 // runSuite runs one test file's cases.
@@ -172,6 +178,9 @@ func runSuite(ctx context.Context, runner *testsuite.Runner, b *bundle.Bundle, f
 	s, err := testsuite.Parse(file, src)
 	if err != nil {
 		res.Error = err.Error()
+		if e, ok := err.(*testsuite.Error); ok {
+			res.problems = []*testsuite.Error{e}
+		}
 		return res
 	}
 	res.Policy = s.Policy
@@ -184,11 +193,13 @@ func runSuite(ctx context.Context, runner *testsuite.Runner, b *bundle.Bundle, f
 			}
 		}
 		res.Error = strings.Join(msgs, "\n")
+		res.problems = errs
 		return res
 	}
 	prog, errs := b.Compile(s.Policy, bundle.Options{Binding: runner.Binding})
 	if errs != nil {
 		res.Error = b.Render(errs)
+		res.diags, res.src = b.Resolve(errs), b.SourceOf
 		return res
 	}
 	evaluate := evaluator(prog)
@@ -197,7 +208,7 @@ func runSuite(ctx context.Context, runner *testsuite.Runner, b *bundle.Bundle, f
 			continue
 		}
 		r := runner.RunCase(ctx, s, c, evaluate)
-		cr := CaseResult{Name: c.Name, Line: c.Line, Passed: r.Passed(), Failures: r.Failures}
+		cr := CaseResult{Name: c.Name, Line: c.Line, Passed: r.Passed(), Failures: r.Failures, problem: r.Err}
 		if r.Err != nil {
 			cr.Error = r.Err.Msg
 			if r.Err.Help != "" {
@@ -279,36 +290,49 @@ func find(paths []string) (sources, tests []string, err humane.Error) {
 	return sources, tests, nil
 }
 
-// summary fails the command when a case failed or a test file couldn't
-// run.
-func summary(results []SuiteResult) humane.Error {
-	var broken, failed, total int
+// tally counts what happened across every test file.
+type tally struct {
+	files, broken, cases, failed int
+}
+
+func count(results []SuiteResult) tally {
+	var n tally
+	n.files = len(results)
 	for _, s := range results {
 		if s.Error != "" {
-			broken++
+			n.broken++
 		}
 		for _, c := range s.Cases {
-			total++
+			n.cases++
 			if !c.Passed {
-				failed++
+				n.failed++
 			}
 		}
 	}
-	var parts []string
-	if failed > 0 {
-		parts = append(parts, fmt.Sprintf("%d of %d test cases failed", failed, total))
-	}
-	if broken > 0 {
-		parts = append(parts, fmt.Sprintf("%d of %d test files couldn't run", broken, len(results)))
-	}
-	if len(parts) == 0 {
-		return nil
-	}
-	return humane.New(strings.Join(parts, ", and "), "each failure above says what the policy decided and what the case expected, or why the file couldn't run")
+	return n
 }
 
-// write prints the results.
+// failure sums up what went wrong, or returns "" when nothing did. With
+// files, it says how many files the cases came from.
+func (n tally) failure(files bool) string {
+	var parts []string
+	if n.failed > 0 {
+		cases := fmt.Sprintf("%d of %d test cases failed", n.failed, n.cases)
+		if files {
+			cases += fmt.Sprintf(" in %d %s", n.files, plural(n.files, "file", "files"))
+		}
+		parts = append(parts, cases)
+	}
+	if n.broken > 0 {
+		parts = append(parts, fmt.Sprintf("%d of %d test files couldn't run", n.broken, n.files))
+	}
+	return strings.Join(parts, ", and ")
+}
+
+// write prints the results and, in text, a line that sums them up, and
+// fails when a case failed or a test file couldn't run.
 func write(out io.Writer, results []SuiteResult, format output.Format, verbose bool) humane.Error {
+	n := count(results)
 	var err error
 	switch format {
 	case output.JSON:
@@ -320,60 +344,105 @@ func write(out io.Writer, results []SuiteResult, format output.Format, verbose b
 		enc.SetIndent(2)
 		err = enc.Encode(results)
 	default:
-		_, err = io.WriteString(out, text(results, verbose))
+		p := pretty.New(out)
+		if werr := p.Print(text(results, p.Theme(), verbose)); werr != nil {
+			return werr
+		}
+		if werr := summarize(p, n); werr != nil {
+			return werr
+		}
 	}
 	if err != nil {
 		return humane.Wrap(err, "the results couldn't be written", "check where the output is going")
 	}
+	if msg := n.failure(false); msg != "" {
+		return pretty.Fail(msg, "each failure above says what the policy decided and what the case expected, or why the file couldn't run")
+	}
 	return nil
 }
 
+// summarize prints the closing line:
+//
+//	✓ 12 cases passed in 3 files
+//	✗ 2 of 12 cases failed in 3 files
+//	✗ 1 of 3 test files couldn't run
+func summarize(p *pretty.Printer, n tally) humane.Error {
+	switch {
+	case n.failed > 0 || n.broken > 0:
+		return p.Fail(n.failure(true))
+	case n.cases == 0:
+		return p.Warning("no test cases ran", "the --run pattern matched no case names")
+	}
+	return p.Ok(fmt.Sprintf("%d %s passed in %d %s", n.cases, plural(n.cases, "case", "cases"), n.files, plural(n.files, "file", "files")))
+}
+
 // text renders the results the way go test does.
-func text(results []SuiteResult, verbose bool) string {
+func text(results []SuiteResult, t pretty.Theme, verbose bool) string {
 	var b strings.Builder
 	for _, s := range results {
-		writeSuite(&b, s, verbose)
+		writeSuite(&b, t, s, verbose)
 	}
 	return b.String()
 }
 
 // writeSuite renders one test file: its failing cases, every case with
 // verbose, and a summary line.
-func writeSuite(b *strings.Builder, s SuiteResult, verbose bool) {
+func writeSuite(b *strings.Builder, t pretty.Theme, s SuiteResult, verbose bool) {
 	if s.Error != "" {
-		fmt.Fprintf(b, "FAIL  %s\n%s\n", s.File, indent(s.Error, "      "))
+		detail := s.Error
+		switch {
+		case s.diags != nil:
+			detail = diag.RenderAll(s.diags, s.src, t.Diagnostics())
+		case s.problems != nil:
+			parts := make([]string, len(s.problems))
+			for i, e := range s.problems {
+				parts[i] = problem(t, e.Error(), e.Help)
+			}
+			detail = strings.Join(parts, "\n")
+		}
+		fmt.Fprintf(b, "%s  %s\n%s\n", t.Fail("FAIL"), s.File, indent(detail, "      "))
 		return
 	}
 	failed := 0
 	for _, c := range s.Cases {
 		if c.Passed {
 			if verbose {
-				fmt.Fprintf(b, "--- PASS: %s:%d: %s\n", s.File, c.Line, c.Name)
+				fmt.Fprintf(b, "%s %s: %s\n", t.Ok("--- PASS:"), t.Location(fmt.Sprintf("%s:%d", s.File, c.Line)), c.Name)
 			}
 			continue
 		}
 		failed++
-		fmt.Fprintf(b, "--- FAIL: %s:%d: %s\n", s.File, c.Line, c.Name)
-		for _, msg := range append([]string{c.Error}, c.Failures...) {
-			if msg != "" {
-				b.WriteString(indent(msg, "      ") + "\n")
-			}
+		fmt.Fprintf(b, "%s %s: %s\n", t.Fail("--- FAIL:"), t.Location(fmt.Sprintf("%s:%d", s.File, c.Line)), t.Bold(c.Name))
+		if c.problem != nil {
+			b.WriteString(indent(problem(t, c.problem.Msg, c.problem.Help), "      ") + "\n")
+		}
+		for _, msg := range c.Failures {
+			b.WriteString(indent(msg, "      ") + "\n")
 		}
 	}
 	if failed > 0 {
-		fmt.Fprintf(b, "FAIL  %s  %d of %d cases failed\n", s.File, failed, len(s.Cases))
+		fmt.Fprintf(b, "%s  %s  %d of %d cases failed\n", t.Fail("FAIL"), s.File, failed, len(s.Cases))
 		return
 	}
-	fmt.Fprintf(b, "ok    %s  %d %s\n", s.File, len(s.Cases), plural(len(s.Cases)))
+	fmt.Fprintf(b, "%s    %s  %d %s\n", t.Ok("ok"), s.File, len(s.Cases), plural(len(s.Cases), "case", "cases"))
+}
+
+// problem renders a message with its hint on the line below, the way a
+// diagnostic does.
+func problem(t pretty.Theme, msg, help string) string {
+	if help == "" {
+		return msg
+	}
+	return msg + "\n  " + t.Help("= help:") + " " + help
 }
 
 func indent(s, prefix string) string {
 	return prefix + strings.ReplaceAll(s, "\n", "\n"+prefix)
 }
 
-func plural(n int) string {
+func plural(n int, one, many string) string {
 	if n == 1 {
-		return "case"
+		return one
 	}
-	return "cases"
+	return many
 }

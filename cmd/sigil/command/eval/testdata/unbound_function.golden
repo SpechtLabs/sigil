@@ -1,6 +1,7 @@
 access.main: a runtime error stopped the evaluation, the host falls back to deny no_rule_matched (the kind's default)
 
 runtime error: testdata/access/main.sigil:21:30: host function owner failed: no implementation in this sigil binary; build a host binary with owner linked in (see sigil's pkg/cli)
+  = help: fix the expression the runtime error points at, or the input it read
 
 trace: no rule fired
 --- error ---

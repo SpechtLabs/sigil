@@ -1,12 +1,12 @@
 warn unused-let (team.lets)
-lets.sigil:9:5 (team.lets): let tier is never read
+lets.sigil:9:5 (team.lets): warning: let tier is never read [unused-let]
   |
 9 | let tier = "critical"
   |     ^^^^
   = help: remove the let, or read it; a private let can't be imported
 
 warn unused-let (team.lets)
-lets.sigil:17:7 (team.lets): let unused_scoped is never read
+lets.sigil:17:7 (team.lets): warning: let unused_scoped is never read [unused-let]
    |
 17 |   let unused_scoped = actor.name
    |       ^^^^^^^^^^^^^

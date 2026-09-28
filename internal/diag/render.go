@@ -7,6 +7,41 @@ import (
 	"unicode/utf8"
 )
 
+// Theme styles the parts of a rendered diagnostic. Each function receives
+// one part and returns it styled; Plain returns every part unchanged. The
+// CLI builds a Theme from its terminal palette, so the diagnostic keeps
+// one layout whether it's colored or piped.
+type Theme struct {
+	Location func(s string) string               // `file:line:col`
+	Doc      func(s string) string               // ` (document)` after the position
+	Severity func(sev Severity) string           // the `error` or `warning` label
+	Message  func(s string) string               // what's wrong
+	Code     func(s string) string               // ` [lint-name]` after the message
+	Gutter   func(s string) string               // the line number and the `|` rail
+	Source   func(s string) string               // the quoted source line
+	Caret    func(s string, sev Severity) string // the carets under the span
+	Help     func(s string) string               // the `= help:` label
+	HelpText func(s string) string               // the fix
+}
+
+// Plain renders every part as it is.
+var Plain = &Theme{
+	Location: identity,
+	Doc:      identity,
+	Severity: Severity.String,
+	Message:  identity,
+	Code:     identity,
+	Gutter:   identity,
+	Source:   identity,
+	Caret:    func(s string, _ Severity) string { return s },
+	Help:     identity,
+	HelpText: identity,
+}
+
+// Sources looks up a file's source for the renderer, or returns nil when
+// the file is unknown, in which case the diagnostic quotes no line.
+type Sources func(file string) []byte
+
 // Render formats e in the layout the documentation uses, quoting the
 // offending line of src with a caret under the span:
 //
@@ -17,33 +52,82 @@ import (
 //	  = help: `let` is only allowed at the top level
 //
 // A span that runs past the end of its first line is underlined to the end
-// of that line. Colors and terminal width are the CLI's concern; this is
-// the plain form that tests and non-terminal output share.
+// of that line. This is the plain form that tests and non-terminal output
+// share; RenderWith styles the same layout for a terminal.
 func Render(e *Error, src []byte) string {
+	return RenderWith(e, src, Plain)
+}
+
+// RenderWith renders e the way Render does, styled by t. A nil theme
+// renders plain.
+func RenderWith(e *Error, src []byte, t *Theme) string {
 	if e == nil {
 		return ""
 	}
+	if t == nil {
+		t = Plain
+	}
 	var b strings.Builder
-	b.WriteString(e.Error())
+	writeHeader(&b, e, t)
 	b.WriteString("\n")
 
 	line, ok := sourceLine(src, e.Pos.Line)
 	if !ok {
 		if e.Help != "" {
-			b.WriteString("  = help: " + e.Help + "\n")
+			b.WriteString("  " + t.Help("= help:") + " " + t.HelpText(e.Help) + "\n")
 		}
 		return b.String()
 	}
 
 	num := strconv.Itoa(e.Pos.Line)
 	pad := strings.Repeat(" ", len(num))
-	b.WriteString(pad + " |\n")
-	b.WriteString(num + " | " + line + "\n")
-	b.WriteString(pad + " | " + underline(line, e) + "\n")
+	b.WriteString(t.Gutter(pad+" |") + "\n")
+	b.WriteString(t.Gutter(num+" |") + " " + t.Source(line) + "\n")
+	lead, carets := underline(line, e)
+	b.WriteString(t.Gutter(pad+" |") + " " + lead + t.Caret(carets, e.Severity) + "\n")
 	if e.Help != "" {
-		b.WriteString(pad + " = help: " + e.Help + "\n")
+		b.WriteString(pad + " " + t.Help("= help:") + " " + t.HelpText(e.Help) + "\n")
 	}
 	return b.String()
+}
+
+// RenderAll renders every diagnostic, one after another with a blank line
+// between them, each quoting the line src finds for its file.
+func RenderAll(errs ErrorList, src Sources, t *Theme) string {
+	parts := make([]string, len(errs))
+	for i, e := range errs {
+		var text []byte
+		if src != nil {
+			text = src(e.File)
+		}
+		parts[i] = strings.TrimRight(RenderWith(e, text, t), "\n")
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// writeHeader writes the first line: where, how serious, and what.
+func writeHeader(b *strings.Builder, e *Error, t *Theme) {
+	if e == nil {
+		return
+	}
+	if e.File != "" || e.Pos.IsValid() {
+		loc := e.File
+		if e.Pos.IsValid() {
+			if loc != "" {
+				loc += ":"
+			}
+			loc += e.Pos.String()
+		}
+		b.WriteString(t.Location(loc))
+		if e.Pos.IsValid() && e.Doc != "" && !PathMatches(e.File, e.Doc) {
+			b.WriteString(t.Doc(" (" + e.Doc + ")"))
+		}
+		b.WriteString(": ")
+	}
+	b.WriteString(t.Severity(e.Severity) + ": " + t.Message(e.Msg))
+	if e.Code != "" {
+		b.WriteString(t.Code(" [" + e.Code + "]"))
+	}
 }
 
 // sourceLine returns line n of src (1-based) without its line ending.
@@ -65,12 +149,12 @@ func sourceLine(src []byte, n int) (string, bool) {
 	return string(bytes.TrimSuffix(rest, []byte("\r"))), true
 }
 
-// underline builds the caret line for e under line: whitespace up to the
-// start column, copying tabs so the carets stay aligned in a terminal, then
-// one caret per character of the span on this line.
-func underline(line string, e *Error) string {
+// underline builds the caret line for e under line: the whitespace up to
+// the start column, copying tabs so the carets stay aligned in a terminal,
+// and one caret per character of the span on this line.
+func underline(line string, e *Error) (lead, carets string) {
 	if e == nil {
-		return ""
+		return "", ""
 	}
 	var b strings.Builder
 	col := 1
@@ -93,6 +177,7 @@ func underline(line string, e *Error) string {
 	if width < 1 {
 		width = 1
 	}
-	b.WriteString(strings.Repeat("^", width))
-	return b.String()
+	return b.String(), strings.Repeat("^", width)
 }
+
+func identity(s string) string { return s }

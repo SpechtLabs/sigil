@@ -1,5 +1,5 @@
 error unused-import (team.main)
-team.sigil:3:1 (team.main): team.lib is imported but never used
+team.sigil:3:1 (team.main): error: team.lib is imported but never used [unused-import]
   |
 3 | use team.lib
   | ^^^^^^^^^^^^

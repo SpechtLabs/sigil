@@ -451,27 +451,36 @@ func sortErrors(errs diag.ErrorList) {
 	})
 }
 
-// Render renders every diagnostic with its source line.
+// Render renders every diagnostic with its source line, in the plain
+// form. The CLI renders Resolve's list itself, styled for a terminal.
 func (b *Bundle) Render(errs diag.ErrorList) string {
-	parts := make([]string, len(errs))
-	for i, e := range errs {
-		if e.Doc == "" {
-			named := *e
-			named.Doc = b.DocumentAt(e.File, e.Pos)
-			e = &named
-		}
-		parts[i] = strings.TrimRight(diag.Render(e, b.sourceOf(e.File)), "\n")
-	}
-	return strings.Join(parts, "\n")
+	return diag.RenderAll(b.Resolve(errs), b.SourceOf, diag.Plain)
 }
 
-// sourceOf returns a file's source, from this bundle or the trusted one.
-func (b *Bundle) sourceOf(file string) []byte {
+// Resolve prepares diagnostics for rendering: it names the document each
+// one is in, when the stage that reported it didn't, and sorts them by
+// file and position. The list is a copy; errs is left alone.
+func (b *Bundle) Resolve(errs diag.ErrorList) diag.ErrorList {
+	out := make(diag.ErrorList, len(errs))
+	for i, e := range errs {
+		named := *e
+		if named.Doc == "" {
+			named.Doc = b.DocumentAt(e.File, e.Pos)
+		}
+		out[i] = &named
+	}
+	sortErrors(out)
+	return out
+}
+
+// SourceOf returns a file's source, from this bundle or the trusted one,
+// or nil for a file neither read.
+func (b *Bundle) SourceOf(file string) []byte {
 	if src, ok := b.Sources[file]; ok {
 		return src
 	}
 	if b.trusted != nil {
-		return b.trusted.sourceOf(file)
+		return b.trusted.SourceOf(file)
 	}
 	return nil
 }

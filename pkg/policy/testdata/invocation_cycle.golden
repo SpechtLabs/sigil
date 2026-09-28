@@ -1,5 +1,5 @@
 == compile a ==
-policies.sigil:19:1 (c): import cycle: a -> b -> c -> a
+policies.sigil:19:1 (c): error: import cycle: a -> b -> c -> a
    |
 19 | use a
    | ^^^^^
