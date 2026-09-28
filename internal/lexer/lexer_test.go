@@ -605,7 +605,7 @@ func TestLexPositions(t *testing.T) {
 func TestNextAfterEOF(t *testing.T) {
 	l := New([]byte("a"))
 	l.Next()
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		got := l.Next()
 		want := token.Token{Kind: token.EOF, Pos: token.Pos{Offset: 1, Line: 1, Column: 2}, End: token.Pos{Offset: 1, Line: 1, Column: 2}}
 		if got != want {

@@ -7,9 +7,9 @@ func TestDecisionSignature(t *testing.T) {
 	tests := []struct {
 		got, want string
 	}{
-		{k.Decision("deny").Signature(), "decision deny(reason: string)"},
-		{k.Decision("review").Signature(), "decision review(reason: string, approvers: list<string>)"},
-		{k.Decision("approve").Signature(), "decision approve(reason: string, bake: duration = 1h)"},
+		{k.Decision("deny").Signature(), "decision deny { not_eligible, soak_too_short, no_rule_matched }"},
+		{k.Decision("review").Signature(), "decision review(approvers: list<string>) { service_owner, everyone }"},
+		{k.Decision("approve").Signature(), "decision approve(bake: duration = 1h) { release_manager, payments_sre, open }"},
 	}
 	for _, tt := range tests {
 		if tt.got != tt.want {

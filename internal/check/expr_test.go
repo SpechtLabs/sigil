@@ -28,12 +28,30 @@ input count: int
 fn split(string, string) -> list<string>
 fn len(list<string>) -> int
 fn now_fn() -> timestamp
-decision deny(reason: string)
-decision review(reason: string, approvers: list<string>)
-decision approve(reason: string, bake: duration = 1h)
+decision deny {
+  no_rule_matched
+  x
+  a
+  b
+  not_eligible
+  soak_too_short
+}
+decision review(approvers: list<string>) {
+  r
+  c
+  x
+  service_owner
+}
+decision approve(bake: duration = 1h) {
+  ok
+  x
+  b
+  release_manager
+  sre_hotfix
+}
 collect one
 precedence deny > review > approve
-default deny("no_rule_matched")
+default deny(no_rule_matched)
 `
 
 func loadKind(t *testing.T) *kind.Kind {

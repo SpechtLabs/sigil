@@ -27,7 +27,10 @@ var identRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 //	fn F / fn F.result            a function's name / result type
 //	fn F.param N                  the Nth parameter's type, from 1
 //	decision D / decision D.field F / decision D.field F.type / decision D.field F.default
+//	decision D.reason R           a reason's name
 //	precedence / precedence.D     the declaration / one name in it
+//	precedence D / precedence D.R the scoped declaration / one reason in it
+//	exclusive N / exclusive N.M   the Nth exclusive set, from 1 / its Mth outcome
 //	collect
 //	default / default.reason / default.arg F
 //
@@ -261,7 +264,7 @@ func (v *validator) decisions() {
 			where := fmt.Sprintf("decision %s, field %q", d.Name, f.Name)
 			switch {
 			case f.Name == "reason":
-				v.errorf(fkey, "every decision takes `reason: string` first; it isn't a payload field", "%s: reason is implied and can't be declared as a payload field", where)
+				v.errorf(fkey, "every constructor names a reason first; declare reasons in the decision's block, not as a field", "%s: reason can't be a payload field", where)
 			case !isName(f.Name):
 				v.errorf(fkey, "a field name is an identifier; keywords are allowed", "%s: invalid field name", where)
 			case fields[f.Name]:
@@ -273,6 +276,69 @@ func (v *validator) decisions() {
 			// couldn't produce the value and has reported why.
 			if f.HasDefault && f.Default != nil && !constant.Conforms(f.Default, f.Type) {
 				v.errorf(fkey+".default", "a default is a constant of the field's type", "%s: default %s is not a %s", where, constant.Format(f.Default), f.Type)
+			}
+		}
+		v.reasons(d, key)
+	}
+}
+
+// reasons checks a decision's reason set and, when the kind ranks them,
+// that the ranking names every reason exactly once.
+func (v *validator) reasons(d *Decision, key string) {
+	if d == nil {
+		return
+	}
+	if len(d.Reasons) == 0 {
+		v.errorf(key, "declare at least one reason in the decision's block, like `decision deny { no_rule_matched }`", "decision %s declares no reasons", d.Name)
+	}
+	seen := map[string]bool{}
+	for _, r := range d.Reasons {
+		rkey := key + ".reason " + r
+		switch {
+		case !isIdent(r):
+			v.errorf(rkey, "a reason is a plain identifier, not a keyword", "decision %s: invalid reason %q", d.Name, r)
+		case seen[r]:
+			v.errorf(rkey, "declare each reason once", "decision %s: reason %q is declared twice", d.Name, r)
+		}
+		seen[r] = true
+	}
+	if len(d.Ranked) == 0 {
+		return
+	}
+	pkey := "precedence " + d.Name
+	ranked := map[string]bool{}
+	for _, r := range d.Ranked {
+		if !seen[r] {
+			v.errorf(pkey+"."+r, "a scoped precedence ranks the decision's declared reasons", "precedence %s: names undeclared reason %q", d.Name, r)
+		}
+		if ranked[r] {
+			v.errorf(pkey+"."+r, "list every reason exactly once", "precedence %s: names %q twice", d.Name, r)
+		}
+		ranked[r] = true
+	}
+	for _, r := range d.Reasons {
+		if !ranked[r] {
+			v.errorf(pkey, "list every reason exactly once, highest first", "precedence %s: doesn't name reason %q", d.Name, r)
+		}
+	}
+}
+
+// exclusive checks every exclusive set: at least two outcomes, each a
+// declared decision or one of its declared reasons.
+func (v *validator) exclusive() {
+	for i, set := range v.kind.Exclusive {
+		key := fmt.Sprintf("exclusive %d", i+1)
+		if len(set) < 2 {
+			v.errorf(key, "an exclusive set names at least two outcomes", "exclusive set %d names fewer than two outcomes", i+1)
+		}
+		for j, o := range set {
+			okey := fmt.Sprintf("%s.%d", key, j+1)
+			d := v.kind.Decision(o.Decision)
+			switch {
+			case d == nil:
+				v.errorf(okey, "exclusive names the kind's decisions, or one of their reasons", "exclusive: undeclared decision %q", o.Decision)
+			case o.Reason != "" && !d.HasReason(o.Reason):
+				v.errorf(okey, d.Name+" declares: "+strings.Join(d.Reasons, ", "), "exclusive: decision %s has no reason %q", d.Name, o.Reason)
 			}
 		}
 	}
@@ -288,15 +354,14 @@ func (v *validator) resolution() {
 		v.errorf("kind", "declare `collect one` with a `precedence`, or `collect all`", "kind %s doesn't declare how many decisions it returns", k.Name)
 	case k.Collect == CollectOne && len(k.Precedence) == 0:
 		v.errorf("collect", "`collect one` returns the highest-ranked decision; rank them with `precedence deny > review > approve`, highest first", "kind %s collects one decision but has no precedence", k.Name)
-	case k.Collect == CollectOne:
-		v.precedence()
 	case len(k.Precedence) > 0:
-		v.errorf("precedence", "`collect all` with `precedence` is reserved; remove `precedence` to return every decision that fired", "kind %s has both precedence and collect all", k.Name)
+		v.precedence()
 	}
+	v.exclusive()
 
 	if k.Default == nil {
 		if k.Collect != CollectAll {
-			v.errorf("kind", "declare `default <decision>(\"<reason>\")` for the case where no rule fires", "kind %s has no default decision", k.Name)
+			v.errorf("kind", "declare `default <decision>(<reason>)` for the case where no rule fires", "kind %s has no default decision", k.Name)
 		}
 		return
 	}
@@ -329,8 +394,8 @@ func (v *validator) defaultCall() {
 		v.errorf("default", "the default constructs one of the kind's decisions", "default names undeclared decision %q", def.Decision)
 		return
 	}
-	if def.Reason == "" {
-		v.errorf("default.reason", "the reason is a stable identifier, like `no_rule_matched`", "default %s has an empty reason", d.Name)
+	if !d.HasReason(def.Reason) {
+		v.errorf("default.reason", d.Name+" declares: "+strings.Join(d.Reasons, ", "), "default: decision %s has no reason %q", d.Name, def.Reason)
 	}
 	for name, val := range def.Args {
 		f := d.Field(name)

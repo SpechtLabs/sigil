@@ -13,5 +13,5 @@ let b = false
 policy p: DeployApproval@1
 
 when true {
-  deny("a")
+  deny(a)
 }

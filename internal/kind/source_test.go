@@ -35,13 +35,24 @@ input environment: string
 
 fn split(string, string) -> list<string>
 
-decision deny(reason: string)
-decision review(reason: string, approvers: list<string>)
-decision approve(reason: string, bake: duration = 1h)
+decision deny {
+  not_eligible
+  soak_too_short
+  no_rule_matched
+}
+decision review(approvers: list<string>) {
+  service_owner
+  everyone
+}
+decision approve(bake: duration = 1h) {
+  release_manager
+  payments_sre
+  open
+}
 
 collect one
 precedence deny > review > approve
-default deny("no_rule_matched")
+default deny(no_rule_matched)
 `
 		if got := deploy().Source(); got != want {
 			t.Errorf("Source() =\n%s\nwant\n%s", got, want)
@@ -59,11 +70,22 @@ type Actor {
 
 input actor: Actor
 
-decision read(reason: string)
-decision write(reason: string)
-decision admin(reason: string, ttl: duration = 8h)
-decision customer_data_writer(reason: string)
-decision development_environment_writer(reason: string)
+decision read {
+  member
+}
+decision write {
+  member
+}
+decision admin(ttl: duration = 8h) {
+  member
+  everyone
+}
+decision customer_data_writer {
+  member
+}
+decision development_environment_writer {
+  member
+}
 
 collect all
 `
@@ -81,11 +103,11 @@ collect all
 			"zzz":    int64(1), // unknown fields come last, sorted
 			"aaa":    int64(2),
 		}}
-		want := `default approve("open", bake: 15m, detail: ["a"], aaa: 2, zzz: 1)`
+		want := `default approve(open, bake: 15m, detail: ["a"], aaa: 2, zzz: 1)`
 		if got := k.Default.Source(k.Decision("approve")); got != want {
 			t.Errorf("Source() = %q, want %q", got, want)
 		}
-		if got := k.Default.Source(nil); got != `default approve("open", aaa: 2, bake: 15m, detail: ["a"], zzz: 1)` {
+		if got := k.Default.Source(nil); got != `default approve(open, aaa: 2, bake: 15m, detail: ["a"], zzz: 1)` {
 			t.Errorf("Source(nil) = %q", got)
 		}
 	})

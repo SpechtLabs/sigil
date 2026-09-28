@@ -1,8 +1,10 @@
 package eval
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/kind"
@@ -26,16 +28,26 @@ type Policy struct {
 	body  []*node
 }
 
-// Outcome is the result of one evaluation. For a `collect one` kind,
-// Winner is the candidate that won or nil when the default applies; for
-// a `collect all` kind every candidate is the outcome and Winner is nil.
-// Failed holds the failing asserts of the phase that stopped the
-// evaluation, by position: input asserts, in which case no rule ran and
-// there are no candidates, or outcome asserts.
+// Outcome is the result of one evaluation. Candidates is every
+// constructor that fired, sorted by rank and then position. Top is what
+// resolution left at the top rank, the outcome the host gets: one
+// candidate for a `collect one` kind, every top-ranked one for `collect
+// all`, and none when nothing fired, when the default applies. Conflict
+// is set when resolution failed, and Failed holds the failing asserts of
+// the phase that stopped the evaluation.
 type Outcome struct {
-	Winner     *Candidate
-	Candidates []*Candidate // every candidate, sorted by rank and then position
+	Conflict   *Conflict
+	Candidates []*Candidate
+	Top        []*Candidate
 	Failed     []Failure
+}
+
+// Conflict is a set of candidates the kind says can't stand together:
+// members of an exclusive set, or several candidates at the top rank of
+// a `collect one` kind.
+type Conflict struct {
+	Msg        string
+	Candidates []*Candidate
 }
 
 // run is the mutable state of one evaluation.
@@ -51,11 +63,16 @@ func (p *Policy) Default() *Candidate { return p.def }
 // Collect reports whether the policy's kind collects every candidate.
 func (p *Policy) Collect() bool { return p.kind.Collect == kind.CollectAll }
 
+// Ranked reports whether the policy's kind ranks decisions with a
+// precedence.
+func (p *Policy) Ranked() bool { return len(p.kind.Precedence) > 0 }
+
 // Eval evaluates the policy against input, a struct value of the kind's
 // input type or a pointer to one, in three phases: input asserts, rules,
-// outcome asserts. A failing phase ends the evaluation with its failures
-// in the outcome. A runtime error in a rule comes back as the error,
-// with no outcome; one in an assert is that assert's failure.
+// outcome asserts. A failing phase, or a conflict, ends the evaluation
+// with the failure in the outcome. A runtime error in a rule comes back
+// as the error, with no outcome; one in an assert is that assert's
+// failure.
 func (p *Policy) Eval(input any) (*Outcome, *diag.Error) {
 	f := NewFrame(input, p.scope)
 	r := &run{}
@@ -74,11 +91,15 @@ func (p *Policy) Eval(input any) (*Outcome, *diag.Error) {
 		if a.rank != b.rank {
 			return a.rank < b.rank
 		}
+		if a.rrank != b.rrank {
+			return a.rrank < b.rrank
+		}
 		return before(a.Pos, b.Pos)
 	})
 	out := &Outcome{Candidates: r.cands}
-	if !p.Collect() && len(r.cands) > 0 {
-		out.Winner = r.cands[0]
+	out.Top, out.Conflict = p.resolve(r.cands)
+	if out.Conflict != nil {
+		return out, nil
 	}
 	f.Outcome = reflect.ValueOf(p.outcomeNames(out))
 
@@ -87,24 +108,95 @@ func (p *Policy) Eval(input any) (*Outcome, *diag.Error) {
 	return out, nil
 }
 
-// outcomeNames is the value of `outcome` for assert conditions: each
-// distinct decision the host gets back, in outcome order, or the
-// default's when nothing fired.
-func (p *Policy) outcomeNames(out *Outcome) []string {
-	names := []string{}
-	switch {
-	case out.Winner != nil:
-		names = append(names, out.Winner.Decision.Name)
-	case len(out.Candidates) > 0:
-		seen := map[string]bool{}
-		for _, c := range out.Candidates {
-			if !seen[c.Decision.Name] {
-				seen[c.Decision.Name] = true
-				names = append(names, c.Decision.Name)
+// resolve turns the sorted candidates into the outcome: fold equal
+// candidates, check the exclusive sets, then take the top rank, which a
+// `collect one` kind needs to be a single candidate.
+func (p *Policy) resolve(cands []*Candidate) ([]*Candidate, *Conflict) {
+	folded := fold(cands)
+	if c := p.exclusive(folded); c != nil {
+		return nil, c
+	}
+	if !p.Ranked() {
+		return folded, nil
+	}
+	var top []*Candidate
+	for _, c := range folded {
+		if c.rank != folded[0].rank || c.rrank != folded[0].rrank {
+			break
+		}
+		top = append(top, c)
+	}
+	if !p.Collect() && len(top) > 1 {
+		return nil, &Conflict{Msg: fmt.Sprintf("collect one: %d candidates at the top rank", len(top)), Candidates: top}
+	}
+	return top, nil
+}
+
+// fold drops every candidate equal to an earlier one in decision, reason
+// and payload: they're one outcome, from several branches.
+func fold(cands []*Candidate) []*Candidate {
+	var out []*Candidate
+next:
+	for _, c := range cands {
+		for _, kept := range out {
+			if kept.Decision == c.Decision && kept.Reason == c.Reason && reflect.DeepEqual(kept.Payload, c.Payload) {
+				continue next
 			}
 		}
-	case p.def != nil:
-		names = append(names, p.def.Decision.Name)
+		out = append(out, c)
+	}
+	return out
+}
+
+// exclusive returns the first exclusive set with candidates from two of
+// its members, as a conflict.
+func (p *Policy) exclusive(cands []*Candidate) *Conflict {
+	for _, set := range p.kind.Exclusive {
+		members := 0
+		var hit []*Candidate
+		for _, o := range set {
+			matched := matching(o, cands)
+			hit = append(hit, matched...)
+			if len(matched) > 0 {
+				members++
+			}
+		}
+		if members >= 2 {
+			names := make([]string, len(set))
+			for i, o := range set {
+				names[i] = o.String()
+			}
+			return &Conflict{Msg: "exclusive " + strings.Join(names, ", ") + ": more than one fired", Candidates: hit}
+		}
+	}
+	return nil
+}
+
+// matching returns the candidates the outcome names.
+func matching(o kind.Outcome, cands []*Candidate) []*Candidate {
+	var out []*Candidate
+	for _, c := range cands {
+		if o.Matches(c.Decision.Name, c.Reason) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// outcomeNames is the value of `outcome` for assert conditions: each
+// distinct outcome the host gets back as `decision.reason`, in outcome
+// order, or the default's when nothing fired.
+func (p *Policy) outcomeNames(out *Outcome) []string {
+	names := []string{}
+	seen := map[string]bool{}
+	for _, c := range out.Top {
+		if !seen[c.Outcome()] {
+			seen[c.Outcome()] = true
+			names = append(names, c.Outcome())
+		}
+	}
+	if len(names) == 0 && p.def != nil {
+		names = append(names, p.def.Outcome())
 	}
 	return names
 }

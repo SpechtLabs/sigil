@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/spechtlabs/sigil/internal/ast"
 	"github.com/spechtlabs/sigil/internal/types"
@@ -627,6 +628,9 @@ func (c *Checker) field(x *ast.SelectorExpr, base types.Type, env *Env) (types.T
 		return types.Invalid, false
 	}
 	operand := ast.Sprint(x.X)
+	if base == types.Decision {
+		return c.outcomeRef(x, env), false
+	}
 	if x.Optional {
 		opt, ok := base.(*types.Optional)
 		if !ok {
@@ -664,6 +668,30 @@ func (c *Checker) field(x *ast.SelectorExpr, base types.Type, env *Env) (types.T
 	}
 	c.errorf(x.Sel, c.unwrapHint(x.X, base), "`%s` is %s, which has no fields", operand, base)
 	return types.Invalid, false
+}
+
+// outcomeRef types `decision.reason`, a decision value naming one reason.
+// The operand has to be the decision's bare name, and the reason one the
+// decision declares.
+func (c *Checker) outcomeRef(x *ast.SelectorExpr, env *Env) types.Type {
+	id, ok := x.X.(*ast.Ident)
+	if !ok || x.Optional {
+		c.errorf(x.Sel, "a reason follows a decision's name directly, like `approve.release_manager`", "`%s` names no reason", ast.Sprint(x))
+		return types.Invalid
+	}
+	d := env.Kind().Decision(id.Name)
+	if d == nil {
+		return types.Invalid
+	}
+	if d.HasReason(x.Sel.Name) {
+		return types.Decision
+	}
+	help := fmt.Sprintf("%s declares: %s", d.Name, strings.Join(d.Reasons, ", "))
+	if closest, found := nearest(x.Sel.Name, d.Reasons); found {
+		help = fmt.Sprintf("did you mean `%s`? %s", closest, help)
+	}
+	c.errorf(x.Sel, help, "decision %s has no reason `%s`", d.Name, x.Sel.Name)
+	return types.Invalid
 }
 
 func (c *Checker) closestField(s *types.Struct, name string) (string, bool) {

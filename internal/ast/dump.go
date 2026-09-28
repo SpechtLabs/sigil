@@ -189,13 +189,31 @@ func (d *dumper) decl(decl Decl) {
 		}
 		d.linef("fn %s(%s) -> %s %s", decl.Name.Name, strings.Join(params, ", "), TypeString(decl.Result), spanOf(decl))
 	case *DecisionDecl:
-		d.linef("decision %s(%s) %s", decl.Name.Name, fieldsString(decl.Fields), spanOf(decl))
+		head := "decision " + decl.Name.Name
+		if len(decl.Fields) > 0 {
+			head += "(" + fieldsString(decl.Fields) + ")"
+		}
+		reasons := make([]string, len(decl.Reasons))
+		for i, r := range decl.Reasons {
+			reasons[i] = r.Name
+		}
+		d.linef("%s { %s } %s", head, strings.Join(reasons, " "), spanOf(decl))
 	case *PrecedenceDecl:
 		names := make([]string, len(decl.Names))
 		for i, n := range decl.Names {
 			names[i] = n.Name
 		}
-		d.linef("precedence %s %s", strings.Join(names, " > "), spanOf(decl))
+		scope := ""
+		if decl.Scope != nil {
+			scope = decl.Scope.Name + ": "
+		}
+		d.linef("precedence %s%s %s", scope, strings.Join(names, " > "), spanOf(decl))
+	case *ExclusiveDecl:
+		outcomes := make([]string, len(decl.Outcomes))
+		for i, o := range decl.Outcomes {
+			outcomes[i] = o.String()
+		}
+		d.linef("exclusive %s %s", strings.Join(outcomes, ", "), spanOf(decl))
 	case *CollectDecl:
 		mode := "one"
 		if decl.All {

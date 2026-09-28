@@ -202,7 +202,7 @@ func (p *parser) parseWhen() *ast.WhenStmt {
 		if p.tok.Kind != token.LBrace {
 			p.bail()
 		}
-		s.Cond = &ast.BadExpr{Span: ast.Span{From: start, To: p.tok.Pos}}
+		s.Cond = &ast.BadExpr{From: start, To: p.tok.Pos}
 	}
 	open := p.tok
 	p.next()

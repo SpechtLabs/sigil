@@ -6,7 +6,7 @@ permalink: /reference/go-api/
 ---
 
 ::: warning Partly implemented
-Defining a kind exists: `NewKind`, `Decision`, `None`, the `With` options and `Schema()`. So do `Compile`, `Params`, `Eval`, `Result`, `Match` and `MatchAll`, and the `*CompileError`, `*RuntimeError` and `*AssertionError` types. Declared reasons (`NewDecision` with reasons, `WithExclusive`, `WithReasonPrecedence` and `*ConflictError`) are proposed and not implemented; today `Decision` is still a string type and reasons are string literals. `Load`, `Require`, `From`, `MapFS`, `LoadKind` and `Resolver` don't exist yet either; they come with composition and the tooling milestones. The rest of this page describes the API as designed, so the language reference has a concrete host to point at; names and signatures may still change before the first release.
+Defining a kind exists: `NewKind`, `Decision`, `None`, the `With` options and `Schema()`. So do `Compile`, `Params`, `Eval`, `Result`, `Match` and `MatchAll`, and the `*CompileError`, `*RuntimeError` and `*AssertionError` types. Declared reasons (`NewDecision` with reasons, `WithExclusive`, `WithReasonPrecedence`, `WithPrecedence` and `*ConflictError`) exist too. `Load`, `Require`, `From`, `MapFS`, `LoadKind` and `Resolver` don't exist yet either; they come with composition and the tooling milestones. The rest of this page describes the API as designed, so the language reference has a concrete host to point at; names and signatures may still change before the first release.
 :::
 
 The API mirrors `regexp`: define a kind once at package level, compile policies once, and evaluate them many times from any goroutine. Everything lives in package `policy`, import path `github.com/spechtlabs/sigil/pkg/policy`.
@@ -53,7 +53,7 @@ var (
 )
 ```
 
-The reasons are plain strings here because `Result.Reason` is one; `sigil gen go` can emit typed constants for hosts that want the compiler to check them. (proposed)
+The reasons are plain strings here because `Result.Reason` is one; `sigil gen go` can emit typed constants for hosts that want the compiler to check them.
 
 `NewKind` ties it together:
 
@@ -72,9 +72,10 @@ var Deploy = policy.NewKind[Input]("DeployApproval",
 | `policy.WithVersion(n)`           | `kind DeployApproval version n`       | Contract version, bumped by every change to the kind                   |
 | `policy.WithAccepts(n)`           | `kind DeployApproval version 3, accepts: n` | Oldest version a policy or module may pin; raise it with a breaking change. Defaults to accepting every version |
 | `policy.WithDecisions(d...)`      | `decision ...`, `collect one` and `precedence ...` | Argument order is precedence, highest first               |
-| `policy.WithCollect(d...)`        | `decision ...` and `collect all`      | Instead of `Decisions`: every fired decision applies. Argument order is declaration order. With `WithPrecedence` as well, every candidate at the top rank (proposed) |
-| `policy.WithReasonPrecedence(d, reasons...)` | `precedence approve: release_manager > payments_sre` | Ranks one decision's reasons, highest first; must list them all (proposed) |
-| `policy.WithExclusive(outcomes...)` | `exclusive grant_a, grant_b`        | Outcomes that can't fire together. An outcome is a decision handle, or `GrantA.Reason("x")` for one reason (proposed) |
+| `policy.WithCollect(d...)`        | `decision ...` and `collect all`      | Instead of `Decisions`: every fired decision applies. Argument order is declaration order |
+| `policy.WithPrecedence(d...)`     | `precedence ...` in a `collect all` kind | Ranks a `WithCollect` kind's decisions, so the outcome is every candidate at the top rank |
+| `policy.WithReasonPrecedence(d, reasons...)` | `precedence approve: release_manager > payments_sre` | Ranks one decision's reasons, highest first; must list them all |
+| `policy.WithExclusive(outcomes...)` | `exclusive grant_a, grant_b`        | Outcomes that can't fire together. An outcome is a decision handle, or `GrantA.Reason("x")` for one reason |
 | `policy.WithDefault(d, reason)`   | `default deny(no_rule_matched)`     | Result when no rule fires; payload fields take their defaults          |
 | `policy.WithFunc(name, fn)`   | `fn split(string, string) -> list<string>` | The DSL signature is derived from the Go function's type |
 | `policy.WithOrdered[T](name)` | `type Version ordered`                | Registers a [host-ordered type](/reference/types/#host-ordered-types). `T` needs `Compare(T) int`, and `MarshalText` or `String` (proposed) |
@@ -215,7 +216,7 @@ if err != nil {
 
 On a runtime error (index out of range, integer overflow, a host function returning an error) `Eval` returns a `*policy.RuntimeError`, which names the policy and the position of the expression that failed, together with a result holding the kind's default decision, or an empty outcome for a collecting kind. A host that fails closed can use `res` directly. A context that's already done returns its error the same way, without evaluating.
 
-A [conflict](/reference/evaluation/#resolution), two candidates that the kind says can't both stand, returns a `*policy.ConflictError` with the same kind of result. It names the candidates on each side, so the error reads like the trace: which rules, at which positions, claimed what. Count conflicts as policy defects, apart from runtime errors and assert failures. (proposed)
+A [conflict](/reference/evaluation/#resolution), two candidates that the kind says can't both stand, returns a `*policy.ConflictError` with the same kind of result. It names the candidates on each side, so the error reads like the trace: which rules, at which positions, claimed what. Count conflicts as policy defects, apart from runtime errors and assert failures.
 
 A failed [assert](/reference/evaluation/#assertions) returns a `*policy.AssertionError` with the same kind of result. It lists every assert that failed in the phase that stopped evaluation, input or outcome, including asserts whose own condition raised a runtime error. Tell it apart from a runtime error with `errors.As`, and count it separately:
 
@@ -288,7 +289,7 @@ if a, ok := Approve.Match(res); ok {
 }
 ```
 
-`Match` returns `false` if the result is a different decision, and, on a `collect all` kind with `precedence`, when the top rank holds more than one entry; a host on such a kind matches with `MatchAll`. (proposed)
+`Match` returns `false` if the result is a different decision, and, on a `collect all` kind with `precedence`, when the top rank holds more than one entry; a host on such a kind matches with `MatchAll`.
 
 A collecting kind can grant a decision more than once, so it matches with `MatchAll`, which returns every entry of that decision with its reason and typed payload:
 

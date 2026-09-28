@@ -22,7 +22,7 @@ import (
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
-var timeType = reflect.TypeOf(time.Time{})
+var timeType = reflect.TypeFor[time.Time]()
 
 // Value is a runtime value: a reflect.Value over the host's data, or over
 // a constant. An absent optional is the invalid Value.

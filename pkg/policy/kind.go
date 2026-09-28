@@ -19,7 +19,7 @@ type Kind[In any] struct {
 // options. It panics with every problem found when the contract can't be
 // exported, so a bad kind fails at init rather than at the first Load.
 func NewKind[In any](name string, opts ...Option) *Kind[In] {
-	o := gokind.Options{Name: name, Input: reflect.TypeOf((*In)(nil)).Elem()}
+	o := gokind.Options{Name: name, Input: reflect.TypeFor[In]()}
 	for _, opt := range opts {
 		opt(&o)
 	}

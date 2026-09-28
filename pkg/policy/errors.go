@@ -29,6 +29,18 @@ type RuntimeError struct {
 	Position Position // the expression that failed
 }
 
+// ConflictError is what Eval returns when resolution can't stand: two
+// members of an exclusive set fired, or a `collect one` kind has several
+// candidates at its top rank. It names the candidates on each side, and
+// the result that comes with it holds the kind's default. A conflict is a
+// defect in the policy rather than in the input; count it apart from
+// assert failures.
+type ConflictError struct {
+	Message    string
+	Policy     string      // the policy being evaluated
+	Candidates []Candidate // the candidates that conflict
+}
+
 // AssertionError is what Eval returns when an assert's condition was
 // false. Every failing assert of the phase that stopped the evaluation,
 // input or outcome, is listed, sorted by position, and the result that
@@ -53,6 +65,15 @@ type AssertFailure struct {
 func (e *CompileError) Error() string { return e.rendered }
 
 func (e *RuntimeError) Error() string { return e.Position.String() + ": " + e.Message }
+
+func (e *ConflictError) Error() string {
+	var b strings.Builder
+	b.WriteString("conflict: " + e.Message)
+	for _, c := range e.Candidates {
+		b.WriteString("\n  " + c.String())
+	}
+	return b.String()
+}
 
 func (e *AssertionError) Error() string {
 	if len(e.Failures) == 1 {

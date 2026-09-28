@@ -20,7 +20,7 @@ func TestValidate(t *testing.T) {
 		{name: "deploy approval is valid", base: deploy},
 		{name: "access grant is valid", base: access},
 		{name: "collecting kind with a default is valid", base: access, mutate: func(k *kind.Kind) {
-			k.Default = &kind.Default{Decision: "read", Reason: "everyone"}
+			k.Default = &kind.Default{Decision: "read", Reason: "member"}
 		}},
 
 		// Header.
@@ -141,11 +141,40 @@ func TestValidate(t *testing.T) {
 			k.Default.Decision = "default"
 		}, want: []string{`invalid decision name "default"`}},
 		{name: "decision declared twice", mutate: func(k *kind.Kind) {
-			k.Decisions = append(k.Decisions, &kind.Decision{Name: "deny"})
+			k.Decisions = append(k.Decisions, &kind.Decision{Name: "deny", Reasons: []string{"x"}})
 		}, want: []string{`decision "deny" is declared twice`}},
 		{name: "reason as a payload field", mutate: func(k *kind.Kind) {
 			k.Decisions[1].Fields = append(k.Decisions[1].Fields, &kind.Field{Name: "reason", Type: types.String})
-		}, want: []string{`decision review, field "reason": reason is implied and can't be declared as a payload field`}},
+		}, want: []string{`decision review, field "reason": reason can't be a payload field`}},
+		{name: "decision without reasons", mutate: func(k *kind.Kind) { k.Decisions[0].Reasons = nil },
+			want: []string{"decision deny declares no reasons", `default: decision deny has no reason "no_rule_matched"`}, help: "declare at least one reason in the decision's block, like `decision deny { no_rule_matched }`"},
+		{name: "reason declared twice", mutate: func(k *kind.Kind) { k.Decisions[0].Reasons = append(k.Decisions[0].Reasons, "not_eligible") },
+			want: []string{`decision deny: reason "not_eligible" is declared twice`}},
+		{name: "reason is a keyword", mutate: func(k *kind.Kind) { k.Decisions[0].Reasons = []string{"when", "no_rule_matched"} },
+			want: []string{`decision deny: invalid reason "when"`}},
+		{name: "ranked reasons", mutate: func(k *kind.Kind) { k.Decisions[2].Ranked = []string{"release_manager", "payments_sre", "open"} }},
+		{name: "ranking names an undeclared reason", mutate: func(k *kind.Kind) {
+			k.Decisions[2].Ranked = []string{"release_manager", "lgtm", "payments_sre", "open"}
+		},
+			want: []string{`precedence approve: names undeclared reason "lgtm"`}},
+		{name: "ranking names a reason twice", mutate: func(k *kind.Kind) {
+			k.Decisions[2].Ranked = []string{"release_manager", "release_manager", "payments_sre", "open"}
+		},
+			want: []string{`precedence approve: names "release_manager" twice`}},
+		{name: "ranking leaves a reason out", mutate: func(k *kind.Kind) { k.Decisions[2].Ranked = []string{"release_manager"} },
+			want: []string{`precedence approve: doesn't name reason "payments_sre"`, `precedence approve: doesn't name reason "open"`}, help: "list every reason exactly once, highest first"},
+		{name: "exclusive decisions", mutate: func(k *kind.Kind) { k.Exclusive = [][]kind.Outcome{{{Decision: "review"}, {Decision: "approve"}}} }},
+		{name: "exclusive reasons", mutate: func(k *kind.Kind) {
+			k.Exclusive = [][]kind.Outcome{{{Decision: "approve", Reason: "release_manager"}, {Decision: "approve", Reason: "payments_sre"}, {Decision: "deny"}}}
+		}},
+		{name: "exclusive with one outcome", mutate: func(k *kind.Kind) { k.Exclusive = [][]kind.Outcome{{{Decision: "review"}}} },
+			want: []string{"exclusive set 1 names fewer than two outcomes"}},
+		{name: "exclusive names an undeclared decision", mutate: func(k *kind.Kind) { k.Exclusive = [][]kind.Outcome{{{Decision: "review"}, {Decision: "escalate"}}} },
+			want: []string{`exclusive: undeclared decision "escalate"`}},
+		{name: "exclusive names an undeclared reason", mutate: func(k *kind.Kind) {
+			k.Exclusive = [][]kind.Outcome{{{Decision: "review"}, {Decision: "approve", Reason: "lgtm"}}}
+		},
+			want: []string{`exclusive: decision approve has no reason "lgtm"`}, help: "approve declares: release_manager, payments_sre, open"},
 		{name: "payload field declared twice", mutate: func(k *kind.Kind) {
 			k.Decisions[1].Fields = append(k.Decisions[1].Fields, &kind.Field{Name: "approvers", Type: strList})
 		}, want: []string{`decision review, field "approvers": declared twice`}},
@@ -169,7 +198,7 @@ func TestValidate(t *testing.T) {
 
 		// Resolution.
 		{name: "both precedence and collect", mutate: func(k *kind.Kind) { k.Collect = kind.CollectAll },
-			want: []string{"kind DeployApproval has both precedence and collect all"}},
+			want: nil},
 		{name: "no collect", mutate: func(k *kind.Kind) { k.Collect = kind.CollectUnset; k.Precedence = nil },
 			want: []string{"kind DeployApproval doesn't declare how many decisions it returns"}, help: "declare `collect one` with a `precedence`, or `collect all`"},
 		{name: "precedence without collect", mutate: func(k *kind.Kind) { k.Collect = kind.CollectUnset },
@@ -186,17 +215,17 @@ func TestValidate(t *testing.T) {
 			want: []string{"kind DeployApproval has no default decision"}},
 		{name: "default names an unknown decision", mutate: func(k *kind.Kind) { k.Default.Decision = "escalate" },
 			want: []string{`default names undeclared decision "escalate"`}},
-		{name: "default with an empty reason", mutate: func(k *kind.Kind) { k.Default.Reason = "" },
-			want: []string{"default deny has an empty reason"}},
+		{name: "default with an undeclared reason", mutate: func(k *kind.Kind) { k.Default.Reason = "nope" },
+			want: []string{`default: decision deny has no reason "nope"`}, help: "deny declares: not_eligible, soak_too_short, no_rule_matched"},
 		{name: "default with an unknown field", mutate: func(k *kind.Kind) {
 			k.Default = &kind.Default{Decision: "approve", Reason: "open", Args: map[string]any{"bak": 15 * time.Minute}}
-		}, want: []string{`default: decision approve has no payload field "bak"`}, help: "approve is declared as: decision approve(reason: string, bake: duration = 1h)"},
+		}, want: []string{`default: decision approve has no payload field "bak"`}, help: "approve is declared as: decision approve(bake: duration = 1h) { release_manager, payments_sre, open }"},
 		{name: "default with a wrong value", mutate: func(k *kind.Kind) {
 			k.Default = &kind.Default{Decision: "approve", Reason: "open", Args: map[string]any{"bake": "15m"}}
 		}, want: []string{`default: field "bake" value "15m" is not a duration`}},
 		{name: "default misses a required field", mutate: func(k *kind.Kind) {
 			k.Default = &kind.Default{Decision: "review", Reason: "everyone"}
-		}, want: []string{`default: field "approvers" is required and has no value`}, help: "review is declared as: decision review(reason: string, approvers: list<string>)"},
+		}, want: []string{`default: field "approvers" is required and has no value`}, help: "review is declared as: decision review(approvers: list<string>) { service_owner, everyone }"},
 		{name: "default with every field is fine", mutate: func(k *kind.Kind) {
 			k.Default = &kind.Default{Decision: "review", Reason: "everyone", Args: map[string]any{"approvers": []any{"leads"}}}
 		}},

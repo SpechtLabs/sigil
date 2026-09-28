@@ -3,7 +3,7 @@
 policy p: DeployApproval@1
 
 when service.teir == "x" {
-  deny("a")
+  deny(a)
 }
 
 ---
@@ -11,7 +11,7 @@ when service.teir == "x" {
 policy q: DeployApproval@1
 
 when service.tier == {
-  deny("a")
+  deny(a)
 }
 
 ---
@@ -19,5 +19,5 @@ when service.tier == {
 policy r: DeployApproval@1
 
 when 1 {
-  deny("a")
+  deny(a)
 }

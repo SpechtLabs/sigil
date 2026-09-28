@@ -51,8 +51,8 @@ A conflict makes `Eval` return a `*ConflictError` naming the candidates on each 
 
 The design goal behind these steps is that no candidate is ever merged, changed or invented. What the host gets is always something a rule produced, with its reason and position intact, and the only questions the language answers are which candidates count and whether they can stand together. Anything else, such as taking the shortest `bake` of two approvals, is the host's decision over `MatchAll`, in code that can be tested.
 
-::: tip Proposed
-Fold, `exclusive`, reason ranking and the count rule are proposed here and replace the earlier positional tie-break. They settle [Ties within one decision](/project/open-questions/#ties-within-one-decision).
+::: tip Implemented
+Fold, `exclusive`, reason ranking and the count rule replace the earlier positional tie-break, and the evaluator implements them. They settle [Ties within one decision](/project/open-questions/#ties-within-one-decision).
 :::
 
 ## Collecting kinds
@@ -83,8 +83,8 @@ when "platform" in actor.groups {
 
 For a member of both groups, the outcome is `read(engineering_member)`, `write(platform_member)` and `development_environment_writer(platform_member)`, in that order. The body under `"platform"` holds two constructors, which a collecting kind makes natural.
 
-::: tip Implemented as proposed
-Collecting kinds without `precedence`, their ordering and the empty outcome are implemented. `collect all` with `precedence` is proposed with the resolution rule above.
+::: tip Implemented
+Collecting kinds, with and without `precedence`, their ordering and the empty outcome are implemented as described.
 :::
 
 ## Assertions

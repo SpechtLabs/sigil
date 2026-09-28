@@ -6,22 +6,22 @@ import (
 	"strings"
 )
 
-// Result is what one evaluation produced. For a kind with precedence,
+// Result is what one evaluation produced. For a `collect one` kind,
 // Decision, Reason, Policy and Payload describe the winner, or the
 // kind's default when nothing fired, and Outcome holds that one entry.
-// For a collecting kind the single fields are empty and Outcome holds
-// every candidate that fired, sorted by the kind's declaration order and
-// then by position; it may be empty. Trace lists every candidate either
-// way.
+// For a `collect all` kind the single fields are empty and Outcome holds
+// every candidate at the top rank, or every candidate without
+// `precedence`, sorted by the kind's declaration order and then by
+// position; it may be empty. Trace lists every candidate either way.
 type Result struct {
 	Decision string         // the winning decision's name
-	Reason   string         // its reason literal
+	Reason   string         // its reason
 	Policy   string         // the policy the host evaluated
 	Payload  map[string]any //nolint:emptyinterface // the untyped payload, by field name; Decision[T].Match gives the typed one
-	entry    *Entry         // the winner, for Match; nil for a collecting kind
 	Outcome  []Entry        // the entries the host acts on
 	Trace    Trace          // every candidate, with the conditions that held for the winning decision
 	collect  bool           // whether the kind collects
+	ranked   bool           // whether the kind has a precedence
 }
 
 // Entry is one decision in an outcome.

@@ -3,6 +3,7 @@ package eval
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/spechtlabs/sigil/internal/ast"
@@ -25,9 +26,9 @@ type policyCompiler struct {
 // text of conditions in the trace.
 func CompilePolicy(doc *ast.PolicyDoc, file string, src []byte, info *check.Info, k *kind.Kind, b *gokind.Binding, params map[string]Value) (*Policy, *diag.Error) {
 	pc := &policyCompiler{
-		compiler: compiler{info: info, scope: NewScope(b)},
-		policy:   &Policy{kind: k, Name: doc.Name.String(), File: file, ranks: map[string]int{}},
-		src:      src,
+		info: info, scope: NewScope(b),
+		policy: &Policy{kind: k, Name: doc.Name.String(), File: file, ranks: map[string]int{}},
+		src:    src,
 	}
 	pc.policy.scope = pc.scope
 	err := catch(func() {
@@ -87,10 +88,12 @@ func (pc *policyCompiler) lets(lets []*ast.LetStmt) {
 }
 
 // ranks assigns each decision its sort rank: its position in the
-// precedence, or its declaration order for a collecting kind.
+// precedence when the kind has one, and its declaration order otherwise,
+// which only orders the outcome, since without a precedence every
+// candidate is at the top.
 func (pc *policyCompiler) ranks() {
 	order := pc.policy.kind.Precedence
-	if pc.policy.Collect() {
+	if len(order) == 0 {
 		order = make([]string, len(pc.policy.kind.Decisions))
 		for i, d := range pc.policy.kind.Decisions {
 			order[i] = d.Name
@@ -109,7 +112,7 @@ func (pc *policyCompiler) defaultCandidate() *Candidate {
 		return nil
 	}
 	d := pc.policy.kind.Decision(def.Decision)
-	r := &Rule{Decision: d, Reason: def.Reason, rank: pc.policy.ranks[d.Name]}
+	r := &Rule{Decision: d, Reason: def.Reason, rank: pc.policy.ranks[d.Name], rrank: d.ReasonRank(def.Reason)}
 	pc.payloadType(r)
 	for _, f := range d.Fields {
 		v, ok := def.Args[f.Name]
@@ -163,7 +166,7 @@ func (pc *policyCompiler) nodes(ss []ast.Stmt, conds []*Cond) []*node {
 func (pc *policyCompiler) when(s *ast.WhenStmt, conds []*Cond) *block {
 	c := &Cond{Text: pc.text(s.Cond), Pos: s.Cond.Pos(), End: s.Cond.End()}
 	b := &block{cond: pc.expr(s.Cond), text: c, id: pc.scope.Cond()}
-	b.body = pc.nodes(s.Body, append(conds[:len(conds):len(conds)], c))
+	b.body = pc.nodes(s.Body, append(slices.Clip(conds), c))
 	for _, n := range b.body {
 		switch {
 		case n.rule != nil:
@@ -206,13 +209,13 @@ func (pc *policyCompiler) constructor(s *ast.CallStmt, conds []*Cond) *Rule {
 	if d == nil {
 		throwf(s, "constructor `%s` wasn't checked; compile only checked policies", s.Name.Name)
 	}
-	reason, ok := s.Positional.(*ast.StringLit)
+	reason, ok := s.Positional.(*ast.Ident)
 	if !ok {
-		throwf(s, "constructor `%s` has no literal reason", s.Name.Name)
+		throwf(s, "constructor `%s` has no reason name", s.Name.Name)
 	}
 	r := &Rule{
-		Decision: d, Reason: reason.Value, Policy: pc.policy.Name, File: pc.policy.File,
-		Conds: conds, Pos: s.Pos(), End: s.End(), rank: pc.policy.ranks[d.Name],
+		Decision: d, Reason: reason.Name, Policy: pc.policy.Name, File: pc.policy.File,
+		Conds: conds, Pos: s.Pos(), End: s.End(), rank: pc.policy.ranks[d.Name], rrank: d.ReasonRank(reason.Name),
 	}
 	pc.payloadType(r)
 	given := map[string]Expr{}

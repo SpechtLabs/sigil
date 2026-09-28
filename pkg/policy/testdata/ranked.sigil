@@ -1,0 +1,15 @@
+// Two approvals with different reasons: the kind's ranking of approve's
+// reasons decides, wherever the rules sit in the file.
+policy p: DeployApproval@1
+
+when "payments-sre" in actor.teams {
+  approve(payments_sre, bake: 15m)
+}
+
+when "release_manager" in actor.roles {
+  approve(release_manager)
+}
+
+when "release_manager" in actor.roles and service.tier == "critical" {
+  approve(release_manager)
+}

@@ -11,8 +11,12 @@ type Unclosed {
 input release: Release
 
 decision empty()
-decision nested(reason: string, ticket: ??string)
-decision missing(reason: string, tags: list<string)
+decision nested(ticket: ??string) {
+  x
+}
+decision missing(tags: list<string) {
+  x
+}
 
 collect
 default "no_rule_matched"

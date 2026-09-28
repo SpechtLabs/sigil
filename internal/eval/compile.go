@@ -287,12 +287,26 @@ func contains(elem types.Type, list, v Value) bool {
 	if !list.IsValid() {
 		return false
 	}
+	same := func(a, b Value) bool { return equal(elem, a, b) }
+	if elem == types.Decision {
+		same = decisionMatch
+	}
 	for i := 0; i < list.Len(); i++ {
-		if equal(elem, list.Index(i), v) {
+		if same(list.Index(i), v) {
 			return true
 		}
 	}
 	return false
+}
+
+// decisionMatch reports whether two decision values name the same
+// outcome, where a bare decision matches any of its reasons. `==` stays
+// exact; this is what `in` and the list operators use.
+func decisionMatch(a, b Value) bool {
+	x, y := norm(a).String(), norm(b).String()
+	dx, rx, _ := strings.Cut(x, ".")
+	dy, ry, _ := strings.Cut(y, ".")
+	return dx == dy && (rx == "" || ry == "" || rx == ry)
 }
 
 // listOp compiles `all in`, `any in`, `one in` and `exclusive in`. The
@@ -464,8 +478,15 @@ func (c *compiler) arith(x *ast.BinaryExpr) Expr {
 	}
 }
 
-// selector compiles `x.name` or `x?.name`, the end of a chain.
-func (c *compiler) selector(x *ast.SelectorExpr) Expr { return c.chain(x) }
+// selector compiles `x.name` or `x?.name`, the end of a chain, or a
+// decision value with its reason, `approve.release_manager`, which is
+// its own string.
+func (c *compiler) selector(x *ast.SelectorExpr) Expr {
+	if id, ok := x.X.(*ast.Ident); ok && c.typeOf(x) == types.Decision {
+		return constExpr(id.Name + "." + x.Sel.Name)
+	}
+	return c.chain(x)
+}
 
 // index compiles `x[i]`, the end of a chain.
 func (c *compiler) index(x *ast.IndexExpr) Expr { return c.chain(x) }

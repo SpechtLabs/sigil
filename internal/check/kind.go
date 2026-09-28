@@ -97,6 +97,8 @@ func (c *Checker) Kind(doc *ast.KindDoc) *kind.Kind {
 		switch d := d.(type) {
 		case *ast.PrecedenceDecl:
 			l.precedence(d)
+		case *ast.ExclusiveDecl:
+			l.exclusive(d)
 		case *ast.CollectDecl:
 			l.collect(d)
 		case *ast.DefaultDecl:

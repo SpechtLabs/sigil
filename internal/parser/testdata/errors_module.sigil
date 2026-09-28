@@ -7,7 +7,7 @@ use deploy.common
 param min_soak: duration = 24h
 
 when owns_service {
-  deny("no_rules_in_modules")
+  deny(no_rules_in_modules)
 }
 
 assert("no_asserts_either", owns_service)

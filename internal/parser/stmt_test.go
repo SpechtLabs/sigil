@@ -101,14 +101,17 @@ func TestParseFileStatements(t *testing.T) {
 		{name: "fn params", src: "kind K version 1\nfn split(string, string) -> list<string>", want: "kind K version 1\n  fn split(string, string) -> list<string>"},
 		{name: "fn composite params", src: "kind K version 1\nfn f(list<string>, map<string, int>, ?Release) -> int", want: "kind K version 1\n  fn f(list<string>, map<string, int>, ?Release) -> int"},
 		{name: "fn trailing comma", src: "kind K version 1\nfn f(int,) -> int", want: "kind K version 1\n  fn f(int) -> int"},
-		{name: "decision reason only", src: "kind K version 1\ndecision deny(reason: string)", want: "kind K version 1\n  decision deny(reason: string)"},
-		{name: "decision defaults", src: "kind K version 1\ndecision approve(reason: string, bake: duration = 1h, detail: string = \"\",)",
-			want: "kind K version 1\n  decision approve(reason: string, bake: duration = 1h, detail: string = \"\")"},
+		{name: "decision reasons only", src: "kind K version 1\ndecision deny {\n  not_eligible\n  soak_too_short\n}", want: "kind K version 1\n  decision deny { not_eligible soak_too_short }"},
+		{name: "decision defaults", src: "kind K version 1\ndecision approve(bake: duration = 1h, detail: string = \"\",) { ok }",
+			want: "kind K version 1\n  decision approve(bake: duration = 1h, detail: string = \"\") { ok }"},
+		{name: "precedence scoped", src: "kind K version 1\nprecedence approve: release_manager > payments_sre", want: "kind K version 1\n  precedence approve: release_manager > payments_sre"},
+		{name: "exclusive decisions", src: "kind K version 1\nexclusive grant_a, grant_b", want: "kind K version 1\n  exclusive grant_a, grant_b"},
+		{name: "exclusive reasons", src: "kind K version 1\nexclusive approve.release_manager, approve.lgtm, deny", want: "kind K version 1\n  exclusive approve.release_manager, approve.lgtm, deny"},
 		{name: "precedence one", src: "kind K version 1\nprecedence allow", want: "kind K version 1\n  precedence allow"},
 		{name: "precedence chain", src: "kind K version 1\nprecedence deny > review > approve", want: "kind K version 1\n  precedence deny > review > approve"},
 		{name: "collect all", src: "kind K version 1\ncollect all", want: "kind K version 1\n  collect all"},
 		{name: "collect one", src: "kind K version 1\ncollect one\nprecedence a > b", want: "kind K version 1\n  collect one\n  precedence a > b"},
-		{name: "default", src: "kind K version 1\ndefault deny(\"none\", detail: \"\")", want: "kind K version 1\n  default deny(\"none\", detail: \"\")"},
+		{name: "default", src: "kind K version 1\ndefault deny(none, detail: \"\")", want: "kind K version 1\n  default deny(none, detail: \"\")"},
 	}
 
 	for _, tt := range tests {
@@ -128,8 +131,8 @@ func TestParseFileStatements(t *testing.T) {
 func stripSpans(dump string) string {
 	lines := strings.Split(strings.TrimSuffix(dump, "\n"), "\n")
 	for i, l := range lines {
-		if j := strings.LastIndex(l, " ["); j >= 0 && strings.HasSuffix(l, "]") {
-			lines[i] = l[:j]
+		if before, _, ok := strings.CutLast(l, " ["); ok && strings.HasSuffix(l, "]") {
+			lines[i] = before
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -278,18 +281,24 @@ func TestParseFileErrors(t *testing.T) {
 		{name: "fn param not a type", src: "kind K version 1\nfn f(1) -> int", errs: []string{"2:6: expected a type, found `1`"}},
 		{name: "fn without arrow", src: "kind K version 1\nfn f() int", errs: []string{"2:8: expected `->`, found `int`"}},
 		{name: "fn without result", src: "kind K version 1\nfn f() ->", errs: []string{"2:10: expected a type, found end of file"}},
-		{name: "decision without fields", src: "kind K version 1\ndecision d()", errs: []string{"2:12: expected a payload field like `reason: string`, found `)`"}},
-		{name: "decision field without type", src: "kind K version 1\ndecision d(reason)", errs: []string{"2:18: expected `:`, found `)`"}, help: "a field is written `name: type` or `name: type = default`"},
-		{name: "decision unclosed", src: "kind K version 1\ndecision d(reason: string", errs: []string{"2:26: expected `)`, found end of file"}, help: "to close the `(` at 2:11"},
-		{name: "precedence without names", src: "kind K version 1\nprecedence", errs: []string{"2:11: expected a decision name after `precedence`, found end of file"}, help: "precedence is written `precedence deny > review > approve`, highest first"},
-		{name: "precedence trailing arrow", src: "kind K version 1\nprecedence a >", errs: []string{"2:15: expected a decision name after `>`, found end of file"}},
-		{name: "precedence wrong operator", src: "kind K version 1\nprecedence a < b", errs: []string{"2:14: expected a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `collect` or `default`), found `<`"}},
+		{name: "decision without a block", src: "kind K version 1\ndecision d()", errs: []string{"2:13: expected `{`, found end of file"}, help: "a decision is written `decision name(field: type) { reason ... }`, with the payload fields optional"},
+		{name: "decision with an empty block", src: "kind K version 1\ndecision d { }", errs: []string{"2:12: decision d declares no reasons"}, help: "every decision needs at least one reason in its block"},
+		{name: "decision with the old reason field", src: "kind K version 1\ndecision d(reason: string) { x }", errs: []string{"2:12: the reason isn't a payload field"}, help: "reasons are declared in a block after the fields: `decision deny { not_eligible soak_too_short }`"},
+		{name: "decision field without type", src: "kind K version 1\ndecision d(bake)", errs: []string{"2:16: expected `:`, found `)`"}, help: "a field is written `name: type` or `name: type = default`"},
+		{name: "decision unclosed", src: "kind K version 1\ndecision d(bake: duration", errs: []string{"2:26: expected `)`, found end of file"}, help: "to close the `(` at 2:11"},
+		{name: "decision block unclosed", src: "kind K version 1\ndecision d { x\ncollect all", errs: []string{"3:1: expected `}`, found `collect`"}, help: "to close the `{` at 2:12"},
+		{name: "precedence without names", src: "kind K version 1\nprecedence", errs: []string{"2:11: expected a decision name after `precedence`, found end of file"}, help: "precedence is written `precedence deny > review > approve`, highest first, or `precedence approve: a > b` for one decision's reasons"},
+		{name: "precedence trailing arrow", src: "kind K version 1\nprecedence a >", errs: []string{"2:15: expected a name after `>`, found end of file"}},
+		{name: "precedence scoped without reasons", src: "kind K version 1\nprecedence a:", errs: []string{"2:14: expected a reason name after `:`, found end of file"}},
+		{name: "precedence wrong operator", src: "kind K version 1\nprecedence a < b", errs: []string{"2:14: expected a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect` or `default`), found `<`"}},
+		{name: "exclusive with one outcome", src: "kind K version 1\nexclusive a", errs: []string{"2:1: exclusive needs at least two outcomes"}},
+		{name: "exclusive with a dangling dot", src: "kind K version 1\nexclusive a., b", errs: []string{"2:13: expected a reason name after `.`, found `,`"}},
 		{name: "collect without mode", src: "kind K version 1\ncollect", errs: []string{"2:8: expected `one` or `all`, found end of file"},
 			help: "`collect one` returns the highest-ranked decision, `collect all` every decision that fired"},
 		{name: "collect any", src: "kind K version 1\ncollect any", errs: []string{"2:9: expected `one` or `all`, found `any`"}},
-		{name: "default without constructor", src: "kind K version 1\ndefault", errs: []string{"2:8: expected a decision constructor, found end of file"}, help: "the default is written `default deny(\"no_rule_matched\")`"},
+		{name: "default without constructor", src: "kind K version 1\ndefault", errs: []string{"2:8: expected a decision constructor, found end of file"}, help: "the default is written `default deny(no_rule_matched)`"},
 		{name: "default bare name", src: "kind K version 1\ndefault deny", errs: []string{"2:9: expected a decision constructor, found `deny`"}},
-		{name: "policy statement in kind", src: "kind K version 1\nwhen x {}", errs: []string{"2:1: expected a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `collect` or `default`), found `when`"}},
+		{name: "policy statement in kind", src: "kind K version 1\nwhen x {}", errs: []string{"2:1: expected a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect` or `default`), found `when`"}},
 		{name: "broken declaration keeps the rest", src: "kind K version 1\ninput x\ninput y: int", errs: []string{"3:1: expected `:`, found `input`"}, want: "kind K version 1\n  input y: int"},
 
 		// Document boundaries.

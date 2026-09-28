@@ -3,15 +3,17 @@ name: CI
 on:
   # Skip pull requests that only touch documentation; the docs workflow covers
   # those. The filter excludes rather than lists, so a new source directory or
-  # config file runs CI by default. Nothing under docs/ is YAML, so yamllint
-  # loses nothing. No check is required by the rulesets, which is what makes a
-  # workflow-level filter safe: a skipped required check would block the merge.
+  # config file runs CI by default. Nothing under docs/ is YAML, and the docs
+  # workflow yamllints roadmap.yml, so yamllint loses nothing. No check is
+  # required by the rulesets, which is what makes a workflow-level filter safe:
+  # a skipped required check would block the merge.
   pull_request:
     paths:
       - "**"
       - "!docs/**"
       - "!**.md"
       - "!LICENSE"
+      - "!roadmap.yml"
   workflow_dispatch:
   # Callable so the release pipeline gates on the exact same checks rather than
   # a second copy of them. There is deliberately no `push` trigger: release.yaml

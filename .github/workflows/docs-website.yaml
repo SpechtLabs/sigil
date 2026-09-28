@@ -37,11 +37,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Runs the markdownlint-cli2 pinned in .mise.toml, so local and CI agree.
+      # Runs the markdownlint-cli2 and yamllint pinned in .mise.toml, so local
+      # and CI agree.
       - name: Set up mise
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          install_args: markdownlint-cli2
+          install_args: markdownlint-cli2 yamllint
 
       - name: Lint docs
         run: mise run docs-lint

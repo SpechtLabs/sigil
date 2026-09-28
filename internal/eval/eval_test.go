@@ -84,7 +84,7 @@ var (
 	}
 )
 
-func typeOf[T any]() reflect.Type { return reflect.TypeOf((*T)(nil)).Elem() }
+func typeOf[T any]() reflect.Type { return reflect.TypeFor[T]() }
 
 func fail(s string) (string, error) { return "", errors.New("boom: " + s) }
 
@@ -95,8 +95,8 @@ func setup(t *testing.T, src string, assert bool) (eval.Expr, *eval.Frame) {
 	t.Helper()
 	k, b, errs := gokind.Build(gokind.Options{
 		Name: "Test", Version: 1, Input: typeOf[Input](),
-		Decisions: []gokind.Decision{{Name: "deny", Payload: typeOf[None]()}, {Name: "approve", Payload: typeOf[None]()}},
-		Default:   &gokind.Default{Decision: "deny", Reason: "x"},
+		Decisions: []gokind.Decision{{Name: "deny", Payload: typeOf[None](), Reasons: []string{"b", "a", "d", "not_eligible", "soak_too_short"}}, {Name: "approve", Payload: typeOf[None](), Reasons: []string{"a", "release_manager", "payments_sre"}}},
+		Default:   &gokind.Default{Decision: "deny", Reason: "a"},
 		Funcs: []gokind.Func{
 			{Name: "split", Fn: strings.Split},
 			{Name: "len", Fn: func(xs []string) int { return len(xs) }},

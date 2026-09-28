@@ -18,9 +18,9 @@ import (
 )
 
 var (
-	durationType = reflect.TypeOf(time.Duration(0))
-	timeType     = reflect.TypeOf(time.Time{})
-	errorType    = reflect.TypeOf((*error)(nil)).Elem()
+	durationType = reflect.TypeFor[time.Duration]()
+	timeType     = reflect.TypeFor[time.Time]()
+	errorType    = reflect.TypeFor[error]()
 )
 
 // Build reflects over o and returns the kind with its binding, or the
@@ -52,6 +52,24 @@ func Build(o Options) (*kind.Kind, *Binding, diag.ErrorList) {
 			b.kind.Precedence = append(b.kind.Precedence, d.Name)
 		}
 	}
+	switch {
+	case len(o.Precedence) > 0 && !o.Collect:
+		b.errorf("WithDecisions already ranks the decisions in argument order; WithPrecedence is for a WithCollect kind", "kind %s declares precedence twice", o.Name)
+	case len(o.Precedence) > 0:
+		b.kind.Precedence = append([]string{}, o.Precedence...)
+	}
+	for _, r := range o.Rankings {
+		d := b.kind.Decision(r.Decision)
+		switch {
+		case d == nil:
+			b.errorf("WithReasonPrecedence ranks the reasons of a declared decision", "precedence %s: undeclared decision", r.Decision)
+		case d.Ranked != nil:
+			b.errorf("rank a decision's reasons once", "precedence %s is declared twice", r.Decision)
+		default:
+			d.Ranked = append([]string{}, r.Reasons...)
+		}
+	}
+	b.kind.Exclusive = o.Exclusive
 	if o.Default != nil {
 		b.kind.Default = &kind.Default{Decision: o.Default.Decision, Reason: o.Default.Reason, Args: map[string]any{}}
 	}

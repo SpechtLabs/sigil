@@ -1,0 +1,16 @@
+== compile p ==
+5:8: decision deny has no reason `soak_to_short`
+  |
+5 |   deny(soak_to_short)
+  |        ^^^^^^^^^^^^^
+  = help: did you mean `soak_too_short`? deny declares: a, no_rule_matched, never, b, not_eligible, soak_too_short, x
+9:11: decision reason must be a bare name
+  |
+9 |   approve("release_manager")
+  |           ^^^^^^^^^^^^^^^^^
+  = help: reasons are declared names, not strings; write `approve(release_manager)`
+12:22: decision approve has no reason `lgtm`
+   |
+12 | assert("rm", approve.lgtm not in outcome)
+   |                      ^^^^
+   = help: approve declares: owned, a, release_manager, payments_sre

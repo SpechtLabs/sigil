@@ -10,6 +10,7 @@ import (
 	"github.com/spechtlabs/sigil/internal/check"
 	"github.com/spechtlabs/sigil/internal/eval"
 	"github.com/spechtlabs/sigil/internal/gokind"
+	"github.com/spechtlabs/sigil/internal/kind"
 	"github.com/spechtlabs/sigil/internal/parser"
 )
 
@@ -38,40 +39,44 @@ let owns_service = actor.teams any in service.owners
 let cleared = split(service.labels["regions"], ",") all in actor.regions
 let eligible = "deployer" in actor.roles and environment == "production"
 when not eligible {
-  deny("not_eligible")
+  deny(not_eligible)
 }
 when release.soak < min_soak and not release.hotfix {
-  deny("soak_too_short")
+  deny(soak_too_short)
 }
 when cleared {
   when service.tier == "critical"
     and "release_manager" in actor.roles {
-    approve("release_manager")
+    approve(release_manager)
   }
   when service.tier in tiers
     and owns_service {
-    review("service_owner", approvers: approvers)
+    review(service_owner, approvers: approvers)
   }
 }
 when cleared and "payments-sre" in actor.teams {
-  approve("payments_sre", bake: 15m, ticket: release.ticket ?? "none")
+  approve(payments_sre, bake: 15m, ticket: release.ticket ?? "none")
 }`
+
+// evalCase is one row of TestPolicyEval.
+type evalCase struct {
+	name     string
+	src      string
+	collect  bool
+	input    func(Input) Input
+	want     string // describe(out)
+	winner   string // "decision reason", or "default"
+	payload  map[string]any
+	typed    any    // the winner's payload struct, when checked
+	failed   string // failing assert reasons, space-separated
+	conflict string // the conflict's message, when resolution fails
+	cause    string // the runtime error behind the first failure, if any
+	err      string
+}
 
 func TestPolicyEval(t *testing.T) {
 	approvers := reflect.ValueOf([]string{"payments-leads"})
-	tests := []struct {
-		name    string
-		src     string
-		collect bool
-		input   func(Input) Input
-		want    string // describe(out)
-		winner  string // "decision reason", or "default"
-		payload map[string]any
-		typed   any    // the winner's payload struct, when checked
-		failed  string // failing assert reasons, space-separated
-		cause   string // the runtime error behind the first failure, if any
-		err     string
-	}{
+	tests := []evalCase{
 		{
 			name: "deny outranks approve", src: production,
 			input: func(in Input) Input { in.Release.Soak = 2 * time.Hour; return in },
@@ -87,11 +92,31 @@ func TestPolicyEval(t *testing.T) {
 			typed: ApproveData{Bake: 15 * time.Minute, Ticket: "CHG-1042"},
 		},
 		{
-			name: "tie within a decision goes to the earliest position", src: production,
+			name: "ranked reasons decide a tie within a decision", src: production,
 			input: func(in Input) Input { in.Actor.Roles = append(in.Actor.Roles, "release_manager"); return in },
 			want: "approve release_manager 17:5 [cleared | service.tier == \"critical\" and \"release_manager\" in actor.roles] *\n" +
 				"approve payments_sre 25:3 [cleared and \"payments-sre\" in actor.teams]",
 			winner: "approve release_manager", payload: map[string]any{"bake": time.Hour, "ticket": ""},
+		},
+		{
+			name: "equal candidates fold into one", src: "policy p: Test@1\nwhen true { deny(a) }\nwhen release.soak > 0s { deny(a) }",
+			want: "deny a 2:13 [true] *\ndeny a 3:26 [release.soak > 0s]", winner: "deny a", payload: map[string]any{},
+		},
+		{
+			name: "the same reason with different payloads conflicts", src: "policy p: Test@1\nwhen true { review(a, approvers: [\"x\"]) }\nwhen release.soak > 0s { review(a, approvers: [\"y\"]) }",
+			want: "review a 2:13 [true]\nreview a 3:26 [release.soak > 0s]", conflict: "collect one: 2 candidates at the top rank",
+		},
+		{
+			name: "unranked reasons of one decision conflict", src: "policy p: Test@1\nwhen true { deny(a) }\nwhen true { deny(b) }",
+			want: "deny a 2:13 [true]\ndeny b 3:13 [true]", conflict: "collect one: 2 candidates at the top rank",
+		},
+		{
+			name: "an exclusive set conflicts before ranking", src: "policy p: Test@1\nwhen true { deny(d) }\nwhen true { approve(a) }\nwhen true { review(c, approvers: []) }",
+			want: "deny d 2:13 [true]\nreview c 4:13 [true]\napprove a 3:13 [true]", conflict: "exclusive review.c, approve.a: more than one fired",
+		},
+		{
+			name: "an exclusive set needs two members", src: "policy p: Test@1\nwhen true { deny(d) }\nwhen true { review(c, approvers: []) }",
+			want: "deny d 2:13 [true] *\nreview c 3:13 [true]", winner: "deny d", payload: map[string]any{},
 		},
 		{
 			name: "review with a bound param", src: production,
@@ -115,54 +140,54 @@ func TestPolicyEval(t *testing.T) {
 		},
 		{
 			name: "payload fields are converted to the host's types",
-			src:  "policy p: Test@1\nwhen true { tag(\"t\", labels: {\"team\": service.labels[\"team\"], \"env\": environment}, count: count + 1, at: release.built_at, owners: service.owners) }",
+			src:  "policy p: Test@1\nwhen true { tag(t, labels: {\"team\": service.labels[\"team\"], \"env\": environment}, count: count + 1, at: release.built_at, owners: service.owners) }",
 			want: "tag t 2:13 [true] *", winner: "tag t",
 			payload: map[string]any{"labels": map[string]string{"team": "payments", "env": "production"}, "count": 4, "ratio": 0.5, "at": built, "owners": []string{"payments", "platform"}},
 			typed:   TagData{Labels: map[string]string{"team": "payments", "env": "production"}, Count: 4, Ratio: 0.5, At: built, Owners: []string{"payments", "platform"}},
 		},
 		{
 			name: "payload defaults of every shape",
-			src:  "policy p: Test@1\nwhen true { tag(\"t\", labels: {}, count: 0, at: release.built_at) }",
+			src:  "policy p: Test@1\nwhen true { tag(t, labels: {}, count: 0, at: release.built_at) }",
 			want: "tag t 2:13 [true] *", winner: "tag t",
 			payload: map[string]any{"labels": map[string]string{}, "count": 0, "ratio": 0.5, "at": built, "owners": []string{}},
 			typed:   TagData{Labels: map[string]string{}, Count: 0, Ratio: 0.5, At: built, Owners: []string{}},
 		},
 		{
-			name: "several constructors in one body", src: "policy p: Test@1\nwhen true {\n  approve(\"a\")\n  deny(\"b\")\n  review(\"c\", approvers: [])\n}",
-			want: "deny b 4:3 [true] *\nreview c 5:3 [true]\napprove a 3:3 [true]", winner: "deny b", payload: map[string]any{},
+			name: "several constructors in one body", src: "policy p: Test@1\nwhen true {\n  approve(a)\n  deny(b)\n  review(a, approvers: [])\n}",
+			want: "deny b 4:3 [true] *\nreview a 5:3 [true]\napprove a 3:3 [true]", winner: "deny b", payload: map[string]any{},
 		},
 		{
-			name: "a let is evaluated at most once and only when read", src: "policy p: Test@1\nlet boom = fail(\"x\") == \"y\"\nlet ok = release.hotfix or not release.hotfix\nwhen ok and ok { deny(\"a\") }\nwhen false { when boom { deny(\"b\") } }",
+			name: "a let is evaluated at most once and only when read", src: "policy p: Test@1\nlet boom = fail(\"x\") == \"y\"\nlet ok = release.hotfix or not release.hotfix\nwhen ok and ok { deny(a) }\nwhen false { when boom { deny(b) } }",
 			want: "deny a 4:18 [ok and ok] *", winner: "deny a", payload: map[string]any{},
 		},
 		{
-			name: "runtime error in a condition", src: "policy p: Test@1\nwhen actor.roles[9] == \"x\" { deny(\"a\") }",
+			name: "runtime error in a condition", src: "policy p: Test@1\nwhen actor.roles[9] == \"x\" { deny(a) }",
 			err: "p.sigil:2:6: index 9 out of range for a list of 2",
 		},
 		{
-			name: "runtime error in a payload", src: "policy p: Test@1\nwhen true { review(\"a\", approvers: [fail(\"x\")]) }",
-			err: "p.sigil:2:37: host function fail failed: boom: x",
+			name: "runtime error in a payload", src: "policy p: Test@1\nwhen true { review(a, approvers: [fail(\"x\")]) }",
+			err: "p.sigil:2:35: host function fail failed: boom: x",
 		},
 		{
-			name: "runtime error in an unreached block never happens", src: "policy p: Test@1\nwhen false { when actor.roles[9] == \"x\" { deny(\"a\") } }",
+			name: "runtime error in an unreached block never happens", src: "policy p: Test@1\nwhen false { when actor.roles[9] == \"x\" { deny(a) } }",
 			want: "", winner: "default", payload: map[string]any{},
 		},
 		{
-			name: "asserts run after the outcome", src: "policy p: Test@1\nassert(\"no_deny\", deny not in outcome)\nassert(\"soak\", release.soak >= 0s)\nwhen true {\n  assert(\"approved\", approve in outcome)\n  approve(\"a\")\n}\nwhen false { assert(\"unreached\", false) }",
+			name: "asserts run after the outcome", src: "policy p: Test@1\nassert(\"no_deny\", deny not in outcome)\nassert(\"soak\", release.soak >= 0s)\nwhen true {\n  assert(\"approved\", approve in outcome)\n  approve(a)\n}\nwhen false { assert(\"unreached\", false) }",
 			want: "approve a 6:3 [true] *", winner: "approve a", payload: map[string]any{"bake": time.Hour, "ticket": ""},
 		},
 		{
-			name: "a failing input assert stops the rules", src: "policy p: Test@1\nassert(\"want_deny\", deny in outcome)\nwhen true {\n  approve(\"a\")\n  assert(\"inner\", false)\n}\nassert(\"empty\", approve not in outcome)",
+			name: "a failing input assert stops the rules", src: "policy p: Test@1\nassert(\"want_deny\", deny in outcome)\nwhen true {\n  approve(a)\n  assert(\"inner\", false)\n}\nassert(\"empty\", approve not in outcome)",
 			want: "", winner: "default", payload: map[string]any{},
 			failed: "inner",
 		},
 		{
-			name: "failing outcome asserts are all reported in order", src: "policy p: Test@1\nassert(\"want_deny\", deny in outcome)\nwhen true {\n  approve(\"a\")\n  assert(\"approved\", approve in outcome)\n}\nassert(\"empty\", approve not in outcome)",
+			name: "failing outcome asserts are all reported in order", src: "policy p: Test@1\nassert(\"want_deny\", deny in outcome)\nwhen true {\n  approve(a)\n  assert(\"approved\", approve in outcome)\n}\nassert(\"empty\", approve not in outcome)",
 			want: "approve a 4:3 [true] *", winner: "approve a", payload: map[string]any{"bake": time.Hour, "ticket": ""},
 			failed: "want_deny empty",
 		},
 		{
-			name: "input asserts run before any rule", src: "policy p: Test@1\nassert(\"soak\", release.soak < 0s)\nwhen true { review(\"a\", approvers: [fail(\"x\")]) }",
+			name: "input asserts run before any rule", src: "policy p: Test@1\nassert(\"soak\", release.soak < 0s)\nwhen true { review(a, approvers: [fail(\"x\")]) }",
 			want: "", winner: "default", payload: map[string]any{}, failed: "soak",
 		},
 		{
@@ -170,7 +195,7 @@ func TestPolicyEval(t *testing.T) {
 			want: "", winner: "default", payload: map[string]any{}, failed: "a b", cause: "index 9 out of range for a list of 2",
 		},
 		{
-			name: "a scoped let is evaluated only when its body is reached", src: "policy p: Test@1\nwhen false {\n  let boom = fail(\"x\") == \"y\"\n  when boom { deny(\"a\") }\n}\nwhen true {\n  let two = count + 1\n  when two == 4 { deny(\"b\") }\n}",
+			name: "a scoped let is evaluated only when its body is reached", src: "policy p: Test@1\nwhen false {\n  let boom = fail(\"x\") == \"y\"\n  when boom { deny(a) }\n}\nwhen true {\n  let two = count + 1\n  when two == 4 { deny(b) }\n}",
 			want: "deny b 8:19 [true | two == 4] *", winner: "deny b", payload: map[string]any{},
 		},
 		{
@@ -182,12 +207,12 @@ func TestPolicyEval(t *testing.T) {
 			want: "", winner: "default", payload: map[string]any{}, failed: "a", cause: "p.sigil:2:13: index 9 out of range for a list of 2",
 		},
 		{
-			name: "collecting kind returns every candidate in declaration order", src: "policy p: Test@1\nwhen true {\n  approve(\"a\")\n  deny(\"b\")\n}\nwhen release.hotfix { review(\"c\", approvers: []) }\nwhen not release.hotfix { deny(\"d\") }\nassert(\"both\", [deny, approve] all in outcome)\nassert(\"no_review\", review not in outcome)",
+			name: "collecting kind returns every candidate in declaration order", src: "policy p: Test@1\nwhen true {\n  approve(a)\n  deny(b)\n}\nwhen release.hotfix { review(c, approvers: []) }\nwhen not release.hotfix { deny(d) }\nassert(\"both\", [deny, approve] all in outcome)\nassert(\"no_review\", review not in outcome)",
 			collect: true,
-			want:    "deny b 4:3 [true]\ndeny d 7:27 [not release.hotfix]\napprove a 3:3 [true]", winner: "none",
+			want:    "deny b 4:3 [true] *\ndeny d 7:27 [not release.hotfix] *\napprove a 3:3 [true] *", winner: "none",
 		},
 		{
-			name: "collecting kind with nothing fired", src: "policy p: Test@1\nwhen false { deny(\"a\") }\nassert(\"empty\", deny not in outcome)",
+			name: "collecting kind with nothing fired", src: "policy p: Test@1\nwhen false { deny(a) }\nassert(\"empty\", deny not in outcome)",
 			collect: true, want: "", winner: "none",
 		},
 	}
@@ -208,48 +233,7 @@ func TestPolicyEval(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Eval() error: %v", err)
 			}
-			if got := describe(out); got != tt.want {
-				t.Errorf("candidates:\n%s\nwant:\n%s", got, tt.want)
-			}
-			winner := out.Winner
-			switch tt.winner {
-			case "default":
-				if winner != nil {
-					t.Fatalf("Winner = %v, want the default", winner.Reason)
-				}
-				winner = p.Default()
-			case "none":
-				if winner != nil || p.Default() != nil {
-					t.Fatalf("collecting kind has a winner or default")
-				}
-			default:
-				if winner == nil || winner.Decision.Name+" "+winner.Reason != tt.winner {
-					t.Fatalf("Winner = %v, want %q", winner, tt.winner)
-				}
-			}
-			if winner != nil && !reflect.DeepEqual(winner.Payload, tt.payload) {
-				t.Errorf("Payload = %#v, want %#v", winner.Payload, tt.payload)
-			}
-			if tt.typed != nil && !reflect.DeepEqual(winner.Typed.Interface(), tt.typed) {
-				t.Errorf("Typed = %#v, want %#v", winner.Typed.Interface(), tt.typed)
-			}
-			if tt.winner == "default" && (winner.Pos.IsValid() || winner.Policy != "") {
-				t.Errorf("the default has a position or policy: %+v", winner.Rule)
-			}
-			var failed []string
-			for _, fl := range out.Failed {
-				failed = append(failed, fl.Assert.Reason)
-			}
-			if got := strings.Join(failed, " "); got != tt.failed {
-				t.Errorf("Failed = %q, want %q", got, tt.failed)
-			}
-			cause := ""
-			if len(out.Failed) > 0 && out.Failed[0].Err != nil {
-				cause = out.Failed[0].Err.Error()
-			}
-			if !strings.HasSuffix(cause, tt.cause) || (tt.cause == "" && cause != "") {
-				t.Errorf("cause = %q, want %q", cause, tt.cause)
-			}
+			checkOutcome(t, tt, p, out)
 		})
 	}
 }
@@ -259,8 +243,8 @@ func TestPolicyEval(t *testing.T) {
 func TestPolicyIsConcurrent(t *testing.T) {
 	p := compilePolicy(t, production, false, map[string]eval.Value{"approvers": reflect.ValueOf([]string{"a"})})
 	done := make(chan string, 8)
-	for i := 0; i < 8; i++ {
-		go func(i int) {
+	for i := range 8 {
+		go func() {
 			in := input
 			if i%2 == 0 {
 				in.Release.Soak = time.Hour
@@ -270,10 +254,10 @@ func TestPolicyIsConcurrent(t *testing.T) {
 				done <- err.Error()
 				return
 			}
-			done <- out.Winner.Reason
-		}(i)
+			done <- out.Top[0].Reason
+		}()
 	}
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		got := <-done
 		if got != "soak_too_short" && got != "payments_sre" {
 			t.Errorf("winner = %q", got)
@@ -288,12 +272,14 @@ func compilePolicy(t *testing.T, src string, collect bool, params map[string]eva
 	o := gokind.Options{
 		Name: "Test", Version: 1, Input: typeOf[Input](),
 		Decisions: []gokind.Decision{
-			{Name: "deny", Payload: typeOf[None]()},
-			{Name: "review", Payload: typeOf[ReviewData]()},
-			{Name: "approve", Payload: typeOf[ApproveData]()},
-			{Name: "tag", Payload: typeOf[TagData]()},
+			{Name: "deny", Payload: typeOf[None](), Reasons: []string{"b", "a", "d", "not_eligible", "soak_too_short", "no_rule_matched"}},
+			{Name: "review", Payload: typeOf[ReviewData](), Reasons: []string{"c", "a", "service_owner"}},
+			{Name: "approve", Payload: typeOf[ApproveData](), Reasons: []string{"a", "release_manager", "payments_sre"}},
+			{Name: "tag", Payload: typeOf[TagData](), Reasons: []string{"t"}},
 		},
-		Funcs: []gokind.Func{{Name: "split", Fn: strings.Split}, {Name: "fail", Fn: fail}},
+		Funcs:     []gokind.Func{{Name: "split", Fn: strings.Split}, {Name: "fail", Fn: fail}},
+		Rankings:  []gokind.Ranking{{Decision: "approve", Reasons: []string{"release_manager", "payments_sre", "a"}}},
+		Exclusive: [][]kind.Outcome{{{Decision: "review", Reason: "c"}, {Decision: "approve", Reason: "a"}}},
 	}
 	if collect {
 		o.Collect = true
@@ -335,10 +321,72 @@ func describe(out *eval.Outcome) string {
 			}
 			s += " [" + strings.Join(conds, " | ") + "]"
 		}
-		if c == out.Winner {
-			s += " *"
+		for _, t := range out.Top {
+			if c == t {
+				s += " *"
+			}
 		}
 		lines = append(lines, s)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// checkOutcome compares an outcome with a table row's expectations.
+func checkOutcome(t *testing.T, tt evalCase, p *eval.Policy, out *eval.Outcome) {
+	t.Helper()
+	if got := describe(out); got != tt.want {
+		t.Errorf("candidates:\n%s\nwant:\n%s", got, tt.want)
+	}
+	if tt.conflict != "" {
+		if out.Conflict == nil || out.Conflict.Msg != tt.conflict {
+			t.Fatalf("Conflict = %v, want %q", out.Conflict, tt.conflict)
+		}
+		return
+	}
+	if out.Conflict != nil {
+		t.Fatalf("unexpected conflict: %s", out.Conflict.Msg)
+	}
+	var winner *eval.Candidate
+	if len(out.Top) > 0 {
+		winner = out.Top[0]
+	}
+	switch tt.winner {
+	case "default":
+		if len(out.Top) != 0 {
+			t.Fatalf("Top = %v, want the default", out.Top)
+		}
+		winner = p.Default()
+	case "none":
+		if p.Default() != nil {
+			t.Fatalf("collecting kind has a default")
+		}
+		winner = nil
+	default:
+		if winner == nil || winner.Decision.Name+" "+winner.Reason != tt.winner {
+			t.Fatalf("Top = %v, want %q", out.Top, tt.winner)
+		}
+	}
+	if winner != nil && !reflect.DeepEqual(winner.Payload, tt.payload) {
+		t.Errorf("Payload = %#v, want %#v", winner.Payload, tt.payload)
+	}
+	if tt.typed != nil && !reflect.DeepEqual(winner.Typed.Interface(), tt.typed) {
+		t.Errorf("Typed = %#v, want %#v", winner.Typed.Interface(), tt.typed)
+	}
+	if tt.winner == "default" && (winner.Pos.IsValid() || winner.Policy != "") {
+		t.Errorf("the default has a position or policy: %+v", winner.Rule)
+	}
+	var failed []string
+	for _, fl := range out.Failed {
+		failed = append(failed, fl.Assert.Reason)
+	}
+	if got := strings.Join(failed, " "); got != tt.failed {
+		t.Errorf("Failed = %q, want %q", got, tt.failed)
+	}
+	cause := ""
+	if len(out.Failed) > 0 && out.Failed[0].Err != nil {
+		cause = out.Failed[0].Err.Error()
+	}
+	if !strings.HasSuffix(cause, tt.cause) || (tt.cause == "" && cause != "") {
+		t.Errorf("cause = %q, want %q", cause, tt.cause)
+	}
 }

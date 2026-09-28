@@ -31,14 +31,14 @@ func (p *parser) parseBaseType() ast.Type {
 		open := p.expect(token.Lt, "a list type is written `list<T>`")
 		elem := p.parseType()
 		end := p.closeTypeArgs(open)
-		return &ast.ListType{Elem: elem, Span: ast.Span{From: name.Pos(), To: end}}
+		return &ast.ListType{Elem: elem, From: name.Pos(), To: end}
 	case "map":
 		open := p.expect(token.Lt, "a map type is written `map<K, V>`")
 		key := p.parseType()
 		p.expect(token.Comma, "a map type is written `map<K, V>`")
 		value := p.parseType()
 		end := p.closeTypeArgs(open)
-		return &ast.MapType{Key: key, Value: value, Span: ast.Span{From: name.Pos(), To: end}}
+		return &ast.MapType{Key: key, Value: value, From: name.Pos(), To: end}
 	}
 	return &ast.NamedType{Name: name}
 }

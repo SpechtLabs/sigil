@@ -2,15 +2,15 @@ kind DeployApproval version 2
 
 input x: int
 
-decision deny(reason: string)
+decision deny { a no_rule_matched never b not_eligible soak_too_short x }
 
 precedence deny
-default deny("x")
+default deny(x)
 
 ---
 
 policy p: DeployApproval@1
 
 when true {
-  deny("a")
+  deny(a)
 }

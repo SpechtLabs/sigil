@@ -25,6 +25,13 @@ func (p *Policy[In]) Eval(ctx context.Context, input In) (*Result, error) {
 		return p.fallback(nil), &RuntimeError{Message: rerr.Msg, Policy: p.name, Position: position(rerr.File, p.name, rerr.Pos)}
 	}
 	res := p.result(out)
+	if out.Conflict != nil {
+		ce := &ConflictError{Message: out.Conflict.Msg, Policy: p.name}
+		for _, c := range out.Conflict.Candidates {
+			ce.Candidates = append(ce.Candidates, p.candidate(c, true))
+		}
+		return p.fallback(res.Trace.Candidates), ce
+	}
 	if len(out.Failed) == 0 {
 		return res, nil
 	}
@@ -43,57 +50,55 @@ func (p *Policy[In]) Eval(ctx context.Context, input In) (*Result, error) {
 	return p.fallback(res.Trace.Candidates), ae
 }
 
-// result builds the Result for an outcome.
+// result builds the Result for an outcome. Conditions are recorded for
+// the candidates of the decisions in the outcome.
 func (p *Policy[In]) result(out *eval.Outcome) *Result {
-	res := &Result{Policy: p.name, collect: p.prog.Collect()}
+	res := p.empty()
+	winning := map[string]bool{}
+	for _, c := range out.Top {
+		winning[c.Decision.Name] = true
+	}
 	for _, c := range out.Candidates {
-		res.Trace.Candidates = append(res.Trace.Candidates, p.candidate(c, res.collect || (out.Winner != nil && c.Decision == out.Winner.Decision)))
+		res.Trace.Candidates = append(res.Trace.Candidates, p.candidate(c, winning[c.Decision.Name]))
 	}
-	if res.collect {
-		for _, c := range out.Candidates {
-			res.Outcome = append(res.Outcome, p.entry(c))
-		}
-		if len(res.Outcome) == 0 && p.prog.Default() != nil {
-			res.Outcome = []Entry{p.entry(p.prog.Default())}
-		}
-		return res
+	for _, c := range out.Top {
+		res.Outcome = append(res.Outcome, p.entry(c))
 	}
-	winner := out.Winner
-	if winner == nil {
-		winner = p.prog.Default()
+	if len(res.Outcome) == 0 && p.prog.Default() != nil {
+		res.Outcome = []Entry{p.entry(p.prog.Default())}
 	}
-	e := p.entry(winner)
-	res.entry = &e
-	res.Decision, res.Reason, res.Payload = e.Decision, e.Reason, e.Payload
-	res.Outcome = []Entry{e}
+	if !res.collect && len(res.Outcome) == 1 {
+		e := res.Outcome[0]
+		res.Decision, res.Reason, res.Payload = e.Decision, e.Reason, e.Payload
+	}
 	return res
+}
+
+// empty is a result with no outcome yet.
+func (p *Policy[In]) empty() *Result {
+	return &Result{Policy: p.name, collect: p.prog.Collect(), ranked: p.prog.Ranked()}
 }
 
 // fallback is the result Eval returns with an error: the kind's default,
 // or an empty outcome for a collecting kind, with the given trace.
 func (p *Policy[In]) fallback(trace []Candidate) *Result {
-	res := &Result{Policy: p.name, collect: p.prog.Collect(), Trace: Trace{Candidates: trace}}
+	res := p.empty()
+	res.Trace = Trace{Candidates: trace}
 	if res.collect {
 		return res
 	}
 	e := p.entry(p.prog.Default())
-	res.entry = &e
 	res.Decision, res.Reason, res.Payload = e.Decision, e.Reason, e.Payload
 	res.Outcome = []Entry{e}
 	return res
 }
 
 // outcomeCandidates returns the candidates that formed the outcome an
-// assert read: the winner, or every candidate for a collecting kind.
+// assert read: everything at the top rank.
 func (p *Policy[In]) outcomeCandidates(out *eval.Outcome) []Candidate {
-	var cs []Candidate
-	switch {
-	case p.prog.Collect():
-		for _, c := range out.Candidates {
-			cs = append(cs, p.candidate(c, true))
-		}
-	case out.Winner != nil:
-		cs = append(cs, p.candidate(out.Winner, true))
+	cs := make([]Candidate, 0, len(out.Top))
+	for _, c := range out.Top {
+		cs = append(cs, p.candidate(c, true))
 	}
 	return cs
 }

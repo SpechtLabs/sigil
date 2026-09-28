@@ -1,0 +1,39 @@
+== compile p ==
+ok
+
+== one review ==
+decision  review
+reason    service_owner
+policy    p
+payload   approvers: [a]
+
+candidates
+  review   service_owner      7:3 (p)  approvers: [a]
+           service.tier == "critical"
+
+== the same reason with different payloads ==
+decision  deny
+reason    no_rule_matched
+policy    p
+payload   (none)
+error     conflict: collect one: 2 candidates at the top rank
+            review service_owner at 7:3 (p) {approvers: [a]}
+            review service_owner at 11:3 (p) {approvers: [b]}
+
+candidates
+  review   service_owner      7:3 (p)  approvers: [a]
+  review   service_owner      11:3 (p)  approvers: [b]
+
+== two unranked reasons of one decision ==
+decision  deny
+reason    no_rule_matched
+policy    p
+payload   (none)
+error     conflict: collect one: 2 candidates at the top rank
+            deny not_eligible at 15:3 (p)
+            deny soak_too_short at 19:3 (p)
+
+candidates
+  deny     not_eligible       15:3 (p)
+  deny     soak_too_short     19:3 (p)
+  review   service_owner      7:3 (p)  approvers: [a]

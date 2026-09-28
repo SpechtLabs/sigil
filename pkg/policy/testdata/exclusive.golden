@@ -1,0 +1,48 @@
+== compile p ==
+ok
+
+== compartment a ==
+decision  grant_a
+reason    member
+policy    p
+payload   (none)
+
+candidates
+  grant_a  member             6:3 (p)
+           "a" in actor.teams
+
+== both compartments conflict ==
+decision  deny
+reason    none
+policy    p
+payload   (none)
+error     conflict: exclusive grant_a, grant_b: more than one fired
+            grant_a member at 6:3 (p)
+            grant_b member at 10:3 (p)
+
+candidates
+  grant_a  member             6:3 (p)
+  grant_b  member             10:3 (p)
+
+== a deny doesn't hide the conflict ==
+decision  deny
+reason    none
+policy    p
+payload   (none)
+error     conflict: exclusive grant_a, grant_b: more than one fired
+            grant_a member at 6:3 (p)
+            grant_b member at 10:3 (p)
+
+candidates
+  deny     suspended          14:3 (p)
+  grant_a  member             6:3 (p)
+  grant_b  member             10:3 (p)
+
+== nobody ==
+decision  deny
+reason    none
+policy    p
+payload   (none)
+
+candidates
+  (none)

@@ -1,7 +1,7 @@
 policy p: DeployApproval@1
 
 when true {
-  deny("a")
+  deny(a)
 }
 
 ---
@@ -9,5 +9,5 @@ when true {
 policy p: DeployApproval@1
 
 when true {
-  deny("b")
+  deny(b)
 }
