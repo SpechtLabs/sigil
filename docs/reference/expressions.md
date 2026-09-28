@@ -41,9 +41,7 @@ A few consequences worth spelling out:
 - `+` binds tighter than `??`, so `a ?? b + c` means `a ?? (b + c)`.
 - `xor` shares level 1 with `or` but can't be chained or mixed with it. `a xor b xor c` and `a or b xor c` are compile errors; parenthesize to say which grouping you mean.
 
-::: tip Proposed
 Level-4 operators are non-associative. `a < b < c`, `a == b == c` and `a in b == c` are compile errors; add parentheses to say what you mean. They all share one level, and refusing to chain them avoids a class of misreadings.
-:::
 
 ## Boolean operators
 

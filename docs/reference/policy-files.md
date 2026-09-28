@@ -98,7 +98,7 @@ param tiers: list<string> = ["standard", "internal"]
 A param is a typed value supplied when the policy gets instantiated. It has a name, a type and optionally a default.
 
 - A param without a default is required. Instantiating the policy without binding it is a compile error.
-- A default must have the declared type and must be a constant expression: literals, list and map literals of literals, and arithmetic on those. It can't read inputs, lets or other params. (proposed; the current design doesn't say what a default may reference)
+- A default must have the declared type and must be a constant expression: literals, list and map literals of literals, and arithmetic on those. It can't read inputs, lets or other params.
 - The type can be any type from [Types](/reference/types/) except optional types, because an optional param would just be a param with a default.
 
 Params are bound in one of two ways, both type-checked at compile time: by another policy that [invokes](#policy-invocation) this one, or by the Go host through `policy.Params` when it compiles or loads the policy. See the [Go API](/reference/go-api/).
@@ -125,10 +125,6 @@ teams/payments.sigil:5:22: error: min_soak: 0s is below the minimum 1h
 ```
 
 The declaration checks are implemented; checking invocation arguments and `policy.Params` against the bounds comes with invocation in the composition milestone. Bounds are only as trustworthy as the file that declares them: for a required guardrail, [`policy.From`](/reference/go-api/#where-required-policies-come-from) loads that file from a source the host trusts.
-
-::: tip Proposed
-The ban on optional (`?T`) param types is proposed here; nothing else in the design settles it.
-:::
 
 ## `let`
 
@@ -223,8 +219,8 @@ An assert states something that must be true whenever it's reached. If its condi
 
 `xor`, `one in` and `exclusive in` exist mostly for asserts. `exclusive in` over `outcome` is how a [collecting kind](/reference/kind-files/#collecting-kinds) keeps two decisions from being granted together. The two phases in detail, and what the host gets back when one fails, is on [Evaluation semantics](/reference/evaluation/#assertions).
 
-::: tip Proposed
-The `assert` statement, its syntax and its semantics are proposed. The open parts are listed under [Assertions](/project/open-questions/#assertions).
+::: tip Implemented
+Asserts are implemented as described here. The open parts are listed under [Assertions](/project/open-questions/#assertions).
 :::
 
 ## Policy invocation
@@ -306,7 +302,7 @@ when release.soak < min_soak and not release.hotfix {
 
 A header keyword can't start a statement inside a document, so the parser knows a new document has started when it meets one at the top level. Inside braces, after `.` or as a named argument, `policy`, `module` and `kind` are ordinary names: a `type Resource { kind: string }` body or a `resource.kind` read never ends a document. See [Grammar](/reference/grammar/#source-files). The `---` separator is optional. It's there because YAML users expect it, and because it makes document boundaries easy to scan in a long file. `sigil fmt` always writes it between documents, so a bundle has one canonical form. See [Lexical structure](/reference/lexical/#document-separators) for how `---` lexes.
 
-- A `---` before the first document or after the last one is allowed, and so are several in a row. `sigil fmt` removes the extras. (proposed)
+- A `---` before the first document or after the last one is allowed, and so are several in a row. `sigil fmt` removes the extras.
 - A comment belongs to the document that follows it, so a comment directly above a header stays with that document when a tool extracts or moves it. (proposed)
 - A file with no documents at all is valid and contributes nothing.
 
@@ -366,9 +362,7 @@ There's one exception, and it only exists so that adding a name to a kind never 
 
 Decision names are part of that namespace, because a bare decision name is a [value](/reference/types/#decision) in `assert` conditions. A let called `deny` in a kind that declares `decision deny` is a compile error, and so is an import whose bound name is a decision: rename it with `as`. Reasons aren't in the namespace: they only appear after a decision's name, as `approve.release_manager`, or in a constructor's first slot, so a reason may share its name with anything. (proposed; an earlier draft kept decisions in a namespace of their own, which only worked while they appeared in constructor position alone. See [Open questions](/project/open-questions/#decision-values-and-outcome).)
 
-::: tip Proposed
-The single flat namespace and the no-shadowing rule are proposed here to close a gap in the current design. The goal is that any name in a policy has exactly one meaning, which you can find without knowing scoping rules.
-:::
+The goal of the single flat namespace and the no-shadowing rule is that any name in a policy has exactly one meaning, which you can find without knowing scoping rules.
 
 ## A complete file
 

@@ -13,43 +13,22 @@ Each question notes which [roadmap](/project/roadmap/) milestone it blocks. Wher
 If you have an opinion on any of these, [open an issue](https://github.com/SpechtLabs/sigil/issues) and reference the heading.
 :::
 
-## Multiple decisions per block
-
-**Settled**
-
-A `when` body may contain several decision constructors. Each one that's reached becomes its own candidate, and the trace lists them separately by position. The evaluator implements it, and it's what makes a collecting kind readable, as the last paragraph explains.
-
-The question was whether a `when` body should be allowed to contain several decision constructors:
-
-```sigil
-when not eligible {
-  deny(not_eligible)
-  deny(audit_flag)
-}
-```
-
-Allowing it is more general and costs nothing in the evaluator, since each constructor just becomes another candidate. Requiring exactly one decision per block keeps traces simpler, because every block maps to at most one candidate, and it's hard to think of a case two separate `when` blocks can't express. Nested `when` blocks are unaffected either way.
-
-[Collecting kinds](#collecting-kinds) tilt this toward allowing it. Granting a platform member both `write` and `development_environment_writer` under one condition is the natural way to write a role policy, and repeating the condition in a second block is exactly the duplication `when` nesting exists to avoid.
-
 ## Assertions
 
 **Blocks: M5, M6** (the remaining points)
 
-`assert("<reason>", <condition>)` fails the evaluation loudly when its condition is false, and it's the guardrail mechanism for [collecting kinds](#collecting-kinds), which have no deny that outranks a grant. The syntax and when each assert is checked are settled and implemented: input asserts run before any rule, outcome asserts once the outcome exists, and a failing phase ends the evaluation with an `*AssertionError` listing every failure of that phase. See [Policy files](/reference/policy-files/#assert), [Expressions](/reference/expressions/#decision-values-and-outcome) and [Evaluation semantics](/reference/evaluation/#assertions). Still open:
+`assert("<reason>", <condition>)` fails the evaluation loudly when its condition is false, and it's the guardrail mechanism for [collecting kinds](#collecting-kinds), which have no deny that outranks a grant. The syntax and semantics are in [Policy files](/reference/policy-files/#assert), [Expressions](/reference/expressions/#decision-values-and-outcome) and [Evaluation semantics](/reference/evaluation/#assertions). Still open:
 
 - **Dynamic text.** A reason is a literal. A failing assert may still want to say which value was wrong, the way a decision's `detail` field does. A named argument, `assert("reason", cond, detail: expr)`, would do it the way constructors do, and the expression would only be evaluated on failure. Today an assert takes the reason and the condition only.
 - **Asserts in kind files.** Today a host protects an assert by putting it in a policy it requires with `policy.Require`, the same way it protects denies. An assert declared in the kind would need no `Require`, but it brings expressions into kind files, which are pure declarations now, and the Go side would have to carry Sigil source in a string to define one. The one invariant that needs no expression, mutual exclusion of outcomes, is now a kind declaration, [`exclusive`](/reference/kind-files/#exclusive). Anything richer stays deferred until `Require` proves too clumsy.
-- **Reason identity.** Whether assert reasons share the `duplicate-reason` lint and metric space with decision reasons, or live on their own. The proposal keeps them apart: `policy_assert_failures_total{reason="sod_customer_dev"}`.
+- **Reason identity.** Whether assert reasons share the metric space with decision reasons, or live on their own. The proposal keeps them apart: `policy_assert_failures_total{reason="sod_customer_dev"}`.
 - **Static checks.** The proposal only rejects the obvious case: one block constructing two outcomes an `exclusive` set or an `exclusive in outcome` assert forbids together, since that always conflicts when the block fires. Anything more would need the solver-style analysis the language otherwise avoids.
 
 ## Decision values and `outcome`
 
 **Blocks: M5** (the namespace question)
 
-Settled so far, and implemented: a bare decision name is a value of type `decision` only inside an `assert` condition, like `outcome`; anywhere else it's a compile error pointing at the constructor form. The namespace question below is what's left.
-
-An assert that checks what evaluation decided has to name decisions as values: `[customer_data_writer, development_environment_writer] exclusive in outcome`. The proposal makes a bare decision name a value of a closed `decision` type and `outcome` a `list<decision>` only asserts can read (see [Types](/reference/types/#decision)).
+An assert that checks what evaluation decided has to name decisions as values: `[customer_data_writer, development_environment_writer] exclusive in outcome`. A bare decision name is a value of a closed `decision` type and `outcome` a `list<decision>`, and only assert conditions can read either (see [Types](/reference/types/#decision)).
 
 That puts decision names into the policy's flat namespace, which costs something: a `let` named `deny` is a compile error. Adding a decision to a kind stays compatible, because a document pinned to an older version keeps its own name (see [Identifiers](/reference/policy-files/#identifiers)), but the names are still taken from every new policy. The alternatives:
 
@@ -65,13 +44,10 @@ Two more gaps:
 
 **Blocks: M6** (the remaining points)
 
-A kind that declares `collect all` returns every candidate that fired, not one winner: roles a user can hold at the same time, feature flags, labels to attach. The spelling is settled, and the evaluator implements them as proposed, with one `Result` type and `MatchAll`; see [Kind files](/reference/kind-files/#collect) and [Evaluation semantics](/reference/evaluation/#collecting-kinds). Still open:
+A kind that declares `collect all` returns every candidate that fired, not one winner: roles a user can hold at the same time, feature flags, labels to attach. See [Kind files](/reference/kind-files/#collect) and [Evaluation semantics](/reference/evaluation/#collecting-kinds). Still open:
 
 - **The result type.** The proposal keeps one `Result` with an `Outcome` list for both kinds. A separate type for collecting kinds would make `Match` on a collecting result a compile error instead of a runtime panic.
-
-Settled: duplicates are folded only when they're equal in decision, reason and payload, and otherwise every candidate is returned. `collect all` with `precedence` returns every candidate at the top rank; the two lines are independent, and the [resolution rule](/reference/evaluation/#resolution) says how the top rank is formed.
-
-- **Precedence tiers.** `precedence suspended > {read, write, admin}` would rank groups of decisions. With `collect all` it would return every candidate in the highest tier that has any, so a `suspended` decision could wipe all grants as a decision, not as an assert failure, and when nothing is suspended every grant comes back. Plain `collect all` without `precedence` is then a single tier. Tiers are what make the reserved combination useful for roles, which is why the two should be designed together. Neither is needed for the first collecting kinds, and both can be added later without breaking them.
+- **Precedence tiers.** `precedence suspended > {read, write, admin}` would rank groups of decisions. With `collect all` it would return every candidate in the highest tier that has any, so a `suspended` decision could wipe all grants as a decision, not as an assert failure, and when nothing is suspended every grant comes back. Plain `collect all` without `precedence` is then a single tier. Tiers are what would make `collect all` with `precedence` useful for roles. The first collecting kinds don't need them, and they can be added later without breaking them.
 
 ## Pinned params on required policies
 
@@ -104,41 +80,18 @@ When the `regions` label is missing, `service.labels["regions"]` is `""`, and Go
 
 Whatever the answer, it has to cover `exclusive in` and `one in` as well, which follow `all in` and `any in` today: an empty left side makes `exclusive in` true and `one in` false. It also has to cover the quantifier: `all r in actor.roles: r != "admin"` is vacuously true for an empty `roles` list, for the same reason. Defining one as false and not the other would make the two spellings of "every element satisfies" disagree.
 
-## Ties within one decision
-
-**Settled**
-
-No position is consulted. Resolution is fold, check `exclusive`, rank, count (see [Resolution](/reference/evaluation/#resolution)): equal candidates are one outcome, candidates of one decision rank by the decision's declared reason order, and whatever is left at the top rank is either returned whole (`collect all`) or has to be exactly one candidate (`collect one`, else a conflict error). Nothing merges, so the result is always something a rule produced, and "conservative" choices such as the shorter `bake` belong to the host over `MatchAll`.
-
-The earlier rule picked the earliest source position, which was the last order dependence in the language. Merge functions in the kind were the alternative; they were rejected because a merged candidate has no reason and no position, and because a tie-breaker runs implicitly, outside every policy, the trace and every tool that has no host binary.
-
-## What the result's `Policy` field names
-
-**Settled**
-
-Both. `Result.Policy` names the policy the host evaluated, `payments.production`, because that's the one the host asked about and the one its metrics are keyed on. The outcome's `Entry.Policy` and every trace `Candidate.Policy` name the policy whose rule produced them, `deploy.production` for the `service_owner` review, with the call chain saying how it was reached.
-
-The design had described the `Policy` field of `Result` as "the name of the policy that produced it", and that phrase has two readings: the evaluated policy or the policy whose rule won. They're two different fields, and the [Go API](/reference/go-api/#result) now has both.
-
 ## Cost of nested quantifiers
 
 **Blocks: M7**
 
 An earlier draft of this design called evaluation cost linear in policy size times input size. That holds for a single quantifier, but a quantifier nested in another's body costs the product of both list sizes, so `all a in xs: any b in ys: a == b` is quadratic. The static cost estimate still works (it multiplies the declared maximum sizes), but the budget has to be expressed in those terms, and the docs shouldn't promise "linear".
 
-## One reason on different decisions
-
-**Settled**
-
-Reasons are scoped to their decision, so `deny.release_manager` and `approve.release_manager` are two names and nothing is shared or mixed. The `duplicate-reason` lint is gone with it; a metric keyed on decision and reason was always the identity.
-
 ## Reasons declared in the kind
 
 **Blocks: M6** (the remaining points)
 
-Reasons are declared per decision in the kind, and the evaluator, checker and Go API implement it, in a block, and constructors name one of them (see [Kind files](/reference/kind-files/#decision)). The reasoning is on the [Decisions](/reference/decisions/#the-reason) page: a typo can't create a metric series, `sigil breaking` sees a removed reason, and asserts and `exclusive` can name a reason. What's open:
+Reasons are declared per decision in the kind, and constructors name one of them (see [Kind files](/reference/kind-files/#decision) and [Decisions](/reference/decisions/#the-reason)). What's open:
 
-- **Authority.** A new reason is now a kind change, like a new decision. That moves a decision teams used to make on their own to the host. The trade is accepted for the same reason inputs and decisions are the host's: the kind is the contract. An escape hatch for undeclared reasons was considered and rejected, because it gives the typo bug back.
 - **Assert reasons.** They stay string literals, because an assert belongs to its policy and the kind has no say in it. Whether they should be declared too, for the same metric reasons, is open; nothing in the design needs it.
 - **Unranked reasons in `collect one`.** Allowed, and a conflict when two of them fire. A lint could flag unranked reasons whose branches can overlap, but that's the solver-style analysis the language avoids, so it would only catch identical conditions.
 

@@ -8,7 +8,7 @@ permalink: /guides/evolve-a-kind/
 This guide is for host engineers who own a kind. Policies across other teams compile against your exported kind file, so changing a Go struct is changing a public contract. Here's how to tell which changes are safe, how to catch the unsafe ones in CI, and how to ship a change that would otherwise break policies.
 
 ::: info Planned tooling
-`Schema()`, `sigil breaking` and the Go API used below are planned, not implemented. The rules about what counts as breaking are part of the language design and won't change with the tooling.
+`NewKind`, its options and `Schema()` are implemented; `sigil breaking` and the rest of the CLI are planned. The rules about what counts as breaking are part of the language design and won't change with the tooling.
 :::
 
 ## Keep the exported kind in the policy repo

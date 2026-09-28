@@ -78,7 +78,7 @@ Evaluates a policy against a JSON input and prints the result and the full trace
 sigil eval --kind deploy_approval.sigil --input release.json --policy payments.production deploy/ payments/
 ```
 
-Diagnostics and trace entries name the document as well as the position, `policies.sigil:42:5 (payments.production)`, so a trace stays readable when many documents share one file. The name is left out when the file holds only that document and its path matches the name. (proposed)
+Diagnostics and trace entries name the document as well as the position, `policies.sigil:42:5 (payments.production)`, so a trace stays readable when many documents share one file. The name is left out when the file's path matches the name, as in `deploy/production.sigil:16:5`. This is the text form of [`policy.Position`](/reference/go-api/); whether the CLI should always print the name is [open](/project/open-questions/#document-names-in-text-output).
 
 ## `sigil explain`
 

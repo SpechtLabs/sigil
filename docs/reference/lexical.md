@@ -63,9 +63,9 @@ The built-in type names (`bool`, `int`, `float`, `string`, `duration`, `timestam
 
 Decision names like `deny` or `approve` aren't keywords either. Each kind declares its own, and they're identifiers in the policy's namespace like inputs and lets (see [Identifiers](/reference/policy-files/#identifiers)).
 
-`assert`, `collect`, `xor`, `one`, `exclusive` and `outcome` are proposed together with [assertions and collecting kinds](/project/open-questions/#assertions), `pub` with [exported lets](/reference/policy-files/#exporting-lets), and `present` with [presence tests](/reference/expressions/#presence-present). `ordered` is proposed with [host-ordered types](/reference/types/#host-ordered-types) and isn't a keyword yet.
+`ordered` is proposed with [host-ordered types](/reference/types/#host-ordered-types) and isn't a keyword yet.
 
-Keywords are allowed as field and payload names, because real Go structs have fields called `kind` or `type`. `service.type` is valid: the token after `.` is always read as a name. The same goes for field declarations in a `type` body, decision fields and named arguments. Top-level names such as inputs, params, lets and imported names must be plain identifiers. (proposed; without it, a Go field tagged `type` or `kind` couldn't be exported to a kind at all.)
+Keywords are allowed as field and payload names, because real Go structs have fields called `kind` or `type`. `service.type` is valid: the token after `.` is always read as a name. The same goes for field declarations in a `type` body, decision fields and named arguments. Top-level names such as inputs, params, lets and imported names must be plain identifiers. Without this, a Go field tagged `type` or `kind` couldn't be exported to a kind at all.
 
 ## Literals
 
@@ -126,9 +126,7 @@ A duration literal is an integer followed immediately by a unit, and units can b
 
 `d` is a fixed 24 hours. It has no calendar or daylight-saving meaning, because the language has no clock or time zone to apply one to.
 
-::: tip Proposed
-Two rules the current design leaves open, proposed here. First, `d` means exactly `24h`. Second, in a chained literal each unit may appear at most once, largest first: `1h30m` is valid, `30m1h` and `1h1h` are compile errors. Fractional components such as `1.5h` aren't allowed; write `1h30m`.
-:::
+In a chained literal each unit may appear at most once, largest first: `1h30m` is valid, `30m1h` and `1h1h` are compile errors. Fractional components such as `1.5h` aren't allowed; write `1h30m`.
 
 ### Lists
 

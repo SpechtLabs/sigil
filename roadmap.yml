@@ -120,8 +120,8 @@ milestones:
           scoped lets and `pub let`, optional chaining with `?.` and `present`, param bounds as
           `, min: value, max: value`, `has` as the only map-key test, and kind version pins
           (`Kind@N` with `accepts` on the kind). Boolean operator
-          spelling is settled: words. Settled with the evaluator: several decisions per block are
-          allowed. Still open: glob syntax.
+          spelling is settled: words, and `like` globs are `*` and `?` only. Settled with the
+          evaluator: several decisions per block are allowed.
       - title: Declared reasons, exclusive and the resolution rule
         state: DONE
         requirement: MUST
