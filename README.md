@@ -170,7 +170,7 @@ if r, ok := Review.Match(res); ok {
 }
 ```
 
-[`examples/`](./examples) turns these documents into a running service, deploygate, with the guardrails embedded, team policies that reload in place, and a metric and a trace for every decision. `mise run examples-up` starts it.
+[`examples/`](./examples) turns these documents into a running service, deploygate, with the guardrails embedded, team policies that reload in place, and a metric and a trace for every decision. A second, collecting kind grants the roles each deploy is checked with, so the client never gets to name its own. `mise -C examples run up` starts it from the repository root; `mise -C examples run demo deploy owner` asks for a deployment through the example platform CLI.
 
 ## Design goals
 

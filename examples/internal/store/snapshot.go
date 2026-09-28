@@ -7,83 +7,86 @@ import (
 
 	"github.com/spechtlabs/sigil/pkg/policy"
 
-	"github.com/spechtlabs/sigil/examples/internal/deploy"
+	"github.com/spechtlabs/sigil/examples/internal/telemetry"
 )
 
-// Snapshot is one loaded bundle: the compiled root policy of every team, and
-// when and from where it was loaded. It is immutable once built.
-type Snapshot struct {
+// Snapshot is one loaded bundle: the compiled policy of every root, and when
+// and from where it was loaded. It is immutable once built.
+type Snapshot[In any] struct {
 	// Kind is the name of the kind every policy is checked against.
 	Kind string
 	// KindVersion is the kind's contract version.
 	KindVersion int
-	// Source is where the team bundle was read from: SourceEmbedded or a
+	// Source is where the bundle was read from: SourceEmbedded or a
 	// directory.
 	Source string
 	// LoadedAt is when the bundle finished compiling.
 	LoadedAt time.Time
-	// Teams lists each served team and its root policy, in the configured
-	// order.
-	Teams []TeamPolicy
+	// Roots lists each root in the configured order.
+	Roots []Root
 
-	policies map[string]*policy.Policy[deploy.Input]
+	policies map[string]*policy.Policy[In]
 }
 
-// TeamPolicy is one served team and the name of the policy it evaluates.
-type TeamPolicy struct {
+// Root is one policy a store compiles and serves. A team root is looked up
+// by its team; a fixed root, which has no team, by its policy name.
+type Root struct {
 	Team   string
 	Policy string
 }
 
-// Policy returns team's compiled root policy, and false when the team isn't
-// served.
-func (s *Snapshot) Policy(team string) (*policy.Policy[deploy.Input], bool) {
-	p, ok := s.policies[team]
+// Policy returns the compiled root policy for key, a team or a fixed root's
+// name, and false when the snapshot serves no such root.
+func (s *Snapshot[In]) Policy(key string) (*policy.Policy[In], bool) {
+	p, ok := s.policies[key]
 	return p, ok
 }
 
+// Single returns the root policy of a snapshot with exactly one root, such
+// as the access store's access.main.
+func (s *Snapshot[In]) Single() (*policy.Policy[In], bool) {
+	if len(s.Roots) != 1 {
+		return nil, false
+	}
+	return s.Policy(s.Roots[0].key())
+}
+
 // PolicyNames lists the served policies' names in the configured order.
-func (s *Snapshot) PolicyNames() []string {
-	names := make([]string, 0, len(s.Teams))
-	for _, tp := range s.Teams {
-		names = append(names, tp.Policy)
+func (s *Snapshot[In]) PolicyNames() []string {
+	names := make([]string, 0, len(s.Roots))
+	for _, r := range s.Roots {
+		names = append(names, r.Policy)
 	}
 	return names
 }
 
 // TeamNames lists the served teams in the configured order.
-func (s *Snapshot) TeamNames() []string {
-	names := make([]string, 0, len(s.Teams))
-	for _, tp := range s.Teams {
-		names = append(names, tp.Team)
+func (s *Snapshot[In]) TeamNames() []string {
+	names := make([]string, 0, len(s.Roots))
+	for _, r := range s.Roots {
+		if r.Team != "" {
+			names = append(names, r.Team)
+		}
 	}
 	return names
 }
 
-// newSnapshot assembles a snapshot from compiled policies.
-func newSnapshot(kindName string, kindVer int, source string, teams []string, loaded map[string]*policy.Policy[deploy.Input], at time.Time) *Snapshot {
-	entries := make([]TeamPolicy, 0, len(teams))
-	for _, team := range teams {
-		entries = append(entries, TeamPolicy{Team: team, Policy: loaded[team].Name()})
-	}
-	return &Snapshot{
-		Kind:        kindName,
-		KindVersion: kindVer,
-		Source:      source,
-		LoadedAt:    at,
-		Teams:       entries,
-		policies:    loaded,
-	}
-}
-
-// teamPolicies maps each team to its policy name, the shape the loaded-policy
-// gauge takes.
-func (s *Snapshot) teamPolicies() map[string]string {
-	out := make(map[string]string, len(s.Teams))
-	for _, tp := range s.Teams {
-		out[tp.Team] = tp.Policy
+// loaded lists the roots the way the loaded-policy gauge takes them.
+func (s *Snapshot[In]) loaded() []telemetry.LoadedPolicy {
+	out := make([]telemetry.LoadedPolicy, 0, len(s.Roots))
+	for _, r := range s.Roots {
+		out = append(out, telemetry.LoadedPolicy{Team: r.Team, Policy: r.Policy})
 	}
 	return out
+}
+
+// key is how the snapshot looks the root up: its team, or its name when it
+// has none.
+func (r Root) key() string {
+	if r.Team != "" {
+		return r.Team
+	}
+	return r.Policy
 }
 
 // kindVersion reads the contract version from a kind file, the kind's

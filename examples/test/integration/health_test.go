@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"net/http"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -34,6 +35,20 @@ var _ = Describe("Health and readiness", func() {
 
 			resp, _ = e.client.Get(Default, fixture.PathPolicies)
 			Expect(resp).To(HaveHTTPStatus(http.StatusServiceUnavailable))
+		})
+
+		It("stays unready until both bundles have loaded", func() {
+			// A deploy needs both stages, so one loaded bundle isn't enough
+			// to take traffic.
+			Expect(e.store.InitialLoad(context.Background())).To(Succeed())
+			resp, _ := e.client.Get(Default, fixture.PathReadyz)
+			Expect(resp).To(HaveHTTPStatus(http.StatusServiceUnavailable))
+			resp, _ = e.client.PostJSON(Default, fixture.DeploymentsPath(fixture.TeamPayments), fixture.OwnerRequest())
+			Expect(resp).To(HaveHTTPStatus(http.StatusServiceUnavailable))
+
+			Expect(e.access.InitialLoad(context.Background())).To(Succeed())
+			resp, _ = e.client.Get(Default, fixture.PathReadyz)
+			Expect(resp).To(HaveHTTPStatus(http.StatusOK))
 		})
 
 		It("becomes ready once a reload succeeds", func() {

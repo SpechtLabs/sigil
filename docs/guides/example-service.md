@@ -5,7 +5,7 @@ createTime: 2026/09/28 12:00:00
 permalink: /guides/example-service/
 ---
 
-This guide introduces deploygate, a complete Go service built on Sigil. It serves the `DeployApproval` policies from the [tour](/getting-started/tour/) over HTTP, and it wires up everything the rest of these docs describe one piece at a time: a kind defined in Go, an exported kind file, guardrails required from a trusted source, team policies loaded from a directory with hot reload, typed matching, and metrics and traces for every decision.
+This guide introduces deploygate, a complete Go service built on Sigil. It serves the `DeployApproval` policies from the [tour](/getting-started/tour/) over HTTP, and it wires up everything the rest of these docs describe one piece at a time: a kind defined in Go, an exported kind file, guardrails required from a trusted source, policies loaded from a directory with hot reload, typed matching, and metrics and traces for every decision. A second, collecting kind, `AccessGrant`, grants the roles each deploy is decided with, so no client names its own.
 
 The code lives in [`examples/`](https://github.com/SpechtLabs/sigil/tree/main/examples) in the repository, as a Go module of its own. Its README is the full walkthrough; this page is the short version.
 
@@ -14,30 +14,34 @@ The code lives in [`examples/`](https://github.com/SpechtLabs/sigil/tree/main/ex
 | Piece | Where | Read more |
 | --- | --- | --- |
 | The `DeployApproval` kind, declared with `policy.NewKind` | `internal/deploy` | [Defining a kind](/reference/go-api/#defining-a-kind) |
-| The kind file, written by the host's own `sigilc export` and checked by a test | `cmd/sigilc`, `policies/deploy_approval.sigil` | [Exporting the kind](/reference/go-api/#exporting-the-kind) |
-| Platform guardrails embedded in the binary and required with `policy.From` | `policies/embed.go`, `internal/store` | [Where required policies come from](/reference/go-api/#where-required-policies-come-from) |
-| Team policies read from a directory, reloaded with last-known-good semantics | `internal/store` | [Hot reload](/reference/go-api/#hot-reload), [Policies in a ConfigMap](/guides/configmaps/) |
-| Results matched into typed payloads | `internal/server` | [Typed matching](/reference/go-api/#typed-matching) |
-| A counter and a span per decision, with the reason and the trace | `internal/telemetry` | |
+| The `AccessGrant` kind, a `collect all` kind with an `exclusive` line | `internal/access` | [Collecting kinds](/reference/kind-files/#collecting-kinds) |
+| Both kind files, written by the host's own `sigilc export` and checked by a test | `cmd/sigilc`, `policies/*.sigil` | [Exporting the kind](/reference/go-api/#exporting-the-kind) |
+| Platform guardrails embedded in the binary and required with `policy.From`, one trusted source per kind | `policies/embed.go`, `internal/store` | [Where required policies come from](/reference/go-api/#where-required-policies-come-from) |
+| Team and access policies read from directories, reloaded with last-known-good semantics | `internal/store` | [Hot reload](/reference/go-api/#hot-reload), [Policies in a ConfigMap](/guides/configmaps/) |
+| Results matched into typed payloads, with `Match` for the deploy kind and `MatchAll` for the access kind | `internal/server` | [Typed matching](/reference/go-api/#typed-matching) |
+| A counter and a span per decision and per grant, with the reason and the trace | `internal/telemetry` | |
 
 ## Run it
 
 You need [mise](https://mise.jdx.dev/) and Docker. From the repository root:
 
 ```bash
+cd examples
 mise install
-mise run examples-up
+mise run up
 ```
 
-That starts deploygate on port 8080 together with an OpenTelemetry Collector, Jaeger 2.20 on 16686, Prometheus on 9090 and Grafana on 3000, which has a dashboard for the service. The command returns once deploygate reports ready: its image has no shell, so compose probes it with `deploygate healthcheck`, which asks the server's own `/readyz`. Then ask for a deploy, from `examples/`:
+The tasks live in `examples/.mise.toml`. Run them from `examples/`, or use `mise -C examples run <task>` from the repository root.
+
+That starts deploygate on port 8080 with Alloy, single-process Loki, Tempo and Mimir, plus Pyroscope. Grafana on [port 3000](http://localhost:3000/d/deploygate) has a provisioned dashboard with metrics, logs, traces, profiles and k6 load measurements. The command waits for the telemetry backends and for deploygate with both bundles loaded: its image has no shell, so compose probes it with `deploygate healthcheck`, which asks the server's own `/readyz`. The example includes `demo-cli`, which stands in for the platform tooling that supplies identity and release metadata. Ask for a deploy, from `examples/`:
 
 ```bash
-curl -si -X POST localhost:8080/api/v1/teams/payments/deployments \
-  -H 'Content-Type: application/json' \
-  -d @policies/teams/payments/testdata/owner.json
+mise run demo deploy owner --json
 ```
 
-deploygate answers `202 Accepted` with the decision, its reason, the payload and the trace:
+Omit `--json` for a readable summary, or use `--explain` to include the winning rules and their source locations. `mise run demo scenarios` lists the built-in deployment and access scenarios. The CLI also accepts `--file` for your own JSON and `--url` to select another deploygate instance.
+
+The request describes the actor by their groups, `"groups": ["payments"]`, not by roles. deploygate evaluates the access policy first, which makes a member of the `payments` group a reader and a deployer, then the team's deploy policy with those roles. It answers `202 Accepted` with the decision, its reason, the payload, the trace and the roles it decided with:
 
 ```json
 {
@@ -60,42 +64,85 @@ deploygate answers `202 Accepted` with the decision, its reason, the payload and
       "payload": {"approvers": ["payments-leads", "security-leads"]},
       "winner": true
     }
-  ]
+  ],
+  "access": {
+    "policy": "access.main",
+    "grants": [
+      {"role": "reader", "reason": "team_member", "policy": "access.main", "location": "main.sigil:9:3 (access.main)"},
+      {"role": "deployer", "reason": "team_member", "ttl": "8h", "policy": "access.main", "location": "main.sigil:10:3 (access.main)"}
+    ]
+  }
 }
 ```
 
-The status encodes the decision: `200` for approve, `202` for review, `403` for deny, and `422` when the evaluation failed, for example on a failed assert. A request deploygate won't evaluate, such as one with an unknown field or a negative soak, gets `400` before any policy runs. A client can act on the status alone and read the body for the details.
+The status encodes the decision: `200` for approve, `202` for review, `403` for deny, and `422` when an evaluation failed, for example on a failed assert. A `409` means the access policy granted two roles the kind declares exclusive. A request deploygate won't evaluate, such as one with an unknown field like `roles`, or a negative soak, gets `400` before any policy runs. A client can act on the status alone and read the body for the details.
+
+## An authorization layer with collect all
+
+Roles combine instead of competing: a payments engineer on the platform team is a reader, a deployer and a release manager at once. So `AccessGrant` declares `collect all`, and every role whose rule fires is part of the outcome, in declaration order. A collecting kind has no deny that outranks the rest, so the example guards the combinations that must never happen in the two places the docs describe:
+
+- The host's kind declares `exclusive admin, release_manager`. An evaluation that grants both fails with a conflict, which the API answers with `409` and both candidates named.
+- The platform's `access.guardrails`, which the host requires, asserts `[auditor, deployer] exclusive in outcome`, so a compliance member who is also in the team can't audit their own deploys. That's a `422`.
+
+The first rule belongs to the host and changes with a release; the second is platform policy that reloads like any other document. `POST /api/v1/access/grants` runs the access stage on its own:
+
+```bash
+mise run demo access member
+```
+
+```text
+HTTP 200 OK
+Team: payments
+Environment: production
+Access policy: access.main
+Roles:
+  reader: team_member
+  deployer: team_member, expires in 8h
+```
+
+It answers `200` when at least one role is granted and `403` with the same body, and an empty `grants`, when none is. The README walks through the conflict and the failed assert with their full responses.
 
 ## Watch it reload
 
-The compose stack mounts `examples/policies/teams` into the container, the way a ConfigMap would be mounted in a cluster. Edit a team policy, then reload:
+The compose stack mounts `examples/policies/teams` and `examples/policies/access` into the container, the way ConfigMaps would be mounted in a cluster. Edit a team policy or the access policy, then reload:
 
 ```bash
-curl -s -X POST localhost:8080/api/v1/policies/reload
+mise run demo policies reload
 ```
 
-The next request sees the change. Break the file instead, and the reload answers `500` with the compiler's diagnostics while deploygate keeps serving the bundle it loaded last. The `deploygate_policy_reloads_total{result="failure"}` counter goes up, and that's the one to alert on. deploygate also reloads on `SIGHUP`, and whenever a poll finds the directory's content changed: every 5 seconds in the compose stack, every 30 by default.
+The next request sees the change. Break a file instead, and the reload answers `500` with the compiler's diagnostics while deploygate keeps serving the bundle it loaded last. The `deploygate_policy_reloads_total{result="failure"}` counter goes up for that kind, and that's the one to alert on. deploygate also reloads on `SIGHUP`, and whenever a poll finds a directory's content changed: every 5 seconds in the compose stack, every 30 by default.
 
-Startup is the exception. With no bundle loaded yet there's nothing to fall back to, so a team policy that doesn't compile stops deploygate with the diagnostics instead, and on Kubernetes the rollout stays on the old pods.
+Startup is the exception. With no bundle loaded yet there's nothing to fall back to, so a policy that doesn't compile stops deploygate with the diagnostics instead, and on Kubernetes the rollout stays on the old pods.
 
 ## Check policies with the host's binary
 
-The stock `sigil` binary can't run the kind's `split` host function, so the example builds its own, `sigilc`, with the [`cli` package](/reference/cli/#host-functions-and-host-binaries). A policy repository's CI runs it the same way the service loads the policies. `mise run examples-policies` runs the check and the tests; by hand, from `examples/`:
+The stock `sigil` binary can't run the kind's `split` host function, so the example builds its own, `sigilc`, with the [`cli` package](/reference/cli/#host-functions-and-host-binaries), and links both kinds in. With two kinds linked, every policy command takes `--kind` with the exported kind file. A policy repository's CI runs it the same way the service loads the policies. `mise run policies` runs the checks and the tests for both kinds; by hand, from `examples/`:
 
 ```bash
-go run ./cmd/sigilc check --config policies/sigil.yaml \
-  --require deploy.guardrails --trusted policies/platform \
+mise run sigilc check --kind policies/deploy_approval.sigil --config policies/sigil.yaml \
+  --require deploy.guardrails --trusted policies/platform/deploy \
   --policy 'payments.*' --policy 'checkout.*' -R policies/teams
-go run ./cmd/sigilc test policies
-go run ./cmd/sigilc explain --policy payments.production -R policies
+mise run sigilc check --kind policies/access_grant.sigil --config policies/sigil.yaml \
+  --require access.guardrails --trusted policies/platform/access \
+  --policy access.main policies/access
+mise run sigilc test --kind policies/access_grant.sigil policies/platform/access policies/access
+mise run sigilc explain --kind policies/access_grant.sigil \
+  --policy access.main -R policies/platform/access policies/access
 ```
 
 ## Tests
 
-The example has table-driven unit tests, the policy tests run from `go test` with `policytest`, a Ginkgo integration suite against the real store and server in process, and a Ginkgo end-to-end suite against the compose stack. The two Ginkgo suites share one table of requests and expected decisions. `mise run examples-test` runs everything that needs no Docker; `mise run examples-e2e` brings the stack up and runs the end-to-end suite, which also checks that Prometheus scraped the service and that Jaeger stored its spans.
+The example has table-driven unit tests, the policy tests run from `go test` with `policytest` for both kinds, a Ginkgo integration suite against the real stores and server in process, and a Ginkgo end-to-end suite against the compose stack. The two Ginkgo suites share one table of requests and expected decisions and grants. `mise run test` runs everything that needs no Docker; `mise run e2e` brings the stack up and runs the end-to-end suite, which also checks metrics in Mimir, spans in Tempo, logs in Loki, profiles in Pyroscope and Grafana datasource health.
+
+## Load tests and profiles
+
+From `examples/`, run `mise run loadtest-smoke` to verify the eight request cases, or `DURATION=15m RATE=100 mise run loadtest` to generate sustained traffic. `mise run loadtest-stress` ramps to five times the configured rate. The scripts check policy outcomes as well as HTTP responses, apply latency budgets, send measurements to Mimir and write a JSON report under `examples/results/`.
+
+Select a **Load run** in Grafana to inspect achieved throughput, p95/p99, incorrect outcomes and dropped iterations. The **Sigil evaluation performance** section shows throughput and latency around the policy evaluator itself. CPU and runtime flame graphs show where the service spends resources; **Runtime profile** selects memory, goroutine, mutex, blocking or detected leak profiles. Follow a Loki log's trace link into Tempo, then open the surrounding service profile in Pyroscope. The load measurements include the full HTTP service and telemetry; their interpretation and configuration are covered in the [example README](https://github.com/SpechtLabs/sigil/tree/main/examples#generate-load-with-k6).
 
 ## Further reading
 
 - The [example's README](https://github.com/SpechtLabs/sigil/tree/main/examples#readme) covers every package, metric, span and flag.
+- [Evaluation semantics](/reference/evaluation/#collecting-kinds) defines how a collecting kind's outcome forms.
 - [Per-team policies](/guides/team-policies/) explains the composition the team policies use.
-- [Policies in a ConfigMap](/guides/configmaps/) shows how to ship the team bundle to a cluster.
+- [Policies in a ConfigMap](/guides/configmaps/) shows how to ship a bundle to a cluster.

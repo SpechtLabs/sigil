@@ -2,13 +2,13 @@
 
 // Package e2e tests deploygate from the outside, over HTTP, against the
 // docker compose stack in examples/. It never imports the service: every
-// assertion is about the wire contract, the metrics Prometheus scrapes and
-// the traces Jaeger stores, which is what a client or an operator sees.
+// assertion is about the wire contract, metrics in Mimir, logs in Loki, traces in Tempo and
+// profiles in Pyroscope, which is what a client or an operator sees.
 //
-// Start the stack and run the suite with `mise run examples-e2e`. The
-// endpoints come from DEPLOYGATE_URL, JAEGER_URL and PROMETHEUS_URL, and the
-// hot reload specs edit the bind-mounted team policies under
-// DEPLOYGATE_POLICIES_DIR.
+// Start the stack and run the suite with `mise run e2e` from examples/. The
+// endpoints come from DEPLOYGATE_URL, MIMIR_URL, TEMPO_URL, LOKI_URL,
+// PYROSCOPE_URL and GRAFANA_URL. The hot reload specs edit the policies under
+// DEPLOYGATE_POLICIES_DIR and DEPLOYGATE_ACCESS_POLICIES_DIR.
 package e2e
 
 import (
@@ -28,19 +28,28 @@ import (
 // local stack.
 var (
 	deploygateURL = envOr("DEPLOYGATE_URL", "http://localhost:8080")
-	jaegerURL     = envOr("JAEGER_URL", "http://localhost:16686")
-	prometheusURL = envOr("PROMETHEUS_URL", "http://localhost:9090")
+	tempoURL      = envOr("TEMPO_URL", "http://localhost:3200")
+	mimirURL      = envOr("MIMIR_URL", "http://localhost:9009")
+	lokiURL       = envOr("LOKI_URL", "http://localhost:3100")
+	pyroscopeURL  = envOr("PYROSCOPE_URL", "http://localhost:4040")
+	grafanaURL    = envOr("GRAFANA_URL", "http://localhost:3000")
 
 	// policiesDir is the host side of the compose bind mount, relative to
 	// this package's directory because that is where `go test` runs.
 	policiesDir = envOr("DEPLOYGATE_POLICIES_DIR", fixture.ExamplesDir+"/policies/teams")
+
+	// accessPoliciesDir is the host side of the access bundle's bind mount.
+	accessPoliciesDir = envOr("DEPLOYGATE_ACCESS_POLICIES_DIR", fixture.ExamplesDir+"/policies/access")
 )
 
 // One client per backend, shared by every spec.
 var (
 	deploygate = fixture.NewClient(deploygateURL)
-	jaeger     = fixture.NewClient(jaegerURL)
-	prometheus = fixture.NewClient(prometheusURL)
+	tempo      = fixture.NewClient(tempoURL)
+	mimir      = fixture.NewClient(mimirURL)
+	loki       = fixture.NewClient(lokiURL)
+	pyroscope  = fixture.NewClient(pyroscopeURL)
+	grafana    = fixture.NewClient(grafanaURL)
 )
 
 // TestE2E hands the suite to Ginkgo.

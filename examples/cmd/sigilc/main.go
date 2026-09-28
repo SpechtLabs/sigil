@@ -8,14 +8,16 @@ package main
 import (
 	"github.com/spechtlabs/sigil/pkg/cli"
 
+	"github.com/spechtlabs/sigil/examples/internal/access"
 	"github.com/spechtlabs/sigil/examples/internal/deploy"
 )
 
 // version is set by GoReleaser through -ldflags at release time.
 var version = "dev"
 
-//go:generate go run . export --out ../../policies/deploy_approval.sigil
+//go:generate go run . export DeployApproval --out ../../policies/deploy_approval.sigil
+//go:generate go run . export AccessGrant --out ../../policies/access_grant.sigil
 
 func main() {
-	cli.Main(cli.WithKind(deploy.Kind), cli.WithVersion(version))
+	cli.Main(cli.WithKind(deploy.Kind), cli.WithKind(access.Kind), cli.WithVersion(version))
 }

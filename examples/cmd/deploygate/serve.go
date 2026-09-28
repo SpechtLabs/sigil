@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 
+	"github.com/spechtlabs/sigil/examples/internal/access"
 	"github.com/spechtlabs/sigil/examples/internal/config"
 	"github.com/spechtlabs/sigil/examples/internal/deploy"
 	"github.com/spechtlabs/sigil/examples/internal/server"
@@ -51,74 +52,106 @@ func serve(ctx context.Context, cfg config.Config) (err error) {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	sighup := make(chan os.Signal, 1)
-	signal.Notify(sighup, syscall.SIGHUP)
-	defer signal.Stop(sighup)
+	// signal.Notify delivers every SIGHUP to each channel, so each store
+	// gets its own and both reload.
+	deployHUP := make(chan os.Signal, 1)
+	accessHUP := make(chan os.Signal, 1)
+	signal.Notify(deployHUP, syscall.SIGHUP)
+	signal.Notify(accessHUP, syscall.SIGHUP)
+	defer signal.Stop(deployHUP)
+	defer signal.Stop(accessHUP)
 
-	st, srv, herr := start(ctx, cfg)
+	svc, herr := start(ctx, cfg)
 	if herr != nil {
 		return herr
 	}
 
 	var wg sync.WaitGroup
-	wg.Go(func() { st.Watch(ctx, cfg.ReloadInterval, sighup) })
+	wg.Go(func() { svc.deploy.Watch(ctx, cfg.ReloadInterval, deployHUP) })
+	wg.Go(func() { svc.access.Watch(ctx, cfg.ReloadInterval, accessHUP) })
 	defer wg.Wait()
 
-	serr := srv.Serve(ctx)
-	stop() // stops the watcher, so the deferred Wait returns
+	serr := svc.server.Serve(ctx)
+	stop() // stops the watchers, so the deferred Wait returns
 	return serr
 }
 
-// start builds the store and the server in a startup span, so the initial
-// policy load shows up in the traces as part of it. The initial load fails
-// the process: serving without a policy would deny every deploy, and a pod
-// that exits never becomes ready, so a rollout with a broken bundle stalls
-// on the old pods instead.
-func start(ctx context.Context, cfg config.Config) (*store.Store, *server.Server, humane.Error) {
+// service is what start builds: both policy stores and the server that
+// evaluates against them.
+type service struct {
+	deploy *store.Store[deploy.Input]
+	access *store.Store[access.Input]
+	server *server.Server
+}
+
+// start builds the stores and the server in a startup span, so the initial
+// policy loads show up in the traces as part of it. An initial load that
+// fails fails the process: serving without a policy would deny every
+// deploy, and a pod that exits never becomes ready, so a rollout with a
+// broken bundle stalls on the old pods instead.
+func start(ctx context.Context, cfg config.Config) (*service, humane.Error) {
 	ctx, span := otel.Tracer(telemetry.TracerName).Start(ctx, "deploygate.startup")
 	defer span.End()
 
-	source := store.SourceEmbedded
-	if cfg.PoliciesDir != "" {
-		source = cfg.PoliciesDir
-	}
+	teamSource, accessSource := sourceName(cfg.PoliciesDir), sourceName(cfg.AccessPoliciesDir)
 	span.SetAttributes(
 		attribute.String("deploygate.version", version),
 		attribute.String("deploygate.addr", cfg.Addr),
 		attribute.StringSlice("deploygate.teams", cfg.Teams),
-		attribute.String("sigil.source", source),
+		attribute.String("sigil.source", teamSource),
+		attribute.String("sigil.access_source", accessSource),
 	)
 
 	metrics := telemetry.NewMetrics()
-	storeOpts := []store.Option{store.WithTeams(cfg.Teams...), store.WithMetrics(metrics)}
+	deployOpts := []store.Option{store.WithTeams(cfg.Teams...), store.WithMetrics(metrics)}
 	if cfg.PoliciesDir != "" {
-		storeOpts = append(storeOpts, store.WithTeamsDir(cfg.PoliciesDir))
+		deployOpts = append(deployOpts, store.WithBundleDir(cfg.PoliciesDir))
 	}
-	st := store.New(deploy.Kind, storeOpts...)
+	accessOpts := []store.Option{store.WithMetrics(metrics)}
+	if cfg.AccessPoliciesDir != "" {
+		accessOpts = append(accessOpts, store.WithBundleDir(cfg.AccessPoliciesDir))
+	}
+	svc := &service{deploy: store.NewDeploy(deployOpts...), access: store.NewAccess(accessOpts...)}
 
-	if lerr := st.InitialLoad(ctx); lerr != nil {
+	if lerr := svc.deploy.InitialLoad(ctx); lerr != nil {
 		span.SetStatus(codes.Error, "initial policy load failed")
-		return nil, nil, humane.Wrap(lerr, "deploygate won't start without a policy bundle that loads",
+		return nil, humane.Wrap(lerr, "deploygate won't start without team policies that load",
 			"fix the team policies, or point --policies at a directory that loads")
+	}
+	if lerr := svc.access.InitialLoad(ctx); lerr != nil {
+		span.SetStatus(codes.Error, "initial policy load failed")
+		return nil, humane.Wrap(lerr, "deploygate won't start without access policies that load",
+			"fix the access policies, or point --access-policies at a directory that loads")
 	}
 
 	srv, herr := server.New(
-		server.WithStore(st),
+		server.WithStore(svc.deploy),
+		server.WithAccessStore(svc.access),
 		server.WithMetrics(metrics),
 		server.WithAddr(cfg.Addr),
 		server.WithShutdownTimeout(cfg.ShutdownTimeout),
 	)
 	if herr != nil {
 		span.SetStatus(codes.Error, "building the server failed")
-		return nil, nil, herr
+		return nil, herr
 	}
+	svc.server = srv
 
 	telemetry.FromContext(ctx).InfoContext(ctx, "deploygate started",
 		zap.String("version", version),
 		zap.String("addr", cfg.Addr),
 		zap.Strings("teams", cfg.Teams),
-		zap.String("policies", source),
+		zap.String("policies", teamSource),
+		zap.String("access_policies", accessSource),
 		zap.Duration("reload_interval", cfg.ReloadInterval),
 	)
-	return st, srv, nil
+	return svc, nil
+}
+
+// sourceName names a bundle's source the way the store does.
+func sourceName(dir string) string {
+	if dir == "" {
+		return store.SourceEmbedded
+	}
+	return dir
 }

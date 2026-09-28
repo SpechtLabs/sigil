@@ -25,6 +25,8 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/spechtlabs/sigil/examples/internal/access"
+	"github.com/spechtlabs/sigil/examples/internal/deploy"
 	"github.com/spechtlabs/sigil/examples/internal/store"
 	"github.com/spechtlabs/sigil/examples/internal/telemetry"
 )
@@ -33,6 +35,7 @@ import (
 // expect them, and outside the versioned API.
 const (
 	RouteDeployments = "/api/v1/teams/:team/deployments"
+	RouteGrants      = "/api/v1/access/grants"
 	RoutePolicies    = "/api/v1/policies"
 	RouteReload      = "/api/v1/policies/reload"
 	RouteHealthz     = "/healthz"
@@ -64,7 +67,8 @@ var quietPaths = []string{RouteHealthz, RouteReadyz, RouteMetrics}
 
 // Server is the deploygate HTTP server.
 type Server struct {
-	store   *store.Store
+	deploy  *store.Store[deploy.Input]
+	access  *store.Store[access.Input]
 	router  *gin.Engine
 	metrics *telemetry.Metrics
 
@@ -87,8 +91,11 @@ func New(opts ...Option) (*Server, humane.Error) {
 		opt(s)
 	}
 
-	if s.store == nil {
-		return nil, humane.New("the server has no policy store", "pass server.WithStore(...) to server.New")
+	if s.deploy == nil {
+		return nil, humane.New("the server has no store for the team policies", "pass server.WithStore(store.NewDeploy(...)) to server.New")
+	}
+	if s.access == nil {
+		return nil, humane.New("the server has no store for the access policies", "pass server.WithAccessStore(store.NewAccess(...)) to server.New")
 	}
 	if s.metrics == nil {
 		s.metrics = telemetry.NewMetrics()
@@ -216,6 +223,7 @@ func (s *Server) newRouter() *gin.Engine {
 // routes registers the endpoints.
 func (s *Server) routes() {
 	s.router.POST(RouteDeployments, s.evaluate)
+	s.router.POST(RouteGrants, s.grants)
 	s.router.GET(RoutePolicies, s.listPolicies)
 	s.router.POST(RouteReload, s.reload)
 	s.router.GET(RouteHealthz, s.healthz)

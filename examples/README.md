@@ -1,6 +1,6 @@
 # deploygate: a Go service built on Sigil
 
-deploygate is a small deploy approval API. A client posts the release it wants to ship, and deploygate evaluates the team's Sigil policy and answers with a decision: approve, review or deny, each with a reason, a typed payload and a trace of how the policy got there. It's the running example from the [documentation](../docs/getting-started/tour.md), turned into a service you can start with one command.
+deploygate is a small deploy approval API. A client posts the release it wants to ship, and deploygate works out which roles the requestor holds, evaluates the team's Sigil policy with those roles and answers with a decision: approve, review or deny, each with a reason, a typed payload and a trace of how the policy got there. It's the running example from the [documentation](../docs/getting-started/tour.md), turned into a service you can start with one command.
 
 The example is a separate Go module, `github.com/spechtlabs/sigil/examples`, that builds against the Sigil checkout it lives in. Its dependencies never reach the library's `go.mod`.
 
@@ -9,9 +9,10 @@ The example is a separate Go module, `github.com/spechtlabs/sigil/examples`, tha
 - **A kind defined in Go.** `internal/deploy` declares the `DeployApproval` kind with `policy.NewKind`: the input structs, the decisions and their reasons, the precedence, the default and the `split` host function. See the [Go API](../docs/reference/go-api.md#defining-a-kind).
 - **An exported kind file.** The service's own `sigilc` binary writes the kind to `policies/deploy_approval.sigil`, and a test fails when that copy is stale. See [Exporting the kind](../docs/reference/go-api.md#exporting-the-kind).
 - **Guardrails no team can remove.** The platform's documents are embedded in the binary and passed to `policy.Require("deploy.guardrails", policy.From(platformFS))`, so a team policy has to invoke the guardrails unconditionally and can't redefine them. See [Where required policies come from](../docs/reference/go-api.md#where-required-policies-come-from).
-- **Team policies loaded from a directory.** Each team's policy comes from a directory, a mounted ConfigMap in a cluster, and reloads in place. A bundle that doesn't compile never replaces the one that serves. See [Policies in a ConfigMap](../docs/guides/configmaps.md) and [Hot reload](../docs/reference/go-api.md#hot-reload).
-- **Typed matching.** The handler matches the result with `deploy.Review.Match` and `deploy.Approve.Match` and gets `ReviewData` and `ApproveData` back, not a map. See [Typed matching](../docs/reference/go-api.md#typed-matching).
-- **Metrics and traces per decision.** Every evaluation counts its decision and reason in Prometheus and records a span with the decision and one event per trace candidate, so you can see in Grafana and Jaeger why a deploy was held.
+- **Policies loaded from directories.** The team policies and the access policy each come from a directory, a mounted ConfigMap in a cluster, and reload in place. A bundle that doesn't compile never replaces the one that serves. See [Policies in a ConfigMap](../docs/guides/configmaps.md) and [Hot reload](../docs/reference/go-api.md#hot-reload).
+- **A second, collecting kind.** `internal/access` declares `AccessGrant`, a `collect all` kind that grants roles. Its outcome feeds the deploy policy's `actor.roles`, so a client can't claim a role, and it shows both ways a collecting kind says no: a host-declared `exclusive` line and a separation-of-duties assert in a required policy.
+- **Typed matching.** The handler matches deploy results with `deploy.Review.Match` and `deploy.Approve.Match`, and access results with `access.Deployer.MatchAll` and friends, and gets `ReviewData`, `ApproveData` and `GrantData` back, not maps. See [Typed matching](../docs/reference/go-api.md#typed-matching).
+- **A complete local observability stack.** Alloy sends metrics to Mimir, traces to Tempo and JSON logs to Loki. Pyroscope collects every profile type supported by its Go SDK. Grafana connects decisions, logs, traces and profiles in one provisioned dashboard. k6 exercises both policy stages and records throughput, latency and correctness.
 
 ## Layout
 
@@ -19,52 +20,107 @@ The example is a separate Go module, `github.com/spechtlabs/sigil/examples`, tha
 examples/
   README.md                  this walkthrough
   go.mod, go.sum             the examples module
-  .goreleaser.yaml           builds deploygate and sigilc; not part of the root release
+  .goreleaser.yaml           builds deploygate, demo-cli and sigilc; separate from the root release
   Dockerfile                 builds the deploygate image
-  docker-compose.yaml        deploygate, OpenTelemetry Collector, Jaeger, Prometheus, Grafana
+  docker-compose.yaml        deploygate, Alloy, Grafana, Loki, Tempo, Mimir, Pyroscope and k6
   deploy/                    configuration for the compose services
   cmd/
+    demo-cli/                the deployment platform CLI, run with `mise run demo`
     deploygate/              the service: `serve`, `healthcheck` and `version`
-    sigilc/                  the host's sigil binary, with DeployApproval linked in
+    sigilc/                  the host's sigil binary, with both kinds linked in
   internal/
+    access/                  the AccessGrant kind
     config/                  flags, environment variables and their defaults
     deploy/                  the DeployApproval kind
     server/                  HTTP routes, handlers and the JSON error model
     store/                   the loaded policies and hot reload
-    telemetry/               tracing, logging and Prometheus metrics
+    telemetry/               tracing, logging, metrics and continuous profiles
   policies/
-    deploy_approval.sigil    the exported kind file, generated
-    embed.go                 embeds platform/ and teams/ into the binary
-    platform/deploy/         the platform's trusted documents
+    deploy_approval.sigil    the exported DeployApproval kind file, generated
+    access_grant.sigil       the exported AccessGrant kind file, generated
+    embed.go                 embeds platform/, teams/ and access/ into the binary
+    platform/deploy/         the platform's trusted deploy documents
+    platform/access/         the platform's trusted access documents
     teams/<team>/            each team's policy, its test cases and their inputs
+    access/                  access.main, its test cases and their inputs
+  requests/                  example requests embedded in demo-cli and checked by tests
   test/
     integration/             Ginkgo suite against the server in-process
     e2e/                     Ginkgo suite against the running compose stack
+    load/                    k6 smoke, constant-rate and stress scenarios
     internal/fixture/        requests, expected decisions and helpers both suites share
 ```
 
-[`policies/README.md`](./policies/README.md) describes the policy tree in detail: who owns which file, and how to add a team.
+[`policies/README.md`](./policies/README.md) describes the policy tree in detail: who owns which file, how the two kinds share the platform directory, and how to add a team.
 
 ## Run it
 
 You need [mise](https://mise.jdx.dev/) and Docker. From the repository root:
 
 ```bash
+cd examples
 mise install
-mise run examples-up
+mise run up
 ```
 
-`examples-up` builds the image and runs `docker compose up --build --wait`, which returns once every service is up. deploygate counts as healthy once its team bundle has loaded: the image has no shell, so compose runs `/deploygate healthcheck`, which asks the server's own `/readyz` and exits 0 on `200`. The stack publishes these ports:
+The tasks in [`.mise.toml`](./.mise.toml) run from `examples/` and inherit tool versions from the root config. All commands below run from `examples/`. To run a task from the repository root, use `mise -C examples run <task>`.
+
+`up` builds the image and runs `docker compose up --build --wait`, which returns once deploygate and all telemetry backends are ready. deploygate counts as healthy once both bundles have loaded: the image has no shell, so compose runs `/deploygate healthcheck`, which asks the server's own `/readyz` and exits 0 on `200`. The stack publishes these ports:
 
 | Service | Image | URL | What's there |
 | --- | --- | --- | --- |
 | deploygate | built from `Dockerfile` | <http://localhost:8080> | The API, `/healthz`, `/readyz` and `/metrics` |
-| OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.161.0` | `localhost:4317`, `localhost:4318` | OTLP over gRPC and HTTP; forwards the traces to Jaeger |
-| Jaeger | `jaegertracing/jaeger:2.20.0` | <http://localhost:16686> | Traces, one per request, with a `deploygate.evaluate` span |
-| Prometheus | `prom/prometheus:v3.15.0` | <http://localhost:9090> | The scraped `deploygate_*` metrics |
-| Grafana | `grafana/grafana:13.2.2` | <http://localhost:3000> | The `deploygate` dashboard, no login needed |
+| Alloy | `grafana/alloy:v1.20.0` | <http://localhost:12345>, OTLP `4317`/`4318` | Scrapes metrics, forwards traces and reads deploygate's Docker logs |
+| Tempo | `grafana/tempo:3.0.3` | <http://localhost:3200> | Trace API; explore traces through Grafana |
+| Loki | `grafana/loki:3.7.8` | <http://localhost:3100> | Log API; explore JSON decision logs through Grafana |
+| Mimir | `grafana/mimir:3.2.1` | <http://localhost:9009/prometheus> | Prometheus-compatible query API for service and k6 metrics |
+| Pyroscope | `grafana/pyroscope:2.3.1` | <http://localhost:4040> | CPU, memory, goroutine, mutex, blocking and leak profiles |
+| Grafana | `grafana/grafana:13.2.2` | <http://localhost:3000/d/deploygate> | The provisioned dashboard, no login needed |
+| k6 | `grafana/k6:2.3.0` | No listening port | Optional load generator; runs with `mise run loadtest` |
 
-`mise run examples-down` stops the stack and drops its volumes.
+Each backend runs as one process with filesystem storage in named volumes. Mimir uses its classic ingestion path, so the stack needs neither Kafka nor object storage. Alloy's Docker discovery is restricted to this Compose project's deploygate container; it reads logs through the mounted Docker socket. `mise run down` stops the stack and drops its volumes.
+
+### Explore the dashboard
+
+Open [deploygate · LGTM](http://localhost:3000/d/deploygate). The dashboard is provisioned from [`deploy/grafana/dashboards/deploygate.json`](deploy/grafana/dashboards/deploygate.json), with four datasources ready to use:
+
+- **Mimir:** service health, grants, decisions, evaluation latency, HTTP status codes, reloads and k6 measurements. **Team** filters the policy panels; **Load run** filters k6 panels independently.
+- **Tempo:** a table of decision traces. Open a trace to inspect access and deploy spans, candidate events and the roles used for the decision.
+- **Loki:** JSON service logs. Expand a line and follow **View trace** to its Tempo trace. A span's logs link searches Loki for the same trace ID.
+- **Pyroscope:** a CPU flame graph and a selectable runtime flame graph. Use **Runtime profile** to switch between allocations, live heap, goroutines, mutex contention, blocking and detected leaks. The selector lists types that have reached Pyroscope. Click a frame to inspect its callers and callees, or use **Explore profiles**. A Tempo span's profiles link opens the service profile for the surrounding time window; profiles describe the whole process, not just that request.
+
+Alloy scrapes every five seconds; profiles upload every fifteen seconds. Start a load test below to populate the charts and stacks. Expected policy conflicts and asserts appear in the evaluation-error panel; k6 checks that their responses are correct.
+
+The **Sigil evaluation performance** section measures the timed `p.Eval` calls. It shows completed evaluations per second, the evaluation count over the selected range, mean access and deploy latency, p50/p95/p99, and the share finishing within 100 µs. These panels follow **Team** and include failed evaluations. A deployment can evaluate both policies, while an access request evaluates one. Throughput comes from histogram counts, so granting several roles counts as one evaluation. Mean latency uses the histogram sum and count; percentiles are bucket estimates, with a lowest boundary of 50 µs. The throughput shown is what the service processed under the offered load, not its maximum capacity.
+
+### Generate load with k6
+
+From `examples/`:
+
+```bash
+mise run loadtest-smoke
+mise run loadtest
+DURATION=15m RATE=100 mise run loadtest
+RATE=200 mise run loadtest-stress
+```
+
+The smoke test sends each of eight request cases once. The default load test schedules 100 requests per second for two minutes. Stress mode ramps from `RATE` to twice that rate, then five times it, and back over three minutes. Requests rotate evenly through deployment approval, review, denial and a failed input assert, then access grants, no grants, an exclusive-role conflict and a separation-of-duties assert. Each iteration checks both the HTTP status and the policy result. Expected `403`, `409` and `422` responses count as successful test cases.
+
+The tasks start the stack, run the pinned k6 image, send metrics to Mimir and save a JSON report under `results/<run-id>.json`. Reports include the scenario, revision, working-tree status, Docker resource allocation and threshold results; `results/` is ignored by Git. Set a unique `RUN_ID` to make a run easy to select in Grafana. A finished run remains visible in its time range, although its live series become stale.
+
+To generate traffic against the stack that's already running, use `DURATION=15m RATE=100 mise run --skip-deps loadtest`. This skips the build and startup task, keeping the running application in place.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `RATE` | `100` | Iterations per second; each iteration makes one policy request |
+| `DURATION` | `2m` | Duration of constant-rate load mode |
+| `VUS` / `MAX_VUS` | `20` / `100` | Preallocated and maximum virtual users; stress mode uses `50` / `200` |
+| `P95_MS` / `P99_MS` | `250` / `500` | Full-request latency budgets in milliseconds |
+| `RUN_ID` | UTC timestamp | Report filename and Mimir `testid` label; use a unique value per run |
+
+Any incorrect outcome, a failed-request rate of 1% or more, a latency-budget breach or a dropped iteration fails the run. Dropped iterations mean k6 could not start the requested work on schedule; inspect generator resources and concurrency before treating a run as a capacity measurement. The dashboard shows p95 and p99 separately for each request series. The JSON report provides the overall percentiles for the completed run.
+
+These measurements cover HTTP, JSON handling, the applicable policy stages and telemetry with profiling enabled. They depend on your machine, Docker's CPU and memory allocation, and competing workloads. They measure this example service under the configured workload; they do not establish Sigil's maximum throughput or compare it with another policy engine. For repeatable measurements, leave the application and policies unchanged during the run and run the hot-reload e2e tests separately.
 
 The compose image is built with the version `compose`:
 
@@ -78,25 +134,71 @@ deploygate compose
 
 ### Without Docker
 
-deploygate runs on its own too. With no `--policies` it serves the team bundle embedded in the binary; pointing it at `policies/teams` serves the files in your checkout and reloads them when they change. Turn tracing off when no collector is listening:
+deploygate runs on its own too. With no `--policies` and no `--access-policies` it serves the bundles embedded in the binary; pointing the flags at `policies/teams` and `policies/access` serves the files in your checkout and reloads them when they change. Turn tracing off when no collector is listening:
 
 ```bash
 OTEL_TRACES_EXPORTER=none go run ./cmd/deploygate serve \
-  --policies policies/teams --log-format console
+  --policies policies/teams --access-policies policies/access --log-format console
 ```
 
 `go run ./cmd/deploygate version` prints `deploygate dev`; release builds get their version from GoReleaser.
 
-The requests below run from `examples/` and post the inputs the policy tests use, so you can compare the answers with `policies/teams/*/production_test.yaml`.
+### Use the deployment CLI
+
+`demo-cli` stands in for the platform tooling around deploygate. In a deployment system, that tooling would look up the actor's identity, service metadata and release history. Here, named scenarios supply those inputs and send them to the running service for a decision.
+
+```bash
+mise run demo deploy owner
+```
+
+```text
+HTTP 202 Accepted
+REVIEW: service_owner
+Team: payments
+Policy: payments.production
+Approvers: ["payments-leads","security-leads"]
+
+Access policy: access.main
+Roles:
+  reader: team_member
+  deployer: team_member, expires in 8h
+```
+
+The CLI shows the decision and reason, approvers or bake time, and the roles granted by the access policy. Add `--explain` to see the candidates, winning rules, conditions and source locations. Conflicts, failed asserts and error advice appear even without it.
+
+| Command | What it does |
+| --- | --- |
+| `mise run demo scenarios` | List the built-in scenarios |
+| `mise run demo deploy sre --explain` | Ask for the on-call SRE's deployment and explain its approval |
+| `mise run demo deploy short-soak --explain` | Show why a two-hour soak is denied |
+| `mise run demo access member` | Check a team member's roles |
+| `mise run demo access outsider` | Show an empty access outcome |
+| `mise run demo policies` | List both loaded bundles and their load times |
+| `mise run demo policies reload` | Reload both bundles |
+| `mise run demo status` | Check readiness |
+| `mise run demo metrics` | Print Prometheus metrics |
+
+`deploy` defaults to `owner`, and `access` to `member`. Run `mise run demo -- --help` or `mise run demo -- deploy --help` for flags. `--url` overrides `DEPLOYGATE_URL`, which defaults to `http://localhost:8080`; `--timeout` defaults to `10s`.
+
+The scenarios embed the files under [`requests/`](./requests), so a built CLI works from any directory. To try your own input, copy a request, edit it and pass `--file`. Deployments also need `--team`; access requests carry their team in the JSON. `--file -` reads stdin.
+
+```bash
+mise run demo deploy --team payments --file requests/owner.json
+mise run demo access --file requests/access-member.json
+```
+
+Add `--json` for the full API response, including error responses, on stdout. The detailed examples below use it to show the wire format; omit it for the readable summary. No JSON formatting tool is needed.
+
+The binary exits `0` for approvals, review requests, access grants and successful operations; `2` for denials, empty grants, conflicts and failed evaluations; and `1` for usage, connection and other HTTP errors. A review still requires approval from the named approvers. For scripts that need those exact exit codes, build with `mise run build` and use `./bin/demo-cli`. The `mise run demo` task uses `go run`, which reports any nonzero child exit as its own exit code `1`.
+
+The integration suite checks the request files against the service, and the CLI tests run every scenario through the real server in process.
 
 ### A review
 
 A payments engineer ships a PCI-scoped service their team owns:
 
 ```bash
-curl -si -X POST localhost:8080/api/v1/teams/payments/deployments \
-  -H 'Content-Type: application/json' \
-  -d @policies/teams/payments/testdata/owner.json
+mise run demo deploy owner --json
 ```
 
 deploygate answers `202 Accepted`. The body, formatted:
@@ -122,11 +224,18 @@ deploygate answers `202 Accepted`. The body, formatted:
       "payload": {"approvers": ["payments-leads", "security-leads"]},
       "winner": true
     }
-  ]
+  ],
+  "access": {
+    "policy": "access.main",
+    "grants": [
+      {"role": "reader", "reason": "team_member", "policy": "access.main", "location": "main.sigil:9:3 (access.main)"},
+      {"role": "deployer", "reason": "team_member", "ttl": "8h", "policy": "access.main", "location": "main.sigil:10:3 (access.main)"}
+    ]
+  }
 }
 ```
 
-The review comes from the platform's `deploy.production`, reached through the call on line 10 of the payments policy, and `conditions` lists every `when` that held on the way. Durations on the wire are strings in Sigil syntax, such as `"6h"` or `"15m"`, in requests and payloads alike.
+The review comes from the platform's `deploy.production`, reached through the call on line 10 of the payments policy, and `conditions` lists every `when` that held on the way. The `access` block shows the roles the deploy policy was given: the engineer is in the `payments` group, so `access.main` made them a reader and, for eight hours, a deployer. Durations on the wire are strings in Sigil syntax, such as `"6h"` or `"15m"`, in requests and payloads alike.
 
 The HTTP status encodes the decision, so a client can act on the status alone:
 
@@ -135,23 +244,21 @@ The HTTP status encodes the decision, so a client can act on the status alone:
 | `200 OK` | `approve`, with the `bake` time in the payload |
 | `202 Accepted` | `review`, with the `approvers` in the payload |
 | `403 Forbidden` | `deny` |
-| `422 Unprocessable Entity` | The evaluation failed. The decision fields hold the kind's default, `deny` / `no_rule_matched`, and `error` says what went wrong |
-| `400 Bad Request` | The body isn't valid JSON, has an unknown field, or has a duration that doesn't parse, is too long for a Go duration or, for `release.soak`, is negative |
+| `409 Conflict` | The access policy granted roles the kind declares exclusive. No role is granted, the deploy policy doesn't run, the decision fields hold the fallback `deny` / `no_rule_matched`, and `conflict` names both sides |
+| `422 Unprocessable Entity` | An evaluation failed, usually on an assert. The decision fields hold the kind's default, `deny` / `no_rule_matched`, `asserts` lists what failed and `error` says what went wrong |
+| `400 Bad Request` | The body isn't valid JSON, has an unknown field such as `roles`, or has a duration that doesn't parse, is too long for a Go duration or, for `release.soak`, is negative |
 | `404 Not Found` | deploygate doesn't serve that team |
-| `503 Service Unavailable` | No bundle is loaded yet |
+| `503 Service Unavailable` | The two bundles aren't both loaded yet |
 
 ### A deny
 
 The same engineer ships a release that soaked for two hours. The payments policy lowers the platform's minimum soak to four hours, so the guardrail denies it:
 
 ```bash
-curl -s -X POST localhost:8080/api/v1/teams/payments/deployments \
-  -H 'Content-Type: application/json' \
-  -d @policies/teams/payments/testdata/short-soak.json \
-  | jq '{decision, reason, trace: [.trace[] | {decision, reason, policy, winner}]}'
+mise run demo deploy short-soak --json
 ```
 
-The status is `403 Forbidden`:
+The status is `403 Forbidden`. Excerpt from the response:
 
 ```json
 {
@@ -168,43 +275,179 @@ The review still fired, and the trace shows it, but the kind ranks `deny` above 
 
 ### A failed assert
 
-The checkout policy asserts that every request names its actor. A request with an empty `actor.name` doesn't get a decision from the rules at all:
+The platform's access guardrails assert that every request names its actor, since every grant is recorded against a name. A request with an empty `actor.name` fails that assert in the access stage, and the deploy policy never runs:
 
 ```bash
-curl -s -X POST localhost:8080/api/v1/teams/checkout/deployments \
-  -H 'Content-Type: application/json' \
-  -d @policies/teams/checkout/testdata/unnamed-actor.json \
-  | jq '{decision, reason, asserts}'
+mise run demo deploy unnamed-actor --json
 ```
 
-The status is `422 Unprocessable Entity`, and the decision is the kind's default, which is what a host that fails closed acts on:
+The status is `422 Unprocessable Entity`, and the decision is the deploy kind's default, which is what a host that fails closed acts on. Excerpt from the response:
 
 ```json
 {
   "decision": "deny",
   "reason": "no_rule_matched",
+  "access": {"policy": "access.main", "grants": []},
   "asserts": [
-    {"reason": "named_actor", "policy": "checkout.production", "location": "checkout/production.sigil:6:1"}
+    {"reason": "named_actor", "policy": "access.guardrails", "location": "main.sigil:6:1 (access.main) → access/guardrails.sigil:6:1"}
   ]
 }
 ```
 
-The full body also carries an `error` object, in the same shape as every other error the API returns:
+The location is the call chain: the assert is written in `access.guardrails` and runs because `access.main` invokes the guardrails on line 6. The full body also carries an `error` object, in the same shape as every other error the API returns:
 
 ```json
 {
-  "message": "the request fails checkout.production's asserts: named_actor",
+  "message": "the request fails access.main's asserts: named_actor",
   "advice": [
-    "the decision fields hold the fallback decision; act on it",
+    "the deploy policy didn't run; the decision fields hold the fallback, deny",
     "fix the request so the asserts listed in asserts hold, then ask again"
   ],
-  "cause": {"message": "assertion \"named_actor\" failed at checkout/production.sigil:6:1"}
+  "cause": {"message": "assertion \"named_actor\" failed at main.sigil:6:1 (access.main) → access/guardrails.sigil:6:1"}
 }
 ```
 
+The checkout policy asserts `named_actor` too, for the host that evaluates it without an access stage; in deploygate the access stage always gets there first.
+
+## An authorization layer with collect all
+
+A deploy policy decides whether this actor may ship this release. It shouldn't also have to work out what the actor is allowed to do, and it certainly shouldn't take the client's word for it, which is what a request carrying `"roles": ["release_manager"]` amounts to. deploygate splits the two questions. A second kind, `AccessGrant`, decides which roles the actor holds for one team's services in one environment, and the deploy policy reads those roles as `actor.roles`.
+
+### Why roles need a collecting kind
+
+`DeployApproval` collects one decision: a deny beats a review beats an approval, and the host acts on the winner. Roles don't compete like that. A payments engineer on the platform team is a reader, a deployer and a release manager at once, and none of those outranks another. `AccessGrant` declares `collect all`, so every role whose rule fires is part of the outcome:
+
+```sigil
+decision reader {
+  team_member
+  everyone_in_staging
+}
+
+decision deployer(ttl: duration = 8h) {
+  team_member
+  oncall
+}
+
+collect all
+exclusive admin, release_manager
+```
+
+The outcome comes back in the kind's declaration order, then by source position, and grants aren't merged: a team member in staging is a reader for two reasons, and the host gets both. The kind is defined in `internal/access` and exported to [`policies/access_grant.sigil`](./policies/access_grant.sigil); the reference covers [collecting kinds](../docs/reference/kind-files.md#collecting-kinds) and [how their outcome resolves](../docs/reference/evaluation.md#collecting-kinds).
+
+### Two ways to say no
+
+A collecting kind has no deny that outranks the rest, so the combinations of roles that must never happen need another guard. The example has one in each of the two places the docs describe, on purpose.
+
+- **The host's `exclusive` line.** `admin` already covers everything a release manager can do, so a policy that grants both contradicts itself. The Go kind declares `policy.WithExclusive(access.Admin, access.ReleaseManager)`, and an evaluation where both fire fails with a `*policy.ConflictError` instead of handing out two grants. `access.main` respects it by construction, since its platform rule leaves admins out, but a break-glass member who is also in `platform` still trips it: the two groups aren't meant to overlap, and a conflict is how the host finds out that they do.
+- **The platform's separation-of-duties assert.** `access.guardrails`, which the host requires of every access policy, asserts `[auditor, deployer] exclusive in outcome`: whoever audits a team's deploys can't also deploy them. It's an outcome assert, so it runs once every role is collected and catches a deployer grant from any rule.
+
+What differs is who owns the rule. The [`exclusive` line](../docs/reference/kind-files.md#exclusive) is part of the contract compiled into the host, so changing it takes a host release. The assert is platform policy that ships and reloads like any other document, and holds because the host [requires](../docs/reference/evaluation.md#required-policies) the guardrails.
+
+### Two stages per deploy
+
+A deployment request describes the actor the way an identity provider would, with `groups` and a `clearance`, and without roles:
+
+```json
+"actor": {"name": "ada", "groups": ["payments"], "clearance": "", "regions": ["eu", "us"]}
+```
+
+deploygate evaluates `access.main` for the actor, the team and the environment first, and turns the grants into deploy roles: `deployer` becomes `deployer`, `release_manager` becomes `release_manager`, `admin` becomes both, and `reader` and `auditor` add nothing. Then it evaluates the team's deploy policy with those roles, and with the actor's groups as `actor.teams`. The handler reads the access result with [`MatchAll`](../docs/reference/go-api.md#typed-matching), one call per role, the way a host reads a collecting kind, since a role can be granted more than once. From `internal/server/render.go`:
+
+```go
+for _, m := range access.Deployer.MatchAll(res) {
+	out = append(out, grant(res, access.Deployer.Name(), m.Reason, m.Policy, m.Position, ttl(m.Payload.TTL)))
+}
+```
+
+`m.Payload` is a typed `GrantData`, so the time to live arrives as a `time.Duration`, not as a map entry to cast.
+
+A client that still sends `roles` or `teams` gets a `400`: unknown fields are rejected, and a client that believes it picked its own roles is the bug this layer exists to prevent.
+
+The on-call SRE shows both stages at work. `linus` is in `payments-sre` only, so the access policy grants no team membership but makes him a deployer for two hours, and the deploy policy's own SRE rule approves:
+
+```bash
+mise run demo deploy sre --json
+```
+
+Excerpt from the response:
+
+```json
+{
+  "decision": "approve",
+  "reason": "payments_sre",
+  "payload": {"bake": "15m"},
+  "access": {"grants": [{"role": "deployer", "reason": "oncall", "ttl": "2h"}]}
+}
+```
+
+An actor the access policy grants nothing isn't an error. The deploy policy runs without roles and its guardrail denies the deploy as `not_eligible`, and the empty `access.grants` shows why.
+
+### Asking for access directly
+
+`POST /api/v1/access/grants` runs the access stage on its own, for a UI that shows someone what they may do, or a CLI that checks before it asks for a deploy. The body names the actor, the team and the environment; a body without a team, or with a field it doesn't know, gets a `400`:
+
+```bash
+mise run demo access member --json
+```
+
+The status is `200 OK`, because at least one role was granted. Excerpt from `grants`:
+
+```json
+[
+  {"role": "reader", "reason": "team_member"},
+  {"role": "deployer", "reason": "team_member", "ttl": "8h"}
+]
+```
+
+`ttl` is left out of a grant whose role doesn't expire. The full body also has `policy`, `team`, `environment` and a `trace` in which every candidate is marked as a winner: a collecting kind's outcome is everything that survived.
+
+The same body with an empty `grants` list comes back as `403 Forbidden` when nothing fired, as for `mise run demo access outsider`, a member of `marketing` asking for payments in production:
+
+```json
+{"policy": "access.main", "team": "payments", "environment": "production", "grants": [], "trace": []}
+```
+
+A break-glass member who is also in `platform` trips the kind's `exclusive` line, and the answer is `409 Conflict` naming both sides:
+
+```bash
+mise run demo access break-glass-platform --json
+```
+
+Excerpt from the response:
+
+```json
+{
+  "grants": [],
+  "conflict": {"candidates": [
+    {"decision": "admin", "reason": "break_glass", "location": "main.sigil:36:3 (access.main)"},
+    {"decision": "release_manager", "reason": "platform_member", "location": "main.sigil:25:3 (access.main)"}
+  ]}
+}
+```
+
+No role is granted, and the error's advice says so: act as if `grants` were empty, and tell the policy's owners, because a conflict is a defect in the policy rather than the request. A payments engineer who is also in `compliance` fails the separation-of-duties assert instead, with `422 Unprocessable Entity`:
+
+```bash
+mise run demo access compliance-member --json
+```
+
+Excerpt from the response:
+
+```json
+{
+  "grants": [],
+  "asserts": [
+    {"reason": "sod_auditor_deployer", "policy": "access.guardrails", "location": "main.sigil:6:1 (access.main) → access/guardrails.sigil:11:1"}
+  ],
+  "trace": [{"decision": "reader"}, {"decision": "deployer"}, {"decision": "auditor"}]
+}
+```
+
+The trace still shows the three roles that fired, so it's clear which two couldn't stand together. Both failures end a deployment the same way, before the deploy policy runs: the deployments endpoint answers `409` or `422` with the fallback `deny` and an empty `access.grants`.
+
 ## Watch it reload
 
-The compose stack bind-mounts `policies/teams` into the container as `/etc/deploygate/policies`, so the team policies deploygate serves are the files in your checkout. It reloads them when you ask, on `SIGHUP`, and whenever a poll finds that their content changed. Compose sets `DEPLOYGATE_RELOAD_INTERVAL` to 5 seconds so you can watch it happen; the default is 30.
+The compose stack bind-mounts `policies/teams` into the container as `/etc/deploygate/policies` and `policies/access` as `/etc/deploygate/access`, so the policies deploygate serves are the files in your checkout. It reloads both bundles when you ask and on `SIGHUP`, and each one whenever a poll finds that its content changed. Compose sets `DEPLOYGATE_RELOAD_INTERVAL` to 5 seconds so you can watch it happen; the default is 30.
 
 Change the payments SRE bake from 15 minutes to 30 in `policies/teams/payments/production.sigil`:
 
@@ -217,21 +460,18 @@ when cleared and "payments-sre" in actor.teams {
 Wait for the next poll or reload right away, then ask for an SRE deploy:
 
 ```bash
-curl -s -X POST localhost:8080/api/v1/policies/reload | jq .loaded_at
-
-curl -s -X POST localhost:8080/api/v1/teams/payments/deployments \
-  -H 'Content-Type: application/json' \
-  -d @policies/teams/payments/testdata/sre.json | jq .payload
+mise run demo policies reload
+mise run demo deploy sre
 ```
 
-```json
-{"bake": "30m"}
-```
+The CLI now reports `Bake: 30m`.
+
+The access bundle reloads the same way. Give the on-call SRE three hours instead of two in `policies/access/main.sigil`, `deployer(oncall, ttl: 3h)`, reload, and the same request's `access` block shows `"ttl": "3h"`.
 
 Now break the file. Delete the closing `}` of the last `when`, and reload again:
 
 ```bash
-curl -s -X POST localhost:8080/api/v1/policies/reload | jq -r '.error.message, .error.cause.message'
+mise run demo policies reload
 ```
 
 The reload answers `500 Internal Server Error`. The error's message says what happened, and its cause holds the compiler's diagnostics, pointing at the file, line and column:
@@ -240,146 +480,216 @@ The reload answers `500 Internal Server Error`. The error's message says what ha
 the team policies from /etc/deploygate/policies don't load: payments.production failed to compile, so the previous bundle keeps serving
 ```
 
-deploygate keeps serving the bundle it loaded last, so the SRE deploy above still answers `{"bake": "30m"}`, and `GET /api/v1/policies` still reports the earlier `loaded_at`. The failure shows up in the metrics, and on the dashboard's "Failed reloads" and "Policy reloads" panels:
+deploygate keeps serving the bundle it loaded last, so the SRE deploy above still reports `Bake: 30m`, and `mise run demo policies` still reports the team bundle's earlier `loaded_at`. The failure shows up in the metrics, and on the dashboard's "Failed reloads" and "Policy reloads" panels:
 
 ```bash
-curl -s localhost:8080/metrics | grep deploygate_policy_reloads_total
+mise run demo metrics | grep deploygate_policy_reloads_total
 ```
 
-The `result="failure"` series has gone up. The poller may have tried before you did, so it can be one more than the reloads you asked for; it reports a broken bundle once, though, not at every poll. Alert on that counter: while it's rising, the running policy is stale. Put the `}` back, set the bake to `15m` again and reload, and the success counter moves instead. The same thing happens when a whole broken document lands in the directory, because a bundle loads as a whole: one team's typo stops every team's reload, never every team's deploys.
+The `kind="DeployApproval",result="failure"` series has gone up. The poller may have tried before you did, so it can be one more than the reloads you asked for; it reports a broken bundle once, though, not at every poll. Alert on that counter: while it's rising, the running policy is stale. Put the `}` back, set the bake to `15m` again and reload, and the success counter moves instead. The same thing happens when a whole broken document lands in the directory, because a bundle loads as a whole: one team's typo stops every team's reload, never every team's deploys.
 
 ## Your own sigil binary: sigilc
+
+Run `mise run sigilc <command>` from `examples/`, or `mise -C examples run sigilc <command>` from the repository root. The task passes command arguments and flags to `sigilc`.
 
 The stock `sigil` CLI checks policies against the exported kind file, but it can't run Go code, so it can't evaluate a rule that calls `split`. A host builds its own binary with the [`cli` package](../docs/reference/cli.md#host-functions-and-host-binaries) and links its kinds in. `cmd/sigilc` is one line of real code:
 
 ```go
-cli.Main(cli.WithKind(deploy.Kind), cli.WithVersion(version))
+cli.Main(cli.WithKind(deploy.Kind), cli.WithKind(access.Kind), cli.WithVersion(version))
 ```
 
-`sigilc` then decodes test inputs into `deploy.Input` and calls the real `strings.Split`, so its answers are the service's answers. It also writes the kind file. `cmd/sigilc/main.go` carries the `go generate` directive, and `mise run examples-generate` runs it:
+`sigilc` then decodes test inputs into `deploy.Input` or `access.Input` and calls the real `strings.Split`, so its answers are the service's answers. It also writes both kind files. `cmd/sigilc/main.go` carries a `go generate` directive per kind, and `mise run generate` runs them:
 
 ```bash
 go generate ./cmd/sigilc
 ```
 
-Run these from `examples/`. `mise run examples-policies` runs the check and the tests, the way the examples CI job does.
+With two kinds linked in, every policy command needs `--kind` with the exported kind file, so `sigilc` knows which contract to check against; without it, it stops and lists the kinds it links. Run these from `examples/`. `mise run policies` runs the checks and the tests for both kinds, the way the examples CI job does.
 
-Check every team policy against the kind, with the platform's documents as the trusted source, the same `Require` the service makes, and the lint levels from `policies/sigil.yaml`:
+Check every team policy against its kind, with the platform's deploy documents as the trusted source, the same `Require` the service makes, and the lint levels from `policies/sigil.yaml`. The trusted source is `policies/platform/deploy`, not `policies/platform`: a bundle that mixes documents of two kinds doesn't load.
 
 ```bash
-go run ./cmd/sigilc check --config policies/sigil.yaml \
-  --require deploy.guardrails --trusted policies/platform \
+mise run sigilc check --kind policies/deploy_approval.sigil --config policies/sigil.yaml \
+  --require deploy.guardrails --trusted policies/platform/deploy \
   --policy 'payments.*' --policy 'checkout.*' -R policies/teams
 ```
 
-Run every `*_test.yaml` under `policies/`:
+The access policy gets the same check against the other kind:
 
 ```bash
-go run ./cmd/sigilc test policies
+mise run sigilc check --kind policies/access_grant.sigil --config policies/sigil.yaml \
+  --require access.guardrails --trusted policies/platform/access \
+  --policy access.main policies/access
+```
+
+Run each kind's test files:
+
+```bash
+mise run sigilc test --kind policies/deploy_approval.sigil policies/platform/deploy policies/teams
+mise run sigilc test --kind policies/access_grant.sigil policies/platform/access policies/access
 ```
 
 ```text
 ok    policies/teams/checkout/production_test.yaml  9 cases
 ok    policies/teams/payments/production_test.yaml  16 cases
+✓ 25 cases passed in 2 files
+ok    policies/access/main_test.yaml  17 cases
+✓ 17 cases passed in 1 file
 ```
 
 Flatten a team policy into the rules it adds up to, with each invocation's conditions pushed into the rules and every param replaced by its value:
 
+`--policy payments.production` selects the name declared in the policy document. When adapting the command to a different working directory, adjust the `--kind` path and the directory arguments after `-R`; keep the policy name unchanged.
+
 ```bash
-go run ./cmd/sigilc explain --policy payments.production -R policies
+mise run sigilc explain --kind policies/deploy_approval.sigil \
+  --policy payments.production -R policies/platform/deploy policies/teams
 ```
 
 ```text
 payments.production: 7 rules from 4 policies
 
-deny     not_eligible      payments.production:7 → guardrails:8
-         not eligible
+  deny(not_eligible)        payments.production:7 → guardrails:8
+    when not eligible
 
-deny     soak_too_short    payments.production:7 → guardrails:12
-         release.soak < 4h and not release.hotfix
+  deny(soak_too_short)      payments.production:7 → guardrails:12
+    when release.soak < 4h and not release.hotfix
 
-approve  release_manager   payments.production:10 → deploy.production:11
-         service.labels["compliance"] == "pci"
-         and cleared
-         and service.tier == "critical" and "release_manager" in actor.roles
+  approve(release_manager)  payments.production:10 → deploy.production:11
+    when service.labels["compliance"] == "pci"
+     and cleared
+     and service.tier == "critical" and "release_manager" in actor.roles
 
-review   service_owner     payments.production:10 → deploy.production:16
-         service.labels["compliance"] == "pci"
-         and cleared
-         and service.tier in ["standard", "internal"] and owns_service
-         approvers = ["payments-leads", "security-leads"]
+  review(service_owner)     payments.production:10 → deploy.production:16
+    when service.labels["compliance"] == "pci"
+     and cleared
+     and service.tier in ["standard", "internal"] and owns_service
+    with approvers = ["payments-leads", "security-leads"]
 
-approve  release_manager   payments.production:14 → deploy.production:11
-         service.labels["compliance"] != "pci"
-         and cleared
-         and service.tier == "critical" and "release_manager" in actor.roles
+  approve(release_manager)  payments.production:14 → deploy.production:11
+    when service.labels["compliance"] != "pci"
+     and cleared
+     and service.tier == "critical" and "release_manager" in actor.roles
 
-review   service_owner     payments.production:14 → deploy.production:16
-         service.labels["compliance"] != "pci"
-         and cleared
-         and service.tier in ["standard", "internal"] and owns_service
-         approvers = ["payments-leads"]
+  review(service_owner)     payments.production:14 → deploy.production:16
+    when service.labels["compliance"] != "pci"
+     and cleared
+     and service.tier in ["standard", "internal"] and owns_service
+    with approvers = ["payments-leads"]
 
-approve  payments_sre      payments.production:18
-         cleared and "payments-sre" in actor.teams
-         bake = 15m
+  approve(payments_sre)     payments.production:18
+    when cleared and "payments-sre" in actor.teams
+    with bake = 15m
 ```
 
-Fail when the checked-in kind file no longer matches the Go definition:
+`explain` on the access policy lists every grant it can make, and the guardrails' asserts, with the phase each runs in:
 
 ```bash
-go run ./cmd/sigilc export --check --out policies/deploy_approval.sigil
+mise run sigilc explain --kind policies/access_grant.sigil \
+  --policy access.main -R policies/platform/access policies/access
+```
+
+```text
+access.main: 10 rules from 3 policies
+
+  reader(team_member)                    main:9
+    when team_member
+
+  deployer(team_member)                  main:10
+    when team_member
+
+  reader(everyone_in_staging)            main:14
+    when environment == "staging"
+
+  deployer(oncall)                       main:19
+    when on_call
+    with ttl = 2h
+
+  release_manager(platform_member)       main:25
+    when platform_member and not admin_cleared
+    with ttl = 4h
+
+  admin(clearance)                       main:29
+    when admin_cleared
+
+  admin(break_glass)                     main:36
+    when break_glass
+    with ttl = 15m
+
+  auditor(compliance_member)             main:40
+    when compliance_member
+
+  assert named_actor (input)             main:6 → guardrails:6
+    check actor.name != ""
+
+  assert sod_auditor_deployer (outcome)  main:6 → guardrails:11
+    check [auditor, deployer] exclusive in outcome
+```
+
+Fail when a checked-in kind file no longer matches the Go definition. `export` takes the kind's name, since it writes the file rather than reading it:
+
+```bash
+mise run sigilc export DeployApproval --check --out policies/deploy_approval.sigil
+mise run sigilc export AccessGrant --check --out policies/access_grant.sigil
 ```
 
 The flags are described in the [CLI reference](../docs/reference/cli.md).
 
 ## Tests
 
-There are four layers, from fastest to slowest. `mise run examples-test` runs the first three with `go test -race ./...`, and vets the fourth; none of them needs Docker.
+There are four layers, from fastest to slowest. `mise run test` runs the first three with `go test -race ./...`, and vets the fourth; none of them needs Docker.
 
 - **Unit tests** are table-driven `testing` tests next to the code in `internal/`.
-- **Policy tests** run the same `*_test.yaml` files `sigilc test` runs, from `go test`, with `policytest.Run` and the real kind. `internal/deploy/kind_test.go` loads them the way the service does, with the guardrails required from `policies/platform`, and `policytest.Schema` fails when the exported kind file is stale.
-- **Integration tests** in `test/integration` are a Ginkgo suite that wires the real store and server the way `cmd/deploygate` does and serves them with `httptest`. Spans go to an in-memory exporter and metrics to a fresh registry per spec, so the specs assert exact values: every span attribute and candidate event, each counter after a known set of requests. A fake clock pins `loaded_at` and fires polls by hand, so the reload specs cover polling, `SIGHUP` and last-known-good without waiting, on a private copy of `policies/teams`. The suite also checks that the embedded teams bundle decides every case the same way as the directory it was built from.
-- **End-to-end tests** in `test/e2e` are a Ginkgo suite behind the `e2e` build tag that talks to the compose stack over HTTP only, and checks that Prometheus scraped deploygate and that Jaeger stored its spans.
+- **Policy tests** run the same `*_test.yaml` files `sigilc test` runs, from `go test`, with `policytest.Run` and the real kinds. `internal/deploy/kind_test.go` and `internal/access/kind_test.go` load them the way the service does, with the guardrails required from `policies/platform/deploy` and `policies/platform/access`, and `policytest.Schema` fails when an exported kind file is stale.
+- **Integration tests** in `test/integration` are a Ginkgo suite that wires the real store and server the way `cmd/deploygate` does and serves them with `httptest`. Spans go to an in-memory exporter and metrics to a fresh registry per spec, so the specs assert exact values: every span attribute, candidate and grant event, each counter after a known set of requests. It covers every grant of the access endpoint, the `403` of an empty outcome, the `409` conflict with both candidates named and the `422` separation-of-duties assert, on both endpoints. Fake clocks pin `loaded_at` and fire polls by hand, so the reload specs cover polling, `SIGHUP` and last-known-good for both bundles without waiting, on private copies of `policies/teams` and `policies/access`. The suite also checks that the embedded bundles decide every case the same way as the directories they were built from, and it posts every file under `requests/` so this walkthrough can't drift from the service.
+- **End-to-end tests** in `test/e2e` are a Ginkgo suite behind the `e2e` build tag that talks to the compose stack over HTTP only, and checks Mimir metrics, Tempo spans, Loki logs with resolvable trace IDs, Pyroscope profiles and all four Grafana datasources.
 
 Both suites run the same table of requests and expected decisions from `test/internal/fixture`, so the in-process server and the container can't drift apart. Run the end-to-end suite with:
 
 ```bash
-mise run examples-e2e
+mise run e2e
 ```
 
-It brings the stack up first. To point the suite at a stack that's already running elsewhere, set `DEPLOYGATE_URL`, `JAEGER_URL` and `PROMETHEUS_URL`, and run this from `examples/`:
+It brings the stack up first. To point the suite at a stack that's already running elsewhere, set `DEPLOYGATE_URL`, `MIMIR_URL`, `TEMPO_URL`, `LOKI_URL`, `PYROSCOPE_URL` and `GRAFANA_URL`, and run this from `examples/`:
 
 ```bash
 go test -count=1 -tags e2e ./test/e2e/...
 ```
 
-`-count=1` matters: the suite checks the stack, not the code, and without it `go test` would replay a cached pass from an earlier run. The hot reload specs edit the team policies in `DEPLOYGATE_POLICIES_DIR`, which defaults to `policies/teams`, and put every byte back afterwards, even when a spec fails. They skip themselves when the directory isn't writable or deploygate serves its embedded bundle.
+`-count=1` matters: the suite checks the stack, not the code, and without it `go test` would replay a cached pass from an earlier run. The hot reload specs edit the team policies in `DEPLOYGATE_POLICIES_DIR`, which defaults to `policies/teams`, and the access policy in `DEPLOYGATE_ACCESS_POLICIES_DIR`, which defaults to `policies/access`, and put every byte back afterwards, even when a spec fails. They skip themselves when a directory isn't writable or deploygate serves that kind's embedded bundle.
 
 ## How it is wired
+
+### demo-cli
+
+`cmd/demo-cli` follows the Sigil CLI's layout. `main.go` runs `command.NewCommand` through `command.Execute`; each subcommand has its own package and takes dependencies through `With*` options in `options.go`. Shared HTTP transport, response rendering and scenario input live under `cmd/demo-cli/internal/`. The CLI uses the server's response types and sends requests over HTTP.
 
 ### deploy
 
 `internal/deploy` is the contract, and nothing else. The `Input` struct and its nested `Release`, `Service` and `Actor` types carry `policy:` tags that name the inputs policies read. `Deny`, `Review` and `Approve` are the decision handles, and `Kind` ties them together with the precedence, the default `deny(no_rule_matched)` and the `split` function. Every other package imports this one; the kind file in `policies/` is generated from it.
 
+### access
+
+`internal/access` is the second contract, in the same shape. `Input` holds the actor as the identity provider describes them, `name`, `groups` and `clearance`, plus the team and the environment. The roles are decision handles: `Reader` and `Auditor` carry only a reason, `Deployer` and `ReleaseManager` a `GrantData` time to live that defaults to eight hours, and `Admin` an `AdminData` one that defaults to one. `Kind` collects them all and declares `admin` and `release_manager` exclusive.
+
 ### store
 
-`internal/store` holds the compiled policies. `Load` compiles every served team's root, `<team>.production`, from the team bundle:
+`internal/store` holds the compiled policies. `Store[In]` is generic over the kind's input, so the service runs two: `store.NewDeploy` compiles every served team's root, `<team>.production`, from the team bundle, and `store.NewAccess` compiles the single root `access.main` from the access bundle. For a team, a load comes down to:
 
 ```go
 deploy.Kind.Load(teamsFS, team+".production",
-	policy.Require("deploy.guardrails", policy.From(policies.Platform)))
+	policy.Require("deploy.guardrails", policy.From(policies.PlatformDeploy)))
 ```
 
-It swaps the new set in with one atomic pointer store only when every team compiles, so in-flight requests finish on the bundle they started with, and a broken bundle never serves. The platform documents always come from `policies.Platform`, embedded in the binary; there's no flag to point them elsewhere, because a guardrail an operator can swap isn't a guardrail.
+It swaps the new set in with one atomic pointer store only when every root compiles, so in-flight requests finish on the bundle they started with, and a broken bundle never serves. The platform documents always come from the binary, `policies.PlatformDeploy` and `policies.PlatformAccess`, one view per kind because a bundle that mixes kinds doesn't load; there's no flag to point them elsewhere, because a guardrail an operator can swap isn't a guardrail.
 
 At startup `cmd/deploygate` calls `InitialLoad`, which loads the same way but records the trigger `startup` and leaves the failure to its caller. There's no last good bundle yet, so `main` prints the diagnostics once and exits; on Kubernetes that holds a rollout at the old pods instead of serving without a policy.
 
-`Watch` runs the reload loop. `SIGHUP` always reloads. A poll fingerprints the directory's content and reloads only when it changed since the last load, successful or not, so a broken bundle is reported once rather than every few seconds. Loads are serialized, and each runs in a span that records what triggered it. The store is built with options, `store.New(deploy.Kind, store.WithTeams(...), store.WithTeamsDir(dir), store.WithMetrics(m), ...)`, and `store.WithClock` lets the tests control time.
+`Watch` runs the reload loop. `SIGHUP` always reloads. A poll fingerprints the directory's content and reloads only when it changed since the last load, successful or not, so a broken bundle is reported once rather than every few seconds. Loads are serialized, and each runs in a span that records what triggered it. The stores are built with options, `store.NewDeploy(store.WithTeams(...), store.WithBundleDir(dir), store.WithMetrics(m), ...)` and `store.NewAccess(store.WithBundleDir(dir), ...)`, and `store.WithClock` lets the tests control time.
 
 ### server
 
-`internal/server` is a gin router with recovery, OpenTelemetry, access log and request metrics middleware. It's built with functional options, `server.New(server.WithStore(st), server.WithMetrics(m), server.WithTracerProvider(tp))`, which returns the server or a humane error, and `Handler()` hands out the router for tests. Probes and scrapes are neither traced nor logged, so they don't bury the requests worth reading. The deployments handler decodes the request with unknown fields disallowed, evaluates the team's policy, matches the result with the typed decision handles, and maps the decision to the HTTP status. Every error the service creates is a humane error, rendered as:
+`internal/server` is a gin router with recovery, OpenTelemetry, access log and request metrics middleware. It's built with functional options, `server.New(server.WithStore(deploy), server.WithAccessStore(access), server.WithMetrics(m), server.WithTracerProvider(tp))`, which returns the server or a humane error, and `Handler()` hands out the router for tests. Probes and scrapes are neither traced nor logged, so they don't bury the requests worth reading. The deployments handler decodes the request with unknown fields disallowed, evaluates `access.main`, turns the grants into roles, evaluates the team's policy with them, matches the result with the typed decision handles, and maps the decision to the HTTP status. Every error the service creates is a humane error, rendered as:
 
 ```json
 {"error": {"message": "...", "advice": ["..."], "cause": {"message": "..."}}}
@@ -387,11 +697,12 @@ At startup `cmd/deploygate` calls `InitialLoad`, which loads the same way but re
 
 | Route | Does |
 | --- | --- |
-| `POST /api/v1/teams/{team}/deployments` | Evaluates `<team>.production` |
-| `GET /api/v1/policies` | The kind, its version, `loaded_at`, the source and the served policies |
-| `POST /api/v1/policies/reload` | Reloads the team bundle now; `500` with the diagnostics when it doesn't compile |
+| `POST /api/v1/teams/{team}/deployments` | Evaluates `access.main`, then `<team>.production` with the granted roles |
+| `POST /api/v1/access/grants` | Evaluates `access.main` alone |
+| `GET /api/v1/policies` | Per kind: its version, `loaded_at`, the source and the served policies |
+| `POST /api/v1/policies/reload` | Reloads both bundles now; `500` with the diagnostics when one doesn't compile |
 | `GET /healthz` | `200` once the process serves |
-| `GET /readyz` | `200` once a bundle is loaded, `503` before |
+| `GET /readyz` | `200` once both bundles are loaded, `503` before |
 | `GET /metrics` | Prometheus text format |
 
 Any other path answers `404` with the same error model. The server shuts down gracefully on `SIGINT` and `SIGTERM`, within the shutdown timeout.
@@ -404,10 +715,12 @@ Any other path answers `404` with the same error model. The server shuts down gr
 | --- | --- | --- |
 | `deploygate_decisions_total` | counter | `team`, `policy`, `decision`, `reason` |
 | `deploygate_evaluation_duration_seconds` | histogram | `team` |
-| `deploygate_evaluation_errors_total` | counter | `team`, `kind`: `assertion`, `runtime` or `conflict` |
-| `deploygate_policy_reloads_total` | counter | `result`: `success` or `failure` |
+| `deploygate_evaluation_errors_total` | counter | `team`, `kind`: `assertion`, `runtime` or `conflict`, `stage`: `access` or `deploy` |
+| `deploygate_access_grants_total` | counter | `team`, `role`, `reason` |
+| `deploygate_access_evaluation_duration_seconds` | histogram | `team` |
+| `deploygate_policy_reloads_total` | counter | `kind`, `result`: `success` or `failure` |
 | `deploygate_policy_last_reload_timestamp_seconds` | gauge | none; the time of the last successful load |
-| `deploygate_policy_loaded_info` | gauge, always 1 | `team`, `policy`, `source` |
+| `deploygate_policy_loaded_info` | gauge, always 1 | `kind`, `team`, `policy`, `source`; `team` is empty for the access root |
 
 The server's middleware adds the HTTP request metrics to the same registry:
 
@@ -418,7 +731,9 @@ The server's middleware adds the HTTP request metrics to the same registry:
 
 Every label is bounded. `url` is the route template, `/api/v1/teams/:team/deployments`, or `unmatched` for a path without a route, so made-up team names and scanned paths can't create new series, and a method outside the standard set counts as `other`. Scrapes of `/metrics` aren't counted, because they would dominate the request rate.
 
-Each deployment request gets the gin server span and, below it, a `deploygate.evaluate` span with the attributes `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.decision`, `sigil.reason` and `sigil.candidates`, plus one `sigil.candidate` event per trace entry. A failed evaluation sets the span's status to error. Reloads run in a `deploygate.policies.reload` span with `sigil.source`, `sigil.kind`, `deploygate.reload.trigger` (`startup`, `manual`, `sighup` or `poll`) and, on success, `sigil.policies`; a rejected bundle sets the status to error and records the diagnostics.
+`deploygate_decisions_total` counts deploy decisions only. A request whose access stage fails never reaches the deploy policy, so it counts as an evaluation error with `stage="access"` and as nothing else.
+
+Each deployment request gets the gin server span and, below it, two siblings. The `deploygate.access` span comes first, with `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.environment` and `sigil.grants`, plus one `sigil.grant` event per grant with its `role`, `reason` and `ttl`. The `deploygate.evaluate` span follows, with `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.roles`, `sigil.decision`, `sigil.reason` and `sigil.candidates`, plus one `sigil.candidate` event per trace entry. A failed evaluation sets its span's status to error; when the access stage fails, there is no `deploygate.evaluate` span at all. The access endpoint records the same `deploygate.access` span on its own. Reloads run in a `deploygate.policies.reload` span with `sigil.source`, `sigil.kind`, `deploygate.reload.trigger` (`startup`, `manual`, `sighup` or `poll`) and, on success, `sigil.policies`; a rejected bundle sets the status to error and records the diagnostics.
 
 ### config
 
@@ -428,27 +743,45 @@ Each deployment request gets the gin server span and, below it, a `deploygate.ev
 | --- | --- | --- | --- |
 | `--addr` | `DEPLOYGATE_ADDR` | `:8080` | Listen address for the API, health and metrics |
 | `--policies` | `DEPLOYGATE_POLICIES` | empty | Directory with the team policies; empty serves the teams embedded in the binary |
+| `--access-policies` | `DEPLOYGATE_ACCESS_POLICIES` | empty | Directory with the access policies, root `access.main`; empty serves the access bundle embedded in the binary |
 | `--team` | `DEPLOYGATE_TEAMS` | `payments,checkout` | Teams to serve, repeatable or comma-separated; team `t` evaluates `t.production` |
-| `--reload-interval` | `DEPLOYGATE_RELOAD_INTERVAL` | `30s` | How often to check the policies directory for changes; `0` turns polling off |
+| `--reload-interval` | `DEPLOYGATE_RELOAD_INTERVAL` | `30s` | How often to check both policies directories for changes; `0` turns polling off |
 | `--shutdown-timeout` | `DEPLOYGATE_SHUTDOWN_TIMEOUT` | `15s` | How long a graceful shutdown may take |
 | `--debug` | `DEPLOYGATE_DEBUG` | `false` | Debug logging and gin's debug mode |
 | `--log-format` | `DEPLOYGATE_LOG_FORMAT` | `json` | `json` or `console` |
 
-Tracing takes the standard variables: `OTEL_EXPORTER_OTLP_ENDPOINT` for the collector, `OTEL_SERVICE_NAME`, which defaults to `deploygate`, and `OTEL_TRACES_EXPORTER=none` to turn tracing off.
+Tracing takes the standard variables: `OTEL_EXPORTER_OTLP_ENDPOINT` for Alloy (or another OTLP collector), `OTEL_SERVICE_NAME`, which defaults to `deploygate`, and `OTEL_TRACES_EXPORTER=none` to turn tracing off.
+
+`PYROSCOPE_SERVER_ADDRESS` enables continuous profiling; Compose sets it to `http://pyroscope:4040`. Leave it unset to disable profiling when running the service alone. All eleven profile types exposed by the pinned Go SDK are enabled:
+
+| Profile | What it records |
+| --- | --- |
+| CPU | Sampled CPU time |
+| Allocated objects / bytes | Allocations during the profiling interval |
+| In-use objects / bytes | Live heap allocations |
+| Goroutines | Stacks of current goroutines |
+| Mutex count / duration | Contended mutex events and accumulated waiting time |
+| Block count / duration | Synchronization blocking events and accumulated blocked time |
+| Goroutine leaks | Stacks that Go's leak detector identifies as leaked |
+
+Profiles use the service name and version as labels. Mutex profiling samples one in five contention events. Blocking profiling samples roughly one event per millisecond spent blocked. Sampling starts only after the profiler starts successfully; shutdown disables block sampling and restores the previous mutex fraction.
+
+The heap collector does not request extra GC cycles. Goroutine-leak capture does trigger GC every fifteen seconds, as required by the Go runtime, so that cost is part of the load measurements. A healthy service can have no leak samples, and contention profiles can be empty when there is no contention. The SDK upload test checks every configured type, including empty leak profiles; Grafana lists a type once Pyroscope stores samples for it.
 
 ## Building it separately
 
 The examples have their own [`.goreleaser.yaml`](./.goreleaser.yaml), which builds `deploygate` and `sigilc`. The root release doesn't use it, so nothing in `examples/` ships with Sigil itself. To build snapshot binaries locally:
 
 ```bash
-mise run examples-snapshot
+mise run snapshot
 ```
 
-`mise run examples-build` builds plain binaries into `examples/bin/` instead. `mise run examples-release-check` validates the GoReleaser configuration, and `mise run examples-check` runs every gate the examples CI job runs: lint, tests, the policy checks and the release check.
+`mise run build` builds plain binaries into `examples/bin/` instead. `mise run release-check` validates the GoReleaser configuration, and `mise run check` runs every gate the examples CI job runs: lint, tests, the policy checks and the release check.
 
 ## Further reading
 
 - [A tour of the language](../docs/getting-started/tour.md) walks through the same policies by hand.
 - [Per-team policies](../docs/guides/team-policies.md) explains how the team policies compose the platform's.
 - [Policies in a ConfigMap](../docs/guides/configmaps.md) shows how to ship the team bundle to a cluster.
+- [Kind files](../docs/reference/kind-files.md#collecting-kinds) and [Evaluation semantics](../docs/reference/evaluation.md#collecting-kinds) define collecting kinds, `exclusive` and outcome asserts.
 - [Go API](../docs/reference/go-api.md) is the reference for everything `internal/store` and `internal/server` call.

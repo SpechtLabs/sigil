@@ -1,18 +1,15 @@
-# deploygate with its observability stack: traces go through an OpenTelemetry
-# Collector to Jaeger, Prometheus scrapes the service and the collector, and
-# Grafana shows both. Run it from examples/:
+# deploygate and a local Grafana LGTM stack. Alloy sends traces to Tempo,
+# metrics to Mimir, and the service's Docker logs to Loki. Pyroscope receives
+# all Go runtime profiles. All backends run as one process with filesystem
+# storage in named volumes. The optional k6 service generates measured load.
 #
-#   docker compose up --build --wait
+# Run from examples/: docker compose up --build --wait
+# Grafana: http://localhost:3000/d/deploygate
+# API: 8080, Alloy: 12345 and OTLP 4317/4318, Tempo: 3200, Loki: 3100,
+# Mimir: 9009, Pyroscope: 4040.
 #
-# | Service        | Host port  | What for                                   |
-# | -------------- | ---------- | ------------------------------------------ |
-# | deploygate     | 8080       | API, /healthz, /readyz, /metrics           |
-# | otel-collector | 4317, 4318 | OTLP gRPC and HTTP                         |
-# | jaeger         | 16686      | Trace UI and /api/traces                   |
-# | prometheus     | 9090       | Metrics UI and API                         |
-# | grafana        | 3000       | The deploygate dashboard, no login         |
-#
-# ./policies/teams is mounted read-only as the team bundle. Edit a team policy
+# ./policies/teams is mounted read-only as the team bundle (DeployApproval) and
+# ./policies/access as the access bundle (AccessGrant). Edit a policy in either
 # on the host and deploygate picks it up within DEPLOYGATE_RELOAD_INTERVAL, or
 # at once with `curl -X POST localhost:8080/api/v1/policies/reload`.
 
@@ -32,70 +29,114 @@ services:
       - "8080:8080"
     environment:
       DEPLOYGATE_POLICIES: /etc/deploygate/policies
+      DEPLOYGATE_ACCESS_POLICIES: /etc/deploygate/access
       DEPLOYGATE_TEAMS: payments,checkout
       # Short, so a policy edit on the host shows up while you watch.
       DEPLOYGATE_RELOAD_INTERVAL: 5s
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4317
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       OTEL_SERVICE_NAME: deploygate
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
     volumes:
       - ./policies/teams:/etc/deploygate/policies:ro
+      - ./policies/access:/etc/deploygate/access:ro
     # The image has no shell or HTTP client, so the binary probes its own
-    # /readyz. It turns healthy once the team bundle has loaded, which is
-    # what `up --wait` and the e2e suite wait for.
+    # /readyz. It turns healthy once both bundles have loaded, which is what
+    # `up --wait` and the e2e suite wait for.
     healthcheck:
       test: ["CMD", "/deploygate", "healthcheck"]
       interval: 5s
       timeout: 3s
       retries: 12
     depends_on:
-      otel-collector:
+      alloy:
         condition: service_started
     restart: unless-stopped
 
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.161.0
+  alloy:
+    image: grafana/alloy:v1.20.0
+    command: [run, /etc/alloy/config.alloy, --storage.path=/var/lib/alloy/data, --server.http.listen-addr=0.0.0.0:12345]
     ports:
       - "4317:4317"
       - "4318:4318"
+      - "12345:12345"
+    environment:
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-deploygate}
     volumes:
-      - ./deploy/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
-    # No healthcheck: the image holds nothing but the collector binary, so
-    # there is no shell or HTTP client to run one with. `up --wait` treats a
-    # service without a healthcheck as ready once it runs, and Prometheus
-    # shows whether the collector is up.
+      - ./deploy/alloy.alloy:/etc/alloy/config.alloy:ro
+      # Alloy reads this project's deploygate logs through the Docker API.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
     depends_on:
-      jaeger:
-        condition: service_healthy
+      tempo:
+        condition: service_started
+      loki:
+        condition: service_started
+      mimir:
+        condition: service_started
     restart: unless-stopped
 
-  jaeger:
-    # Jaeger v2: OTLP on 4317/4318 and in-memory storage out of the box. Only
-    # the UI is published; the collector reaches OTLP on the compose network.
-    # Held at 2.20: 2.21 removed the v1 HTTP API (/api/services, /api/traces),
-    # which Grafana's Jaeger datasource and the e2e suite still query.
-    image: jaegertracing/jaeger:2.20.0
+  tempo:
+    image: grafana/tempo:3.0.3
+    command: [-config.file=/etc/tempo.yaml]
     ports:
-      - "16686:16686"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:16686/"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-    restart: unless-stopped
-
-  prometheus:
-    image: prom/prometheus:v3.15.0
-    ports:
-      - "9090:9090"
+      - "3200:3200"
     volumes:
-      - ./deploy/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/ready"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
+      - ./deploy/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
     restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.7.8
+    command: [-config.file=/etc/loki.yaml]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./deploy/loki.yaml:/etc/loki.yaml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+
+  mimir:
+    image: grafana/mimir:3.2.1
+    command: [-config.file=/etc/mimir.yaml]
+    ports:
+      - "9009:9009"
+    volumes:
+      - ./deploy/mimir.yaml:/etc/mimir.yaml:ro
+      - mimir-data:/data
+    restart: unless-stopped
+
+  pyroscope:
+    image: grafana/pyroscope:2.3.1
+    command: [-config.file=/etc/pyroscope.yaml]
+    ports:
+      - "4040:4040"
+    volumes:
+      - ./deploy/pyroscope.yaml:/etc/pyroscope.yaml:ro
+      - pyroscope-data:/data
+      - pyroscope-metastore:/data-metastore
+      - pyroscope-compactor:/data-compactor
+    restart: unless-stopped
+
+  # Runs only when requested with `mise run loadtest` or `docker compose run`.
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: [loadtest]
+    environment:
+      BASE_URL: http://deploygate:8080
+      K6_PROMETHEUS_RW_SERVER_URL: http://mimir:9009/api/v1/push
+      K6_PROMETHEUS_RW_TREND_STATS: p(95),p(99),avg,max
+      K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+    volumes:
+      - ./test/load:/scripts:ro
+      - ./requests:/requests:ro
+      - ./results:/results
+    depends_on:
+      deploygate:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
+    command: [run, --out, experimental-prometheus-rw, /scripts/deploygate.js]
 
   grafana:
     image: grafana/grafana:13.2.2
@@ -115,13 +156,33 @@ services:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      # The backend images have no HTTP client. This probe waits for the
+      # whole pipeline, so `up --wait` also guarantees backend readiness.
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q -O /dev/null http://127.0.0.1:3000/api/health &&
+          wget -q -O /dev/null http://alloy:12345/-/ready &&
+          wget -q -O /dev/null http://tempo:3200/ready &&
+          wget -q -O /dev/null http://loki:3100/ready &&
+          wget -q -O /dev/null http://mimir:9009/ready &&
+          wget -q -O /dev/null http://pyroscope:4040/ready
       interval: 5s
-      timeout: 3s
-      retries: 12
+      timeout: 5s
+      retries: 30
+      start_period: 10s
     depends_on:
-      prometheus:
-        condition: service_healthy
-      jaeger:
-        condition: service_healthy
+      alloy:
+        condition: service_started
+      pyroscope:
+        condition: service_started
     restart: unless-stopped
+
+volumes:
+  alloy-data:
+  tempo-data:
+  loki-data:
+  mimir-data:
+  pyroscope-data:
+  pyroscope-metastore:
+  pyroscope-compactor:

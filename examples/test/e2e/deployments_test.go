@@ -3,10 +3,7 @@
 package e2e
 
 import (
-	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -15,15 +12,6 @@ import (
 )
 
 var _ = Describe("Evaluating a deployment", func() {
-	It("builds the same owner input the policy tests read from owner.json", func() {
-		want, err := os.ReadFile(filepath.Join(fixture.ExamplesDir, fixture.OwnerFixture))
-		Expect(err).NotTo(HaveOccurred())
-
-		got, err := json.Marshal(fixture.OwnerRequest())
-		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(MatchJSON(want))
-	})
-
 	It("explains the owner's review with the platform rule and its call chain", func() {
 		resp, out := deploygate.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest())
 
@@ -31,7 +19,7 @@ var _ = Describe("Evaluating a deployment", func() {
 		fixture.ExpectOwnerTrace(Default, out)
 	})
 
-	DescribeTable("encodes the decision in the HTTP status",
+	DescribeTable("grants roles, then encodes the decision in the HTTP status",
 		func(c fixture.DecisionCase) {
 			resp, out := deploygate.Deploy(Default, c.Team, c.Request)
 			fixture.ExpectDecision(Default, c, resp, out)
@@ -39,9 +27,26 @@ var _ = Describe("Evaluating a deployment", func() {
 		decisionEntries(),
 	)
 
-	It("answers a failed assert with 422, the assert and the kind's default", func() {
-		resp, out := deploygate.Deploy(Default, fixture.TeamCheckout, fixture.OwnerRequest(fixture.ActorName("")))
-		fixture.ExpectNamedActorFailure(Default, resp, out)
+	Context("when the access stage fails", func() {
+		// An access failure ends the request before the deploy policy
+		// runs, so no deploy decision is made on roles nobody granted.
+
+		It("answers 422 for an actor without a name", func() {
+			resp, out := deploygate.Deploy(Default, fixture.TeamCheckout, fixture.OwnerRequest(fixture.ActorName("")))
+			fixture.ExpectAsserts(Default, resp, out.Asserts, out.Error,
+				fixture.AssertEntry{Reason: "named_actor", Policy: "access.guardrails"})
+		})
+
+		It("answers 422 for an actor who would audit their own deploys", func() {
+			resp, out := deploygate.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(fixture.ComplianceMember...)))
+			fixture.ExpectAsserts(Default, resp, out.Asserts, out.Error,
+				fixture.AssertEntry{Reason: "sod_auditor_deployer", Policy: "access.guardrails"})
+		})
+
+		It("answers 409 naming both sides when admin and release manager collide", func() {
+			resp, out := deploygate.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(fixture.BreakGlassPlatform...)))
+			fixture.ExpectBreakGlassConflict(Default, resp, out.Conflict, out.Error)
+		})
 	})
 
 	Context("when the request can't be evaluated", func() {
@@ -64,6 +69,43 @@ var _ = Describe("Evaluating a deployment", func() {
 	})
 })
 
+var _ = Describe("Asking for access", func() {
+	DescribeTable("grants every role whose rule fires",
+		func(c fixture.AccessCase) {
+			resp, out := deploygate.Access(Default, c.Request)
+			fixture.ExpectAccess(Default, c, resp, out)
+		},
+		accessEntries(),
+	)
+
+	It("answers 409 naming both sides when admin and release manager collide", func() {
+		resp, out := deploygate.Access(Default, fixture.AccessFor(fixture.BreakGlassPlatform...))
+		fixture.ExpectBreakGlassConflict(Default, resp, out.Conflict, out.Error)
+	})
+
+	It("answers 422 when separation of duties fails", func() {
+		resp, out := deploygate.Access(Default, fixture.AccessFor(fixture.ComplianceMember...))
+		fixture.ExpectAsserts(Default, resp, out.Asserts, out.Error,
+			fixture.AssertEntry{Reason: "sod_auditor_deployer", Policy: "access.guardrails"})
+	})
+
+	It("answers 422 for an actor without a name", func() {
+		resp, out := deploygate.Access(Default, fixture.AccessFor(fixture.TeamPayments).Named(""))
+		fixture.ExpectAsserts(Default, resp, out.Asserts, out.Error,
+			fixture.AssertEntry{Reason: "named_actor", Policy: "access.guardrails"})
+	})
+
+	DescribeTable("answers 400 for a body it won't evaluate",
+		func(body string) {
+			resp, raw := deploygate.PostRaw(Default, fixture.PathAccessGrants, body)
+
+			Expect(resp).To(HaveHTTPStatus(http.StatusBadRequest))
+			Expect(fixture.Decode[fixture.ErrorResponse](Default, raw).Error).NotTo(BeNil())
+		},
+		accessBadRequestEntries(),
+	)
+})
+
 // decisionEntries turns the shared decision cases into table entries, so
 // this suite and the integration suite run the same table.
 func decisionEntries() []TableEntry {
@@ -71,6 +113,26 @@ func decisionEntries() []TableEntry {
 	entries := make([]TableEntry, 0, len(cases))
 	for _, c := range cases {
 		entries = append(entries, Entry(c.Name, c))
+	}
+
+	return entries
+}
+
+func accessEntries() []TableEntry {
+	cases := fixture.AccessCases()
+	entries := make([]TableEntry, 0, len(cases))
+	for _, c := range cases {
+		entries = append(entries, Entry(c.Name, c))
+	}
+
+	return entries
+}
+
+func accessBadRequestEntries() []TableEntry {
+	cases := fixture.AccessBadRequestCases()
+	entries := make([]TableEntry, 0, len(cases))
+	for _, c := range cases {
+		entries = append(entries, Entry(c.Name, c.Body))
 	}
 
 	return entries

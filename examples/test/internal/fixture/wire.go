@@ -12,12 +12,12 @@ import (
 	"time"
 )
 
-// The request body of POST /api/v1/teams/{team}/deployments. The suites keep
-// their own wire types instead of importing the server's: durations travel as
-// strings ("6h"), and a black-box test should break when the wire format
-// changes, not follow it silently.
+// The request bodies. The suites keep their own wire types instead of
+// importing the server's: durations travel as strings ("6h"), and a
+// black-box test should break when the wire format changes, not follow it
+// silently.
 type (
-	// DeployRequest is one deploy the client asks about.
+	// DeployRequest is the body of POST /api/v1/teams/{team}/deployments.
 	DeployRequest struct {
 		Release     Release `json:"release"`
 		Service     Service `json:"service"`
@@ -39,22 +39,41 @@ type (
 		Owners []string          `json:"owners"`
 	}
 
-	// Actor is who asks for the deploy.
+	// Actor is who asks for the deploy, as the identity provider describes
+	// them. There are no roles: the access policy grants them.
 	Actor struct {
-		Name    string   `json:"name"`
-		Teams   []string `json:"teams"`
-		Roles   []string `json:"roles"`
-		Regions []string `json:"regions"`
+		Name      string   `json:"name"`
+		Clearance string   `json:"clearance"`
+		Groups    []string `json:"groups"`
+		Regions   []string `json:"regions"`
+	}
+
+	// AccessRequest is the body of POST /api/v1/access/grants.
+	AccessRequest struct {
+		Actor       AccessActor `json:"actor"`
+		Team        string      `json:"team"`
+		Environment string      `json:"environment"`
+	}
+
+	// AccessActor is the requestor as the access policy reads them. Regions
+	// only matter to the deploy policy, so the access endpoint doesn't take
+	// them.
+	AccessActor struct {
+		Name      string   `json:"name"`
+		Clearance string   `json:"clearance"`
+		Groups    []string `json:"groups"`
 	}
 )
 
 // The response bodies. Payloads stay raw so specs can compare them with
 // MatchJSON, which checks the exact shape including duration strings.
 type (
-	// DecisionResponse is the body of an evaluation, including the 422 of a
-	// failed one.
+	// DecisionResponse is the body of an evaluation, including the 409 and
+	// 422 of a failed one.
 	DecisionResponse struct {
 		Error    *ErrorBody      `json:"error"`
+		Access   *AccessBlock    `json:"access"`
+		Conflict *Conflict       `json:"conflict"`
 		Team     string          `json:"team"`
 		Policy   string          `json:"policy"`
 		Decision string          `json:"decision"`
@@ -62,6 +81,43 @@ type (
 		Payload  json.RawMessage `json:"payload"`
 		Trace    []TraceEntry    `json:"trace"`
 		Asserts  []AssertEntry   `json:"asserts"`
+	}
+
+	// AccessBlock is the access stage of a deployment: the access policy
+	// and the roles it granted, which became the deploy policy's
+	// actor.roles.
+	AccessBlock struct {
+		Policy string  `json:"policy"`
+		Grants []Grant `json:"grants"`
+	}
+
+	// Grant is one role an access evaluation granted. TTL is empty for a
+	// role that doesn't expire.
+	Grant struct {
+		Role     string `json:"role"`
+		Reason   string `json:"reason"`
+		TTL      string `json:"ttl"`
+		Policy   string `json:"policy"`
+		Location string `json:"location"`
+	}
+
+	// AccessResponse is the body of POST /api/v1/access/grants, including
+	// the 403 of an empty outcome and the 409 and 422 of a failed
+	// evaluation.
+	AccessResponse struct {
+		Error       *ErrorBody    `json:"error"`
+		Conflict    *Conflict     `json:"conflict"`
+		Policy      string        `json:"policy"`
+		Team        string        `json:"team"`
+		Environment string        `json:"environment"`
+		Grants      []Grant       `json:"grants"`
+		Trace       []TraceEntry  `json:"trace"`
+		Asserts     []AssertEntry `json:"asserts"`
+	}
+
+	// Conflict names the candidates the kind says can't stand together.
+	Conflict struct {
+		Candidates []TraceEntry `json:"candidates"`
 	}
 
 	// TraceEntry is one candidate of the trace.
@@ -89,14 +145,20 @@ type (
 		Advice  []string   `json:"advice"`
 	}
 
-	// ErrorResponse is the body of every error status other than 422.
+	// ErrorResponse is the body of every error status that has no decision
+	// to report.
 	ErrorResponse struct {
 		Error *ErrorBody `json:"error"`
 	}
 
 	// PoliciesResponse is the body of GET /api/v1/policies and of a
-	// successful reload.
+	// successful reload: one entry per kind the service serves.
 	PoliciesResponse struct {
+		Kinds []KindPolicies `json:"kinds"`
+	}
+
+	// KindPolicies is what one kind's bundle holds right now.
+	KindPolicies struct {
 		LoadedAt time.Time   `json:"loaded_at"`
 		Kind     string      `json:"kind"`
 		Source   string      `json:"source"`
@@ -104,9 +166,10 @@ type (
 		Version  int         `json:"version"`
 	}
 
-	// PolicyRef is one served team and the policy it evaluates.
+	// PolicyRef is one served policy, and the team it serves when it
+	// serves one.
 	PolicyRef struct {
-		Team   string `json:"team"`
+		Team   string `json:"team,omitempty"`
 		Policy string `json:"policy"`
 	}
 )
@@ -120,6 +183,17 @@ func (r DecisionResponse) Winners() []TraceEntry {
 		}
 	}
 	return out
+}
+
+// Kind returns the entry for the named kind, and false when the service
+// doesn't list it.
+func (r PoliciesResponse) Kind(name string) (KindPolicies, bool) {
+	for _, k := range r.Kinds {
+		if k.Kind == name {
+			return k, true
+		}
+	}
+	return KindPolicies{}, false
 }
 
 // Messages returns the message of the error and of every cause below it, so

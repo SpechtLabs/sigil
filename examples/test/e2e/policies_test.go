@@ -31,20 +31,11 @@ var _ = Describe("Health", func() {
 })
 
 var _ = Describe("The policy bundle", func() {
-	It("lists every served team's policy under the DeployApproval kind", func() {
-		got := deploygate.ListPolicies(Default)
-
-		Expect(got.Kind).To(Equal("DeployApproval"))
-		Expect(got.Version).To(Equal(1))
-		Expect(got.Source).NotTo(BeEmpty())
-		Expect(got.LoadedAt).NotTo(BeZero())
-		Expect(got.Policies).To(ConsistOf(
-			fixture.PolicyRef{Team: fixture.TeamPayments, Policy: "payments.production"},
-			fixture.PolicyRef{Team: fixture.TeamCheckout, Policy: "checkout.production"},
-		))
+	It("lists both kinds with the policies each serves", func() {
+		fixture.ExpectServedKinds(Default, deploygate.ListPolicies(Default))
 	})
 
-	It("reloads on request and moves loaded_at forward", func() {
+	It("reloads both bundles on request and moves each loaded_at forward", func() {
 		before := deploygate.ListPolicies(Default)
 
 		resp, body := deploygate.Reload(Default)
@@ -53,9 +44,11 @@ var _ = Describe("The policy bundle", func() {
 		// The reload answers with the same body as GET /api/v1/policies,
 		// so a client learns what is now loaded without a second call.
 		after := fixture.Decode[fixture.PoliciesResponse](Default, body)
-		Expect(after.Kind).To(Equal("DeployApproval"))
-		Expect(after.Policies).To(ConsistOf(before.Policies))
-		Expect(after.LoadedAt).NotTo(BeTemporally("<", before.LoadedAt))
-		Expect(deploygate.ListPolicies(Default).LoadedAt).To(BeTemporally(">=", after.LoadedAt))
+		fixture.ExpectServedKinds(Default, after)
+		for _, k := range before.Kinds {
+			now, ok := after.Kind(k.Kind)
+			Expect(ok).To(BeTrue())
+			Expect(now.LoadedAt).NotTo(BeTemporally("<", k.LoadedAt), k.Kind)
+		}
 	})
 })

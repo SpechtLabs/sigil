@@ -16,10 +16,12 @@ func TestKindFileIsCurrent(t *testing.T) {
 	policytest.Schema(t, deploy.Kind, "../../policies/deploy_approval.sigil")
 }
 
-// TestPolicies runs every *_test.yaml under policies/ against the bundle,
-// loaded the way the service loads it: the platform's documents are the
-// trusted source of the required guardrails.
+// TestPolicies runs every *_test.yaml under policies/teams against the team
+// bundle, loaded the way the service loads it: the platform's deploy
+// documents are the trusted source of the required guardrails. The trusted
+// source is platform/deploy, not platform: a bundle holding documents of
+// another kind doesn't load, and platform/access holds the AccessGrant ones.
 func TestPolicies(t *testing.T) {
 	policytest.Run(t, deploy.Kind, os.DirFS("../../policies/teams"),
-		policy.Require("deploy.guardrails", policy.From(os.DirFS("../../policies/platform"))))
+		policy.Require("deploy.guardrails", policy.From(os.DirFS("../../policies/platform/deploy"))))
 }

@@ -11,6 +11,7 @@ docs/
 **/dist/
 **/bin/
 coverage.txt
+examples/results/
 custom-gcl
 *.test
 *.out

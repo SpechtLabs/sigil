@@ -1,0 +1,5 @@
+{
+  "actor": {"name": "margaret", "groups": ["break-glass", "platform"], "clearance": ""},
+  "team": "payments",
+  "environment": "production"
+}

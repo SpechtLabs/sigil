@@ -19,6 +19,8 @@ const (
 	PathHealthz  = "/healthz"
 	PathReadyz   = "/readyz"
 	PathMetrics  = "/metrics"
+
+	PathAccessGrants = "/api/v1/access/grants"
 )
 
 // requestTimeout bounds every call a Client makes. The servers under test run
@@ -58,6 +60,22 @@ func (c *Client) Deploy(g gomega.Gomega, team string, req DeployRequest) (*http.
 	defer func() { _ = resp.Body.Close() }()
 
 	var out DecisionResponse
+	if strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+		g.Expect(json.Unmarshal(body, &out)).To(gomega.Succeed(), "decoding %s", body)
+	}
+
+	return resp, out
+}
+
+// Access asks which roles req's actor holds, and returns the response with
+// its decoded body.
+func (c *Client) Access(g gomega.Gomega, req AccessRequest) (*http.Response, AccessResponse) {
+	resp, body := c.PostJSON(g, PathAccessGrants, req)
+	// Send already read the body and left a reader over the copy, so
+	// closing it only marks the response as handled.
+	defer func() { _ = resp.Body.Close() }()
+
+	var out AccessResponse
 	if strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
 		g.Expect(json.Unmarshal(body, &out)).To(gomega.Succeed(), "decoding %s", body)
 	}

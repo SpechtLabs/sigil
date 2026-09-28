@@ -21,6 +21,9 @@ const (
 
 	MetricRequests        = "deploygate_requests_total"
 	MetricRequestDuration = "deploygate_request_duration_seconds"
+
+	MetricAccessGrants   = "deploygate_access_grants_total"
+	MetricAccessDuration = "deploygate_access_evaluation_duration_seconds"
 )
 
 // Families maps metric families by name, the shape a registry's Gather

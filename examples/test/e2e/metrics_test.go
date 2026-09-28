@@ -43,16 +43,34 @@ var _ = Describe("Metrics", func() {
 		Expect(m.GetHistogram().GetBucket()).NotTo(BeEmpty())
 	})
 
-	It("counts a failed assert as an assertion error of that team", func() {
-		labels := fixture.Labels{"team": fixture.TeamCheckout, "kind": "assertion"}
-		before := scrapeMetrics(Default).Value(fixture.MetricEvalErrors, labels)
+	It("counts every role the access stage grants, by team, role and reason", func() {
+		labels := fixture.Labels{"team": fixture.TeamPayments, "role": fixture.RoleDeployer, "reason": "team_member"}
+		before := scrapeMetrics(Default).Value(fixture.MetricAccessGrants, labels)
 
-		resp, _ := deploygate.Deploy(Default, fixture.TeamCheckout, fixture.OwnerRequest(fixture.ActorName("")))
-		Expect(resp).To(HaveHTTPStatus(http.StatusUnprocessableEntity))
+		resp, _ := deploygate.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest())
+		Expect(resp).To(HaveHTTPStatus(http.StatusAccepted))
+		resp, _ = deploygate.Access(Default, fixture.AccessFor(fixture.TeamPayments))
+		Expect(resp).To(HaveHTTPStatus(http.StatusOK))
 
-		after := scrapeMetrics(Default).Value(fixture.MetricEvalErrors, labels)
-		Expect(after - before).To(BeNumerically("==", 1))
+		families := scrapeMetrics(Default)
+		Expect(families.Value(fixture.MetricAccessGrants, labels) - before).To(BeNumerically("==", 2))
+		Expect(families.Find(fixture.MetricAccessDuration, fixture.Labels{"team": fixture.TeamPayments})).NotTo(BeNil())
 	})
+
+	DescribeTable("counts a failed access evaluation by team, kind and stage",
+		func(kind string, groups []string, status int) {
+			labels := fixture.Labels{"team": fixture.TeamPayments, "kind": kind, "stage": "access"}
+			before := scrapeMetrics(Default).Value(fixture.MetricEvalErrors, labels)
+
+			resp, _ := deploygate.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(groups...)))
+			Expect(resp).To(HaveHTTPStatus(status))
+
+			after := scrapeMetrics(Default).Value(fixture.MetricEvalErrors, labels)
+			Expect(after - before).To(BeNumerically("==", 1))
+		},
+		Entry("a failed separation-of-duties assert", "assertion", fixture.ComplianceMember, http.StatusUnprocessableEntity),
+		Entry("admin and release manager in one outcome", "conflict", fixture.BreakGlassPlatform, http.StatusConflict),
+	)
 
 	It("counts successful reloads and stamps the time of the last one", func() {
 		success := fixture.Labels{"result": "success"}
@@ -60,7 +78,14 @@ var _ = Describe("Metrics", func() {
 
 		resp, body := deploygate.Reload(Default)
 		Expect(resp).To(HaveHTTPStatus(http.StatusOK))
-		loaded := fixture.Decode[fixture.PoliciesResponse](Default, body).LoadedAt
+		kinds := fixture.Decode[fixture.PoliciesResponse](Default, body).Kinds
+		Expect(kinds).NotTo(BeEmpty())
+		loaded := kinds[0].LoadedAt
+		for _, k := range kinds {
+			if k.LoadedAt.Before(loaded) {
+				loaded = k.LoadedAt
+			}
+		}
 
 		families := scrapeMetrics(Default)
 		after := families.Value(fixture.MetricReloads, success)
@@ -68,7 +93,7 @@ var _ = Describe("Metrics", func() {
 		Expect(after - before).To(BeNumerically(">=", 1))
 
 		// The poller may reload again between the POST and the scrape, so
-		// the gauge is at least the loaded_at the POST reported.
+		// the gauge is at least the earliest loaded_at the POST reported.
 		Expect(families.Value(fixture.MetricLastReload, nil)).
 			To(BeNumerically(">=", float64(loaded.Unix())))
 	})
@@ -76,8 +101,11 @@ var _ = Describe("Metrics", func() {
 	It("exposes every loaded policy as an info series", func() {
 		families := scrapeMetrics(Default)
 
-		for _, team := range []string{fixture.TeamPayments, fixture.TeamCheckout} {
-			labels := fixture.Labels{"team": team, "policy": team + ".production"}
+		for _, labels := range []fixture.Labels{
+			{"kind": "DeployApproval", "team": fixture.TeamPayments, "policy": "payments.production"},
+			{"kind": "DeployApproval", "team": fixture.TeamCheckout, "policy": "checkout.production"},
+			{"kind": "AccessGrant", "policy": fixture.AccessPolicy},
+		} {
 			Expect(families.Value(fixture.MetricPolicyInfo, labels)).
 				To(BeNumerically("==", 1), "%s%v", fixture.MetricPolicyInfo, labels)
 		}

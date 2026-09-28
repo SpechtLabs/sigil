@@ -20,6 +20,12 @@ import (
 	"github.com/spechtlabs/sigil/examples/policies"
 )
 
+// The kinds the reload metrics are labeled with.
+const (
+	deployKind = "DeployApproval"
+	accessKind = "AccessGrant"
+)
+
 // brokenPolicy doesn't compile: it invokes a policy nothing defines.
 const brokenPolicy = `policy payments.production: DeployApproval@1
 
@@ -27,6 +33,14 @@ use deploy.guardrails
 
 guardrails()
 nonexistent()
+`
+
+// ungatedAccess grants a role without invoking the required guardrails.
+const ungatedAccess = `policy access.main: AccessGrant@1
+
+when team in actor.groups {
+  reader(team_member)
+}
 `
 
 // ungatedPolicy compiles on its own but skips the required guardrails.
@@ -57,7 +71,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name:    "no team",
-			wantErr: "no team is configured",
+			wantErr: "no DeployApproval policy is configured",
 		},
 		{
 			name:    "unknown team",
@@ -82,9 +96,9 @@ func TestLoad(t *testing.T) {
 			dir := teamsDir(t, tt.files)
 			m := telemetry.NewMetrics()
 			at := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
-			st := store.New(deploy.Kind,
+			st := store.NewDeploy(
 				store.WithTeams(tt.teams...),
-				store.WithTeamsDir(dir),
+				store.WithBundleDir(dir),
 				store.WithMetrics(m),
 				store.WithClock(&fakeClock{now: at}),
 			)
@@ -103,7 +117,7 @@ func TestLoad(t *testing.T) {
 				if _, ok := st.Snapshot(); ok {
 					t.Error("a failed first load left a snapshot")
 				}
-				if got := reloads(t, m, "failure"); got != 1 {
+				if got := reloads(t, m, deployKind, "failure"); got != 1 {
 					t.Errorf("failure reloads = %v, want 1", got)
 				}
 				return
@@ -136,7 +150,7 @@ func TestLoad(t *testing.T) {
 			if _, ok := st.Policy("billing"); ok {
 				t.Error("Policy(billing) found a team that isn't served")
 			}
-			if got := reloads(t, m, "success"); got != 1 {
+			if got := reloads(t, m, deployKind, "success"); got != 1 {
 				t.Errorf("success reloads = %v, want 1", got)
 			}
 		})
@@ -144,7 +158,7 @@ func TestLoad(t *testing.T) {
 }
 
 func TestLoadEmbeddedByDefault(t *testing.T) {
-	st := store.New(deploy.Kind, store.WithTeams("payments"))
+	st := store.NewDeploy(store.WithTeams("payments"))
 	if err := st.Load(context.Background()); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -159,7 +173,7 @@ func TestLoadEmbeddedByDefault(t *testing.T) {
 func TestReloadKeepsLastKnownGood(t *testing.T) {
 	dir := teamsDir(t, nil)
 	m := telemetry.NewMetrics()
-	st := store.New(deploy.Kind, store.WithTeams("payments", "checkout"), store.WithTeamsDir(dir), store.WithMetrics(m))
+	st := store.NewDeploy(store.WithTeams("payments", "checkout"), store.WithBundleDir(dir), store.WithMetrics(m))
 
 	if err := st.Load(context.Background()); err != nil {
 		t.Fatalf("first Load: %v", err)
@@ -185,7 +199,7 @@ func TestReloadKeepsLastKnownGood(t *testing.T) {
 	if now, _ := st.Snapshot(); now != good {
 		t.Error("a failed reload replaced the snapshot")
 	}
-	if got := reloads(t, m, "failure"); got != 1 {
+	if got := reloads(t, m, deployKind, "failure"); got != 1 {
 		t.Errorf("failure reloads = %v, want 1", got)
 	}
 
@@ -241,9 +255,9 @@ func TestWatch(t *testing.T) {
 			dir := teamsDir(t, nil)
 			m := telemetry.NewMetrics()
 			clock := newFakeClock()
-			st := store.New(deploy.Kind,
+			st := store.NewDeploy(
 				store.WithTeams("payments"),
-				store.WithTeamsDir(dir),
+				store.WithBundleDir(dir),
 				store.WithMetrics(m),
 				store.WithClock(clock),
 			)
@@ -266,7 +280,7 @@ func TestWatch(t *testing.T) {
 			cancel()
 			<-done
 
-			if got := reloads(t, m, "success"); got != tt.wantReloads {
+			if got := reloads(t, m, deployKind, "success"); got != tt.wantReloads {
 				t.Errorf("successful loads = %v, want %v", got, tt.wantReloads)
 			}
 		})
@@ -276,14 +290,101 @@ func TestWatch(t *testing.T) {
 func TestInitialLoad(t *testing.T) {
 	m := telemetry.NewMetrics()
 	dir := teamsDir(t, map[string]string{"payments/production.sigil": brokenPolicy})
-	st := store.New(deploy.Kind, store.WithTeams("payments"), store.WithTeamsDir(dir), store.WithMetrics(m))
+	st := store.NewDeploy(store.WithTeams("payments"), store.WithBundleDir(dir), store.WithMetrics(m))
 
 	err := st.InitialLoad(context.Background())
 	if err == nil || !strings.Contains(chain(err), "no earlier bundle to fall back to") {
 		t.Fatalf("InitialLoad error = %v, want the failure without a fallback", err)
 	}
-	if got := reloads(t, m, "failure"); got != 1 {
+	if got := reloads(t, m, deployKind, "failure"); got != 1 {
 		t.Errorf("failure reloads = %v, want 1", got)
+	}
+}
+
+func TestAccessStore(t *testing.T) {
+	tests := []struct {
+		name    string
+		opts    func(t *testing.T) []store.Option
+		wantErr string
+	}{
+		{name: "embedded", opts: func(*testing.T) []store.Option { return nil }},
+		{name: "from a directory", opts: func(t *testing.T) []store.Option {
+			return []store.Option{store.WithBundleDir(accessDir(t, nil))}
+		}},
+		{name: "broken access policy", wantErr: "access.main failed to compile", opts: func(t *testing.T) []store.Option {
+			return []store.Option{store.WithBundleDir(accessDir(t, map[string]string{"main.sigil": "policy access.main: AccessGrant@1\n\nguardrails(\n"}))}
+		}},
+		{name: "guardrails skipped", wantErr: "access.guardrails", opts: func(t *testing.T) []store.Option {
+			return []store.Option{store.WithBundleDir(accessDir(t, map[string]string{"main.sigil": ungatedAccess}))}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := telemetry.NewMetrics()
+			st := store.NewAccess(append(tt.opts(t), store.WithMetrics(m))...)
+			err := st.Load(context.Background())
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(chain(err), tt.wantErr) {
+					t.Fatalf("Load error = %v, want one containing %q", err, tt.wantErr)
+				}
+				if got := reloads(t, m, accessKind, "failure"); got != 1 {
+					t.Errorf("access failure reloads = %v, want 1", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %s", chain(err))
+			}
+
+			snap, _ := st.Snapshot()
+			if snap.Kind != accessKind || snap.KindVersion != 1 {
+				t.Errorf("kind = %s@%d, want AccessGrant@1", snap.Kind, snap.KindVersion)
+			}
+			if got := snap.PolicyNames(); len(got) != 1 || got[0] != store.AccessRoot {
+				t.Errorf("policies = %v, want [access.main]", got)
+			}
+			if len(snap.TeamNames()) != 0 {
+				t.Errorf("teams = %v, want none for a fixed root", snap.TeamNames())
+			}
+			p, ok := snap.Single()
+			if !ok || p.Name() != store.AccessRoot {
+				t.Fatalf("Single() = %v, %v, want access.main", p, ok)
+			}
+			if _, ok := st.Policy(store.AccessRoot); !ok {
+				t.Error("Policy(access.main) missing")
+			}
+			if got := reloads(t, m, accessKind, "success"); got != 1 {
+				t.Errorf("access success reloads = %v, want 1", got)
+			}
+			if got := reloads(t, m, deployKind, "success"); got != 0 {
+				t.Errorf("deploy success reloads = %v, want 0", got)
+			}
+		})
+	}
+}
+
+// TestNewWithoutBundle checks that a store built with New and nothing else
+// reports what is missing instead of panicking.
+func TestNewWithoutBundle(t *testing.T) {
+	tests := []struct {
+		name    string
+		opts    []store.Option
+		wantErr string
+	}{
+		{name: "no roots", opts: []store.Option{store.WithBundle(policies.Teams, "embedded")}, wantErr: "no DeployApproval policy is configured"},
+		{name: "no bundle", opts: []store.Option{store.WithTeams("payments")}, wantErr: "no bundle is configured"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st := store.New(deploy.Kind, tt.opts...)
+			err := st.Load(context.Background())
+			if err == nil || !strings.Contains(chain(err), tt.wantErr) {
+				t.Fatalf("Load error = %v, want one containing %q", err, tt.wantErr)
+			}
+			if _, ok := st.Snapshot(); ok {
+				t.Error("a failed load left a snapshot")
+			}
+		})
 	}
 }
 
@@ -377,8 +478,8 @@ func (c *fakeClock) Tick(time.Duration) (<-chan time.Time, func()) {
 // tick blocks until Watch takes the tick.
 func (c *fakeClock) tick() { c.ticks <- c.now }
 
-// reloads returns deploygate_policy_reloads_total for result.
-func reloads(t *testing.T, m *telemetry.Metrics, result string) float64 {
+// reloads returns deploygate_policy_reloads_total for kind and result.
+func reloads(t *testing.T, m *telemetry.Metrics, kind, result string) float64 {
 	t.Helper()
 	families, err := m.Registry().Gather()
 	if err != nil {
@@ -389,10 +490,12 @@ func reloads(t *testing.T, m *telemetry.Metrics, result string) float64 {
 			continue
 		}
 		for _, metric := range f.GetMetric() {
+			labels := map[string]string{}
 			for _, l := range metric.GetLabel() {
-				if l.GetName() == "result" && l.GetValue() == result {
-					return metric.GetCounter().GetValue()
-				}
+				labels[l.GetName()] = l.GetValue()
+			}
+			if labels["result"] == result && labels["kind"] == kind {
+				return metric.GetCounter().GetValue()
 			}
 		}
 	}
@@ -436,6 +539,31 @@ func link(t *testing.T, target, name string) {
 	if err := os.Symlink(target, name); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// accessDir copies the embedded access policies into a temporary directory
+// and applies overrides.
+func accessDir(t *testing.T, overrides map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	err := fs.WalkDir(policies.Access, ".", func(name string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Ext(name) != ".sigil" {
+			return err
+		}
+		data, err := fs.ReadFile(policies.Access, name)
+		if err != nil {
+			return err
+		}
+		writeFile(t, dir, name, string(data))
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("copying the embedded access policies: %v", err)
+	}
+	for name, content := range overrides {
+		writeFile(t, dir, name, content)
+	}
+	return dir
 }
 
 func mapDir(t *testing.T, files map[string]string) fs.FS {

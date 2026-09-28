@@ -155,7 +155,17 @@ run = "goreleaser build --snapshot --clean"
 
 [tasks.check]
 description = "The definition of done: every gate CI runs on the Go code"
-depends = ["lint", "mod-tidy", "test", "fuzz", "yaml-lint", "actionlint", "shell-lint", "workflow-test", "release-check"]
+depends = [
+  "lint",
+  "mod-tidy",
+  "test",
+  "fuzz",
+  "yaml-lint",
+  "actionlint",
+  "shell-lint",
+  "workflow-test",
+  "release-check",
+]
 
 [tasks.update-gha]
 description = "Pin GitHub Actions to commit SHAs (Renovate keeps them current afterwards)"
@@ -187,81 +197,3 @@ run = "cd docs && bun install && bun run dev"
 description = "Build the documentation website (the docs workflow's second job)"
 depends = ["docs-roadmap"]
 run = "cd docs && bun install --frozen-lockfile && bun run build"
-
-# Examples (examples/ is its own Go module)
-#
-# The examples module keeps the service's dependencies (gin, OpenTelemetry,
-# Prometheus) out of the library's go.mod, so the root tasks above never see
-# it: `./...` stops at a nested go.mod. These tasks run the same gates inside
-# examples/, and the CI examples job calls them.
-
-[tasks.examples-build]
-description = "Build deploygate and its sigilc host binary into examples/bin/"
-dir = "{{config_root}}/examples"
-run = "go build -o bin/ ./cmd/..."
-
-# The e2e suite sits behind the e2e build tag because it needs the compose
-# stack. `go test ./...` never compiles it, so it's vetted here on its own and
-# linted with the tag, or it would rot until someone next starts the stack.
-[tasks.examples-test]
-description = "Run the examples' tests with the race detector, including every policy test file, and vet the e2e suite"
-dir = "{{config_root}}/examples"
-run = [
-  "go test -race ./...",
-  "go vet -tags e2e ./test/e2e/...",
-]
-
-[tasks.examples-lint]
-description = "Lint the examples module, e2e suite included, with the root golangci-lint config and the golint-sl plugin"
-depends = ["lint-build"]
-dir = "{{config_root}}/examples"
-run = "../custom-gcl run --config ../.golangci.yaml --build-tags e2e ./..."
-
-# The check a policy repository runs in CI: every team policy type-checks with
-# the platform documents as the trusted source and invokes the guardrails at
-# the top level, and every test file passes under the sigilc host binary.
-[tasks.examples-policies]
-description = "Check the example team policies against the platform's guardrails and run their test files with sigilc"
-dir = "{{config_root}}/examples"
-run = [
-  "go run ./cmd/sigilc check --config policies/sigil.yaml --require deploy.guardrails --trusted policies/platform --policy 'payments.*' --policy 'checkout.*' -R policies/teams",
-  "go run ./cmd/sigilc test policies",
-]
-
-[tasks.examples-generate]
-description = "Regenerate the examples' DeployApproval kind file from the Go types"
-dir = "{{config_root}}/examples"
-run = "go generate ./cmd/sigilc"
-
-[tasks.examples-up]
-description = "Start deploygate with the collector, Jaeger, Prometheus and Grafana, and wait until they're up"
-dir = "{{config_root}}/examples"
-run = "docker compose up --build --wait"
-
-[tasks.examples-down]
-description = "Stop the examples' compose stack and drop its volumes"
-dir = "{{config_root}}/examples"
-run = "docker compose down -v"
-
-[tasks.examples-e2e]
-description = "Start the compose stack and run the black-box e2e suite against it"
-depends = ["examples-up"]
-dir = "{{config_root}}/examples"
-env = { DEPLOYGATE_URL = "http://localhost:8080", JAEGER_URL = "http://localhost:16686", PROMETHEUS_URL = "http://localhost:9090" }
-# -count=1: the suite checks a running stack, not the code, so a cached pass
-# from an earlier run would say nothing about the stack that's up now.
-run = "go test -count=1 -tags e2e ./test/e2e/..."
-
-[tasks.examples-release-check]
-description = "Validate the examples' GoReleaser config"
-dir = "{{config_root}}/examples"
-run = "goreleaser check --config .goreleaser.yaml"
-
-[tasks.examples-snapshot]
-description = "Build local GoReleaser snapshots of deploygate and sigilc into examples/dist/"
-dir = "{{config_root}}/examples"
-run = "goreleaser build --snapshot --clean --config .goreleaser.yaml"
-
-[tasks.examples-check]
-description = "Every gate CI runs on the examples module"
-depends = ["examples-lint", "examples-test", "examples-policies", "examples-release-check"]

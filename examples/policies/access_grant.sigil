@@ -1,0 +1,37 @@
+kind AccessGrant version 1
+
+type Actor {
+  name: string
+  groups: list<string>
+  clearance: string
+}
+
+input actor: Actor
+input team: string
+input environment: string
+
+decision reader {
+  team_member
+  everyone_in_staging
+}
+
+decision deployer(ttl: duration = 8h) {
+  team_member
+  oncall
+}
+
+decision release_manager(ttl: duration = 8h) {
+  platform_member
+}
+
+decision admin(ttl: duration = 1h) {
+  clearance
+  break_glass
+}
+
+decision auditor {
+  compliance_member
+}
+
+collect all
+exclusive admin, release_manager

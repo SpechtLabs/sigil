@@ -87,23 +87,70 @@ func TestNewLogger(t *testing.T) {
 
 func TestReloadSuccessReplacesLoadedInfo(t *testing.T) {
 	m := NewMetrics()
+	m.PrepareReloads("DeployApproval")
+	m.PrepareReloads("AccessGrant")
 	at := time.Unix(1_790_000_000, 0)
-	m.ObserveReloadSuccess(at, "embedded", map[string]string{"payments": "payments.production", "checkout": "checkout.production"})
-	m.ObserveReloadSuccess(at, "embedded", map[string]string{"payments": "payments.production"})
 
-	if got := testutil.CollectAndCount(m.loadedInfo); got != 1 {
-		t.Errorf("loaded info series = %d, want 1 after checkout was dropped", got)
+	m.ObserveReloadSuccess("DeployApproval", at, "embedded", []LoadedPolicy{
+		{Team: "payments", Policy: "payments.production"},
+		{Team: "checkout", Policy: "checkout.production"},
+	})
+	m.ObserveReloadSuccess("AccessGrant", at, "/etc/access", []LoadedPolicy{{Policy: "access.main"}})
+	m.ObserveReloadSuccess("DeployApproval", at, "embedded", []LoadedPolicy{{Team: "payments", Policy: "payments.production"}})
+	m.ObserveReloadFailure("AccessGrant")
+
+	want := `
+# HELP deploygate_policy_loaded_info One series per policy currently serving, always 1. team is empty for a policy that serves every team, such as access.main.
+# TYPE deploygate_policy_loaded_info gauge
+deploygate_policy_loaded_info{kind="AccessGrant",policy="access.main",source="/etc/access",team=""} 1
+deploygate_policy_loaded_info{kind="DeployApproval",policy="payments.production",source="embedded",team="payments"} 1
+`
+	if err := testutil.CollectAndCompare(m.loadedInfo, strings.NewReader(want)); err != nil {
+		t.Errorf("a reload of one kind must replace only that kind's series: %v", err)
 	}
 	if got := testutil.ToFloat64(m.lastReload); got != float64(at.Unix()) {
 		t.Errorf("last reload = %v, want %v", got, at.Unix())
 	}
-	want := `
-# HELP deploygate_policy_reloads_total Attempts to load the team policy bundle, by result. A failure keeps the previous bundle serving.
+
+	want = `
+# HELP deploygate_policy_reloads_total Attempts to load a policy bundle, by the kind it implements and result. A failure keeps the previous bundle serving.
 # TYPE deploygate_policy_reloads_total counter
-deploygate_policy_reloads_total{result="failure"} 0
-deploygate_policy_reloads_total{result="success"} 2
+deploygate_policy_reloads_total{kind="AccessGrant",result="failure"} 1
+deploygate_policy_reloads_total{kind="AccessGrant",result="success"} 1
+deploygate_policy_reloads_total{kind="DeployApproval",result="failure"} 0
+deploygate_policy_reloads_total{kind="DeployApproval",result="success"} 2
 `
 	if err := testutil.CollectAndCompare(m.reloads, strings.NewReader(want)); err != nil {
 		t.Error(err)
+	}
+}
+
+func TestAccessAndErrorMetrics(t *testing.T) {
+	m := NewMetrics()
+	m.ObserveGrant("payments", "deployer", "oncall")
+	m.ObserveGrant("payments", "deployer", "oncall")
+	m.ObserveEvaluationError(StageAccess, "payments", ErrorKindConflict)
+	m.ObserveEvaluationError(StageDeploy, "checkout", ErrorKindAssertion)
+	m.AccessTimer("payments").ObserveDuration()
+
+	want := `
+# HELP deploygate_access_grants_total Roles the access policy granted, by team, role and reason.
+# TYPE deploygate_access_grants_total counter
+deploygate_access_grants_total{reason="oncall",role="deployer",team="payments"} 2
+`
+	if err := testutil.CollectAndCompare(m.grants, strings.NewReader(want)); err != nil {
+		t.Error(err)
+	}
+	want = `
+# HELP deploygate_evaluation_errors_total Evaluations that failed, by team, kind of failure (assertion, runtime, conflict) and stage (access, deploy).
+# TYPE deploygate_evaluation_errors_total counter
+deploygate_evaluation_errors_total{kind="assertion",stage="deploy",team="checkout"} 1
+deploygate_evaluation_errors_total{kind="conflict",stage="access",team="payments"} 1
+`
+	if err := testutil.CollectAndCompare(m.evaluationErrors, strings.NewReader(want)); err != nil {
+		t.Error(err)
+	}
+	if got := testutil.CollectAndCount(m.accessEvaluationDuration); got != 1 {
+		t.Errorf("access evaluation duration series = %d, want 1", got)
 	}
 }

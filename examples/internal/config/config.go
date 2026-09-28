@@ -28,6 +28,7 @@ const EnvPrefix = "DEPLOYGATE"
 const (
 	keyAddr            = "addr"
 	keyPolicies        = "policies"
+	keyAccessPolicies  = "access-policies"
 	keyTeams           = "teams"
 	keyReloadInterval  = "reload-interval"
 	keyShutdownTimeout = "shutdown-timeout"
@@ -59,6 +60,10 @@ type Config struct {
 	// PoliciesDir is the directory holding the team policies. Empty means the
 	// team bundle embedded in the binary.
 	PoliciesDir string
+	// AccessPoliciesDir is the directory holding the access bundle, whose
+	// root is access.main. Empty means the access bundle embedded in the
+	// binary. It reloads the same way as the team policies.
+	AccessPoliciesDir string
 	// Teams are the teams served; team t evaluates policy t.production.
 	Teams []string
 	// ReloadInterval is how often the policies directory is polled for
@@ -101,13 +106,14 @@ reloaded in place when it changes, keeping the last bundle that loaded.`,
 // defaults, and checks it.
 func Load(v *viper.Viper) (Config, humane.Error) {
 	cfg := Config{
-		Addr:            v.GetString(keyAddr),
-		PoliciesDir:     v.GetString(keyPolicies),
-		Teams:           splitTeams(v.GetStringSlice(keyTeams)),
-		ReloadInterval:  v.GetDuration(keyReloadInterval),
-		ShutdownTimeout: v.GetDuration(keyShutdownTimeout),
-		Debug:           v.GetBool(keyDebug),
-		LogFormat:       v.GetString(keyLogFormat),
+		Addr:              v.GetString(keyAddr),
+		PoliciesDir:       v.GetString(keyPolicies),
+		AccessPoliciesDir: v.GetString(keyAccessPolicies),
+		Teams:             splitTeams(v.GetStringSlice(keyTeams)),
+		ReloadInterval:    v.GetDuration(keyReloadInterval),
+		ShutdownTimeout:   v.GetDuration(keyShutdownTimeout),
+		Debug:             v.GetBool(keyDebug),
+		LogFormat:         v.GetString(keyLogFormat),
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -149,6 +155,10 @@ func newServeCommand(run RunFunc) *cobra.Command {
 		Short: "Serve the deploy-approval API",
 		Long: `Serve the deploy-approval API, health checks and metrics on one port.
 
+A deployment request is decided in two stages: the access policy, access.main,
+grants the requestor roles for the team, and the team's deploy policy decides
+with those roles.
+
 Every flag can also be set through an environment variable: DEPLOYGATE_ and
 the flag name upper-cased with dashes as underscores, for example
 DEPLOYGATE_RELOAD_INTERVAL=1m. --team is DEPLOYGATE_TEAMS, comma-separated.
@@ -156,12 +166,16 @@ DEPLOYGATE_RELOAD_INTERVAL=1m. --team is DEPLOYGATE_TEAMS, comma-separated.
 Tracing follows the standard OpenTelemetry variables: OTEL_EXPORTER_OTLP_ENDPOINT,
 OTEL_SERVICE_NAME (default deploygate) and OTEL_TRACES_EXPORTER=none.
 
-SIGHUP reloads the team policies; SIGINT and SIGTERM shut down gracefully.`,
+SIGHUP reloads the team and access policies; SIGINT and SIGTERM shut down
+gracefully.`,
 		Example: `  # Serve the policies embedded in the binary
   deploygate serve
 
   # Serve team policies from a mounted ConfigMap, polling every minute
   deploygate serve --policies /etc/deploygate/policies --reload-interval 1m
+
+  # Serve both bundles from mounted directories
+  deploygate serve --policies /etc/deploygate/policies --access-policies /etc/deploygate/access
 
   # Serve only the payments team, with readable logs
   DEPLOYGATE_TEAMS=payments deploygate serve --log-format console --debug`,
@@ -182,6 +196,7 @@ SIGHUP reloads the team policies; SIGINT and SIGTERM shut down gracefully.`,
 	flags := cmd.Flags()
 	flags.String(keyAddr, DefaultAddr, "HTTP listen address for the API, health checks and metrics")
 	flags.String(keyPolicies, "", "directory holding the team policies; empty serves the team policies embedded in the binary")
+	flags.String(keyAccessPolicies, "", "directory holding the access policies (root access.main); empty serves the access policies embedded in the binary")
 	flags.StringSlice(flagTeam, DefaultTeams, "team to serve, repeatable; team t evaluates policy t.production")
 	flags.Duration(keyReloadInterval, DefaultReloadInterval, "how often to poll the policies directory for changes; 0 disables polling")
 	flags.Duration(keyShutdownTimeout, DefaultShutdownTimeout, "how long a graceful shutdown may take")

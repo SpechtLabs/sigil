@@ -1,0 +1,9 @@
+{
+  "actor": {
+    "name": "frances",
+    "groups": ["compliance"],
+    "clearance": "standard"
+  },
+  "team": "payments",
+  "environment": "production"
+}

@@ -13,28 +13,35 @@ import (
 
 var _ = Describe("Metrics", func() {
 	// Every spec gets an env with a registry of its own, so the values are
-	// exact: the startup load and the spec's own requests, nothing else.
+	// exact: the startup loads and the spec's own requests, nothing else.
 	var e *env
 
 	BeforeEach(func() {
 		e = newEnv()
 	})
 
-	It("counts the startup load and exposes what it loaded", func() {
+	It("counts each bundle's startup load and exposes what it loaded", func() {
 		families := e.families()
 
-		Expect(families.Value(fixture.MetricReloads, fixture.Labels{"result": "success"})).To(BeNumerically("==", 1))
-		// The failure series exists before the first failure, so an alert
-		// on the failure ratio has something to divide by.
-		Expect(families.Find(fixture.MetricReloads, fixture.Labels{"result": "failure"})).NotTo(BeNil())
-		Expect(families.Value(fixture.MetricReloads, fixture.Labels{"result": "failure"})).To(BeNumerically("==", 0))
+		for _, kind := range []string{kindDeploy, kindAccess} {
+			success := fixture.Labels{"kind": kind, "result": "success"}
+			failure := fixture.Labels{"kind": kind, "result": "failure"}
+			Expect(families.Value(fixture.MetricReloads, success)).To(BeNumerically("==", 1), kind)
+			// The failure series exists before the first failure, so an
+			// alert on the failure ratio has something to divide by.
+			Expect(families.Find(fixture.MetricReloads, failure)).NotTo(BeNil(), kind)
+			Expect(families.Value(fixture.MetricReloads, failure)).To(BeNumerically("==", 0), kind)
+		}
 
 		Expect(families.Value(fixture.MetricLastReload, nil)).
 			To(BeNumerically("~", float64(clockStart.Unix()), 1e-3))
 
-		Expect(families.Count(fixture.MetricPolicyInfo, nil)).To(Equal(2))
-		for _, team := range []string{fixture.TeamPayments, fixture.TeamCheckout} {
-			labels := fixture.Labels{"team": team, "policy": team + ".production", "source": e.dir}
+		Expect(families.Count(fixture.MetricPolicyInfo, nil)).To(Equal(3))
+		for _, labels := range []fixture.Labels{
+			{"kind": kindDeploy, "team": fixture.TeamPayments, "policy": "payments.production", "source": e.dir},
+			{"kind": kindDeploy, "team": fixture.TeamCheckout, "policy": "checkout.production", "source": e.dir},
+			{"kind": kindAccess, "policy": fixture.AccessPolicy, "source": e.accessDir},
+		} {
 			Expect(families.Value(fixture.MetricPolicyInfo, labels)).To(BeNumerically("==", 1), "%v", labels)
 		}
 	})
@@ -60,20 +67,54 @@ var _ = Describe("Metrics", func() {
 		Expect(m.GetHistogram().GetSampleCount()).To(BeNumerically("==", 4))
 	})
 
-	It("counts a failed assert as an assertion error, and its fallback as a decision", func() {
-		resp, _ := e.client.Deploy(Default, fixture.TeamCheckout, fixture.OwnerRequest(fixture.ActorName("")))
-		Expect(resp).To(HaveHTTPStatus(http.StatusUnprocessableEntity))
+	It("counts every grant by team, role and reason, and times each access evaluation", func() {
+		for range 2 {
+			resp, _ := e.client.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest())
+			Expect(resp).To(HaveHTTPStatus(http.StatusAccepted))
+		}
+		resp, _ := e.client.Access(Default, fixture.AccessFor("payments-sre"))
+		Expect(resp).To(HaveHTTPStatus(http.StatusOK))
+		resp, _ = e.client.Access(Default, fixture.AccessFor("marketing"))
+		Expect(resp).To(HaveHTTPStatus(http.StatusForbidden))
 
 		families := e.families()
-		Expect(families.Value(fixture.MetricEvalErrors, fixture.Labels{
-			"team": fixture.TeamCheckout, "kind": "assertion",
-		})).To(BeNumerically("==", 1))
-		// The host acted on the fallback, so the decisions counter records
-		// it; the error counter is what tells the two apart.
-		Expect(families.Value(fixture.MetricDecisions, fixture.Labels{
-			"team": fixture.TeamCheckout, "decision": fixture.DecisionDeny, "reason": "no_rule_matched",
-		})).To(BeNumerically("==", 1))
+		grants := func(role, reason string) float64 {
+			return families.Value(fixture.MetricAccessGrants, fixture.Labels{
+				"team": fixture.TeamPayments, "role": role, "reason": reason,
+			})
+		}
+		Expect(grants(fixture.RoleReader, "team_member")).To(BeNumerically("==", 2))
+		Expect(grants(fixture.RoleDeployer, "team_member")).To(BeNumerically("==", 2))
+		Expect(grants(fixture.RoleDeployer, "oncall")).To(BeNumerically("==", 1))
+		// An empty outcome grants nothing, so it adds no series.
+		Expect(families.Count(fixture.MetricAccessGrants, nil)).To(Equal(3))
+
+		m := families.Find(fixture.MetricAccessDuration, fixture.Labels{"team": fixture.TeamPayments})
+		Expect(m).NotTo(BeNil())
+		Expect(families[fixture.MetricAccessDuration].GetType()).To(Equal(dto.MetricType_HISTOGRAM))
+		Expect(m.GetHistogram().GetSampleCount()).To(BeNumerically("==", 4))
 	})
+
+	DescribeTable("counts a failed access evaluation by team, kind and stage, and no decision",
+		func(kind string, groups []string, status int) {
+			resp, _ := e.client.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(groups...)))
+			Expect(resp).To(HaveHTTPStatus(status))
+			resp, _ = e.client.Access(Default, fixture.AccessFor(groups...))
+			Expect(resp).To(HaveHTTPStatus(status))
+
+			families := e.families()
+			Expect(families.Value(fixture.MetricEvalErrors, fixture.Labels{
+				"team": fixture.TeamPayments, "kind": kind, "stage": "access",
+			})).To(BeNumerically("==", 2))
+			Expect(families.Count(fixture.MetricEvalErrors, fixture.Labels{"stage": "deploy"})).To(BeZero())
+			// The deploy policy never ran, so there is no deploy decision to
+			// count, and a failed evaluation grants nothing.
+			Expect(families.Count(fixture.MetricDecisions, nil)).To(BeZero())
+			Expect(families.Count(fixture.MetricAccessGrants, nil)).To(BeZero())
+		},
+		Entry("a failed separation-of-duties assert", "assertion", fixture.ComplianceMember, http.StatusUnprocessableEntity),
+		Entry("admin and release manager in one outcome", "conflict", fixture.BreakGlassPlatform, http.StatusConflict),
+	)
 
 	It("doesn't count requests it refused before evaluating", func() {
 		resp, _ := e.client.PostRaw(Default, fixture.DeploymentsPath(fixture.TeamPayments), `{`)
@@ -84,6 +125,7 @@ var _ = Describe("Metrics", func() {
 		families := e.families()
 		Expect(families.Count(fixture.MetricDecisions, nil)).To(BeZero())
 		Expect(families.Count(fixture.MetricEvalDuration, nil)).To(BeZero())
+		Expect(families.Count(fixture.MetricAccessDuration, nil)).To(BeZero())
 	})
 
 	It("serves its metrics and the process metrics on /metrics", func() {
@@ -107,8 +149,10 @@ var _ = Describe("Metrics", func() {
 
 		resp, _ := e.client.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest())
 		Expect(resp).To(HaveHTTPStatus(http.StatusAccepted))
-		resp, _ = e.client.Deploy(Default, fixture.TeamCheckout, fixture.OwnerRequest())
+		resp, _ = e.client.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Soak("2h")))
 		Expect(resp).To(HaveHTTPStatus(http.StatusForbidden))
+		resp, _ = e.client.Access(Default, fixture.AccessFor(fixture.TeamPayments))
+		Expect(resp).To(HaveHTTPStatus(http.StatusOK))
 		resp, _ = e.client.Get(Default, "/api/v2/nothing")
 		Expect(resp).To(HaveHTTPStatus(http.StatusNotFound))
 		resp, _ = e.client.Get(Default, fixture.PathMetrics)
@@ -124,6 +168,9 @@ var _ = Describe("Metrics", func() {
 			g.Expect(families.Value(fixture.MetricRequests, fixture.Labels{
 				"code": "403", "method": http.MethodPost, "url": route,
 			})).To(BeNumerically("==", 1))
+			g.Expect(families.Value(fixture.MetricRequests, fixture.Labels{
+				"code": "200", "method": http.MethodPost, "url": fixture.PathAccessGrants,
+			})).To(BeNumerically("==", 1))
 			// A path without a route shares one series, so a scanner can't
 			// create series without bound.
 			g.Expect(families.Value(fixture.MetricRequests, fixture.Labels{
@@ -137,7 +184,7 @@ var _ = Describe("Metrics", func() {
 		// Every team's deployments share the route template's series, and
 		// the scrape itself isn't counted, or it would dominate the rate.
 		families := e.families()
-		Expect(families.Count(fixture.MetricRequests, fixture.Labels{"url": fixture.DeploymentsPath(fixture.TeamCheckout)})).To(BeZero())
+		Expect(families.Count(fixture.MetricRequests, fixture.Labels{"url": fixture.DeploymentsPath(fixture.TeamPayments)})).To(BeZero())
 		Expect(families.Count(fixture.MetricRequests, fixture.Labels{"url": fixture.PathMetrics})).To(BeZero())
 	})
 })

@@ -30,9 +30,10 @@ func TestServeConfig(t *testing.T) {
 		{name: "defaults", edit: func(*config.Config) {}},
 		{
 			name: "flags",
-			args: []string{"--addr", ":9090", "--policies", "/etc/p", "--team", "payments", "--reload-interval", "0", "--debug", "--log-format", "console"},
+			args: []string{"--addr", ":9090", "--policies", "/etc/p", "--access-policies", "/etc/a", "--team", "payments", "--reload-interval", "0", "--debug", "--log-format", "console"},
 			edit: func(c *config.Config) {
-				c.Addr, c.PoliciesDir, c.Teams, c.ReloadInterval, c.Debug, c.LogFormat = ":9090", "/etc/p", []string{"payments"}, 0, true, "console"
+				c.Addr, c.PoliciesDir, c.AccessPoliciesDir, c.Teams = ":9090", "/etc/p", "/etc/a", []string{"payments"}
+				c.ReloadInterval, c.Debug, c.LogFormat = 0, true, "console"
 			},
 		},
 		{
@@ -40,6 +41,7 @@ func TestServeConfig(t *testing.T) {
 			env: map[string]string{
 				"DEPLOYGATE_ADDR":             ":7070",
 				"DEPLOYGATE_POLICIES":         "/mnt/policies",
+				"DEPLOYGATE_ACCESS_POLICIES":  "/mnt/access",
 				"DEPLOYGATE_TEAMS":            "payments, checkout,billing",
 				"DEPLOYGATE_RELOAD_INTERVAL":  "1m",
 				"DEPLOYGATE_SHUTDOWN_TIMEOUT": "5s",
@@ -47,7 +49,8 @@ func TestServeConfig(t *testing.T) {
 				"DEPLOYGATE_LOG_FORMAT":       "console",
 			},
 			edit: func(c *config.Config) {
-				c.Addr, c.PoliciesDir, c.Teams = ":7070", "/mnt/policies", []string{"payments", "checkout", "billing"}
+				c.Addr, c.PoliciesDir, c.AccessPoliciesDir = ":7070", "/mnt/policies", "/mnt/access"
+				c.Teams = []string{"payments", "checkout", "billing"}
 				c.ReloadInterval, c.ShutdownTimeout, c.Debug, c.LogFormat = time.Minute, 5*time.Second, true, "console"
 			},
 		},
@@ -98,7 +101,8 @@ func TestServeConfig(t *testing.T) {
 			if got == nil {
 				t.Fatal("serve didn't run")
 			}
-			if got.Addr != want.Addr || got.PoliciesDir != want.PoliciesDir || !slices.Equal(got.Teams, want.Teams) ||
+			if got.Addr != want.Addr || got.PoliciesDir != want.PoliciesDir || got.AccessPoliciesDir != want.AccessPoliciesDir ||
+				!slices.Equal(got.Teams, want.Teams) ||
 				got.ReloadInterval != want.ReloadInterval || got.ShutdownTimeout != want.ShutdownTimeout ||
 				got.Debug != want.Debug || got.LogFormat != want.LogFormat {
 				t.Errorf("config = %+v, want %+v", *got, want)

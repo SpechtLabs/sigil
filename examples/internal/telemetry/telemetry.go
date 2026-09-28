@@ -1,6 +1,6 @@
 // Package telemetry sets up what deploygate reports about itself: traces
 // through OpenTelemetry, logs through otelzap so they land on the active span,
-// and the Prometheus metrics the dashboard and the alerts read.
+// Prometheus metrics, and optional continuous Go runtime profiles.
 package telemetry
 
 import (
@@ -50,11 +50,12 @@ type Config struct {
 	Debug bool
 }
 
-// Telemetry owns the process-wide tracer provider and logger that Setup
-// installed, so Shutdown can flush them and put the previous globals back.
+// Telemetry owns the process-wide tracer provider, logger and optional
+// profiler, so Shutdown can flush them and put the previous globals back.
 type Telemetry struct {
 	tracerProvider *sdktrace.TracerProvider
 	logger         *zap.Logger
+	profiler       *continuousProfiler
 	restore        []func()
 }
 
@@ -62,10 +63,17 @@ type Telemetry struct {
 // process globals, which is what otelgin, ginzap and otelzap.L() read. Traces
 // are exported over OTLP when OTEL_EXPORTER_OTLP_ENDPOINT is set and
 // OTEL_TRACES_EXPORTER isn't "none"; otherwise spans are still created, so
-// trace ids show up in the logs, but go nowhere.
+// trace ids show up in the logs, but go nowhere. PYROSCOPE_SERVER_ADDRESS
+// enables all supported Go profiles independently of tracing.
 func Setup(cfg Config) (*Telemetry, humane.Error) {
 	logger, err := newLogger(cfg)
 	if err != nil {
+		return nil, err
+	}
+
+	profiler, err := startProfiler(cfg.Version, logger)
+	if err != nil {
+		_ = logger.Sync()
 		return nil, err
 	}
 
@@ -94,14 +102,20 @@ func Setup(cfg Config) (*Telemetry, humane.Error) {
 	return &Telemetry{
 		tracerProvider: tp,
 		logger:         logger,
+		profiler:       profiler,
 		restore:        []func(){undoOtelZap, undoStdLog, undoZap},
 	}, nil
 }
 
-// Shutdown flushes the spans still buffered and syncs the logger. Call it
+// Shutdown stops profiling, flushes buffered spans and syncs the logger. Call it
 // last, after the server stopped, so the shutdown itself is still traced.
 func (t *Telemetry) Shutdown(ctx context.Context) humane.Error {
 	var errs []error
+	if t.profiler != nil {
+		if err := t.profiler.Stop(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	if err := t.tracerProvider.Shutdown(ctx); err != nil {
 		errs = append(errs, err)
 	}
@@ -117,7 +131,7 @@ func (t *Telemetry) Shutdown(ctx context.Context) humane.Error {
 
 	if err := errors.Join(errs...); err != nil {
 		return humane.Wrap(err, "flushing telemetry on shutdown failed",
-			"spans still buffered may be lost; check that the OTLP collector is reachable")
+			"buffered telemetry may be lost; check that the configured collectors are reachable")
 	}
 	return nil
 }

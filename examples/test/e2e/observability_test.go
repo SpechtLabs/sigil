@@ -3,64 +3,77 @@
 package e2e
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 
 	"github.com/spechtlabs/sigil/examples/test/internal/fixture"
 )
 
-// The backends receive data asynchronously: Prometheus scrapes on an
-// interval and the collector batches spans before Jaeger stores them, so
-// every spec here polls instead of asserting once.
+// Alloy scrapes and batches asynchronously, and the profiler uploads every
+// 15s. Poll for stored data, not just healthy backend processes.
 const (
-	backendTimeout = 30 * time.Second
+	backendTimeout = 60 * time.Second
 	backendPolling = time.Second
 
 	evaluateSpan = "deploygate.evaluate"
+	accessSpan   = "deploygate.access"
 )
 
-// The subset of the Prometheus HTTP API response the specs read.
 type promQueryResponse struct {
 	Status string `json:"status"`
 	Data   struct {
 		ResultType string `json:"resultType"`
 		Result     []struct {
 			Metric map[string]string `json:"metric"`
-			// Value is [unix timestamp, "value as a string"].
-			Value []any `json:"value"`
+			Value  []any             `json:"value"`
 		} `json:"result"`
 	} `json:"data"`
 }
 
-// The subset of the Jaeger query API response the specs read. Jaeger v2
-// still serves the v1 JSON API on the UI port.
-type jaegerTracesResponse struct {
-	Data []struct {
+type tempoSearchResponse struct {
+	Traces []struct {
 		TraceID string `json:"traceID"`
-		Spans   []struct {
-			OperationName string `json:"operationName"`
-			Tags          []struct {
-				Key   string `json:"key"`
-				Value any    `json:"value"`
-			} `json:"tags"`
-		} `json:"spans"`
+	} `json:"traces"`
+}
+
+// Tempo returns OTLP JSON, with resource batches and instrumentation scopes.
+type tempoTraceResponse struct {
+	Batches []struct {
+		ScopeSpans []struct {
+			Spans []struct {
+				Name       string `json:"name"`
+				Attributes []struct {
+					Key   string         `json:"key"`
+					Value map[string]any `json:"value"`
+				} `json:"attributes"`
+			} `json:"spans"`
+		} `json:"scopeSpans"`
+	} `json:"batches"`
+}
+
+type lokiResponse struct {
+	Status string `json:"status"`
+	Data   struct {
+		Result []struct {
+			Values [][]string `json:"values"`
+		} `json:"result"`
 	} `json:"data"`
 }
 
 var _ = Describe("Observability backends", func() {
 	BeforeEach(func() {
-		// Make sure there is at least one fresh decision to scrape and
-		// trace, whichever order Ginkgo runs the containers in.
 		resp, _ := deploygate.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest())
 		Expect(resp).To(HaveHTTPStatus(http.StatusAccepted))
 	})
 
-	Context("Prometheus", func() {
-		It("scrapes deploygate", func() {
+	Context("Mimir", func() {
+		It("receives Alloy's deploygate scrape", func() {
 			Eventually(func(g Gomega) {
 				res := promQuery(g, `up{job="deploygate"}`)
 				g.Expect(res.Data.Result).NotTo(BeEmpty())
@@ -68,60 +81,127 @@ var _ = Describe("Observability backends", func() {
 				g.Expect(res.Data.Result[0].Value[1]).To(Equal("1"))
 			}).WithTimeout(backendTimeout).WithPolling(backendPolling).Should(Succeed())
 		})
-
-		It("stores the decision counters", func() {
+		DescribeTable("stores the counters of both stages", func(query string) {
 			Eventually(func(g Gomega) {
-				res := promQuery(g, `sum(deploygate_decisions_total)`)
+				res := promQuery(g, query)
 				g.Expect(res.Data.ResultType).To(Equal("vector"))
 				g.Expect(res.Data.Result).NotTo(BeEmpty())
+			}).WithTimeout(backendTimeout).WithPolling(backendPolling).Should(Succeed())
+		},
+			Entry("the deploy decisions", `sum(deploygate_decisions_total)`),
+			Entry("the access grants", `sum by (role) (deploygate_access_grants_total)`),
+		)
+	})
+
+	Context("Tempo", func() {
+		DescribeTable("stores the span of each stage with what it decided", func(name string, keys ...string) {
+			matchers := make([]types.GomegaMatcher, 0, len(keys))
+			for _, k := range keys {
+				matchers = append(matchers, HaveKey(k))
+			}
+			Eventually(func(g Gomega) {
+				q := url.Values{"q": {`{resource.service.name = "deploygate" && name = "` + name + `"}`}, "limit": {"10"}}
+				resp, body := tempo.Get(g, "/api/search?"+q.Encode())
+				g.Expect(resp).To(HaveHTTPStatus(http.StatusOK))
+				search := fixture.Decode[tempoSearchResponse](g, body)
+				g.Expect(search.Traces).NotTo(BeEmpty())
+				resp, body = tempo.Get(g, "/api/traces/"+search.Traces[0].TraceID)
+				g.Expect(resp).To(HaveHTTPStatus(http.StatusOK))
+				g.Expect(spanTags(fixture.Decode[tempoTraceResponse](g, body), name)).To(ContainElement(And(matchers...)))
+			}).WithTimeout(backendTimeout).WithPolling(backendPolling).Should(Succeed())
+		},
+			Entry("the access stage and its roles", accessSpan, "sigil.kind", "sigil.policy", "sigil.team", "sigil.environment", "sigil.grants"),
+			Entry("the deploy stage and its decision", evaluateSpan, "sigil.decision", "sigil.policy", "sigil.team", "sigil.roles"),
+		)
+	})
+
+	Context("Loki", func() {
+		It("stores decision logs whose trace IDs resolve in Tempo", func() {
+			var traceID string
+			Eventually(func(g Gomega) {
+				q := url.Values{"query": {`{service_name="deploygate"} | json | msg="deploy decision" | team="payments" | trace_id!=""`}, "limit": {"1"}}
+				resp, body := loki.Get(g, "/loki/api/v1/query_range?"+q.Encode())
+				g.Expect(resp).To(HaveHTTPStatus(http.StatusOK))
+				logs := fixture.Decode[lokiResponse](g, body)
+				g.Expect(logs.Status).To(Equal("success"))
+				g.Expect(logs.Data.Result).NotTo(BeEmpty())
+				g.Expect(logs.Data.Result[0].Values).NotTo(BeEmpty())
+				entry := logs.Data.Result[0].Values[0]
+				g.Expect(entry).To(HaveLen(2))
+				var fields map[string]any
+				g.Expect(json.Unmarshal([]byte(entry[1]), &fields)).To(Succeed())
+				g.Expect(fields).To(HaveKeyWithValue("team", "payments"))
+				g.Expect(fields).To(HaveKey("decision"))
+				id, ok := fields["trace_id"].(string)
+				g.Expect(ok).To(BeTrue())
+				g.Expect(id).To(MatchRegexp("^[0-9a-f]{32}$"))
+				traceID = id
+			}).WithTimeout(backendTimeout).WithPolling(backendPolling).Should(Succeed())
+			// Pin the log's trace while Tempo catches up. Repeatedly choosing
+			// the newest log under load could keep outrunning trace ingestion.
+			Eventually(func(g Gomega) {
+				resp, body := tempo.Get(g, "/api/traces/"+traceID)
+				g.Expect(resp).To(HaveHTTPStatus(http.StatusOK))
+				g.Expect(spanTags(fixture.Decode[tempoTraceResponse](g, body), evaluateSpan)).NotTo(BeEmpty())
 			}).WithTimeout(backendTimeout).WithPolling(backendPolling).Should(Succeed())
 		})
 	})
 
-	Context("Jaeger", func() {
-		It("stores the evaluate span with the decision it made", func() {
+	Context("Pyroscope", func() {
+		It("receives deploygate goroutine profiles", func() {
 			Eventually(func(g Gomega) {
-				q := url.Values{"service": {"deploygate"}, "limit": {"20"}}
-				resp, body := jaeger.Get(g, "/api/traces?"+q.Encode())
+				resp, body := pyroscope.PostJSON(g, "/querier.v1.QuerierService/LabelValues", map[string]any{
+					"name":     "__profile_type__",
+					"matchers": []string{`{service_name="deploygate"}`},
+					"start":    time.Now().Add(-time.Minute).UnixMilli(),
+					"end":      time.Now().UnixMilli(),
+				})
 				g.Expect(resp).To(HaveHTTPStatus(http.StatusOK))
-
-				g.Expect(evaluateSpanTags(fixture.Decode[jaegerTracesResponse](g, body))).To(ContainElement(
-					And(HaveKey("sigil.decision"), HaveKey("sigil.policy"), HaveKey("sigil.team")),
-				), "no %s span with sigil.decision in the last 20 traces", evaluateSpan)
+				res := fixture.Decode[struct {
+					Names []string `json:"names"`
+				}](g, body)
+				g.Expect(res.Names).To(ContainElement("goroutines:goroutine:count:goroutine:count"))
 			}).WithTimeout(backendTimeout).WithPolling(backendPolling).Should(Succeed())
 		})
+	})
+
+	Context("Grafana", func() {
+		DescribeTable("connects to each provisioned datasource", func(uid string) {
+			Eventually(func(g Gomega) {
+				resp, body := grafana.Get(g, "/api/datasources/uid/"+uid+"/health")
+				g.Expect(resp).To(HaveHTTPStatus(http.StatusOK))
+				res := fixture.Decode[struct {
+					Status string `json:"status"`
+				}](g, body)
+				g.Expect(res.Status).To(Equal("OK"))
+			}).WithTimeout(backendTimeout).WithPolling(backendPolling).Should(Succeed())
+		}, Entry("Mimir", "mimir"), Entry("Tempo", "tempo"), Entry("Loki", "loki"), Entry("Pyroscope", "pyroscope"))
 	})
 })
 
 func promQuery(g Gomega, query string) promQueryResponse {
-	resp, body := prometheus.Get(g, "/api/v1/query?"+url.Values{"query": {query}}.Encode())
+	resp, body := mimir.Get(g, "/prometheus/api/v1/query?"+url.Values{"query": {query}}.Encode())
 	g.Expect(resp).To(HaveHTTPStatus(http.StatusOK))
-
 	res := fixture.Decode[promQueryResponse](g, body)
 	g.Expect(res.Status).To(Equal("success"))
-
 	return res
 }
 
-// evaluateSpanTags returns the tags of every evaluate span in the traces,
-// one map per span, so a spec can ask for a span that carries all of them.
-func evaluateSpanTags(traces jaegerTracesResponse) []map[string]any {
+func spanTags(trace tempoTraceResponse, name string) []map[string]any {
 	var out []map[string]any
-
-	for _, t := range traces.Data {
-		for _, s := range t.Spans {
-			if s.OperationName != evaluateSpan {
-				continue
+	for _, batch := range trace.Batches {
+		for _, scope := range batch.ScopeSpans {
+			for _, span := range scope.Spans {
+				if span.Name != name {
+					continue
+				}
+				tags := make(map[string]any, len(span.Attributes))
+				for _, attr := range span.Attributes {
+					tags[attr.Key] = attr.Value
+				}
+				out = append(out, tags)
 			}
-
-			tags := make(map[string]any, len(s.Tags))
-			for _, tag := range s.Tags {
-				tags[tag.Key] = tag.Value
-			}
-
-			out = append(out, tags)
 		}
 	}
-
 	return out
 }

@@ -5,6 +5,8 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/spechtlabs/sigil/examples/internal/access"
+	"github.com/spechtlabs/sigil/examples/internal/deploy"
 	"github.com/spechtlabs/sigil/examples/internal/store"
 	"github.com/spechtlabs/sigil/examples/internal/telemetry"
 )
@@ -12,11 +14,18 @@ import (
 // Option configures a Server. Options are applied in order by New.
 type Option func(*Server)
 
-// WithStore sets the policy store the server evaluates against. It is
-// required.
-func WithStore(st *store.Store) Option {
+// WithStore sets the store of the team deploy policies. It is required.
+func WithStore(st *store.Store[deploy.Input]) Option {
 	return func(s *Server) {
-		s.store = st
+		s.deploy = st
+	}
+}
+
+// WithAccessStore sets the store of the access policy, whose single root
+// grants the roles the deploy policies read. It is required.
+func WithAccessStore(st *store.Store[access.Input]) Option {
+	return func(s *Server) {
+		s.access = st
 	}
 }
 

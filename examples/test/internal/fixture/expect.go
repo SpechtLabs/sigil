@@ -18,6 +18,10 @@ func ExpectDecision(g gomega.Gomega, c DecisionCase, resp *http.Response, out De
 	g.Expect(out.Payload).To(gomega.MatchJSON(c.Payload))
 	g.Expect(out.Error).To(gomega.BeNil())
 
+	g.Expect(out.Access).NotTo(gomega.BeNil(), "the response has no access block")
+	g.Expect(out.Access.Policy).To(gomega.Equal(AccessPolicy))
+	ExpectGrants(g, c.Grants, out.Access.Grants)
+
 	// The kind's default wins when no rule fires, and it has no candidate
 	// in the trace to mark.
 	if len(out.Trace) == 0 {
@@ -52,22 +56,100 @@ func ExpectOwnerTrace(g gomega.Gomega, out DecisionResponse) {
 	g.Expect(w.Payload).To(gomega.MatchJSON(out.Payload))
 }
 
-// ExpectNamedActorFailure asserts the 422 checkout answers a request without
-// an actor name with: the failed assert, and the kind's default as the
-// fallback the host acts on, because a host that fails closed must not act
-// on whatever the rules would have said.
-func ExpectNamedActorFailure(g gomega.Gomega, resp *http.Response, out DecisionResponse) {
+// ExpectServedKinds asserts the policies listing: both kinds, each with its
+// contract version, where its bundle came from, when it loaded and the
+// policies it serves.
+func ExpectServedKinds(g gomega.Gomega, got PoliciesResponse) {
+	g.Expect(got.Kinds).To(gomega.HaveLen(2))
+
+	deployKind, ok := got.Kind("DeployApproval")
+	g.Expect(ok).To(gomega.BeTrue(), "no DeployApproval in %+v", got.Kinds)
+	g.Expect(deployKind.Version).To(gomega.Equal(1))
+	g.Expect(deployKind.Source).NotTo(gomega.BeEmpty())
+	g.Expect(deployKind.LoadedAt).NotTo(gomega.BeZero())
+	g.Expect(deployKind.Policies).To(gomega.ConsistOf(
+		PolicyRef{Team: TeamPayments, Policy: "payments.production"},
+		PolicyRef{Team: TeamCheckout, Policy: "checkout.production"},
+	))
+
+	accessKind, ok := got.Kind("AccessGrant")
+	g.Expect(ok).To(gomega.BeTrue(), "no AccessGrant in %+v", got.Kinds)
+	g.Expect(accessKind.Version).To(gomega.Equal(1))
+	g.Expect(accessKind.Source).NotTo(gomega.BeEmpty())
+	g.Expect(accessKind.LoadedAt).NotTo(gomega.BeZero())
+	g.Expect(accessKind.Policies).To(gomega.ConsistOf(PolicyRef{Policy: AccessPolicy}))
+}
+
+// ExpectGrants asserts that got holds exactly the grants in want, in the
+// same order, each written in the access policy's bundle at a known
+// position. The order is the kind's declaration order, then source
+// position, so a change in it is a change a client would see.
+func ExpectGrants(g gomega.Gomega, want []GrantRef, got []Grant) {
+	g.Expect(got).NotTo(gomega.BeNil(), "grants must be [], not null, when nothing fired")
+
+	refs := make([]GrantRef, 0, len(got))
+	for _, gr := range got {
+		refs = append(refs, GrantRef{Role: gr.Role, Reason: gr.Reason, TTL: gr.TTL})
+		g.Expect(gr.Policy).To(gomega.HavePrefix("access."), "grant %+v", gr)
+		g.Expect(gr.Location).NotTo(gomega.BeEmpty(), "grant %+v", gr)
+	}
+	g.Expect(refs).To(gomega.Equal(want))
+}
+
+// ExpectAccess asserts that resp and out answer c on the access endpoint.
+// An empty outcome is a 403 with the same body, so a client reads the
+// grants the same way whatever the status.
+func ExpectAccess(g gomega.Gomega, c AccessCase, resp *http.Response, out AccessResponse) {
+	g.Expect(resp).To(gomega.HaveHTTPStatus(c.Status))
+	g.Expect(out.Policy).To(gomega.Equal(AccessPolicy))
+	g.Expect(out.Team).To(gomega.Equal(c.Request.Team))
+	g.Expect(out.Environment).To(gomega.Equal(c.Request.Environment))
+	g.Expect(out.Error).To(gomega.BeNil())
+	ExpectGrants(g, c.Grants, out.Grants)
+	// Every grant is a candidate of the trace; a collecting kind drops none.
+	g.Expect(out.Trace).To(gomega.HaveLen(len(c.Grants)))
+}
+
+// ExpectAsserts asserts a 422 for failed asserts: every reason named, each
+// with its policy, and an error that says what failed.
+func ExpectAsserts(g gomega.Gomega, resp *http.Response, asserts []AssertEntry, herr *ErrorBody, want ...AssertEntry) {
 	g.Expect(resp).To(gomega.HaveHTTPStatus(http.StatusUnprocessableEntity))
-	g.Expect(out.Team).To(gomega.Equal(TeamCheckout))
-	g.Expect(out.Policy).To(gomega.Equal("checkout.production"))
-	g.Expect(out.Decision).To(gomega.Equal(DecisionDeny))
-	g.Expect(out.Reason).To(gomega.Equal("no_rule_matched"))
-	g.Expect(out.Payload).To(gomega.MatchJSON(`{}`))
-	g.Expect(out.Asserts).To(gomega.ConsistOf(AssertEntry{
-		Reason:   "named_actor",
-		Policy:   "checkout.production",
-		Location: "checkout/production.sigil:6:1",
-	}))
-	g.Expect(out.Error).NotTo(gomega.BeNil())
-	g.Expect(out.Error.Message).To(gomega.ContainSubstring("named_actor"))
+	g.Expect(herr).NotTo(gomega.BeNil())
+	if herr == nil {
+		return
+	}
+
+	got := make([]AssertEntry, 0, len(asserts))
+	for _, a := range asserts {
+		g.Expect(a.Location).NotTo(gomega.BeEmpty(), "assert %+v", a)
+		got = append(got, AssertEntry{Reason: a.Reason, Policy: a.Policy})
+	}
+	g.Expect(got).To(gomega.ConsistOf(want))
+
+	for _, a := range want {
+		g.Expect(herr.Message).To(gomega.ContainSubstring(a.Reason))
+	}
+}
+
+// ExpectBreakGlassConflict asserts the 409 for a break-glass platform
+// member: the kind declares admin and release_manager exclusive, both
+// fired, and the answer names each side so the policy's owners can find
+// both rules.
+func ExpectBreakGlassConflict(g gomega.Gomega, resp *http.Response, conflict *Conflict, herr *ErrorBody) {
+	g.Expect(resp).To(gomega.HaveHTTPStatus(http.StatusConflict))
+	g.Expect(herr).NotTo(gomega.BeNil())
+	g.Expect(conflict).NotTo(gomega.BeNil(), "the response has no conflict block")
+	if conflict == nil {
+		return
+	}
+
+	sides := make([]GrantRef, 0, len(conflict.Candidates))
+	for _, c := range conflict.Candidates {
+		g.Expect(c.Location).NotTo(gomega.BeEmpty(), "candidate %+v", c)
+		sides = append(sides, GrantRef{Role: c.Decision, Reason: c.Reason})
+	}
+	g.Expect(sides).To(gomega.ConsistOf(
+		GrantRef{Role: RoleAdmin, Reason: "break_glass"},
+		GrantRef{Role: RoleReleaseManager, Reason: "platform_member"},
+	))
 }
