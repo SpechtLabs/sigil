@@ -175,6 +175,8 @@ Every compile error and every trace entry carries the file, line and column, plu
 
 `policy.Require` names the policies a root policy must invoke unconditionally. The compiler checks that each one is reachable from the root through top-level invocations only, with no `when` anywhere on the path, and fails the load otherwise, with an error pointing at the gated call or at the root's header when the call is missing. See [Evaluation semantics](/reference/evaluation/#required-policies) for what that guarantees.
 
+The requirement is transitive: the call doesn't have to be in the root file. A shared "team baseline" policy that invokes `deploy.guardrails` at its top level satisfies `Require` for every team that invokes the baseline at theirs, at any depth. [`sigil explain`](/reference/cli/#sigil-explain) shows where each rule comes from, since every call chain starts in the root.
+
 Put the requirement wherever the host loads team policies, and name the policies that hold the denies no team may switch off. The `sigil check --require` flag runs the same check in a policy repository's CI.
 
 #### Where required policies come from
@@ -200,9 +202,7 @@ Without `From`, the required policy is looked up in the bundle like any other do
 
 Pinning by content, as in `policy.Require("deploy.guardrails", policy.Digest("sha256:…"))`, is the lighter alternative that was considered. It needs no second source, but every guardrail change then needs a host release to update the digest, and a digest over one document says nothing about the modules it imports, so the digest would have to cover the whole import closure. `From` covers both with one rule.
 
-::: warning Unspecified
-Whether a requirement may be met through a chain of other policies ("transitive") or must be met by a call in the root file itself ("direct") is an [open question](/project/open-questions/). The check above describes the transitive reading. A required policy bounds its own params with [`min` and `max`](/reference/policy-files/#bounds); `Require` takes no bounds of its own.
-:::
+A required policy bounds its own params with [`min` and `max`](/reference/policy-files/#bounds); `Require` takes no bounds of its own.
 
 ### Evaluating
 

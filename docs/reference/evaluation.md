@@ -212,7 +212,7 @@ Every candidate a required policy produces is then always in the candidate set, 
 
 The requirement names a policy, and policies are found by the name in their header, not by file path (see [Bundles and resolution](/reference/policy-files/#bundles-and-resolution)). On its own, the check proves that some policy called `deploy.guardrails` is invoked, not which one. `policy.From` pins a required policy, and everything it imports, to a source the host trusts, and makes a bundle document that claims one of those names a compile error. See [Where required policies come from](/reference/go-api/#where-required-policies-come-from).
 
-Params are covered by [bounds](/reference/policy-files/#bounds). A team binds `min_soak` when it invokes `guardrails`, and with `param min_soak: duration = 24h, min: 1h` it can tighten the soak but not loosen it below an hour. Lists such as `approvers` have no bounds. Whether a requirement may be met through a chain of other policies rather than directly in the root file is an [open question](/project/open-questions/).
+Params are covered by [bounds](/reference/policy-files/#bounds). A team binds `min_soak` when it invokes `guardrails`, and with `param min_soak: duration = 24h, min: 1h` it can tighten the soak but not loosen it below an hour. Lists such as `approvers` have no bounds. A requirement may be met through a chain of top-level invocations, not only by a call in the root file; see [Required policies](/reference/go-api/#required-policies).
 
 ## Lets
 
