@@ -2,7 +2,6 @@
 package check
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"slices"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/sierrasoftworks/humane-errors-go"
 	"github.com/spf13/cobra"
-	"go.yaml.in/yaml/v3"
 
 	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
@@ -113,18 +111,6 @@ func addFlags(cmd *cobra.Command) {
 	_ = cmd.MarkFlagFilename("trusted", "sigil")
 }
 
-// Diagnostic is one error or lint finding, as JSON and YAML print it.
-type Diagnostic struct {
-	Severity string `json:"severity" yaml:"severity"` // error or warning
-	Lint     string `json:"lint,omitempty" yaml:"lint,omitempty"`
-	File     string `json:"file,omitempty" yaml:"file,omitempty"`
-	Document string `json:"document,omitempty" yaml:"document,omitempty"`
-	Message  string `json:"message" yaml:"message"`
-	Help     string `json:"help,omitempty" yaml:"help,omitempty"`
-	Line     int    `json:"line,omitempty" yaml:"line,omitempty"`
-	Column   int    `json:"column,omitempty" yaml:"column,omitempty"`
-}
-
 func run(out io.Writer, o *options, configFile, kindFile string, src project.Sources, patterns, requires []string) humane.Error {
 	cfg, err := config.Load(configFile, ".")
 	if err != nil {
@@ -223,22 +209,12 @@ func report(out io.Writer, b *bundle.Bundle, errs diag.ErrorList, findings []lin
 	if format == output.Text {
 		return reportText(out, b, diags, failed)
 	}
-	records := make([]Diagnostic, 0, len(diags))
+	records := make([]output.Diagnostic, 0, len(diags))
 	for _, d := range diags {
-		records = append(records, diagnostic(d))
+		records = append(records, output.NewDiagnostic(d))
 	}
-	var err error
-	if format == output.YAML {
-		enc := yaml.NewEncoder(out)
-		enc.SetIndent(2)
-		err = enc.Encode(records)
-	} else {
-		enc := json.NewEncoder(out)
-		enc.SetIndent("", "  ")
-		err = enc.Encode(records)
-	}
-	if err != nil {
-		return humane.Wrap(err, "the diagnostics couldn't be written", "check where the output is going")
+	if err := output.Encode(out, format, records); err != nil {
+		return err
 	}
 	if failed > 0 {
 		return pretty.Fail(fmt.Sprintf("check found %s", problems(failed, len(diags)-failed)), "each diagnostic says where the problem is and how to fix it")
@@ -296,14 +272,6 @@ func problems(errors, warnings int) string {
 		parts = append(parts, fmt.Sprintf("%d %s", warnings, plural(warnings, "warning", "warnings")))
 	}
 	return strings.Join(parts, " and ")
-}
-
-func diagnostic(e *diag.Error) Diagnostic {
-	d := Diagnostic{Severity: e.Severity.String(), Lint: e.Code, File: e.File, Message: e.Msg, Help: e.Help, Document: e.Doc}
-	if e.Pos.IsValid() {
-		d.Line, d.Column = e.Pos.Line, e.Pos.Column
-	}
-	return d
 }
 
 func plural(n int, one, many string) string {

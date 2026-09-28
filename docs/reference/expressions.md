@@ -5,9 +5,7 @@ createTime: 2026/09/24 22:30:00
 permalink: /reference/expressions/
 ---
 
-::: info Draft specification
-This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, `fmt`, `check`, `eval`, `explain`, `test` and `export` exist. See [Open questions](/project/open-questions/).
-:::
+This page is the policy author's reference for every operator: its precedence, the operand types it accepts and what it evaluates to.
 
 Expressions appear in `when` conditions, `assert` conditions, `let` bindings, param defaults, policy invocation arguments and decision payloads. Every expression has a static type that the compiler knows before evaluation, and nothing converts between types implicitly. The types themselves are on [Types](/reference/types/).
 
@@ -72,16 +70,25 @@ It can't short-circuit, because the result always depends on both sides, so both
 
 | Operators                   | Operand types                                         |
 | --------------------------- | ----------------------------------------------------- |
-| `==` `!=`                   | `bool`, `int`, `float`, `string`, `duration`, `timestamp` |
+| `==` `!=`                   | `bool`, `int`, `float`, `string`, `duration`, `timestamp`, [`decision`](#decision-values-and-outcome) |
 | `<` `<=` `>` `>=`           | `int`, `float`, `duration`, `timestamp`               |
 
-String comparison is case-sensitive, unlike filt-rs, because Kubernetes labels and most identifiers in this domain are. `"Prod" == "prod"` is false.
+String comparison is case-sensitive, because Kubernetes labels and most identifiers in this domain are. `"Prod" == "prod"` is false.
 
 Comparing an optional (`?T`) value is a compile error until it's unwrapped with `??`.
 
 `==` doesn't work on lists, maps or structs. A policy rarely means "these two lists are identical"; it means subset, overlap or membership, which have their own operators. And one `==` would hide a walk over a whole nested value.
 
-Strings aren't ordered. Byte-wise order is well defined, but it makes `"v10" < "v9"` true, which is exactly the result that gets a version rule wrong. Versions compare through a type the host defines with its own ordering; see [Host-ordered types](/reference/types/#host-ordered-types).
+That includes comparing with an empty literal. `actor.regions != []` is a compile error: the `[]` takes its type from the other side, and `!=` isn't defined for `list<string>`. The error suggests an emptiness test that compiles: `any x in actor.regions: true` is true when the list has an element, and `not (any x in actor.regions: true)` when it's empty. A kind that declares a host function such as `fn len(list<string>) -> int` can write `len(actor.regions) > 0` instead. A map can't be quantified over, so testing one for emptiness needs such a host function.
+
+Strings aren't ordered. Byte-wise order is well defined, but it makes `"v10" < "v9"` true, which is exactly the result that gets a version rule wrong. Sigil ships no version comparison, so today it's a host function the kind declares, with a Go implementation the host registers through `policy.WithFunc`:
+
+```sigil
+// In the kind; the name and the Go function behind it are the host's choice.
+fn version_below(string, string) -> bool
+```
+
+A policy then calls it like any other host function: `version_below(service.labels["version"], "2.0.0")`. [Host-ordered types](/reference/types/#host-ordered-types), which would let `<` compare versions directly, are planned.
 
 ## Membership: `in` and `not in`
 
@@ -122,9 +129,9 @@ actor.teams any in service.owners
 
 `exclusive in` is mutual exclusion as separation-of-duties rules mean it: holding none of the listed values is fine, holding two is not. `one in` additionally requires one of them to be present. With two elements, `[a, b] one in xs` is `(a in xs) xor (b in xs)`.
 
-Both count distinct elements of `a` that appear in `b`. Repeats don't count twice on either side, so `["x", "x"] exclusive in ["x"]` is true, and so is `["x", "y"] exclusive in ["x", "x"]`. A literal left side with duplicates, or with fewer than two elements, always gives the same answer, and the linter will warn about it.
+Both count distinct elements of `a` that appear in `b`. Repeats don't count twice on either side, so `["x", "x"] exclusive in ["x"]` is true, and so is `["x", "y"] exclusive in ["x", "x"]`. With a one-element list on the left, `exclusive in` is always true and `one in` means the same as `in`; no lint flags that yet.
 
-An empty left side makes `all in` and `exclusive in` true, and `any in` and `one in` false. The vacuous truth of `[] all in b` is an [open question](/project/open-questions/): either keep the math and have the linter warn, or define an empty left side as false.
+An empty left side makes `all in` and `exclusive in` true, and `any in` and `one in` false. Whether `[] all in b` should stay vacuously true is an [open question](/project/open-questions/#vacuous-all-in).
 
 ::: tip Split returns a list with one empty string
 Host functions follow their Go implementation. Go's `strings.Split("", ",")` returns `[""]`, not `[]`. So when the `regions` label is missing, `split(service.labels["regions"], ",")` yields `[""]`, and `[""] all in actor.regions` is false. That example fails closed by accident of `split`, not by design; don't rely on it for a different function.
@@ -154,9 +161,9 @@ The right-hand map doesn't have to be a literal. An empty right-hand map makes `
 
 ## Pattern matching: `like` and `matches`
 
-Both take a `string` on the left and a pattern on the right, and the pattern must be a string literal (plain or raw) so it compiles once, at policy compile time. A pattern built from an expression is a compile error, and so is a pattern that fails to compile.
+Both take a `string` on the left and a pattern on the right, and the pattern must be a string literal (plain or raw, optionally in parentheses) so it compiles once, at policy compile time. A pattern built from an expression, even a `let` that holds a literal, is a compile error, and so is a `matches` pattern that isn't a valid regular expression.
 
-`like` is a glob. `*` matches any run of characters, including an empty one, and `?` matches exactly one character. Every other character matches itself.
+`like` is a glob that must match the whole string. `*` matches any run of characters, including an empty one, and `?` matches exactly one character. Every other character, `[` and `\` included, matches itself, so a glob can't be invalid.
 
 ```sigil
 service.name like "payments-*"
@@ -185,7 +192,7 @@ release.ticket ?? "none"
 
 Applying `??` to a value that isn't optional is a compile error.
 
-Struct types have no literal, so an optional struct (`?Release`) can't be unwrapped with `??`. Its fields are read with optional chaining instead.
+Struct types have no literal, so the only default for an optional struct (`?Release`) is another value of the same struct type, such as an input: `(parent_release ?? release).soak`. Usually its fields are read with optional chaining instead.
 
 ## Optional chaining: `?.`
 
@@ -209,7 +216,7 @@ release.parent?.merged_by?.name ?? ""       // `merged_by` is optional itself, s
 - A `?.` only skips what comes after an absent value. A link that is optional itself still needs its own `?.`: `release.parent?.merged_by.name` is a compile error that suggests `?.name`.
 - Parentheses end a chain. `(release.parent?.author).name` reads a field of a `?Actor` and is a compile error.
 - `?.` on a value that can't be absent is a compile error, like `??` on one: `service?.name` suggests `service.name`.
-- `?.` reads struct fields only. There's no `?[` for indexing, because lists and maps can't be optional.
+- `?.` reads struct fields only. There's no `?[` for indexing, because a kind can't declare an optional list or map. A chain that ends at a list or map field is optional, though: `release.parent?.author.roles` is a `?list<string>`, unwrapped with `?? []`.
 
 Optional chaining can't tell an absent struct from a present one whose field is zero: with `release?.soak ?? 0s`, both give `0s`. [`present`](#presence-present) can.
 
@@ -259,12 +266,10 @@ These are postfix and bind tightest.
 ```text
 deploy/production.sigil:9:16: error: unknown field "teir" on type Service
   |
-9 |   when service.teir == "critical"
+9 |   when service.teir == "critical" { approve(release_manager) }
   |                ^^^^
   = help: did you mean "tier"? Service declares: name, tier, owners, labels
 ```
-
-That message format is illustrative; the exact layout isn't fixed yet.
 
 `common.name` reads a `let` through a whole-file import such as `use deploy.common`. See [Policy files](/reference/policy-files/#use).
 
@@ -272,7 +277,7 @@ That message format is illustrative; the exact layout isn't fixed yet.
 
 `xs[i]` indexes a list with an `int`. An index out of range, including a negative one, is a runtime error.
 
-`f(a, b)` calls a host function declared in the kind with an `fn` signature. Arguments are positional, and their count and types must match the signature. Calling a name the kind doesn't declare is a compile error; policies can't define functions. Host functions must be pure. An error returned by a host function is a runtime error.
+`f(a, b)` calls a host function declared in the kind with an `fn` signature. Arguments are positional, and their count and types must match the signature. There are no built-in functions: `split`, `len` and every other function exist only when the kind declares them. Calling a name the kind doesn't declare is a compile error, and policies can't define functions. A host function isn't a value, so its bare name without parentheses is a compile error. Host functions must be pure. An error returned by a host function is a runtime error.
 
 ## Quantifiers
 
@@ -310,8 +315,6 @@ Read quickly, the first form looks like two conditions joined by `and`. `sigil f
 
 The quantifier variable follows the no-shadowing rule: naming it after an input, param, let, imported name or host function is a compile error.
 
-Both rules, the body extending as far right as possible and no shadowing, are implemented.
-
 ## Decision values and `outcome`
 
 Inside an `assert`, a policy can test what evaluation decided. Two things make that possible:
@@ -331,7 +334,7 @@ Membership over `outcome` matches rather than compares: a bare decision is in `o
 
 `outcome` can only appear in an `assert` condition. A `when` condition or a `let` that read it could make a rule depend on its own result: `when admin not in outcome { admin(x) }` would fire exactly when it doesn't. See [Assertions](/reference/evaluation/#assertions) for when asserts run.
 
-Decision values can be compared with `==` and `!=`, tested with `in` and the list operators, and collected in lists, and nothing else. Reading a payload through `outcome` isn't possible; see [Open questions](/project/open-questions/#decision-values-and-outcome).
+Decision values can be compared with `==` and `!=`, tested with `in` and the list operators, and collected in lists, and nothing else. A decision can't be a map value: a missing key reads as the zero value of the value type, and a decision has none, so `{"a": approve}` is a compile error. Reading a payload through `outcome` isn't possible; see [Open questions](/project/open-questions/#decision-values-and-outcome).
 
 ## Evaluation order
 

@@ -5,7 +5,7 @@ createTime: 2026/09/28 12:00:00
 permalink: /guides/example-service/
 ---
 
-This guide introduces deploygate, a complete Go service built on Sigil. It serves the `DeployApproval` policies from the [tour](/getting-started/tour/) over HTTP, and it wires up everything the rest of these docs describe one piece at a time: a kind defined in Go, an exported kind file, guardrails required from a trusted source, policies loaded from a directory with hot reload, typed matching, and metrics and traces for every decision. A second, collecting kind, `AccessGrant`, grants the roles each deploy is decided with, so no client names its own.
+This guide is for Go developers who want to see Sigil embedded in a real service before they embed it in their own. It introduces deploygate, a complete Go service built on Sigil. It serves the `DeployApproval` policies from the [tour](/getting-started/tour/) over HTTP, and it wires up everything the rest of these docs describe one piece at a time: a kind defined in Go, an exported kind file, guardrails required from a trusted source, policies loaded from a directory with hot reload, typed matching, and metrics and traces for every decision. A second, collecting kind, `AccessGrant`, grants the roles each deploy is decided with, so no client names its own.
 
 The code lives in [`examples/`](https://github.com/SpechtLabs/sigil/tree/main/examples) in the repository, as a Go module of its own. Its README is the full walkthrough; this page is the short version.
 
@@ -41,39 +41,28 @@ mise run demo deploy owner --json
 
 Omit `--json` for a readable summary, or use `--explain` to include the winning rules and their source locations. `mise run demo scenarios` lists the built-in deployment and access scenarios. The CLI also accepts `--file` for your own JSON and `--url` to select another deploygate instance.
 
-The request describes the actor by their groups, `"groups": ["payments"]`, not by roles. deploygate evaluates the access policy first, which makes a member of the `payments` group a reader and a deployer, then the team's deploy policy with those roles. It answers `202 Accepted` with the decision, its reason, the payload, the trace and the roles it decided with:
+The request describes the actor by their groups, `"groups": ["payments"]`, not by roles. deploygate evaluates the access policy first, which makes a member of the `payments` group a reader and a deployer, then the team's deploy policy with those roles. It answers `202 Accepted` with the decision, its reason, the payload, the trace and the roles it decided with. An excerpt:
 
 ```json
 {
-  "team": "payments",
-  "policy": "payments.production",
   "decision": "review",
   "reason": "service_owner",
   "payload": {"approvers": ["payments-leads", "security-leads"]},
   "trace": [
-    {
-      "decision": "review",
-      "reason": "service_owner",
-      "policy": "deploy.production",
-      "location": "payments/production.sigil:10:3 → deploy/production.sigil:16:5",
-      "conditions": [
-        "service.labels[\"compliance\"] == \"pci\"",
-        "cleared",
-        "service.tier in [\"standard\", \"internal\"] and owns_service"
-      ],
-      "payload": {"approvers": ["payments-leads", "security-leads"]},
-      "winner": true
-    }
+    {"decision": "review", "reason": "service_owner", "policy": "deploy.production",
+     "location": "payments/production.sigil:10:3 → deploy/production.sigil:16:5", "winner": true}
   ],
   "access": {
     "policy": "access.main",
     "grants": [
-      {"role": "reader", "reason": "team_member", "policy": "access.main", "location": "main.sigil:9:3 (access.main)"},
-      {"role": "deployer", "reason": "team_member", "ttl": "8h", "policy": "access.main", "location": "main.sigil:10:3 (access.main)"}
+      {"role": "reader", "reason": "team_member"},
+      {"role": "deployer", "reason": "team_member", "ttl": "8h"}
     ]
   }
 }
 ```
+
+The README's [walkthrough](https://github.com/SpechtLabs/sigil/tree/main/examples#a-review) shows the full body, including the conditions each trace entry held under.
 
 The status encodes the decision: `200` for approve, `202` for review, `403` for deny, and `422` when an evaluation failed, for example on a failed assert. A `409` means the access policy granted two roles the kind declares exclusive. A request deploygate won't evaluate, such as one with an unknown field like `roles`, or a negative soak, gets `400` before any policy runs. A client can act on the status alone and read the body for the details.
 
@@ -116,29 +105,25 @@ Startup is the exception. With no bundle loaded yet there's nothing to fall back
 
 ## Check policies with the host's binary
 
-The stock `sigil` binary can't run the kind's `split` host function, so the example builds its own, `sigilc`, with the [`cli` package](/reference/cli/#host-functions-and-host-binaries), and links both kinds in. With two kinds linked, every policy command takes `--kind` with the exported kind file. A policy repository's CI runs it the same way the service loads the policies. `mise run policies` runs the checks and the tests for both kinds; by hand, from `examples/`:
+The stock `sigil` binary can't run the kind's `split` host function, so the example builds its own, `sigilc`, with the [`cli` package](/reference/cli/#host-functions-and-host-binaries), and links both kinds in. With two kinds linked, every policy command takes `--kind` with the exported kind file. A policy repository's CI runs it the same way the service loads the policies. `mise run policies` runs the checks and the tests for both kinds. The team policies' check, from `examples/`, requires the guardrails from the same trusted directory the service embeds:
 
 ```bash
 mise run sigilc check --kind policies/deploy_approval.sigil --config policies/sigil.yaml \
   --require deploy.guardrails --trusted policies/platform/deploy \
   --policy 'payments.*' --policy 'checkout.*' -R policies/teams
-mise run sigilc check --kind policies/access_grant.sigil --config policies/sigil.yaml \
-  --require access.guardrails --trusted policies/platform/access \
-  --policy access.main policies/access
-mise run sigilc test --kind policies/access_grant.sigil policies/platform/access policies/access
-mise run sigilc explain --kind policies/access_grant.sigil \
-  --policy access.main -R policies/platform/access policies/access
 ```
+
+The README's [sigilc section](https://github.com/SpechtLabs/sigil/tree/main/examples#your-own-sigil-binary-sigilc) has the access policy's check, the test runs, `explain` output for both kinds and the `export --check` that catches a stale kind file.
 
 ## Tests
 
-The example has table-driven unit tests, the policy tests run from `go test` with `policytest` for both kinds, a Ginkgo integration suite against the real stores and server in process, and a Ginkgo end-to-end suite against the compose stack. The two Ginkgo suites share one table of requests and expected decisions and grants. `mise run test` runs everything that needs no Docker; `mise run e2e` brings the stack up and runs the end-to-end suite, which also checks metrics in Mimir, spans in Tempo, logs in Loki, profiles in Pyroscope and Grafana datasource health.
+The example has table-driven unit tests, the policy tests run from `go test` with `policytest` for both kinds, a Ginkgo integration suite against the real stores and server in process, and a Ginkgo end-to-end suite against the compose stack. The two Ginkgo suites share one table of requests and expected decisions and grants. `mise run test` runs the unit, policy and integration tests, none of which need Docker; `mise run e2e` brings the stack up and runs the end-to-end suite, which also checks metrics in Mimir, spans in Tempo, logs in Loki, profiles in Pyroscope and Grafana datasource health.
 
 ## Load tests and profiles
 
 From `examples/`, run `mise run loadtest-smoke` to verify the eight request cases, or `DURATION=15m RATE=100 mise run loadtest` to generate sustained traffic. `mise run loadtest-stress` ramps to five times the configured rate. The scripts check policy outcomes as well as HTTP responses, apply latency budgets, send measurements to Mimir and write a JSON report under `examples/results/`.
 
-Select a **Load run** in Grafana to inspect achieved throughput, p95/p99, incorrect outcomes and dropped iterations. The **Sigil evaluation performance** section shows throughput and latency around the policy evaluator itself. CPU and runtime flame graphs show where the service spends resources; **Runtime profile** selects memory, goroutine, mutex, blocking or detected leak profiles. Follow a Loki log's trace link into Tempo, then open the surrounding service profile in Pyroscope. The load measurements include the full HTTP service and telemetry; their interpretation and configuration are covered in the [example README](https://github.com/SpechtLabs/sigil/tree/main/examples#generate-load-with-k6).
+Select a **Load run** in Grafana to inspect achieved throughput, p95/p99, incorrect outcomes and dropped iterations. The **Sigil evaluation performance** section shows throughput and latency around the policy evaluator itself. CPU and runtime flame graphs show where the service spends resources; **Runtime profile** selects memory, goroutine, mutex, blocking or detected leak profiles. Follow a Loki log's trace link into Tempo, then open the surrounding service profile in Pyroscope. The load measurements include the full HTTP service and telemetry; their interpretation and configuration are covered in the [example README](https://github.com/SpechtLabs/sigil/tree/main/examples#generate-load-with-k6). [Performance](/reference/performance/#in-a-service) records one such run next to the engine's own benchmarks.
 
 ## Further reading
 

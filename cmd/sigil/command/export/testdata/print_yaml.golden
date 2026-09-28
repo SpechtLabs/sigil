@@ -1,0 +1,15 @@
+kind: Gate
+version: 1
+source: |
+  kind Gate version 1
+
+  input name: string
+
+  decision deny {
+    no_rule_matched
+  }
+
+  collect one
+  precedence deny
+
+  default deny(no_rule_matched)

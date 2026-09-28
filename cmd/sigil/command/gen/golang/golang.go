@@ -5,6 +5,7 @@ package golang
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/usage"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/placeholder"
@@ -12,7 +13,8 @@ import (
 
 // NewCommand returns the gen go command.
 func NewCommand(opts ...Option) *cobra.Command {
-	o := &options{}
+	text := output.Text
+	o := &options{output: &text}
 	for _, opt := range opts {
 		opt(o)
 	}
@@ -20,8 +22,10 @@ func NewCommand(opts ...Option) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "go KIND_FILE",
 		Aliases: []string{"golang"},
-		Short:   "Generate typed Go code from a kind file",
-		Long: `Generates typed Go code from a kind file: a struct for every input type and
+		Short:   "Generate typed Go code from a kind file (planned)",
+		Long: `Planned: this command is not implemented yet, and exits with an error.
+
+Generates typed Go code from a kind file: a struct for every input type and
 decision payload, so a Go service can consume decisions with typed values
 instead of loading the kind dynamically.
 
@@ -34,7 +38,7 @@ sigil gen go --package approval --out approval/kind.go deploy_approval.sigil`,
 		Args:              usage.Exactly("KIND_FILE"),
 		ValidArgsFunction: complete.SigilFilesUpTo(1),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return placeholder.NotImplemented(cmd)
+			return placeholder.NotImplemented(cmd, *o.output)
 		},
 	}
 

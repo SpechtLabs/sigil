@@ -94,7 +94,7 @@ pub let eligible =
   }
 ```
 
-`module deploy.common: DeployApproval@1` names the module and the kind its expressions are checked against. The `@1` pins the kind version it was written against, so the host can tell a policy written for an older contract apart from a current one (see [Versioning](/reference/kind-files/#versioning)). Other files find it by that name, not by its path; the convention is still to keep `deploy.common` at `deploy/common.sigil`, and a file can hold several documents if that suits you better (see [Bundles and resolution](/reference/policy-files/#bundles-and-resolution)). A module holds `let`s and nothing else, no rules and no params, so importing from it can never change a decision by itself.
+`module deploy.common: DeployApproval@1` names the module and the kind its expressions are checked against. The `@1` pins the kind version it was written against, so the host can tell a policy written for an older contract apart from a current one (see [Versioning](/reference/kind-files/#versioning)). Other files find it by that name, not by its path; the convention is still to keep `deploy.common` at `deploy/common.sigil`, and a file can hold several documents if that suits you better (see [Bundles and resolution](/reference/policy-files/#bundles-and-resolution)). A module holds only imports and `let`s, never rules, params or invocations, so importing from it can never change a decision by itself.
 
 A `let` names an expression so rules can refer to it, and it's evaluated against the same input as everything else. `pub` lets other files import it; a `let` without `pub` stays private to its file. A `let` can also sit inside a `when` body, where only that body sees it.
 
@@ -124,11 +124,11 @@ when release.soak < min_soak and not release.hotfix {
 
 `param min_soak` is a knob a team can turn, with a default of a day.
 
-A `when` block fires when its condition holds. Every `when` is evaluated, independently, and the order they appear in the file doesn't matter. Both rules here deny. `deny(not_eligible)` is a decision constructor. It doesn't return or stop anything; it adds a candidate to the pile. The argument is the reason, always a string literal, so you can grep for it and count it in metrics.
+A `when` block fires when its condition holds. Every `when` is evaluated, independently, and the order they appear in the file doesn't matter. Both rules here deny. `deny(not_eligible)` is a decision constructor. It doesn't return or stop anything; it adds a candidate to the pile. The argument is the reason, a bare name the kind declares for that decision (`deny("not_eligible")` is a compile error), so you can grep for it and count it in metrics.
 
 There's no `else`. If you want "the other case", you write `when not x`, which says the same thing without implying an order.
 
-This file holds only denies on purpose. The host will require every policy to invoke it, which is what makes these denies stick. More on that [below](#requiring-the-guardrails).
+This file holds only denies on purpose. The host requires every team policy to invoke it, which is what makes these denies stick. More on that [below](#requiring-the-guardrails).
 
 ### Approvals: `deploy/production.sigil`
 
@@ -206,18 +206,14 @@ p, err := Deploy.Load(policies, "payments.production",
 
 With calls to two other files, it helps to see the policy flattened. `sigil explain` inlines every invocation and pushes its gates down into each rule:
 
-::: info Real output
-The `sigil explain` block below is what the CLI prints for these files.
-:::
-
 ```text
 $ sigil explain --kind deploy_approval.sigil --policy payments.production deploy/ payments/
-payments.production: 7 rules from 4 policies
+payments.production: 7 rules from 3 policies and 1 module
 
-  deny(not_eligible)        payments.production:7 → guardrails:8
+  deny(not_eligible)        payments.production:7 → deploy.guardrails:8
     when not eligible
 
-  deny(soak_too_short)      payments.production:7 → guardrails:12
+  deny(soak_too_short)      payments.production:7 → deploy.guardrails:12
     when release.soak < 4h and not release.hotfix
 
   approve(release_manager)  payments.production:10 → deploy.production:11
@@ -253,7 +249,7 @@ Params show as the values they're bound to: `4h` instead of `min_soak`, the appr
 
 Evaluation has two steps. First, collect every decision constructor whose enclosing `when` conditions all hold; those are the candidates. Then pick the candidate whose decision ranks highest in `precedence`. If there are no candidates, the kind's `default` applies.
 
-The inputs below are all evaluated against `payments.production`. Each one starts from the same eligible service, deployed to production. It has no `compliance` label, so it isn't in PCI scope:
+The inputs below are all evaluated against `payments.production`, and each result block is what `sigil eval` prints for that input. Each input starts from the same eligible service, deployed to production. It has no `compliance` label, so it isn't in PCI scope:
 
 ```json
 {
@@ -303,7 +299,7 @@ trace: 2 candidates
       bake = 15m
 ```
 
-Review wins because it ranks above approve. The payments team's fast path doesn't fire over the platform's review; it only helps when the platform's policies stay silent. The `approvers` payload comes from the argument the team passed, and the trace shows the call chain that produced the candidate: the call on line 14 of the team file, then the rule on line 16 of `deploy/production.sigil`.
+Review wins because it ranks above approve. The payments team's fast path doesn't win over the platform's review; it only helps when the platform's policies stay silent. The `approvers` payload comes from the argument the team passed, and the trace shows the call chain that produced the candidate: the call on line 14 of the team file, then the rule on line 16 of `deploy/production.sigil`.
 
 ### The same release after two hours
 

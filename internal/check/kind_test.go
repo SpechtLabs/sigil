@@ -213,6 +213,8 @@ default d(x)
 		// Header.
 		{name: "accepts above the version", src: "kind K version 2, accepts: 3\ndecision d { a x y }\ncollect one\nprecedence d\ndefault d(x)",
 			errs: []string{"1:28: kind K at version 2 can't accept version 3"}, help: "`accepts` names the oldest version policies may still pin, between 1 and the version"},
+		{name: "accepts zero", src: "kind K version 1, accepts: 0\ndecision d { a x y }\ncollect one\nprecedence d\ndefault d(x)",
+			errs: []string{"1:28: kind K accepts version 0, but versions start at 1"}, help: "leave `accepts` out to accept every version, or name the oldest version policies may still pin, between 1 and the version"},
 		{name: "version zero", src: "kind K version 0\ndecision d { a x y }\ncollect one\nprecedence d\ndefault d(x)",
 			errs: []string{"1:16: invalid kind version 0"}, help: "the version is a positive integer that changes when the contract does"},
 

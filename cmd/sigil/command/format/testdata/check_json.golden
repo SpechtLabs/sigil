@@ -1,0 +1,10 @@
+[
+  {
+    "file": "a.sigil",
+    "formatted": false
+  },
+  {
+    "file": "b.sigil",
+    "formatted": true
+  }
+]

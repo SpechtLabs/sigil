@@ -48,7 +48,7 @@ let cleared =
   split(service.labels["regions"], ",") all in actor.regions
 ```
 
-Watch what happens when the label is missing. The lookup yields `""`, and `split` is Go's `strings.Split`, which turns `""` into `[""]`, a list with one empty string, not an empty list. `[""] all in actor.regions` is false unless some region is literally named `""`, so a missing label fails closed here. That's the behaviour you want, but it rests on a detail of `strings.Split`. An empty list on the left of `all in` would be vacuously true, and whether Sigil keeps that rule is an [open question](/project/open-questions/).
+Watch what happens when the label is missing. The lookup yields `""`, and `split` is Go's `strings.Split`, which turns `""` into `[""]`, a list with one empty string, not an empty list. `[""] all in actor.regions` is false unless some region is literally named `""`, so a missing label fails closed here. That's the behavior you want, but it rests on a detail of `strings.Split`. An empty list on the left of `all in` is vacuously true, and whether Sigil keeps that rule is an [open question](/project/open-questions/#vacuous-all-in).
 
 Don't rely on the accident. Say what you mean:
 
@@ -88,6 +88,14 @@ when release.hotfix and (release.ticket ?? "") == "" {
 
 `??` binds tighter than `==`, so the parentheses aren't required, but they make the intent obvious. Writing `release.ticket == "CHG-1234"` without `??` is a compile error that tells you to unwrap it.
 
+The rule above treats a missing ticket and an empty one the same way. When the difference matters, test for the value with [`present`](/reference/expressions/#presence-present):
+
+```sigil
+when release.hotfix and not present release.ticket {
+  deny(hotfix_without_ticket)
+}
+```
+
 ::: info Optional structs
 A pointer to a struct, say `?Release`, has no literal to use as a fallback. Read its fields with [optional chaining](/reference/expressions/#optional-chaining) instead: `release?.ticket ?? ""` is absent-safe whether the release or the ticket is missing.
 :::
@@ -105,15 +113,23 @@ The quantifier body runs as far to the right as it can, so combining a quantifie
 
 ```sigil
 // The body is `r like "sre-*" or release.hotfix`, checked per role.
-let a = any r in actor.roles: r like "sre-*" or release.hotfix
+let a = any r in actor.roles: (r like "sre-*" or release.hotfix)
 
 // The quantifier ends at the closing parenthesis.
 let b = (any r in actor.roles: r like "sre-*") or release.hotfix
 ```
 
-Both compile, and they disagree for an actor with no roles shipping a hotfix: `a` has no elements to test and is false, while `b` is true. Put quantifiers in their own `let` or in parentheses and the question never comes up.
+Both compile, and they disagree for an actor with no roles shipping a hotfix: `a` has no elements to test and is false, while `b` is true. The parentheses inside `a` don't change how it parses. `sigil fmt` adds them to any body whose top level is `and`, `or` or `xor`, so you can see where the body ends. Put quantifiers in their own `let` or in parentheses and the question never comes up.
 
-`all` over an empty list is true. `all r in actor.regions: r like "eu-*"` holds for an actor with no regions at all. In a rule that grants something, pair it with a check that the list isn't empty.
+`all` over an empty list is true. `all r in actor.regions: r like "eu-*"` holds for an actor with no regions at all. In a rule that grants something, pair it with an `any` over the same list, which is false when the list is empty:
+
+```sigil
+let eu_only =
+  (any r in actor.regions: r like "eu-*")
+  and (all r in actor.regions: r like "eu-*")
+```
+
+The same `any` is how you ask whether a list has elements at all. Lists have no `==` or `!=`, so `actor.regions != []` doesn't compile; the error suggests `any x in actor.regions: true` instead, or a host function such as `len` if your kind declares one.
 
 When you only need membership, prefer the operators: `"deployer" in actor.roles` reads better than `any r in actor.roles: r == "deployer"`.
 
@@ -151,18 +167,32 @@ when now - release.built_at > 30d {
 }
 ```
 
-Adding a duration to a timestamp gives a timestamp: `release.built_at + 1d` is exactly 24 hours later. There are no calendar functions. If a rule needs "business hours" or "no deploys on Friday", the host declares a function such as `fn hour_of_day(t: timestamp) -> int` in the kind and implements it in Go, time zone and all.
+Adding a duration to a timestamp gives a timestamp: `release.built_at + 1d` is exactly 24 hours later. There are no calendar functions. If a rule needs "business hours" or "no deploys on Friday", the host declares a function such as `fn hour_of_day(timestamp) -> int` in the kind and implements it in Go, time zone and all.
 
 Replaying a decision later is then just evaluating the same input again, `now` included.
+
+## Reject input that can't be right
+
+A deny is an answer: the deploy was looked at and refused. When the input itself is broken, say a request with no actor name, there's nothing to decide, and an `assert` says so instead:
+
+```sigil
+assert("named_actor", actor.name != "")
+
+when service.tier == "critical" {
+  assert("critical_needs_team_label", service.labels has "team")
+}
+```
+
+A failed assert fails the evaluation. The host gets an assertion error naming `named_actor`, alongside the kind's default decision, and logs it as an error rather than counting it as a deny. An assert that doesn't read `outcome` runs before any rule, so it works as a precondition, and one inside a `when` is only checked where the condition holds. A test case pins it with `asserts: [named_actor]` (see [`sigil test`](/reference/cli/#sigil-test)). The reason is a string literal the policy picks, not a name from the kind. [`assert`](/reference/policy-files/#assert) has the full rules.
 
 ## Fail closed
 
 A policy fails closed when the absence of information leads to a deny. The pieces:
 
 - Make the kind's `default` a deny. Anything no rule covers gets refused.
-- Write explicit denies for things that must never be approved, in a policy the host requires with `policy.Require`. Deny outranks every other decision, no composed policy can remove a deny, and a required policy can't be gated behind a `when`.
+- Write explicit denies for things that must never be approved, in a policy the host requires with `policy.Require`. In `DeployApproval`, deny outranks every other decision, no composed policy can remove a deny, and a required policy can't be gated behind a `when`.
 - Write grants as positive matches. A grant that fires on `!=` or `not` fires on missing data too (see the missing-keys warning above).
-- Let runtime errors fall back. When a host function fails or an index is out of range, `Eval` returns the error together with the kind's default decision, so a host that just uses the result stays closed.
+- Let failures fall back. When a host function fails, an index is out of range, an `assert` fails or two `exclusive` outcomes conflict, `Eval` returns the error together with the kind's default decision, so a host that just uses the result stays closed.
 
 The eligibility check in `deploy.guardrails` shows the shape:
 
@@ -193,7 +223,7 @@ when cleared and "payments-sre" in actor.teams {
 }
 ```
 
-A module holds `let`s and nothing else, so importing from it never brings rules along. `use deploy.common` without braces works too, and then the matcher reads `common.cleared`. Only `pub let`s can be imported, from a module or a policy, and a policy's `pub let` can't read a param, because a param has no value outside an invocation. [Per-team policies](/guides/team-policies/) covers imports in more detail.
+A module holds `use` and `let` statements and nothing else, so importing from it never brings rules along. `use deploy.common` without braces works too, and then the matcher reads `common.cleared`. Only `pub let`s can be imported, from a module or a policy, and a policy's `pub let` can't read a param, because a param has no value outside an invocation. [Per-team policies](/guides/team-policies/) covers imports in more detail.
 
 ## Add conditions to a shared policy
 
@@ -221,7 +251,7 @@ String comparison is case-sensitive: `"Production" == "production"` is false. Ku
 
 ```sigil
 when service.tier matches `(?i)^critical$` {
-  review(critical_any_case, approvers: approvers)
+  review(critical_any_case, approvers: ["sre-leads"])
 }
 ```
 

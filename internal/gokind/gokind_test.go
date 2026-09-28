@@ -213,6 +213,18 @@ func TestBuild(t *testing.T) {
 			S    string        `policy:"s,default=name"`
 			O    string        `policy:"s2,optional"`
 		}
+		OptionFields struct {
+			Soak   time.Duration `policy:"soak,default=1h"`
+			Hotfix bool          `policy:"hotfix"`
+		}
+		InputOptions struct {
+			Environment string       `policy:"environment,default=\"prod\""`
+			Tier        string       `policy:"tier,omitempty"`
+			Release     OptionFields `policy:"release"`
+		}
+		PayloadOptions struct {
+			Release OptionFields `policy:"release"`
+		}
 	)
 
 	tests := []struct {
@@ -292,6 +304,14 @@ func TestBuild(t *testing.T) {
 			errs: []string{"input: embedded field Release can't be tagged"}, help: "give the embedded struct a field name, or tag its fields directly"},
 		{name: "input named like a keyword", mutate: func(o *gokind.Options) { o.Input = typeOf[BadName]() },
 			errs: []string{`invalid input name "when"`}},
+		{name: "options on inputs and type fields", mutate: func(o *gokind.Options) { o.Input = typeOf[InputOptions]() }, errs: []string{
+			`input: field Environment has tag option "default=\"prod\"", which only a decision payload field takes`,
+			`input: field Tier has tag option "omitempty", which only a decision payload field takes`,
+			`type OptionFields: field Soak has tag option "default=1h", which only a decision payload field takes`,
+		}, help: "only decision payload fields take a tag option, `default=<constant>`; drop it from this tag"},
+		{name: "options on a payload's struct type", mutate: func(o *gokind.Options) {
+			o.Decisions = append(o.Decisions, gokind.Decision{Name: "hold", Payload: typeOf[PayloadOptions](), Reasons: []string{"x"}})
+		}, errs: []string{`type OptionFields: field Soak has tag option "default=1h", which only a decision payload field takes`}},
 
 		// Decisions.
 		{name: "payload is not a struct", mutate: func(o *gokind.Options) {

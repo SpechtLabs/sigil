@@ -22,6 +22,7 @@ export const navbar = defineNavbarConfig([
       { text: "Common patterns", link: "/guides/patterns", icon: "mdi:puzzle" },
       { text: "Policies in a ConfigMap", link: "/guides/configmaps", icon: "mdi:kubernetes" },
       { text: "Evolve a kind safely", link: "/guides/evolve-a-kind", icon: "mdi:source-branch" },
+      { text: "Testing Sigil itself", link: "/guides/testing", icon: "mdi:test-tube" },
     ],
   },
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"path"
 	"strings"
 
 	"github.com/sierrasoftworks/humane-errors-go"
@@ -77,11 +76,13 @@ sigil explain --kind deploy_approval.sigil policies.sigil`,
 }
 
 // Explanation is one policy flattened: every rule and assert it can
-// reach, with the conditions and call chain of each.
+// reach, with the conditions and call chain of each. Policies counts the
+// policy itself and every one it invokes, Modules every module they use.
 type Explanation struct {
-	Policy    string  `json:"policy" yaml:"policy"`
-	Documents int     `json:"documents" yaml:"documents"`
-	Rules     []Entry `json:"rules" yaml:"rules"`
+	Policy   string  `json:"policy" yaml:"policy"`
+	Policies int     `json:"policies" yaml:"policies"`
+	Modules  int     `json:"modules" yaml:"modules"`
+	Rules    []Entry `json:"rules" yaml:"rules"`
 }
 
 // Entry is one rule or assert of an explanation.
@@ -119,7 +120,7 @@ func run(out io.Writer, o *options, kindFile, pattern string, src project.Source
 		if errs != nil {
 			return pretty.Diagnose(b.Resolve(errs), b.SourceOf, "policy "+root+" doesn't compile, so it wasn't explained", "fix the errors above; sigil check reports every problem in a bundle at once")
 		}
-		explanations = append(explanations, explain(prog))
+		explanations = append(explanations, explain(prog, b))
 	}
 	var werr error
 	switch *o.output {
@@ -167,15 +168,22 @@ const (
 	kindAssert   = "assert"
 )
 
-// explain flattens a compiled policy.
-func explain(p *eval.Policy) Explanation {
+// explain flattens a compiled policy, looking up in b whether each
+// document it compiled in is a policy or a module.
+func explain(p *eval.Policy, b *bundle.Bundle) Explanation {
 	if p == nil {
 		return Explanation{}
 	}
-	names := shortNames(p.Instances())
-	e := Explanation{Policy: p.Name, Documents: len(p.Instances())}
+	e := Explanation{Policy: p.Name}
+	for _, name := range p.Instances() {
+		if d := b.Document(name); d != nil && d.Module() {
+			e.Modules++
+		} else {
+			e.Policies++
+		}
+	}
 	for _, r := range p.Rules() {
-		entry := Entry{Kind: kindDecision, Decision: r.Decision.Name, Reason: r.Reason, Chain: chain(names, r.Chain, r.Policy, r.Pos.Line), Conditions: conds(r.Conds)}
+		entry := Entry{Kind: kindDecision, Decision: r.Decision.Name, Reason: r.Reason, Chain: chain(r.Chain, r.Policy, r.Pos.Line), Conditions: conds(r.Conds)}
 		for _, a := range r.Args {
 			entry.Payload = append(entry.Payload, a.Name+" = "+a.Text)
 		}
@@ -186,43 +194,19 @@ func explain(p *eval.Policy) Explanation {
 		if a.ReadsOutcome {
 			phase = "outcome"
 		}
-		e.Rules = append(e.Rules, Entry{Kind: kindAssert, Reason: a.Reason, Phase: phase, Chain: chain(names, a.Chain, a.Policy, a.Pos.Line), Conditions: conds(a.Conds), Check: a.Text})
+		e.Rules = append(e.Rules, Entry{Kind: kindAssert, Reason: a.Reason, Phase: phase, Chain: chain(a.Chain, a.Policy, a.Pos.Line), Conditions: conds(a.Conds), Check: a.Text})
 	}
 	return e
 }
 
-// shortNames names each document by its last segment, or its full name
-// when another document shares the segment.
-func shortNames(docs []string) map[string]string {
-	count := map[string]int{}
-	for _, d := range docs {
-		count[path.Ext("." + d)[1:]]++
-	}
-	out := map[string]string{}
-	for _, d := range docs {
-		short := path.Ext("." + d)[1:]
-		if count[short] > 1 {
-			short = d
-		}
-		out[d] = short
-	}
-	return out
-}
-
-// chain renders a call chain as `payments:7 → guardrails:8`.
-func chain(names map[string]string, sites []eval.Site, policy string, line int) []string {
+// chain renders a call chain by full document names, as
+// `payments.production:7 → deploy.guardrails:8`.
+func chain(sites []eval.Site, policy string, line int) []string {
 	out := make([]string, 0, len(sites)+1)
 	for _, s := range sites {
-		out = append(out, fmt.Sprintf("%s:%d", short(names, s.Policy), s.Pos.Line))
+		out = append(out, fmt.Sprintf("%s:%d", s.Policy, s.Pos.Line))
 	}
-	return append(out, fmt.Sprintf("%s:%d", short(names, policy), line))
-}
-
-func short(names map[string]string, doc string) string {
-	if s, ok := names[doc]; ok {
-		return s
-	}
-	return doc
+	return append(out, fmt.Sprintf("%s:%d", policy, line))
 }
 
 func conds(cs []*eval.Cond) []string {
@@ -238,9 +222,9 @@ func conds(cs []*eval.Cond) []string {
 // with the conditions it fires under, its payload, and the call chain
 // that reaches it.
 //
-//	payments.production: 9 rules from 4 policies
+//	payments.production: 9 rules from 3 policies and 1 module
 //
-//	  deny(not_eligible)           payments.production:7 → guardrails:8
+//	  deny(not_eligible)           payments.production:7 → deploy.guardrails:8
 //	    when not eligible
 //
 //	  review(service_owner)        payments.production:10 → deploy.production:16
@@ -251,11 +235,11 @@ func conds(cs []*eval.Cond) []string {
 //	  assert named_actor (input)   payments.production:21
 //	    check actor.name != ""
 func writeText(b *strings.Builder, t pretty.Theme, e Explanation) {
-	docs := "policy"
-	if e.Documents != 1 {
-		docs = "policies"
+	summary := count(len(e.Rules), "rule", "rules") + " from " + count(e.Policies, "policy", "policies")
+	if e.Modules > 0 {
+		summary += " and " + count(e.Modules, "module", "modules")
 	}
-	fmt.Fprintf(b, "%s: %s\n", t.Accent(e.Policy), t.Bold(fmt.Sprintf("%d rules from %d %s", len(e.Rules), e.Documents, docs)))
+	fmt.Fprintf(b, "%s: %s\n", t.Accent(e.Policy), t.Bold(summary))
 	heads := make([]string, len(e.Rules))
 	width := 0
 	for i, r := range e.Rules {
@@ -283,6 +267,14 @@ func writeText(b *strings.Builder, t pretty.Theme, e Explanation) {
 			b.WriteString("    " + t.Muted("with") + " " + t.Key(name+" =") + " " + value + "\n")
 		}
 	}
+}
+
+// count renders n with the noun in singular or plural: `1 rule`, `9 rules`.
+func count(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 // head names a rule the way a policy writes it: `deny(not_eligible)`,

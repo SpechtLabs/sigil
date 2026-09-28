@@ -1,0 +1,7 @@
+{
+  "kind": "Gate",
+  "version": 1,
+  "file": "kind.sigil",
+  "status": "stale",
+  "source": "kind Gate version 1\n\ninput name: string\n\ndecision deny {\n  no_rule_matched\n}\n\ncollect one\nprecedence deny\n\ndefault deny(no_rule_matched)\n"
+}

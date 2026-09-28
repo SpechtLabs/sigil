@@ -5,11 +5,7 @@ createTime: 2026/09/24 22:30:00
 permalink: /reference/evaluation/
 ---
 
-::: info Draft specification
-This page specifies the language as designed. The language is implemented through composition: syntax, kinds, type checking, rules, decisions, asserts, imports, invocation, required policies and the evaluation trace. Of the CLI, `fmt`, `check`, `eval`, `explain`, `test` and `export` exist. See [Open questions](/project/open-questions/).
-:::
-
-Evaluation takes a compiled policy and one input value and produces an outcome: exactly one decision for a kind with `precedence`, and every decision that fired for a [collecting kind](#collecting-kinds). Asserts check the input before any rule runs, and the outcome once it exists. The rules on this page are the whole algorithm. For why it works this way, read [Why rule order never matters](/understanding/order-independence/).
+Evaluation takes a compiled policy and one input value and produces an outcome: exactly one decision for a `collect one` kind, and every decision that fired, or every one at the top rank, for a [collecting kind](#collecting-kinds). Asserts check the input before any rule runs, and the outcome once it exists. The rules on this page are the whole algorithm, so a policy author can predict any outcome from them and a host knows what each failure returns. For why it works this way, read [Why rule order never matters](/understanding/order-independence/).
 
 ```mermaid
 flowchart LR
@@ -30,7 +26,7 @@ flowchart LR
 2. A nested `when` fires only if its own condition and every enclosing condition hold. Nesting is conjunction: `when a { when b { ... } }` behaves like `when a and b { ... }`.
 3. Each decision constructor reached in a firing block becomes a candidate carrying its decision name, reason, payload, source position, policy and call chain.
 4. The candidates are resolved into the outcome, as [Resolution](#resolution) describes: equal candidates fold into one, `exclusive` sets are checked, the candidates are ranked, and the top rank is what the host gets.
-5. If there are no candidates at all, the result is the kind's `default`.
+5. If there are no candidates at all, the outcome is the kind's `default`, or empty for a collecting kind that declares none.
 
 Input asserts run before rule 1 and outcome asserts after rule 4; see [Assertions](#assertions).
 
@@ -44,23 +40,19 @@ Resolution turns the candidates into what the host gets back. It runs in four st
 
 1. **Fold.** Candidates with the same decision, reason and payload are one outcome. Two branches that both say `deny(soak_too_short)`, or a policy invoked twice with the same params, produce one candidate here. The trace still lists every constructor that fired.
 2. **Check `exclusive` sets.** If candidates remain from two members of one [`exclusive`](/reference/kind-files/#exclusive) set, the evaluation fails with a conflict, whatever else fired. A contradiction between two rules is a defect in the policy, and no ranking hides it.
-3. **Rank.** Candidates are ordered by their decision's position in `precedence`, then by their reason's position in the decision's scoped `precedence` when it has one. Without `precedence`, in a `collect all` kind, every candidate is at the top rank.
+3. **Rank.** Candidates are ordered by their decision's position in `precedence`, then by their reason's position in the decision's scoped `precedence` when it has one. The top rank is the highest-ranked decision that has a candidate, narrowed to its highest-ranked reason when its reasons are ranked; unranked reasons of that decision share the top rank. Without `precedence`, in a `collect all` kind, every candidate is at the top rank.
 4. **Count.** What's left at the top rank is the outcome. A `collect all` kind returns all of it. A `collect one` kind returns it when it's one candidate, and fails with a conflict when it's more: two candidates with the same decision and reason but different payloads, or two reasons the kind didn't rank.
 
-A conflict makes `Eval` return a `*ConflictError` naming the candidates on each side, with a result holding the kind's default for `collect one` and an empty outcome for `collect all`, the same shape a failed assert returns. The trace lists every candidate.
+A conflict makes `Eval` return a `*ConflictError` with a result holding the kind's default for `collect one` and an empty outcome for `collect all`, the same shape a failed assert returns. The error's `Candidates` are the ones that conflict: every candidate of the `exclusive` set's members, or every candidate at the top rank. The result's trace lists every candidate. Outcome asserts don't run, because there's no outcome for them to check.
 
 The design goal behind these steps is that no candidate is ever merged, changed or invented. What the host gets is always something a rule produced, with its reason and position intact, and the only questions the language answers are which candidates count and whether they can stand together. Anything else, such as taking the shortest `bake` of two approvals, is the host's decision over `MatchAll`, in code that can be tested.
-
-::: tip Implemented
-Fold, `exclusive`, reason ranking and the count rule replace the earlier positional tie-break, and the evaluator implements them.
-:::
 
 ## Collecting kinds
 
 A kind that declares [`collect all`](/reference/kind-files/#collect) has no winner. Rules 1 to 3 are unchanged, and resolution ends differently:
 
-- Without `precedence`, every candidate left after the fold and the `exclusive` check is the outcome, sorted by the kind's declaration order of decisions, then by source position within a decision. The sort only fixes the order the host reads the candidates in.
-- With `precedence`, every candidate at the top rank is the outcome, in the same order. A `collect all` kind with `precedence deny > review > approve` returns every `review` that fired when no `deny` did, so two reviews with different approvers both reach the host.
+- Without `precedence`, every candidate left after the fold and the `exclusive` check is the outcome, sorted by the kind's declaration order of decisions, then by reason rank if the decision ranks its reasons, then by source position. The sort only fixes the order the host reads the candidates in.
+- With `precedence`, every candidate at the top rank is the outcome, in the same order. A `collect all` kind with `precedence deny > review > approve` returns every `review` that fired when no `deny` did, so two reviews with different approvers both reach the host. If the kind also ranks `review`'s reasons, only the candidates with the highest-ranked reason that fired are returned.
 - Candidates aren't merged. If `admin` fires from two branches with different `ttl` payloads, the host gets both and decides what two grants of the same role mean.
 - If there are no candidates, the outcome is the kind's `default` if it declares one, and empty otherwise.
 
@@ -83,10 +75,6 @@ when "platform" in actor.groups {
 
 For a member of both groups, the outcome is `read(engineering_member)`, `write(platform_member)` and `development_environment_writer(platform_member)`, in that order. The body under `"platform"` holds two constructors, which a collecting kind makes natural.
 
-::: tip Implemented
-Collecting kinds, with and without `precedence`, their ordering and the empty outcome are implemented as described.
-:::
-
 ## Assertions
 
 An [`assert`](/reference/policy-files/#assert) is checked as soon as what it reads is ready. The checker sorts every assert into one of two groups by its condition alone:
@@ -99,7 +87,7 @@ Nothing else can make an assert depend on the outcome, because `when` conditions
 Evaluation then runs in three phases:
 
 1. **Input asserts.** Every input assert whose enclosing conditions all hold is checked, independently and in no particular order. If any fails, the evaluation fails here and no rule runs.
-2. **Rules.** Every block is evaluated and the outcome is picked or collected, as above. If a rule raises a [runtime error](#runtime-errors), the evaluation fails here and there's no outcome to check.
+2. **Rules.** Every block is evaluated and the outcome is picked or collected, as above. If a rule raises a [runtime error](#runtime-errors), or resolution ends in a [conflict](#resolution), the evaluation fails here and there's no outcome to check.
 3. **Outcome asserts.** Every outcome assert whose enclosing conditions all hold is checked, the same way. If any fails, the evaluation fails.
 
 In every phase, asserts reached through invocations are included, with their call's enclosing conditions added, exactly as for decisions. An assert whose condition or enclosing conditions raise a runtime error counts as failed, and its failure carries the runtime error.
@@ -110,21 +98,15 @@ Checking input asserts first is what makes them useful as preconditions. With `a
 
 Every failing assert of the phase is reported, sorted by source position, not just the first one found. Stopping at the first failure would make the error depend on evaluation order. A phase that fails ends the evaluation, so a failed input assert hides outcome asserts, which never get an outcome to check.
 
-When an assert fails, `Eval` returns an assertion error and a result whose outcome is the kind's `default` for `collect one`, and empty for `collect all`. The host never sees a partial outcome it could act on by mistake. The trace lists every candidate the rules produced, none if an input assert failed, and the error names each failing assert by reason and call chain. For an assert over `outcome`, it also names the candidates that made it fail:
+When an assert fails, `Eval` returns an `*AssertionError` and a result whose outcome is the kind's `default` for `collect one`, and empty for `collect all`. The host never sees a partial outcome it could act on by mistake. The result's trace lists every candidate the rules produced, none if an input assert failed. The error's `Failures` hold one `AssertFailure` per failing assert, with its `Reason`, `Policy`, `Position` and `CallChain`. For an outcome assert, `Outcome` lists the candidates that formed the outcome it read, and for an assert that raised a runtime error, `Cause` holds that error. With a single failure, the error reads:
 
 ```text
-error: assertion "sod_customer_dev" failed
-  granted customer_data_writer            at teams/data.sigil:12:5
-  granted development_environment_writer  at teams/data.sigil:4:1 → access/dev.sigil:30:3
+assertion "sod_customer_dev" failed at platform/access/guardrails.sigil:3:1
 ```
-
-The layout is illustrative; the exact format isn't fixed yet.
 
 Asserts and decisions answer different questions. A decision is an outcome the author expected and the host acts on, such as denying a deploy that hasn't soaked. A failed assert means something is wrong with the policy, the host or the input, and it should reach whoever owns the evaluation as an error. An assert that input from a caller can trip lets that caller fill the host's error metrics, so keep those rare and make them mean it.
 
-::: tip Implemented as proposed
-Assertions are implemented as described here: input asserts run before any rule and outcome asserts once the outcome exists, every failure of the failing phase is reported, and `Eval` returns an `*AssertionError` with the default result. The open parts are listed under [Assertions](/project/open-questions/#assertions).
-:::
+Some details of assertions are still open; see [Assertions](/project/open-questions/#assertions).
 
 ## Invocation
 
@@ -201,11 +183,9 @@ The host closes the gap that gating opens. It names the policies every root poli
 ```text
 payments/production.sigil:10:3: error: deploy.guardrails must be invoked unconditionally
    |
- 9 | when service.labels["compliance"] == "pci" {
 10 |   guardrails(min_soak: 4h)
    |   ^^^^^^^^^^^^^^^^^^^^^^^^
-   = help: the host requires deploy.guardrails for every DeployApproval policy.
-           Move the call to the top level.
+   = help: the host requires deploy.guardrails for every DeployApproval policy; move the call to the top level
 ```
 
 Every candidate a required policy produces is then always in the candidate set, so a required policy's deny can never be outranked. The same holds for its top-level asserts: they're checked on every evaluation. In a collecting kind, where nothing outranks anything, a required policy's asserts are the only guardrail there is. Protection is explicit: the host decides which policies are guardrails, instead of every composed policy being protected implicitly.
@@ -218,7 +198,7 @@ Params are covered by [bounds](/reference/policy-files/#bounds). A team binds `m
 
 A `let` has no side effects and host functions are pure, so when a let gets evaluated is unobservable except through runtime errors.
 
-Lets are evaluated lazily, at most once per evaluation, on first use. A let that no firing path reaches never runs, so it can't raise a runtime error. A [scoped let](/reference/policy-files/#scoped-lets) can only be used inside its `when` body, so it only runs when every enclosing condition holds: the guard around it is guaranteed by the language, not by the author remembering where the let is used.
+Lets are evaluated lazily, on first use, and at most once per evaluation in each policy instance: a policy invoked twice evaluates its lets once per instance, since their params can differ. A let that no firing path reaches never runs, so it can't raise a runtime error. A [scoped let](/reference/policy-files/#scoped-lets) can only be used inside its `when` body, so it only runs when every enclosing condition holds: the guard around it is guaranteed by the language, not by the author remembering where the let is used.
 
 ## Determinism
 
@@ -235,14 +215,31 @@ Static typing removes most failure modes. What's left:
 | List index out of range | `actor.roles[5]` on a list of three                 |
 | Integer overflow        | `int` or `duration` arithmetic that leaves 64 bits  |
 | Host function error     | a bound Go function returns a non-nil `error`       |
+| Unbound host function   | the stock `sigil` CLI reaches a call to a host function it has no implementation for |
 
 A missing map key isn't an error; it yields the zero value. An absent optional isn't an error either, because the compiler already forced a `??`.
 
-A runtime error in a rule, a payload or a let a rule reads aborts the evaluation. `Eval` returns the error together with a result holding the kind's default decision, so a host that fails closed can use the result directly. For a collecting kind the result's outcome is empty, even if the kind declares a default, because a default grant on an error would fail open.
+A host function reports a failure by returning an error. A panic isn't a runtime error: Sigil doesn't recover it, so it propagates out of `Eval` and crashes the goroutine that called it unless the host recovers it. Making sure host functions don't panic is the host's job.
+
+A runtime error in a rule, whether in a `when` condition, a payload or a let either of them reads, aborts the evaluation. `Eval` returns a `*RuntimeError`, with the message, the root `Policy` and the `Position` of the failing expression, together with a result holding the kind's default decision, so a host that fails closed can use the result directly. For a collecting kind the result's outcome is empty, even if the kind declares a default, because a default grant on an error would fail open. The result's trace is empty.
 
 A runtime error in a rule ends the evaluation after the input asserts have passed, so it never hides a failing input assert, and outcome asserts don't run because there's no outcome. A runtime error inside an assert is reported as that assert's failure; see [Assertions](#assertions). Since every block is evaluated, the outcome doesn't depend on block order: an input that triggers a runtime error always does.
 
 Work skipped by short-circuiting (`and`, `or`, `??`, quantifiers stopping early, a `when` whose condition is false) never runs and can't raise an error.
+
+## Failed evaluations
+
+Every way an evaluation can fail returns an error together with a result the host can still act on:
+
+| What failed                          | Error             | Outcome, `collect one` | Outcome, `collect all` | Trace            |
+| ------------------------------------ | ----------------- | ---------------------- | ---------------------- | ---------------- |
+| An input assert                      | `*AssertionError` | the kind's default     | empty                  | empty            |
+| A runtime error in the rules         | `*RuntimeError`   | the kind's default     | empty                  | empty            |
+| Resolution                           | `*ConflictError`  | the kind's default     | empty                  | every candidate  |
+| An outcome assert                    | `*AssertionError` | the kind's default     | empty                  | every candidate  |
+| The context was already done         | `ctx.Err()`       | the kind's default     | empty                  | empty            |
+
+`Eval` checks the context once, before it starts; a running evaluation isn't interrupted. See [Evaluating](/reference/go-api/#evaluating) in the Go API for the error types.
 
 ## Halting and cost
 
@@ -250,15 +247,13 @@ The language terminates when its host functions terminate:
 
 - There are no loops. Quantifiers iterate over finite input lists.
 - There's no recursion. `let` bindings, imports and policy invocations must each form a DAG, and cycles are compile errors.
-- There are no user-defined functions. Host functions are declared in the kind and must be pure.
+- There are no user-defined functions. Host functions are declared in the kind and must be pure, terminate and not panic. Sigil can't stop a host function that never returns, and doesn't recover one that panics.
 - `matches` uses Go's RE2 engine, which runs in linear time.
 
-Termination does not mean evaluation is cheap. Nested quantifiers multiply collection sizes: two nested quantifiers over lists of size `n` can take `n²` comparisons. List membership operators also compare elements across collections, and repeated policy invocations add work.
-
-Static cost analysis is planned. The compiler does not currently compute or enforce a budget, and `sigil check` does not report one. Hosts must bound their inputs and the work done by host functions themselves.
+Termination doesn't mean evaluation is cheap. Nested quantifiers multiply collection sizes: two nested quantifiers over lists of size `n` can take `n²` comparisons. List membership operators also compare elements across collections, and repeated policy invocations add work.
 
 ::: warning Planned
-How the budget is expressed, where the maximum collection size gets declared, and what a host function costs are all open. See [Halting by construction](/understanding/halting/) for the reasoning and [Open questions](/project/open-questions/) for what's undecided.
+Static cost analysis doesn't exist yet. The compiler doesn't compute or enforce a budget and `sigil check` doesn't report one, so hosts must bound their inputs and the work their host functions do. How the budget is expressed, where the maximum collection size gets declared, and what a host function costs are all open. See [Halting by construction](/understanding/halting/) for the reasoning and [Open questions](/project/open-questions/) for what's undecided.
 :::
 
 ## Concurrency

@@ -46,7 +46,7 @@ type Candidate struct {
 	Reason     string
 	Policy     string         // the policy the constructor is in
 	Payload    map[string]any //nolint:emptyinterface // the untyped payload, by field name
-	CallChain  []Position     // the invocations it was reached through, outermost first; empty until composition lands
+	CallChain  []Position     // the invocations it was reached through, outermost first; empty for a rule in the evaluated policy itself
 	Conditions []Condition    // the `when` conditions that held, outermost first; only for candidates of the winning decision
 	Position   Position       // of the constructor in its policy
 }

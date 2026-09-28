@@ -42,15 +42,15 @@ directories the same way.
 
 ## Two-stage evaluation
 
-A deploy request no longer says which roles its actor holds. deploygate first
+A deploy request doesn't say which roles its actor holds. deploygate first
 evaluates `access.main` with the actor's name, groups and clearance, the team
 and the environment. `AccessGrant` is a `collect all` kind, so the outcome is
 every role that fired: a payments member who is also in `platform` gets
 `reader`, `deployer` and `release_manager`. deploygate turns `deployer` and
 `release_manager` into the deploy actor's roles, `admin` into both, and then
-evaluates `<team>.production` as before. A failed assert or a conflict ends
-the request before the deploy policy runs. An auditor who would also deploy
-fails `sod_auditor_deployer`. A break-glass member in `platform` would get
+evaluates `<team>.production` with those roles. A failed assert or a
+conflict ends the request before the deploy policy runs. An auditor who would
+also deploy fails `sod_auditor_deployer`. A break-glass member in `platform` would get
 `admin` and `release_manager`, which the kind declares `exclusive`, so the
 evaluation fails with a conflict. No roles at all isn't an error: the deploy
 policy then denies `not_eligible`.
@@ -95,16 +95,24 @@ mise run sigilc fmt --check policies
 `AccessGrant` kinds and the `split` host function linked in, so `test` can
 evaluate rules that call `split`.
 
-The test format expects an outcome, a decision or failing asserts, and has no
-expectation for a conflict. The break-glass and `platform` conflict is covered
-by the Go integration suite, through the API's 409.
+A test case expects a decision, an outcome or failing asserts. It can't expect
+a conflict: a conflict fails every one of those forms, and the format has no
+key for the conflicting candidates. The break-glass and `platform` conflict is
+covered by the Go integration suite, through the API's 409. To test a conflict
+against the policy itself, call `Eval` from Go and check the
+`*policy.ConflictError` it returns: [Testing a
+conflict](../../docs/reference/cli.md#testing-a-conflict) shows this conflict
+tested with plain `testing` and with Ginkgo.
 
 ## Adding a team
 
 1. Add `teams/<team>/production.sigil` defining `<team>.production`. It must
    invoke `guardrails()` at the top level.
 2. Add `teams/<team>/production_test.yaml` with a case for every decision and
-   reason the policy can reach, and add `--policy '<team>.*'` to the check.
+   reason the policy can reach, and add `--policy '<team>.*'` to the deploy
+   check in the `policies` task of `examples/.mise.toml`.
 3. Add the team's on-call group to `sre_groups` in
    `platform/access/common.sigil`, so its SREs get `deployer(oncall)`.
-4. Serve it with `--team <team>` or `DEPLOYGATE_TEAMS`.
+4. Serve it with `--team <team>` or `DEPLOYGATE_TEAMS`, and add it to
+   `DEPLOYGATE_TEAMS` in `docker-compose.yaml`. The binary embeds everything
+   under `teams/`, so the new policy ships without further changes.

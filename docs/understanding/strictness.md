@@ -42,7 +42,31 @@ deploy/production.sigil:9:16: error: unknown field "teir" on type Service
   = help: did you mean "tier"? Service declares: name, tier, owners, labels
 ```
 
-The policy never loads, so it never gets the chance to be wrong in production. When the error is a type or payload mismatch, the message quotes the relevant signature from the kind so the author doesn't have to go looking for it.
+The policy never loads, so it never gets the chance to be wrong in production. When a constructor names a payload field the decision doesn't have, or leaves out one it needs, the hint quotes the decision's declaration from the kind, so the author doesn't have to go looking for it:
+
+```text
+deploy/production.sigil:11:30: error: decision approve has no payload field "bakes"
+   |
+11 |     approve(release_manager, bakes: 1h)
+   |                              ^^^^^
+   = help: did you mean "bake"? approve is declared as: decision approve(bake: duration = 1h) { release_manager, payments_sre }
+```
+
+The same check runs in CI. `sigil check` needs only the exported kind file, so a policy repository catches these errors in a pull request, before any host tries to load the policy.
+
+## Inputs are checked too
+
+The CLI applies the same rule to the inputs it reads. `sigil eval` and `sigil test` decode JSON and YAML inputs strictly against the kind, so a fixture with a misspelled key fails instead of quietly testing something else:
+
+```text
+Error: testdata/typo.json: service.teir: unknown field "teir" on type Service
+
+What you can do
+  • did you mean "tier"? declared: name, tier, owners, labels
+  • the input is a JSON object with one key per input the kind declares
+```
+
+A key the fixture leaves out is the zero value, as the next section describes. A Go host decodes its requests into its own input struct, with whatever strictness it chooses; by the time Sigil sees the input, it's a typed Go value.
 
 ## Absent data follows Go
 
@@ -57,7 +81,7 @@ let cleared =
   split(service.labels["regions"], ",") all in actor.regions
 ```
 
-If the `regions` label is missing, the label value is `""`, and Go's `strings.Split("", ",")` returns `[""]`, not an empty list. `[""] all in actor.regions` is false, so the policy fails closed. That's the right outcome here, but it's right by accident of how `split` behaves. The interaction with vacuous `all in` is an [open question](/project/open-questions/).
+If the `regions` label is missing, the label value is `""`, and Go's `strings.Split("", ",")` returns `[""]`, not an empty list. `[""] all in actor.regions` is false, so the policy fails closed. That's the right outcome here, but it's right by accident of how `split` behaves. The interaction with vacuous `all in` is an [open question](/project/open-questions/#vacuous-all-in).
 
 ## Optionals must be unwrapped
 
@@ -75,7 +99,7 @@ An optional struct has no literal to put on the right of `??`, so its fields are
 
 ## Runtime errors fail closed
 
-Static typing leaves very few ways for evaluation to go wrong: a list index out of range, integer overflow, or an error returned by a host function. When one happens, `Eval` returns the error together with a result that holds the kind's `default` decision.
+Static typing leaves very few ways for evaluation to go wrong: a list index out of range, integer overflow, or an error returned by a host function. When one happens, `Eval` returns a `*RuntimeError` together with a result that holds the kind's `default` decision. For a [collecting kind](/reference/kind-files/#collecting-kinds) the result's outcome is empty instead, because a default grant on an error would fail open. A failed assert and a conflict between candidates return the same fallback result.
 
 A host that fails closed can use that result directly without writing its own fallback. A host that wants to surface the error can do that too. What it can't get is a half-evaluated result where some rules ran and others didn't, because that's exactly the silent partial failure the rest of this page is trying to avoid.
 

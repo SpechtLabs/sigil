@@ -74,6 +74,7 @@ func TestHostBinary(t *testing.T) {
 		{name: "explain", args: []string{"explain", access}, want: "access.main: 6 rules from 1 policy"},
 		{name: "export", args: []string{"export"}, want: hostAccess.Schema()},
 		{name: "export by name", args: []string{"export", "Access"}, want: hostAccess.Schema()},
+		{name: "export as JSON", args: []string{"export", "-o", "json"}, want: "\"kind\": \"Access\",\n  \"version\": 1,"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

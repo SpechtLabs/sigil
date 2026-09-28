@@ -67,7 +67,7 @@ func TestLoadKind(t *testing.T) {
 		{name: "no file, one kind linked", linked: []project.Linked{access}, kind: "Access", host: true},
 		{name: "no file, two kinds linked", linked: []project.Linked{access, roles}, err: "this binary links several kinds", advice: "linked: Access, Roles"},
 		{name: "file matches the linked kind", file: same, linked: []project.Linked{roles, access}, kind: "Access", host: true},
-		{name: "file is a stale export", file: stale, linked: []project.Linked{access}, err: "doesn't match the kind Access linked into this binary", advice: "sigil export --out " + stale},
+		{name: "file is a stale export", file: stale, linked: []project.Linked{access}, err: "doesn't match the kind Access linked into this binary", advice: "`export Access --out " + stale + "`"},
 		{name: "file for an unlinked kind", file: other, linked: []project.Linked{access}, kind: "Roles"},
 		{name: "file without linked kinds", file: same, kind: "Access"},
 		{name: "missing file", file: filepath.Join(dir, "nope.sigil"), err: "the kind file couldn't be read"},

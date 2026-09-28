@@ -64,6 +64,7 @@ type Failure struct {
 // Runtime is a runtime error.
 type Runtime struct {
 	Msg      string
+	Help     string // what to do about it, when the error knows better than the generic advice
 	Position Position
 }
 
@@ -98,7 +99,7 @@ func Evaluate(prog *eval.Policy, input any) *Result { //nolint:emptyinterface //
 	out, rerr := prog.Eval(input)
 	if rerr != nil {
 		res := b.Fallback(nil)
-		res.Failure = &Failure{Runtime: b.runtime(rerr.Msg, rerr.File, rerr.Doc, prog.Name, rerr.Pos)}
+		res.Failure = &Failure{Runtime: b.runtime(rerr, prog.Name)}
 		return res
 	}
 	res := b.result(out)
@@ -125,7 +126,7 @@ func Evaluate(prog *eval.Policy, input any) *Result { //nolint:emptyinterface //
 			}
 		}
 		if fl.Err != nil {
-			af.Cause = b.runtime(fl.Err.Msg, fl.Err.File, fl.Err.Doc, a.Policy, fl.Err.Pos)
+			af.Cause = b.runtime(fl.Err, a.Policy)
 		}
 		f.Asserts = append(f.Asserts, af)
 	}
@@ -243,11 +244,12 @@ func (b builder) candidate(c *eval.Candidate, withConds bool) Candidate {
 
 // runtime converts a runtime error, naming the document it happened in,
 // or fallback when the evaluator didn't say.
-func (b builder) runtime(msg, file, doc, fallback string, p token.Pos) *Runtime {
+func (b builder) runtime(err *diag.Error, fallback string) *Runtime {
+	doc := err.Doc
 	if doc == "" {
 		doc = fallback
 	}
-	return &Runtime{Msg: msg, Position: at(file, doc, p)}
+	return &Runtime{Msg: err.Msg, Help: err.Help, Position: at(err.File, doc, err.Pos)}
 }
 
 // sites converts a call chain.

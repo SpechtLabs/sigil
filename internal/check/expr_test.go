@@ -111,7 +111,8 @@ func TestExpr(t *testing.T) {
 		{src: `{1: "a", 2: "b"}`, want: "map<int, string>"},
 		{src: `{"a": [], "b": [1]}`, want: "map<string, list<int>>"},
 		{src: "[deny, approve]", assert: true, want: "list<decision>"},
-		{src: "deny", msg: "`deny` is a decision, not a value here", help: "to produce the decision, construct it inside a rule: `when <condition> { deny(\"<reason>\") }`; its bare name is only a value in an assert condition", span: "1:1-1:5"},
+		{src: `{"a": [approve]}`, assert: true, want: "map<string, list<decision>>"},
+		{src: "deny", msg: "`deny` is a decision, not a value here", help: "to produce the decision, construct it inside a rule: `when <condition> { deny(<reason>) }`; its bare name is only a value in an assert condition", span: "1:1-1:5"},
 		{src: "environment == deny", msg: "`deny` is a decision, not a value here", span: "1:16-1:20"},
 		{src: "[deny] one in actor.roles", msg: "`deny` is a decision, not a value here", span: "1:2-1:6"},
 		{src: "outcome", assert: true, want: "list<decision>"},
@@ -144,6 +145,10 @@ func TestExpr(t *testing.T) {
 		{src: "[deny, approve] one in outcome", assert: true, want: "bool"},
 		{src: "[deny, approve] exclusive in outcome", assert: true, want: "bool"},
 		{src: "[] all in actor.regions", want: "bool"},
+		// The emptiness tests the `== []` hint suggests.
+		{src: "any x in actor.regions: true", want: "bool"},
+		{src: "not (any x in actor.regions: true)", want: "bool"},
+		{src: "any x in (release.parent?.author.roles ?? []): true", want: "bool"},
 		{src: "actor.regions all in []", want: "bool"},
 		{src: `[] in [["a"]]`, want: "bool"},
 
@@ -275,6 +280,20 @@ func TestExpr(t *testing.T) {
 		{src: "cleared < release.hotfix", msg: "`<` isn't defined for bool", span: "1:1-1:25"},
 		{src: "deny < approve", assert: true, msg: "`<` isn't defined for decision", span: "1:1-1:15"},
 		{src: "count < ratio", msg: "`<` needs operands of the same type, found int and float", span: "1:1-1:14"},
+		// An empty literal takes the other side's type, so comparing a list or
+		// map with one is reported as that comparison, with a way to test for
+		// emptiness instead.
+		{src: "actor.regions != []", msg: "`!=` isn't defined for list<string>", help: "lists have no `!=`; to test that `actor.regions` isn't empty, write `any x in actor.regions: true`, or call a host function such as `len` if the kind declares one", span: "1:1-1:20"},
+		{src: "[] == actor.regions", msg: "`==` isn't defined for list<string>", help: "lists have no `==`; to test that `actor.regions` is empty, write `not (any x in actor.regions: true)`, or call a host function such as `len` if the kind declares one", span: "1:1-1:20"},
+		{src: "actor.regions == ([])", msg: "`==` isn't defined for list<string>", help: "lists have no `==`; to test that `actor.regions` is empty, write `not (any x in actor.regions: true)`, or call a host function such as `len` if the kind declares one", span: "1:1-1:22"},
+		{src: "any x in actor.roles: actor.regions != []", msg: "`!=` isn't defined for list<string>", help: "lists have no `!=`; to test that `actor.regions` isn't empty, write `any x2 in actor.regions: true`, or call a host function such as `len` if the kind declares one", span: "1:23-1:42"},
+		{src: "release.parent?.author.roles != []", msg: "`!=` isn't defined for ?list<string>", help: "lists have no `!=`; to test that `release.parent?.author.roles` isn't empty, write `any x in (release.parent?.author.roles ?? []): true`, or call a host function such as `len` if the kind declares one", span: "1:1-1:35"},
+		{src: "service.labels == {}", msg: "`==` isn't defined for map<string, string>", help: "maps have no `==`; test for a key with `has`, or for emptiness with a host function such as `len` if the kind declares one", span: "1:1-1:21"},
+		{src: `actor.roles != ["a"]`, msg: "`!=` isn't defined for list<string>", help: "lists, maps and structs can't be compared yet", span: "1:1-1:21"},
+		{src: "actor.regions < []", msg: "`<` isn't defined for list<string>", help: "only int, float, duration and timestamp are ordered", span: "1:1-1:19"},
+		{src: "[] == []", msg: "`==` isn't defined for an empty list", help: "lists, maps and structs can't be compared yet", span: "1:1-1:9"},
+		{src: "{} != 1", msg: "`!=` isn't defined for an empty map", help: "lists, maps and structs can't be compared yet", span: "1:1-1:8"},
+		{src: "count == []", msg: "`==` isn't defined for an empty list", span: "1:1-1:12"},
 
 		// Membership rules.
 		{src: "1 in actor.roles", msg: "`in` needs an element of the list's type, found int in list<string>", span: "1:1-1:17"},
@@ -320,6 +339,9 @@ func TestExpr(t *testing.T) {
 		{src: `{"a": 1, 2: 3}`, msg: "expected string, found int", help: "every key of a map has the same type", span: "1:10-1:11"},
 		{src: `{["a"]: 1}`, msg: "list<string> can't be a map key", help: "map keys are scalars: bool, int, float, string, duration or timestamp", span: "1:2-1:7"},
 		{src: `{"a": [], "b": 1}`, msg: "expected int, found an empty list", span: "1:7-1:9"},
+		{src: `{"a": approve}`, assert: true, msg: "a decision can't be a map value", help: "a missing key would read as the zero value, and a decision has none; test decisions with `in outcome`, or collect them in a list like `[deny, approve]`", span: "1:7-1:14"},
+		{src: `{"a": [], "b": deny}`, assert: true, msg: "a decision can't be a map value", span: "1:16-1:20"},
+		{src: `{"a": 1} has {"b": deny}`, assert: true, msg: "expected int, found decision", span: "1:20-1:24"},
 		{src: "[]", msg: "cannot infer the type of `[]`", help: "add an element, or use the literal where a typed list or map is expected", span: "1:1-1:3"},
 		{src: "{}", msg: "cannot infer the type of `{}`", span: "1:1-1:3"},
 		{src: "[[]]", msg: "cannot infer the type of `[[]]`", span: "1:1-1:5"},

@@ -6,12 +6,12 @@ A small, statically typed policy language for Go hosts.
 ![Language: Go](https://img.shields.io/badge/host-Go-00ADD8?logo=go&logoColor=white)
 [![Go Reference](https://pkg.go.dev/badge/github.com/spechtlabs/sigil.svg)](https://pkg.go.dev/github.com/spechtlabs/sigil)
 
-📖 **Language documentation:** [the docs site](./docs) &nbsp;·&nbsp; 🧭 **Where it stands:** [roadmap](./roadmap.yml) and [open questions](./docs/project/open-questions.md)
+**Documentation:** [sigil.specht-labs.de](https://sigil.specht-labs.de/) &nbsp;·&nbsp; **Where it stands:** [roadmap](./roadmap.yml) and [open questions](./docs/project/open-questions.md)
 
 Sigil lets engineers write rules that evaluate host-provided input to a typed decision such as `approve`, `deny` or `review`. Every decision carries a reason and a payload, and every policy is type-checked against a contract the host defines in Go. The language terminates on finite inputs when its host functions terminate. It ships as an importable Go library, in the spirit of [filt-rs](https://github.com/SierraSoftworks/filters), and it's meant to replace the YAML rule engines with label-selector matchers that teams keep rebuilding.
 
 > [!IMPORTANT]
-> The language, composition, Go API and CLI are implemented through M6. M7 Hardening adds fuzz targets across the language and tooling, generated round-trip properties, and CI fuzz campaigns. The day-long fuzzing exit criterion has not yet been demonstrated. Public dynamic `policy.LoadKind`, static cost budgets and editor tooling remain planned. The [documentation](./docs) describes the implementation and labels planned features; the [testing guide](./docs/guides/testing.md) explains how to run and extend the checks.
+> The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`), host-ordered types such as versions, static cost budgets, and editor tooling. The [roadmap](#roadmap) tracks what's left.
 
 ## What it looks like
 
@@ -164,7 +164,7 @@ if err != nil {
 	log.Fatal(err) // file:line:col plus a fix hint
 }
 
-res, err := p.Eval(ctx, input)
+res, err := p.Eval(ctx, input) // on error, res holds the kind's default
 if r, ok := Review.Match(res); ok {
 	requestReview(r.Approvers, res.Reason) // r is a typed ReviewData
 }
@@ -197,7 +197,7 @@ flowchart LR
   E --> F
 ```
 
-The host gets back the winning decision, its reason and payload, the policy that produced it, and a trace of every candidate. An invoked policy's rules join the same pool, with the conditions of any `when` around the call added to each of them.
+The host gets back the winning decision, its reason and payload, the name of the policy it evaluated, and a trace of every candidate, each with the policy and position of the constructor that produced it. An invoked policy's rules join the same pool, with the conditions of any `when` around the call added to each of them.
 
 ## Prior art
 
@@ -231,6 +231,8 @@ go install github.com/spechtlabs/sigil/cmd/sigil@latest
 
 Prebuilt archives for Linux and macOS on amd64 and arm64 are also available from the [releases](https://github.com/SpechtLabs/sigil/releases).
 
+The stock binary checks, formats and explains any policy, but it has only the signatures of the kind's host functions, so `eval` and `test` stop at the first call to one. A host builds its own CLI with the real functions linked in through [`pkg/cli`](./docs/reference/cli.md#host-functions-and-host-binaries); the example service's [`sigilc`](./examples/cmd/sigilc) is one.
+
 Every release after v0.1.0 signs `checksums.txt` with a keyless [cosign](https://docs.sigstore.dev/) signature from the release workflow. Verify the checksums, then the archive against them:
 
 ```sh
@@ -243,15 +245,14 @@ sha256sum --ignore-missing -c checksums.txt
 
 ## Documentation
 
-The docs site lives in [`docs/`](./docs) and follows the [Diátaxis](https://diataxis.fr/) layout.
+The docs site is at [sigil.specht-labs.de](https://sigil.specht-labs.de/), built from [`docs/`](./docs). Where to start depends on what you're doing:
 
-| Section | What's there |
+| You want to | Start with |
 | --- | --- |
-| [Getting started](./docs/getting-started/overview.md) | What Sigil is, a tour of the language, and a first policy built step by step |
-| [Guides](./docs/guides/team-policies.md) | Per-team policies, [the example service](./docs/guides/example-service.md), common patterns, evolving a kind without breaking policies |
-| [Understanding](./docs/understanding/design-goals.md) | Why the language is shaped this way: order independence, strictness, halting, composition and required guardrails |
-| [Reference](./docs/reference/policy-files.md) | The language specification: lexical structure, statements, expressions, types, decisions, evaluation, kind files, grammar |
-| [Project](./docs/project/open-questions.md) | Open design questions, plus the roadmap rendered from [`roadmap.yml`](./roadmap.yml) |
+| Write and test policies | [What Sigil is](./docs/getting-started/overview.md), [the tour](./docs/getting-started/tour.md) and [your first policy](./docs/getting-started/first-policy.md), then the [guides](./docs/guides/team-policies.md) and the [language reference](./docs/reference/policy-files.md) |
+| Embed Sigil in a Go service | The [Go API](./docs/reference/go-api.md), [the example service](./docs/guides/example-service.md), [policies in a ConfigMap](./docs/guides/configmaps.md) and [evolving a kind](./docs/guides/evolve-a-kind.md) |
+| Decide whether Sigil fits | [What Sigil is](./docs/getting-started/overview.md), the [design goals](./docs/understanding/design-goals.md) and the other understanding pages, and [prior art](./docs/understanding/prior-art.md) |
+| Change Sigil itself | [Testing, fuzzing and benchmarking](./docs/guides/testing.md), the [open questions](./docs/project/open-questions.md) and the [roadmap](./roadmap.yml) |
 
 To run the site locally you need [mise](https://mise.jdx.dev/), which installs the pinned toolchain:
 
@@ -262,26 +263,26 @@ mise run docs-dev
 
 ## Roadmap
 
-The language, Go API, composition and CLI are implemented through M6. Hardening is in progress, with fuzz targets and generated properties covering the lexer, parser, AST, formatter, checker, kind models, Go bindings, constants, evaluator, bundles, lints, diagnostics, configuration, test files and public policy API. Static cost analysis remains separate work.
+M1 to M6 are done. Hardening is in progress: fuzz targets and round-trip properties cover every layer, while public `LoadKind`, a day-long fuzz campaign and static cost analysis remain. Editor tooling comes last.
 
 | Milestone | Scope | State |
 | --- | --- | --- |
-| M1 Language specification | Reference, grammar, rationale, answers to the syntax-affecting open questions | In progress |
+| M1 Language specification | Reference, grammar, rationale, answers to the syntax-affecting open questions | Done |
 | M2 Expressions | Lexer, Pratt parser, AST with positions, error hints | Done |
 | M3 Types | `NewKind` reflection, type checker, evaluator over Go structs | Done |
-| M4 Policies | `when`, decision constructors, precedence, default, trace | Done |
+| M4 Policies | `when`, decision constructors, precedence, default, trace; host-ordered types remain | Done |
 | M5 Composition | `param`, `let`, modules and imports, policy invocation, `Require`, bundle loader, cycle detection, `sigil explain` | Done |
 | M6 Tooling I | `sigil fmt`, kind export, `sigil check` with lints, `sigil eval`, `sigil test`, `policytest` | Done |
 | M7 Hardening | Round-trip properties and fuzzing across layers; public `LoadKind`, a day-long campaign and cost analysis remain | In progress |
-| M8 Tooling II | `sigil lsp`, `sigil gen go`, `sigil breaking` | Planned |
+| M8 Tooling II | `sigil lsp`, `sigil gen go`, `sigil breaking`; the commands exist but aren't implemented | Planned |
 
 The roadmap lives in [`roadmap.yml`](./roadmap.yml) in the [roadmap-md](https://roadmap.sierrasoftworks.com/) format, with every deliverable and what "done" means for each milestone; open it in the [roadmap viewer](https://roadmap.sierrasoftworks.com/viewer/github.com#SpechtLabs/sigil) for the rendered version.
 
 ## Contributing
 
-Run `mise run test` for the race-enabled test suite, `mise run fuzz` for ten seconds of mutation fuzzing per target, and `mise run check` for the repository checks. Use `mise run bench -- --baseline main` to compare performance with a base revision. CI fails statistically significant regressions above 10% in time or allocations. See [Testing, fuzzing and benchmarks](./docs/guides/testing.md) for targeted runs, regression inputs and benchmark workloads.
+Run `mise run test` for the race-enabled test suite, `mise run fuzz` for ten seconds of mutation fuzzing per target, and `mise run check` for the repository checks. Use `mise run bench -- --baseline main` to compare performance with a base revision. CI fails statistically significant regressions above 10% in time or allocations. See [Testing, fuzzing and benchmarking Sigil](./docs/guides/testing.md) for targeted runs, regression inputs and benchmark workloads.
 
-The design is open. The most valuable contributions right now are challenges to it: an example that reads badly, a semantic corner the spec doesn't cover, or an answer to one of the [open questions](./docs/project/open-questions.md). Open an [issue](https://github.com/SpechtLabs/sigil/issues) or a pull request against `docs/`. Contributions are accepted under the project's license, as section 5 of the Apache License describes.
+Bug reports and design challenges are both welcome: a policy that reads badly, an error message that doesn't point at the fix, a semantic corner the [reference](./docs/reference/policy-files.md) doesn't cover, or an answer to one of the [open questions](./docs/project/open-questions.md). Open an [issue](https://github.com/SpechtLabs/sigil/issues), ideally with the policy and input that show the problem, or send a pull request. Contributions are accepted under the project's license, as section 5 of the Apache License describes.
 
 ## License
 

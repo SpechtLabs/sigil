@@ -15,6 +15,7 @@ import (
 	"github.com/sierrasoftworks/humane-errors-go"
 	"github.com/spf13/cobra"
 
+	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/internal/diag"
@@ -39,9 +40,20 @@ type source struct {
 	stdin bool
 }
 
+// File is one file fmt read, as JSON and YAML print it. A file that
+// doesn't parse has its syntax errors in Diagnostics and nothing else set.
+type File struct {
+	File        string              `json:"file" yaml:"file"`
+	Formatted   bool                `json:"formatted" yaml:"formatted"`                 // it was already in the canonical style
+	Written     bool                `json:"written,omitempty" yaml:"written,omitempty"` // --write rewrote it
+	Source      string              `json:"source,omitempty" yaml:"source,omitempty"`   // the formatted source, when fmt prints it
+	Diagnostics []output.Diagnostic `json:"diagnostics,omitempty" yaml:"diagnostics,omitempty"`
+}
+
 // NewCommand returns the fmt command.
 func NewCommand(opts ...Option) *cobra.Command {
-	o := &options{}
+	text := output.Text
+	o := &options{output: &text}
 	for _, opt := range opts {
 		opt(o)
 	}
@@ -81,7 +93,7 @@ sigil fmt --check .`,
 			case check:
 				m = modeCheck
 			}
-			return run(cmd.OutOrStdout(), cmd.InOrStdin(), args, m)
+			return run(cmd.OutOrStdout(), cmd.InOrStdin(), args, m, *o.output)
 		},
 	}
 
@@ -92,7 +104,7 @@ sigil fmt --check .`,
 	return cmd
 }
 
-func run(out io.Writer, stdin io.Reader, paths []string, m mode) humane.Error {
+func run(out io.Writer, stdin io.Reader, paths []string, m mode, f output.Format) humane.Error {
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
@@ -106,6 +118,7 @@ func run(out io.Writer, stdin io.Reader, paths []string, m mode) humane.Error {
 
 	var changed []string
 	var broken diag.ErrorList
+	records := []File{}
 	files := map[string][]byte{}
 	for _, s := range sources {
 		src, name, err := read(s, stdin)
@@ -116,14 +129,26 @@ func run(out io.Writer, stdin io.Reader, paths []string, m mode) humane.Error {
 		if errs != nil {
 			files[name] = src
 			broken = append(broken, errs...)
+			records = append(records, File{File: name, Diagnostics: diagnostics(errs)})
 			continue
 		}
-		if !bytes.Equal(src, formatted) {
+		differs := !bytes.Equal(src, formatted)
+		if differs {
 			changed = append(changed, name)
 		}
-		if err := emit(out, s, name, formatted, !bytes.Equal(src, formatted), m); err != nil {
+		if f == output.Text {
+			err = emit(out, s, name, formatted, differs, m)
+		} else {
+			var rec File
+			rec, err = record(s, name, formatted, differs, m)
+			records = append(records, rec)
+		}
+		if err != nil {
 			return err
 		}
+	}
+	if f != output.Text {
+		return encode(out, f, m, records, changed, broken)
 	}
 	return summarize(out, m, len(sources), changed, broken, func(file string) []byte { return files[file] })
 }
@@ -136,16 +161,11 @@ func summarize(out io.Writer, m mode, total int, changed []string, broken diag.E
 	if err := p.Diagnostics(broken, src); err != nil {
 		return err
 	}
-	brokenFiles := map[string]bool{}
-	for _, e := range broken {
-		brokenFiles[e.File] = true
-	}
-	if n := len(brokenFiles); n > 0 {
-		msg := fmt.Sprintf("%d %s syntax errors", n, plural(n, "file has", "files have"))
-		if err := p.Fail(msg); err != nil {
+	if n := brokenFiles(broken); n > 0 {
+		if err := p.Fail(fmt.Sprintf("%d %s syntax errors", n, plural(n, "file has", "files have"))); err != nil {
 			return err
 		}
-		return pretty.Fail(msg, "fix the syntax errors above; fmt only formats files that parse")
+		return failure(m, changed, broken)
 	}
 	n := len(changed)
 	if total == 0 {
@@ -158,7 +178,7 @@ func summarize(out io.Writer, m mode, total int, changed []string, broken diag.E
 			if err := p.Fail(msg); err != nil {
 				return err
 			}
-			return pretty.Fail(fmt.Sprintf("%d %s not formatted", n, plural(n, "file is", "files are")), "run `sigil fmt --write` on them")
+			return failure(m, changed, broken)
 		}
 		return p.Ok(fmt.Sprintf("%d %s formatted", total, plural(total, "file is", "files are")))
 	case modeWrite:
@@ -169,6 +189,64 @@ func summarize(out io.Writer, m mode, total int, changed []string, broken diag.E
 	default:
 		return nil
 	}
+}
+
+// encode prints the records as JSON or YAML, and fails the way the text
+// summary does.
+func encode(out io.Writer, f output.Format, m mode, records []File, changed []string, broken diag.ErrorList) humane.Error {
+	if err := output.Encode(out, f, records); err != nil {
+		return err
+	}
+	if err := failure(m, changed, broken); err != nil {
+		return err
+	}
+	return nil
+}
+
+// failure is the error a run ends with: files with syntax errors, or,
+// with --check, files that aren't formatted. It's nil when there are
+// neither.
+func failure(m mode, changed []string, broken diag.ErrorList) *pretty.Failed {
+	if n := brokenFiles(broken); n > 0 {
+		return pretty.Fail(fmt.Sprintf("%d %s syntax errors", n, plural(n, "file has", "files have")), "fix the syntax errors; fmt only formats files that parse")
+	}
+	if n := len(changed); m == modeCheck && n > 0 {
+		return pretty.Fail(fmt.Sprintf("%d %s not formatted", n, plural(n, "file is", "files are")), "run `sigil fmt --write` on them")
+	}
+	return nil
+}
+
+// brokenFiles counts the files the syntax errors are in.
+func brokenFiles(errs diag.ErrorList) int {
+	files := map[string]bool{}
+	for _, e := range errs {
+		files[e.File] = true
+	}
+	return len(files)
+}
+
+// record does what the mode says with one formatted source, for JSON and
+// YAML: carry it, or write it back when it changed.
+func record(s source, name string, formatted []byte, changed bool, m mode) (File, humane.Error) {
+	rec := File{File: name, Formatted: !changed}
+	switch {
+	case m == modePrint:
+		rec.Source = string(formatted)
+	case m == modeWrite && changed:
+		if err := rewrite(s.path, formatted); err != nil {
+			return rec, err
+		}
+		rec.Written = true
+	}
+	return rec, nil
+}
+
+func diagnostics(errs diag.ErrorList) []output.Diagnostic {
+	out := make([]output.Diagnostic, len(errs))
+	for i, e := range errs {
+		out[i] = output.NewDiagnostic(e)
+	}
+	return out
 }
 
 // emit does what the mode says with one formatted source: print it, list

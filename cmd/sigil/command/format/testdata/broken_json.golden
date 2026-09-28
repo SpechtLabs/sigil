@@ -1,0 +1,24 @@
+[
+  {
+    "file": "a.sigil",
+    "formatted": false
+  },
+  {
+    "file": "b.sigil",
+    "formatted": true
+  },
+  {
+    "file": "c.sigil",
+    "formatted": false,
+    "diagnostics": [
+      {
+        "severity": "error",
+        "file": "c.sigil",
+        "message": "expected a name after `let`, found `=`",
+        "help": "a let is written `let name = expression`",
+        "line": 2,
+        "column": 5
+      }
+    ]
+  }
+]

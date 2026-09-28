@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
+	"github.com/spechtlabs/sigil/internal/result"
 )
 
 func theme() pretty.Theme {
@@ -48,6 +49,19 @@ func TestFailureText(t *testing.T) {
 			f:            &Failure{Kind: FailAssertion, Help: "h", Asserts: []Assert{{Reason: "a", Position: "p:1:1"}, {Reason: "b", Position: "p:2:1", Cause: "p:2:5: boom"}}},
 			wantHeadline: "2 asserts failed",
 			wantText:     []string{"assert a failed at p:1:1\n", "assert b failed at p:2:1\n  p:2:5: boom\n", "  = help: h\n"},
+		},
+		{
+			name: "an outcome assert, and a cause with its own help",
+			f: &Failure{Kind: FailAssertion, Help: "h", Asserts: []Assert{
+				{Reason: "o", Position: "p:1:1", Outcome: []Entry{{Decision: "write", Reason: "owner", Position: "p:8:3"}, {Decision: "write", Reason: "oncall", Position: "p:9:3"}}},
+				{Reason: "c", Position: "p:2:1", Cause: "p:2:5: unbound", Help: "use the host's binary"},
+			}},
+			wantHeadline: "2 asserts failed",
+			wantText: []string{
+				"assert o failed at p:1:1\n  the outcome it read:\n    write(owner)   p:8:3\n    write(oncall)  p:9:3\n",
+				"assert c failed at p:2:1\n  p:2:5: unbound\n    = help: use the host's binary\n",
+				"  = help: h\n",
+			},
 		},
 		{
 			name:         "one assert",
@@ -120,5 +134,37 @@ func TestText(t *testing.T) {
 		"  * approve(sre)  team.sigil:9:1\n"
 	if got := collect.Text(theme()); got != want {
 		t.Errorf("Text() =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// TestFailureHelp checks that a runtime error that knows what to do
+// about itself says so, in place of the generic advice.
+func TestFailureHelp(t *testing.T) {
+	at := result.Position{File: "p.sigil", Line: 2, Column: 5}
+	tests := []struct {
+		name      string
+		fl        *result.Failure
+		wantHelp  string
+		wantCause string // the first assert's help
+	}{
+		{name: "runtime error", fl: &result.Failure{Runtime: &result.Runtime{Msg: "boom", Position: at}}, wantHelp: help(FailRuntime)},
+		{name: "runtime error with help", fl: &result.Failure{Runtime: &result.Runtime{Msg: "unbound", Help: "use the host's binary", Position: at}}, wantHelp: "use the host's binary"},
+		{
+			name:      "assert whose cause has help",
+			fl:        &result.Failure{Asserts: []result.Assert{{Reason: "a", Position: at, Cause: &result.Runtime{Msg: "unbound", Help: "use the host's binary", Position: at}}}},
+			wantHelp:  help(FailAssertion),
+			wantCause: "use the host's binary",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := failure(nil, tt.fl)
+			if f.Help != tt.wantHelp {
+				t.Errorf("Help = %q, want %q", f.Help, tt.wantHelp)
+			}
+			if tt.wantCause != "" && f.Asserts[0].Help != tt.wantCause {
+				t.Errorf("Asserts[0].Help = %q, want %q", f.Asserts[0].Help, tt.wantCause)
+			}
+		})
 	}
 }

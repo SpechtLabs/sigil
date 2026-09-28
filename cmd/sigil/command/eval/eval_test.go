@@ -51,6 +51,9 @@ func TestEval(t *testing.T) {
 		{name: "collect_json", kind: grants, input: "grants.json", format: output.JSON},
 		{name: "collect_empty", kind: grants, input: "nogrants.json"},
 		{name: "collect_empty_json", kind: grants, input: "nogrants.json", format: output.JSON},
+		{name: "outcome_assert", kind: grants, input: "writeonly.json"},
+		{name: "outcome_assert_json", kind: grants, input: "writeonly.json", format: output.JSON},
+		{name: "outcome_assert_yaml", kind: grants, input: "writeonly.json", format: output.YAML},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -70,3 +70,19 @@ func TestExplain(t *testing.T) {
 		})
 	}
 }
+
+func TestCount(t *testing.T) {
+	tests := []struct {
+		n    int
+		want string
+	}{
+		{n: 0, want: "0 rules"},
+		{n: 1, want: "1 rule"},
+		{n: 9, want: "9 rules"},
+	}
+	for _, tt := range tests {
+		if got := count(tt.n, "rule", "rules"); got != tt.want {
+			t.Errorf("count(%d) = %q, want %q", tt.n, got, tt.want)
+		}
+	}
+}

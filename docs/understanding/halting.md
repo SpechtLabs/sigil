@@ -11,9 +11,19 @@ A policy engine often runs on every request. Termination alone does not protect 
 
 ## What's missing, on purpose
 
-**No loops.** There's no `for`, no `while`, no recursion through data. The only iteration is the quantifiers, `any x in xs: ...` and `all x in xs: ...`, plus the list operators `all in` and `any in`. All of them range over a list that came from the input, a param or a literal, and all of those are finite.
+**No loops.** There's no `for`, no `while`, no recursion through data. The only iteration is the quantifiers, `any x in xs: ...` and `all x in xs: ...`, and the operators that scan a collection: `in`, `has`, and the list operators `all in`, `any in`, `one in` and `exclusive in`. Each of them walks a list or map that already exists when it runs: part of the input, a param, a literal, a `let` or a host function's return value. None of them can grow the collection it walks.
 
-**No recursion.** A `let` can refer to other `let`s, a file can import from other files, and a policy can invoke other policies, but all three graphs must be acyclic. The compiler builds each dependency graph and rejects a cycle with an error pointing at the edge that closes it. Without cycles, every `let` has a finite expansion and every chain of invocations bottoms out, so flattening a policy the way `sigil explain` does always terminates.
+**No recursion.** A `let` can refer to other `let`s, a file can import from other files, and a policy can invoke other policies, but all three graphs must be acyclic. The compiler builds each dependency graph and rejects a cycle with an error pointing at the edge that closes it:
+
+```text
+deploy/fresh.sigil:4:37: error: let `fresh` depends on itself
+  |
+4 | let settled = release.hotfix or not fresh
+  |                                     ^^^^^
+  = help: lets form a directed acyclic graph; a let can't depend on itself, even through other lets
+```
+
+Without cycles, every `let` has a finite expansion and every chain of invocations bottoms out, so flattening a policy the way `sigil explain` does always terminates.
 
 **No user-defined functions.** Functions are how most expression languages sneak recursion back in. In Sigil, the only callable things are host functions declared in the kind, like `fn split(string, string) -> list<string>`. The host implements them in Go, and they must be pure: same arguments, same result, no side effects. If a host function hangs, that's a Go bug in the host, reviewed and tested like any other Go code.
 
@@ -23,17 +33,7 @@ A policy engine often runs on every request. Termination alone does not protect 
 
 Nested quantifiers multiply work. `any a in xs: any b in ys: a == b` may compare every pair, costing `len(xs) * len(ys)`. List membership and distinct-element operators also scan collections, and policy invocations repeat work for each instantiation. Strings, patterns and host functions have costs of their own. A general promise of linear evaluation cost would be wrong.
 
-The proposed analyzer would combine declared collection limits with operator and host-function costs, then reject policies over a host's budget. The declarations and budget API are not designed yet. This is an illustration of a future diagnostic:
-
-```text
-payments/production.sigil:21:6: error: estimated worst-case cost 1048576 exceeds budget 100000
-   |
-21 | when any a in actor.teams: any b in service.owners: a == b {
-   |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   = help: nested quantifiers multiply; actor.teams (max 1024) x service.owners (max 1024)
-```
-
-The collection limits and diagnostic in that example are illustrative. `DeployApproval` declares no size limits, and `sigil check` does not report estimated costs today.
+The proposed analyzer would combine declared collection limits with operator and host-function costs, then reject policies over a host's budget, pointing at the expression that exceeds it. The declarations and budget API aren't designed yet: kinds declare no collection limits today, and `sigil check` reports no estimated costs.
 
 ## What this costs authors
 

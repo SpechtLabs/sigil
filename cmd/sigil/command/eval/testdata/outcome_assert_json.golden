@@ -1,0 +1,59 @@
+{
+  "error": {
+    "kind": "assertion",
+    "message": "assertions failed: \"write_needs_read\"",
+    "help": "the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong",
+    "asserts": [
+      {
+        "reason": "write_needs_read",
+        "position": "testdata/grants/grants.sigil:16:1",
+        "outcome": [
+          {
+            "decision": "write",
+            "reason": "owner",
+            "policy": "grants",
+            "position": "testdata/grants/grants.sigil:8:3",
+            "conditions": [
+              "\"platform\" in teams"
+            ]
+          },
+          {
+            "decision": "write",
+            "reason": "oncall",
+            "policy": "grants",
+            "position": "testdata/grants/grants.sigil:12:3",
+            "conditions": [
+              "\"oncall\" in teams"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "policy": "grants",
+  "outcome": [],
+  "trace": [
+    {
+      "decision": "write",
+      "reason": "owner",
+      "policy": "grants",
+      "position": "testdata/grants/grants.sigil:8:3",
+      "conditions": [
+        "\"platform\" in teams"
+      ]
+    },
+    {
+      "decision": "write",
+      "reason": "oncall",
+      "policy": "grants",
+      "position": "testdata/grants/grants.sigil:12:3",
+      "conditions": [
+        "\"oncall\" in teams"
+      ]
+    }
+  ],
+  "collect": true
+}
+--- error ---
+the evaluation failed; the host would act on the fallback shown above
+advice: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong

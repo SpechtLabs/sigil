@@ -17,6 +17,10 @@ config:
           link: /reference/policy-files/
           theme: alt
           icon: mdi:book-open-page-variant
+        - text: Embed it in Go
+          link: /reference/go-api/
+          theme: alt
+          icon: mdi:language-go
 
   - type: features
     title: Why Sigil?
@@ -163,7 +167,7 @@ when "payments-sre" in actor.teams {
 }
 ```
 
-The host loads it with `policy.Require("deploy.guardrails")`, so moving `guardrails(...)` inside a `when` fails the build. The [tour](/getting-started/tour/) walks through the full version of these files and evaluates them against real inputs.
+The host loads it with `policy.Require("deploy.guardrails")`, so a team policy that moves `guardrails(...)` inside a `when` fails to load, and `sigil check --require deploy.guardrails` catches the same mistake in CI. The [tour](/getting-started/tour/) walks through the full version of these files and evaluates them against real inputs.
 
 ## Side by side with a YAML rule engine
 
@@ -363,7 +367,7 @@ ExtraRules:
 
 What the `[1]` to `[4]` markers point at:
 
-1. **Order decides the outcome.** The team's approve has to sit below the denies, or it overrides them. Where it lands relative to `service-owner` changes behaviour, too: a service owner who's also in `payments-sre` gets approved here, because the team rule matches first. In Sigil every rule runs, `deny > review > approve` picks the winner, and that owner gets a review.
+1. **Order decides the outcome.** The team's approve has to sit below the denies, or it overrides them. Where it lands relative to `service-owner` changes behavior, too: a service owner who's also in `payments-sre` gets approved here, because the team rule matches first. In Sigil every rule runs, `deny > review > approve` picks the winner, and that owner gets a review.
 2. **Nothing is typed.** `"4h"` stays a string until the engine parses it at evaluation time, and a misspelled path such as `service.teir` resolves to nothing, so its rule quietly stops matching. Sigil checks both against the kind at compile time: `min_soak: 4h` is a `duration`, and `service.teir` is an [error with a fix hint](/understanding/strictness/).
 3. **Templating is text.** The team's rules get spliced in as text, so a wrong `indent` produces a different YAML file instead of an error, and every team's values file has to know the template's internals. Sigil's invocations bind [typed params](/understanding/composition/), a team can only add candidates, and the guardrails the host requires can't be gated off.
 4. **Nothing is named or shared.** The regions check is pasted into every rule that needs it, even into the team's values file, and the engine grew a one-off `splitSubsetOf` operator to express it. Giving PCI services other approvers means a second copy of the whole `service-owner` rule behind an `if`. Sigil names the check once as `let cleared` in a module, builds it from `split` and the general `all in`, and adds a condition to a shared policy by invoking it inside a `when`.
@@ -371,5 +375,5 @@ What the `[1]` to `[4]` markers point at:
 :::
 
 ::: info Project status
-The language, Go API, composition and CLI are implemented through M6. M7 Hardening adds fuzzing across the language and tooling, generated round-trip properties and CI campaigns. Its day-long fuzzing criterion has not yet been demonstrated. Public dynamic `policy.LoadKind`, static cost budgets and editor tooling remain planned. See the [roadmap](/project/roadmap/) and [Testing and fuzzing](/guides/testing/).
+The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`), host-ordered types such as versions, static cost budgets, and editor tooling. The [roadmap](/project/roadmap/) tracks what's left.
 :::

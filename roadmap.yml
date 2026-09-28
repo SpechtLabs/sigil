@@ -8,15 +8,17 @@
 
 title: Roadmap
 description: |
-  Sigil is built in milestones, each with a concrete exit criterion. The Go API comes first and the
-  kind grammar last, because only tooling parses kind files: the defining host builds its kind from
-  Go structs and never reads one. From M4 a host can compile a policy and evaluate it to a decision
-  with its trace, which is the first real workload.
+  Sigil is built in milestones, each with a concrete exit criterion. The Go API comes before the
+  tooling, because the defining host builds its kind from Go structs and never reads a kind file;
+  only tooling does. The language, the Go API, composition and the CLI a policy
+  repository needs are done. Hardening is in progress, and editor tooling comes last.
 
-  Documentation comes first, on purpose. Syntax is cheap to change in a Markdown file and expensive
-  to change once policies exist in the wild, and writing the reference pages has already surfaced
-  gaps the first sketch of the design glossed over, such as how optional structs get unwrapped. The
-  [open questions](/project/open-questions/) note which milestone each one blocks.
+  The language was specified in the docs before any of it was implemented, because syntax is cheap
+  to change in a Markdown file and expensive to change once policies exist in the wild. Writing the
+  reference pages first surfaced gaps the first sketch of the design glossed over, such as how
+  optional structs get unwrapped. The docs now describe the implementation and mark what's still
+  planned, and the [open questions](/project/open-questions/) note which milestone each remaining
+  one blocks.
 
 authors:
   - name: Cedric Specht
@@ -24,13 +26,20 @@ authors:
 
 timeline:
   - date: 2026-09-28
+    title: deploygate, an example host service
+    description: |
+      `examples/` runs the deploy gate from these docs as a Go service: both kinds defined in Go,
+      the guardrails embedded and required, team policies that reload from a directory, typed
+      matching, `policytest` and ginkgo suites, and metrics, traces, logs and profiles for every
+      decision. It's the first host outside the test suite.
+  - date: 2026-09-28
     title: Hardening tests and fuzz campaigns implemented
     description: |
       Fuzz targets cover the language pipeline, kind export/import, Go bindings, input decoding,
       composition, decision resolution and tooling. CI runs smoke campaigns and a scheduled
-      workflow supports longer runs. Printing, export, float validation, trusted filesystem and test-file
-      parsing fixes accompany the tests. M7 stays open until its remaining deliverables and
-      day-long fuzzing criterion have evidence.
+      workflow supports longer runs. Printing, export, float validation, trusted filesystem and
+      test-file parsing fixes accompany the tests. M7 stays open until its remaining deliverables
+      and day-long fuzzing criterion have evidence.
   - date: 2026-09-28
     title: Tooling I implemented
     description: |
@@ -38,19 +47,6 @@ timeline:
       `export`, and the `policytest` and `cli` packages. The stock binary evaluates against the
       kind file and fails only when a rule calls a host function; a host builds its own binary with
       its functions linked in. M6 closes.
-  - date: 2026-09-24
-    title: Documentation-first design starts
-    description: |
-      The language design moves into this documentation site. Nothing is implemented; the docs are
-      the specification until M1 closes.
-  - date: 2026-09-28
-    title: Assertions, collecting kinds, lets and optional structs settled
-    description: |
-      A second pass over the open questions: `assert("reason", cond)` with input and outcome
-      phases, `collect one` and `collect all`, scoped and `pub` lets, optional chaining with
-      `present`, scalar-only equality, and host-ordered types for versions. Everything the
-      implemented milestones cover lands in the parser, checker and evaluator; the rest is
-      tracked below.
   - date: 2026-09-28
     title: Composition implemented
     description: |
@@ -62,6 +58,14 @@ timeline:
       `when` blocks, constructors, precedence, the default, asserts and collecting kinds
       evaluate, and `Compile`, `Eval`, `Result` and `Match` land in `pkg/policy`. M4 closes.
   - date: 2026-09-28
+    title: Assertions, collecting kinds, lets and optional structs settled
+    description: |
+      A second pass over the open questions: `assert("reason", cond)` with input and outcome
+      phases, `collect one` and `collect all`, scoped and `pub` lets, optional chaining with
+      `present`, scalar-only equality, and host-ordered types for versions. Everything the
+      implemented milestones cover lands in the parser, checker and evaluator; the rest is
+      tracked below.
+  - date: 2026-09-28
     title: Kinds, the type checker and expression evaluation implemented
     description: |
       M3 closes: a policy is checked against its kind with a hint for every typo and type
@@ -72,6 +76,11 @@ timeline:
       The lexer, the Pratt expression parser and the document parser land under `internal/`, with
       golden tests for every document form and every error message. Type checking and evaluation
       are next.
+  - date: 2026-09-24
+    title: Documentation-first design starts
+    description: |
+      The language design moves into this documentation site. Nothing is implemented; the docs are
+      the specification until M1 closes.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -132,16 +141,16 @@ milestones:
           `policy.Require`.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/understanding/composition.md
       - title: Answer the syntax-affecting open questions
-        state: DOING
+        state: DONE
         requirement: MUST
         description: |
           Settled with the parser: quantifier body extent, chained comparisons, keywords as field
           names, `assert("reason", cond)` with the reason first, `collect one` and `collect all`,
           scoped lets and `pub let`, optional chaining with `?.` and `present`, param bounds as
           `, min: value, max: value`, `has` as the only map-key test, and kind version pins
-          (`Kind@N` with `accepts` on the kind). Boolean operator
-          spelling is settled: words, and `like` globs are `*` and `?` only. Settled with the
-          evaluator: several decisions per block are allowed.
+          (`Kind@N` with `accepts` on the kind). Boolean operators are words, and `like` globs
+          are `*` and `?` only. Settled with the evaluator: several decisions per block are
+          allowed. The questions still open block no implemented milestone.
       - title: Declared reasons, exclusive and the resolution rule
         state: DONE
         requirement: MUST
@@ -512,7 +521,8 @@ milestones:
     description: |
       Editor support and cross-service consumption. It comes last because it depends on the kind
       file format being stable, and that format only settles once the earlier milestones have
-      exercised it.
+      exercised it. The three commands are registered in the CLI but exit with "not implemented
+      yet".
 
       **Done when** editor completion works from an exported kind file alone.
     deliverables:

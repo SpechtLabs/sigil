@@ -117,25 +117,30 @@ func FormatDuration(d time.Duration) string {
 		return "0s"
 	}
 	var b strings.Builder
+	// Work on the negative magnitude: every duration has a negative
+	// counterpart, while negating math.MinInt64 overflows. Truncating
+	// division keeps each quotient and the remainder non-positive.
+	n := d
 	if d < 0 {
 		b.WriteByte('-')
-		d = -d
+	} else {
+		n = -d
 	}
 	units := []struct {
 		name string
 		size time.Duration
 	}{{"d", 24 * time.Hour}, {"h", time.Hour}, {"m", time.Minute}, {"s", time.Second}, {"ms", time.Millisecond}}
 	for _, u := range units {
-		if n := d / u.size; n > 0 {
-			fmt.Fprintf(&b, "%d%s", n, u.name)
-			d -= n * u.size
+		if q := n / u.size; q < 0 {
+			fmt.Fprintf(&b, "%d%s", -q, u.name)
+			n -= q * u.size
 		}
 	}
-	if d > 0 {
+	if n < 0 {
 		// Sub-millisecond remainders have no literal; keep the value exact
 		// with a millisecond fraction the lexer won't accept, so it's
 		// visible rather than silently rounded.
-		fmt.Fprintf(&b, "+%dns", d)
+		fmt.Fprintf(&b, "+%dns", -n)
 	}
 	return b.String()
 }

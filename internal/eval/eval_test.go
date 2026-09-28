@@ -88,6 +88,8 @@ func typeOf[T any]() reflect.Type { return reflect.TypeFor[T]() }
 
 func fail(s string) (string, error) { return "", errors.New("boom: " + s) }
 
+func unbound(string) (string, error) { return "", &gokind.ErrUnbound{Name: "unbound"} }
+
 // setup builds the kind, checks src as an expression with a param and a
 // let in scope, compiles it, and returns the compiled expression and a
 // frame with the param and let bound.
@@ -102,6 +104,7 @@ func setup(t *testing.T, src string, assert bool) (eval.Expr, *eval.Frame) {
 			{Name: "len", Fn: func(xs []string) int { return len(xs) }},
 			{Name: "fail", Fn: fail},
 			{Name: "upper", Fn: strings.ToUpper},
+			{Name: "unbound", Fn: unbound},
 		},
 	})
 	if errs != nil {
@@ -138,6 +141,7 @@ func TestEval(t *testing.T) {
 		src    string
 		want   any    // the Go value, compared with reflect.DeepEqual
 		err    string // a runtime error's message
+		help   string // the help it carries, if any
 		span   string
 		assert bool
 	}{
@@ -318,6 +322,7 @@ func TestEval(t *testing.T) {
 		{src: "106751d + release.soak", err: "duration overflow in `(106751d + release.soak)`", span: "1:1-1:23"},
 		{src: `fail("x")`, err: "host function fail failed: boom: x", span: "1:1-1:10"},
 		{src: `fail("x") == "y" or true`, err: "host function fail failed: boom: x", span: "1:1-1:10"},
+		{src: `unbound("x")`, err: "host function unbound failed: no implementation in this sigil binary; build a host binary with unbound linked in (see sigil's pkg/cli)", help: "this sigil binary has only unbound's signature from the kind file; evaluate with the host's own binary, built with sigil's pkg/cli, which links the real function in", span: "1:1-1:13"},
 	}
 
 	for _, tt := range tests {
@@ -330,6 +335,9 @@ func TestEval(t *testing.T) {
 				}
 				if err.Msg != tt.err {
 					t.Errorf("Msg  = %q\nwant   %q", err.Msg, tt.err)
+				}
+				if err.Help != tt.help {
+					t.Errorf("Help = %q\nwant   %q", err.Help, tt.help)
 				}
 				if got := err.Pos.String() + "-" + err.End.String(); got != tt.span {
 					t.Errorf("span = %s, want %s", got, tt.span)

@@ -71,42 +71,50 @@ sigil eval --kind deploy_approval.sigil --input release.json deploy/production.s
 	cmd.AddGroup(groupPolicy, groupKind, groupEditor, groupOther)
 	cmd.SetHelpCommandGroupID(groupOther.ID)
 	cmd.SetCompletionCommandGroupID(groupOther.ID)
+	addCommands(cmd, o, &outputFormat)
 
-	addToGroup(cmd, groupPolicy.ID,
-		format.NewCommand(),
+	return cmd
+}
+
+// addCommands attaches every subcommand to root, in its help group. Each
+// one reads the root --output flag through outputFormat.
+func addCommands(root *cobra.Command, o *options, outputFormat *output.Format) {
+	addToGroup(root, groupPolicy.ID,
+		format.NewCommand(format.WithOutput(outputFormat)),
 		check.NewCommand(
-			check.WithOutput(&outputFormat),
+			check.WithOutput(outputFormat),
 			check.WithKinds(o.kinds),
 		),
 		eval.NewCommand(
-			eval.WithOutput(&outputFormat),
+			eval.WithOutput(outputFormat),
 			eval.WithKinds(o.kinds),
 		),
 		explain.NewCommand(
-			explain.WithOutput(&outputFormat),
+			explain.WithOutput(outputFormat),
 			explain.WithKinds(o.kinds),
 		),
 		test.NewCommand(
-			test.WithOutput(&outputFormat),
+			test.WithOutput(outputFormat),
 			test.WithKinds(o.kinds),
 		),
 	)
-	addToGroup(cmd, groupKind.ID,
-		export.NewCommand(export.WithKinds(o.kinds)),
-		breaking.NewCommand(),
-		gen.NewCommand(),
+	addToGroup(root, groupKind.ID,
+		export.NewCommand(
+			export.WithOutput(outputFormat),
+			export.WithKinds(o.kinds),
+		),
+		breaking.NewCommand(breaking.WithOutput(outputFormat)),
+		gen.NewCommand(gen.WithOutput(outputFormat)),
 	)
-	addToGroup(cmd, groupEditor.ID,
-		lsp.NewCommand(),
+	addToGroup(root, groupEditor.ID,
+		lsp.NewCommand(lsp.WithOutput(outputFormat)),
 	)
-	addToGroup(cmd, groupOther.ID,
+	addToGroup(root, groupOther.ID,
 		version.NewCommand(
 			version.WithVersion(o.version),
-			version.WithOutput(&outputFormat),
+			version.WithOutput(outputFormat),
 		),
 	)
-
-	return cmd
 }
 
 func addToGroup(parent *cobra.Command, groupID string, cmds ...*cobra.Command) {

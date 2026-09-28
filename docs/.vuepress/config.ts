@@ -115,8 +115,9 @@ export default defineUserConfig({
             { text: "Per-team policies", link: "team-policies", icon: "mdi:account-group" },
             { text: "The example service", link: "example-service", icon: "mdi:rocket-launch-outline" },
             { text: "Common patterns", link: "patterns", icon: "mdi:puzzle" },
+            { text: "Policies in a ConfigMap", link: "configmaps", icon: "mdi:kubernetes" },
             { text: "Evolve a kind safely", link: "evolve-a-kind", icon: "mdi:source-branch" },
-            { text: "Testing and fuzzing", link: "testing", icon: "mdi:test-tube" },
+            { text: "Testing Sigil itself", link: "testing", icon: "mdi:test-tube" },
           ],
         },
       ],
@@ -165,6 +166,7 @@ export default defineUserConfig({
           items: [
             { text: "Go API", link: "go-api", icon: "mdi:language-go" },
             { text: "CLI & editor tooling", link: "cli", icon: "mdi:console" },
+            { text: "Performance", link: "performance", icon: "mdi:speedometer" },
           ],
         },
       ],

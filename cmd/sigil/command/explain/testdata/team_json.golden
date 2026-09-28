@@ -1,7 +1,8 @@
 [
   {
     "policy": "payments.production",
-    "documents": 4,
+    "policies": 3,
+    "modules": 1,
     "rules": [
       {
         "kind": "decision",
@@ -9,7 +10,7 @@
         "reason": "not_eligible",
         "chain": [
           "payments.production:7",
-          "guardrails:8"
+          "deploy.guardrails:8"
         ],
         "conditions": [
           "not eligible"
@@ -21,7 +22,7 @@
         "reason": "soak_too_short",
         "chain": [
           "payments.production:7",
-          "guardrails:12"
+          "deploy.guardrails:12"
         ],
         "conditions": [
           "release.soak \u003c 4h and not release.hotfix"
