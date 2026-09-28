@@ -39,5 +39,9 @@ func Inspect(x Expr, fn func(Expr) bool) {
 		Inspect(x.Var, fn)
 		Inspect(x.Range, fn)
 		Inspect(x.Body, fn)
+	case *FilterExpr:
+		Inspect(x.Var, fn)
+		Inspect(x.Range, fn)
+		Inspect(x.Body, fn)
 	}
 }

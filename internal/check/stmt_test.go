@@ -159,6 +159,7 @@ when true {
 		{name: "assert empty reason", src: "policy p: Test@1\nassert(\"\", true)", errs: []string{"2:8: an assert's reason can't be empty"}},
 		{name: "outcome in a when", src: "policy p: Test@1\nwhen deny in outcome { deny(x) }", errs: []string{"2:6: `deny` is a decision, not a value here", "2:14: `outcome` can only be read in an assert condition"}},
 		{name: "quantifier variable collides with let", src: "policy p: Test@1\nlet r = 1\nwhen any r in actor.roles: true { deny(x) }", errs: []string{"3:10: `r` is already the name of a let"}},
+		{name: "filter variable collides with let", src: "policy p: Test@1\nlet r = 1\nlet xs = filter r in actor.roles: true", errs: []string{"3:17: `r` is already the name of a let"}},
 
 		// Constructors.
 		{name: "constructor at top level", src: "policy p: Test@1\ndeny(x)", errs: []string{"2:1: decision constructors go inside a `when` block"}, help: "a constructor here would fire for every input; wrap it in `when true { deny(...) }` if that's what you mean"},

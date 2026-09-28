@@ -32,7 +32,7 @@ Zero values matter in one place: a missing map key. `service.labels["absent"]` i
 
 ### `bool`
 
-The only type a `when` condition, an `assert` condition, a quantifier body, or an operand of `and`, `or`, `xor` and `not` can have.
+The only type a `when` condition, an `assert` condition, a quantifier or filter body, or an operand of `and`, `or`, `xor` and `not` can have.
 
 ### `int` and `float`
 

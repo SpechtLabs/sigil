@@ -245,7 +245,7 @@ Every way an evaluation can fail returns an error together with a result the hos
 
 The language terminates when its host functions terminate:
 
-- There are no loops. Quantifiers iterate over finite input lists.
+- There are no loops. Quantifiers and filters iterate over finite input lists.
 - There's no recursion. `let` bindings, imports and policy invocations must each form a DAG, and cycles are compile errors.
 - There are no user-defined functions. Host functions are declared in the kind and must be pure, terminate and not panic. Sigil can't stop a host function that never returns, and doesn't recover one that panics.
 - `matches` uses Go's RE2 engine, which runs in linear time.

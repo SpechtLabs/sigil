@@ -32,6 +32,7 @@ func TestLookup(t *testing.T) {
 		{"in", KwIn},
 		{"all", KwAll},
 		{"any", KwAny},
+		{"filter", KwFilter},
 		{"one", KwOne},
 		{"exclusive", KwExclusive},
 		{"has", KwHas},

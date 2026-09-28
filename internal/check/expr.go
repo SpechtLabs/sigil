@@ -56,6 +56,8 @@ func (c *Checker) exprNode(x ast.Expr, env *Env, hint types.Type) types.Type {
 		return c.call(x, env)
 	case *ast.QuantExpr:
 		return c.quant(x, env)
+	case *ast.FilterExpr:
+		return c.filter(x, env)
 	}
 	c.errorf(x, "", "unexpected expression %T", x)
 	return types.Invalid
@@ -869,38 +871,60 @@ func plural(n int) string {
 // quant checks `any x in xs: body` and `all x in xs: body`: a list to
 // range over, a fresh variable of its element type, and a bool body.
 func (c *Checker) quant(x *ast.QuantExpr, env *Env) types.Type {
-	rng := c.Expr(x.Range, env)
-	if rng == types.Invalid {
-		return types.Invalid
-	}
-	l, ok := rng.(*types.List)
-	if !ok {
-		help := "quantifiers range over lists"
-		if m, isMap := rng.(*types.Map); isMap {
-			help = fmt.Sprintf("quantifiers range over lists; to test a map's keys, index it or use `has` on %s", m)
-		} else if isOptional(rng) {
-			help = c.unwrapHint(x.Range, rng)
-		}
-		c.errorf(x.Range, help, "`%s` needs a list to range over, found %s", x.Op, rng)
-		return types.Invalid
-	}
-
-	inner := env.Child()
-	b := Binding{Entity: QuantVar, Type: l.Elem}
-	if prev, ok := inner.Declare(x.Var.Name, b); !ok {
-		if !c.keeps(prev) {
-			c.errorf(x.Var, "nothing shadows anything; pick a name that isn't in use",
-				"`%s` is already the name of %s %s", x.Var.Name, article(prev.Entity), prev.Entity)
-			return types.Invalid
-		}
-		inner.Bind(x.Var.Name, b)
-		c.info.Shadows = append(c.info.Shadows, x.Var)
-	}
-	c.record(x.Var, l.Elem)
-	if c.ExprAs(x.Body, inner, types.Bool) == types.Invalid {
+	if c.binder(x.Op.String(), "quantifiers range over lists", QuantVar, x.Var, x.Range, x.Body, env) == nil {
 		return types.Invalid
 	}
 	return types.Bool
+}
+
+// filter checks `filter x in xs: body` the way quant does, and has the
+// type of the list it filters.
+func (c *Checker) filter(x *ast.FilterExpr, env *Env) types.Type {
+	l := c.binder("filter", "a filter ranges over a list", FilterVar, x.Var, x.Range, x.Body, env)
+	if l == nil {
+		return types.Invalid
+	}
+	return l
+}
+
+// binder checks the `x in xs: body` of a quantifier or a filter, spelled
+// kw: a list to range over, a fresh variable of its element type, and a
+// bool body. It returns the range's list type, or nil after reporting an
+// error. what says what the form ranges over, for the error on a range
+// that isn't a list.
+func (c *Checker) binder(kw, what string, ent Entity, v *ast.Ident, rng, body ast.Expr, env *Env) *types.List {
+	t := c.Expr(rng, env)
+	if t == types.Invalid {
+		return nil
+	}
+	l, ok := t.(*types.List)
+	if !ok {
+		help := what
+		if m, isMap := t.(*types.Map); isMap {
+			help = fmt.Sprintf("%s; to test a map's keys, index it or use `has` on %s", what, m)
+		} else if isOptional(t) {
+			help = c.unwrapHint(rng, t)
+		}
+		c.errorf(rng, help, "`%s` needs a list to range over, found %s", kw, t)
+		return nil
+	}
+
+	inner := env.Child()
+	b := Binding{Entity: ent, Type: l.Elem}
+	if prev, ok := inner.Declare(v.Name, b); !ok {
+		if !c.keeps(prev) {
+			c.errorf(v, "nothing shadows anything; pick a name that isn't in use",
+				"`%s` is already the name of %s %s", v.Name, article(prev.Entity), prev.Entity)
+			return nil
+		}
+		inner.Bind(v.Name, b)
+		c.info.Shadows = append(c.info.Shadows, v)
+	}
+	c.record(v, l.Elem)
+	if c.ExprAs(body, inner, types.Bool) == types.Invalid {
+		return nil
+	}
+	return l
 }
 
 func article(e Entity) string {

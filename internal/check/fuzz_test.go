@@ -39,7 +39,7 @@ func FuzzCheckExpr(f *testing.F) {
 	if errs != nil {
 		f.Fatal(errs)
 	}
-	for _, src := range []string{"true", "[]", "{}", "[[], [1]]", "service.labels[\"x\"]", "release.soak >= 1h", "all x in actor.roles: x != \"admin\"", "split(service.name, \"-\")", "present service", "unknown.field"} {
+	for _, src := range []string{"true", "[]", "{}", "[[], [1]]", "service.labels[\"x\"]", "release.soak >= 1h", "all x in actor.roles: x != \"admin\"", "filter x in actor.roles: x != \"admin\"", "split(service.name, \"-\")", "present service", "unknown.field"} {
 		f.Add(src)
 	}
 	f.Fuzz(func(t *testing.T, src string) {

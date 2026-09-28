@@ -30,7 +30,7 @@ From lowest to highest:
 | 7     | `-`, `present`              | prefix          | Unary minus; presence of an optional                                                      |
 | 8     | `.field` `?.field` `[key]` `f(args)` | left (postfix) | Field access, optional chaining, map or list index, host function call              |
 
-Parentheses override precedence as usual. Quantifiers (`any x in xs: ...`, `all x in xs: ...`) aren't in the table because they're prefix forms whose body extends as far right as possible; see [Quantifiers](#quantifiers).
+Parentheses override precedence as usual. Quantifiers (`any x in xs: ...`, `all x in xs: ...`) and filters (`filter x in xs: ...`) aren't in the table because they're prefix forms whose body extends as far right as possible; see [Quantifiers](#quantifiers) and [Filters](#filters).
 
 A few consequences worth spelling out:
 
@@ -315,6 +315,34 @@ Read quickly, the first form looks like two conditions joined by `and`. `sigil f
 
 The quantifier variable follows the no-shadowing rule: naming it after an input, param, let, imported name or host function is a compile error.
 
+## Filters
+
+A filter keeps the elements of a list for which a condition holds:
+
+```sigil
+filter a in approvers: a != requestor.name
+filter r in actor.roles: r like "prod-*"
+```
+
+`filter x in xs: body` has the type of `xs`, so filtering a `list<string>` gives a `list<string>`. The elements that pass keep their order, and an element that's in the list twice and passes is kept twice. When none passes, the result is the empty list.
+
+Everything else follows the quantifier rules. The range must be a list, and filtering a map is a compile error. The body must be `bool`. `x` has the list's element type, is only visible inside the body, and can't shadow another name. The body extends as far right as possible, and `sigil fmt` puts parentheses around one whose top level is `and`, `or` or `xor`. Unlike a quantifier, a filter never stops early, because its result depends on every element.
+
+A filter is a prefix form, so as the operand of an operator it needs parentheses, just like a quantifier:
+
+```sigil
+"prod-admin" in (filter r in actor.roles: r like "prod-*")
+(filter r in actor.roles: r like "prod-*") all in allowed_roles
+```
+
+Its usual place is a `let`, which names the result once for every rule and payload that reads it. The typical case is an approver list that must never contain the person asking for approval:
+
+```sigil
+let approvers = filter a in managers: a != requestor.name
+```
+
+A filter can't be an [invocation](/reference/policy-files/#policy-invocation) argument, for the same reason a quantifier can't: arguments are bound when the policy compiles. [Common patterns](/guides/patterns/#keep-the-requestor-off-the-approvers) walks through the approver case, including what to do when the filter leaves nobody.
+
 ## Decision values and `outcome`
 
 Inside an `assert`, a policy can test what evaluation decided. Two things make that possible:
@@ -338,4 +366,4 @@ Decision values can be compared with `==` and `!=`, tested with `in` and the lis
 
 ## Evaluation order
 
-Operands are evaluated left to right. `and`, `or`, `??` and quantifiers skip work they don't need, and anything they skip can't raise a runtime error. Since expressions have no side effects and host functions are pure, evaluation order is otherwise unobservable.
+Operands are evaluated left to right. `and`, `or`, `??` and quantifiers skip work they don't need, and anything they skip can't raise a runtime error. A filter runs its body for every element, so a body that raises a runtime error for any element fails the filter. Since expressions have no side effects and host functions are pure, evaluation order is otherwise unobservable.

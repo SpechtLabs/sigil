@@ -72,19 +72,28 @@ func sprint(b *strings.Builder, n Node) {
 		sprintPostfix(b, n)
 
 	case *QuantExpr:
-		b.WriteByte('(')
-		b.WriteString(n.Op.String())
-		b.WriteByte(' ')
-		b.WriteString(n.Var.Name)
-		b.WriteString(" in ")
-		sprint(b, n.Range)
-		b.WriteString(": ")
-		sprint(b, n.Body)
-		b.WriteByte(')')
+		sprintBinder(b, n.Op.String(), n.Var.Name, n.Range, n.Body)
+
+	case *FilterExpr:
+		sprintBinder(b, "filter", n.Var.Name, n.Range, n.Body)
 
 	default:
 		fmt.Fprintf(b, "<%T>", n)
 	}
+}
+
+// sprintBinder renders a form that binds a variable over a list: a
+// quantifier or a filter.
+func sprintBinder(b *strings.Builder, kw, name string, rng, body Expr) {
+	b.WriteByte('(')
+	b.WriteString(kw)
+	b.WriteByte(' ')
+	b.WriteString(name)
+	b.WriteString(" in ")
+	sprint(b, rng)
+	b.WriteString(": ")
+	sprint(b, body)
+	b.WriteByte(')')
 }
 
 // sprintPostfix renders the forms that bind tightest: field access,

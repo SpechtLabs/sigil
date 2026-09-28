@@ -150,6 +150,14 @@ func TestExpr(t *testing.T) {
 		{src: "not (any x in actor.regions: true)", want: "bool"},
 		{src: "any x in (release.parent?.author.roles ?? []): true", want: "bool"},
 		{src: "actor.regions all in []", want: "bool"},
+
+		// Filters have the type of the list they filter.
+		{src: `filter r in actor.roles: r like "sre-*"`, want: "list<string>"},
+		{src: "filter n in [1, 2, 3]: n > 1", want: "list<int>"},
+		{src: `"a" in (filter r in actor.roles: r != "b")`, want: "bool"},
+		{src: "(filter r in actor.roles: true) all in actor.teams", want: "bool"},
+		{src: "any r in (filter t in actor.teams: t in actor.roles): true", want: "bool"},
+		{src: "filter r in (release.parent?.author.roles ?? []): true", want: "list<string>"},
 		{src: `[] in [["a"]]`, want: "bool"},
 
 		// Map containment and patterns.
@@ -359,6 +367,17 @@ func TestExpr(t *testing.T) {
 		{src: "any r in actor.roles: r", msg: "expected bool, found string", span: "1:23-1:24"},
 		{src: "any r in actor.roles: r == 1", msg: "`==` needs operands of the same type, found string and int", span: "1:23-1:29"},
 		{src: "(any r in actor.roles: r == \"a\") and r == \"b\"", msg: "unknown name `r`", span: "1:38-1:39"},
+
+		// Filter rules, the same as a quantifier's.
+		{src: "filter r in service.labels: true", msg: "`filter` needs a list to range over, found map<string, string>", help: "a filter ranges over a list; to test a map's keys, index it or use `has` on map<string, string>", span: "1:13-1:27"},
+		{src: "filter r in environment: true", msg: "`filter` needs a list to range over, found string", help: "a filter ranges over a list", span: "1:13-1:24"},
+		{src: "filter r in nope: true", msg: "unknown name `nope`", span: "1:13-1:17"},
+		{src: "filter r in release.ticket: true", msg: "`filter` needs a list to range over, found ?string", help: "unwrap it with `??`, like `release.ticket ?? <default>`", span: "1:13-1:27"},
+		{src: "filter actor in actor.roles: true", msg: "`actor` is already the name of an input", help: "nothing shadows anything; pick a name that isn't in use", span: "1:8-1:13"},
+		{src: "filter r in actor.roles: any r in actor.teams: true", msg: "`r` is already the name of a filter variable", span: "1:30-1:31"},
+		{src: "any r in actor.roles: r in (filter r in actor.teams: true)", msg: "`r` is already the name of a quantifier variable", span: "1:36-1:37"},
+		{src: "filter r in actor.roles: r", msg: "expected bool, found string", span: "1:26-1:27"},
+		{src: "(filter r in actor.roles: true) all in [r]", msg: "unknown name `r`", span: "1:41-1:42"},
 
 		// Errors don't cascade: one operand's error is the only report.
 		{src: "servce.tier == \"critical\" and cleared", msg: "unknown name `servce`", span: "1:1-1:7"},

@@ -97,7 +97,7 @@
     },
     "word-operator": {
       "name": "keyword.operator.word.sigil",
-      "match": "\\b(and|or|xor|not|in|all|any|one|exclusive|has|like|matches|present)\\b"
+      "match": "\\b(and|or|xor|not|in|all|any|filter|one|exclusive|has|like|matches|present)\\b"
     },
     "constant": {
       "name": "constant.language.sigil",

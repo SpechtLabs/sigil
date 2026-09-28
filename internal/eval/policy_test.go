@@ -130,6 +130,19 @@ func TestPolicyEval(t *testing.T) {
 			typed: ReviewData{Approvers: []string{"payments-leads"}},
 		},
 		{
+			name: "a filter takes the requestor off the approvers", src: "policy p: Test@1\nlet others = filter name in [\"alice\", \"bob\", \"carol\"]: name != actor.name\nwhen true { review(a, approvers: others) }",
+			want: "review a 3:13 [true] *", winner: "review a", payload: map[string]any{"approvers": []string{"bob", "carol"}},
+			typed: ReviewData{Approvers: []string{"bob", "carol"}},
+		},
+		{
+			name: "a let's quantifier keeps its variable apart from an outer one of the same name", src: "policy p: Test@1\nlet eu = any r in actor.regions: r == \"ap-1\"\nwhen any r in actor.roles: eu and r == \"deployer\" { deny(a) }",
+			want: "deny a 3:53 [any r in actor.roles: eu and r == \"deployer\"] *", winner: "deny a", payload: map[string]any{},
+		},
+		{
+			name: "a let's filter keeps its variable apart from an outer one of the same name", src: "policy p: Test@1\nlet others = filter r in actor.teams: r != \"payments\"\nwhen any r in actor.roles: \"payments-sre\" in others and r == \"deployer\" { deny(a) }",
+			want: "deny a 3:75 [any r in actor.roles: \"payments-sre\" in others and r == \"deployer\"] *", winner: "deny a", payload: map[string]any{},
+		},
+		{
 			name: "nothing fires", src: production,
 			input: func(in Input) Input {
 				in.Service.Tier = "standard"

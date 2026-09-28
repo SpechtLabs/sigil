@@ -44,7 +44,7 @@ func FuzzParseFile(f *testing.F) {
 }
 
 func FuzzParseExpr(f *testing.F) {
-	for _, src := range []string{"", "1 + 2 - 3", "not false and true", "all x in [1, 2]: x > 0", "a?.b[0] ?? 1", `{"a": [1]}["a"]`, `"abc" like "a*"`, "a one in b", "(((", "\xff"} {
+	for _, src := range []string{"", "1 + 2 - 3", "not false and true", "all x in [1, 2]: x > 0", "filter x in [1, 2]: x > 0", "a?.b[0] ?? 1", `{"a": [1]}["a"]`, `"abc" like "a*"`, "a one in b", "(((", "\xff"} {
 		f.Add(src)
 	}
 	f.Fuzz(func(t *testing.T, src string) {
@@ -89,7 +89,7 @@ func exprShape(x ast.Expr) []string {
 			value = fmt.Sprint(len(n.Args))
 		case *ast.SelectorExpr:
 			value = fmt.Sprint(n.Optional)
-		case *ast.IndexExpr:
+		case *ast.IndexExpr, *ast.FilterExpr:
 		default:
 			value = ast.Sprint(n)
 		}

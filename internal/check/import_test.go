@@ -107,6 +107,7 @@ func TestImports(t *testing.T) {
 		{name: "invocation argument reads an imported let", src: "policy p: Test@1\nuse deploy.production\nuse deploy.common\nproduction(approvers: common.names)", errs: []string{"4:23: invocation argument reads imported let `common.names`"}},
 		{name: "invocation argument reads a selectively imported let", src: "policy p: Test@1\nuse deploy.production\nuse deploy.common.{names}\nproduction(approvers: names)", errs: []string{"4:23: invocation argument reads imported let `names`"}},
 		{name: "invocation argument calls a function", src: "policy p: Test@1\nuse deploy.production\nproduction(approvers: split(\"a,b\", \",\"))", errs: []string{"3:23: invocation argument calls a host function"}},
+		{name: "invocation argument filters", src: "policy p: Test@1\nuse deploy.production\nproduction(approvers: filter a in [\"x\"]: true)", errs: []string{"3:23: invocation argument filters a list"}},
 		{name: "invocation in a module is a parse error", src: "module m: Test@1\nuse deploy.guardrails\nguardrails()", errs: []string{"3:1: a module can't contain an invocation"}},
 	}
 	for _, tt := range tests {

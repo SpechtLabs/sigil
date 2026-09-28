@@ -164,7 +164,7 @@ The canonical style:
 - In a file with several documents, one `---` line between each pair, with a blank line on each side, and none before the first or after the last.
 - Line breaks follow the author, the way `gofmt` does. An `and`, `or` or `xor` chain breaks only where the source broke next to the operator, and the break always goes before the operator, with continuation lines one level deeper than the statement. A `let` value written on the line after `let x =` stays there, one level in. A list, map or argument list whose first item started a new line gets one item per line and a trailing comma; any other list is joined onto one line.
 - A `when` with a single decision, invocation or assert written on one line stays on one line: `when frozen { deny(freeze) }`.
-- A quantifier body whose top level is `and`, `or` or `xor` gets parentheses, so its extent is visible: `any r in actor.roles: (r like "sre-*" and release.hotfix)`. The parentheses change nothing, since a body extends as far right as possible; they only show where it ends. No other parentheses are added or removed.
+- A quantifier or filter body whose top level is `and`, `or` or `xor` gets parentheses, so its extent is visible: `any r in actor.roles: (r like "sre-*" and release.hotfix)`. The parentheses change nothing, since a body extends as far right as possible; they only show where it ends. No other parentheses are added or removed.
 - Literals keep their source text, so a raw string stays raw.
 - A comment on the same line as code stays there; any other comment gets its own line at the indentation of what follows it. Trailing comments on consecutive lines are aligned.
 
