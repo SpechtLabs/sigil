@@ -1,7 +1,9 @@
 --- error ---
-testdata/broken/main.sigil:3:11 (access.broken): unknown field "nmae" on type User
+testdata/broken/main.sigil:3:11 (access.broken): error: unknown field "nmae" on type User
   |
 3 | when user.nmae == "x" {
   |           ^^^^
   = help: did you mean "name"? User declares: name, teams, admin, expires
-advice: fix the documents above; test needs a bundle that checks
+
+the bundle doesn't check, so no test ran
+advice: fix the errors above; sigil check reports every problem in a bundle at once

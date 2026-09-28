@@ -1,5 +1,5 @@
 warn gated-assert (roles.team)
-roles.sigil:26:3 (roles.team): roles.base holds asserts and is invoked under `when`
+roles.sigil:26:3 (roles.team): warning: roles.base holds asserts and is invoked under `when` [gated-assert]
    |
 26 |   base()
    |   ^^^^^^

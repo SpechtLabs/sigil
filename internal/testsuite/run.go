@@ -55,7 +55,26 @@ type Result struct {
 	Err *Error
 	// Failures lists how the evaluation differs from what the case
 	// expects; empty when it passed.
-	Failures []string
+	Failures []Failure
+}
+
+// Failure is one way an evaluation differs from what a case expects.
+// Text says so in one sentence; when the difference is between two
+// values, Got and Want hold them separately, for a report that lines
+// them up.
+type Failure struct {
+	Text string
+	Got  string
+	Want string
+}
+
+// String returns the sentence.
+func (f Failure) String() string { return f.Text }
+
+// diff is a failure between what the evaluation produced and what the
+// case wanted.
+func diff(got, want string) Failure {
+	return Failure{Text: "got " + got + ", want " + want, Got: got, Want: want}
 }
 
 // Runner runs cases against one kind.
@@ -118,7 +137,7 @@ func (e *Error) Error() string {
 }
 
 // compare checks an evaluation against the expectation.
-func (r *Runner) compare(e *Expect, out *Outcome) []string {
+func (r *Runner) compare(e *Expect, out *Outcome) []Failure {
 	switch {
 	case e.Asserts != nil:
 		return r.compareAsserts(e.Asserts, out)
@@ -127,23 +146,23 @@ func (r *Runner) compare(e *Expect, out *Outcome) []string {
 		if e.Outcome == nil {
 			want = call(e.Decision, e.Reason)
 		}
-		return []string{"got " + describe(out) + ", want " + want}
+		return []Failure{diff(describe(out), want)}
 	case e.Outcome != nil:
 		return r.compareOutcome(*e.Outcome, out.Entries)
 	}
 	if len(out.Entries) == 0 {
-		return []string{"got no decision, want " + call(e.Decision, e.Reason)}
+		return []Failure{diff("no decision", call(e.Decision, e.Reason))}
 	}
 	got := out.Entries[0]
 	if got.Decision != e.Decision || got.Reason != e.Reason {
-		return []string{"got " + call(got.Decision, got.Reason) + ", want " + call(e.Decision, e.Reason)}
+		return []Failure{diff(call(got.Decision, got.Reason), call(e.Decision, e.Reason))}
 	}
 	return r.comparePayload(e.Decision, e.Payload, got.Payload)
 }
 
-func (r *Runner) compareAsserts(want []string, out *Outcome) []string {
+func (r *Runner) compareAsserts(want []string, out *Outcome) []Failure {
 	if out.Asserts == nil {
-		return []string{"got " + describe(out) + ", want failing asserts " + strings.Join(want, ", ")}
+		return []Failure{diff(describe(out), "failing asserts "+strings.Join(want, ", "))}
 	}
 	got := slices.Clone(out.Asserts)
 	sort.Strings(got)
@@ -152,15 +171,19 @@ func (r *Runner) compareAsserts(want []string, out *Outcome) []string {
 	if slices.Equal(slices.Compact(got), slices.Compact(w)) {
 		return nil
 	}
-	return []string{"got failing asserts " + strings.Join(got, ", ") + ", want " + strings.Join(w, ", ")}
+	return []Failure{{
+		Text: "got failing asserts " + strings.Join(got, ", ") + ", want " + strings.Join(w, ", "),
+		Got:  "failing asserts " + strings.Join(got, ", "),
+		Want: "failing asserts " + strings.Join(w, ", "),
+	}}
 }
 
 // compareOutcome matches the expected entries against the outcome in any
 // order. An expected entry matches an outcome entry with its decision and
 // reason and every payload field it lists.
-func (r *Runner) compareOutcome(want []Entry, got []Got) []string {
+func (r *Runner) compareOutcome(want []Entry, got []Got) []Failure {
 	used := make([]bool, len(got))
-	var failures []string
+	var failures []Failure
 	for _, w := range want {
 		found := false
 		for i, g := range got {
@@ -173,12 +196,12 @@ func (r *Runner) compareOutcome(want []Entry, got []Got) []string {
 			}
 		}
 		if !found {
-			failures = append(failures, "missing from the outcome: "+r.entry(w))
+			failures = append(failures, Failure{Text: "missing from the outcome: " + r.entry(w)})
 		}
 	}
 	for i, g := range got {
 		if !used[i] {
-			failures = append(failures, "not expected in the outcome: "+call(g.Decision, g.Reason)+" at "+g.Position)
+			failures = append(failures, Failure{Text: "not expected in the outcome: " + call(g.Decision, g.Reason) + " at " + g.Position})
 		}
 	}
 	return failures
@@ -186,9 +209,9 @@ func (r *Runner) compareOutcome(want []Entry, got []Got) []string {
 
 // comparePayload compares the listed fields; fields the case doesn't list
 // aren't checked.
-func (r *Runner) comparePayload(decision string, want, got map[string]any) []string { //nolint:emptyinterface // payload values
+func (r *Runner) comparePayload(decision string, want, got map[string]any) []Failure { //nolint:emptyinterface // payload values
 	d := r.Kind.Decision(decision)
-	var failures []string
+	var failures []Failure
 	for _, f := range d.Fields {
 		raw, listed := want[f.Name]
 		if !listed {
@@ -196,12 +219,16 @@ func (r *Runner) comparePayload(decision string, want, got map[string]any) []str
 		}
 		w, err := r.expected(decision, f, raw)
 		if err != nil {
-			failures = append(failures, "expected payload "+err.Error())
+			failures = append(failures, Failure{Text: "expected payload " + err.Error()})
 			continue
 		}
 		g := r.Binding.Canonical(f.Type, reflect.ValueOf(got[f.Name]))
 		if !reflect.DeepEqual(w, g) {
-			failures = append(failures, fmt.Sprintf("payload %s = %s, want %s", f.Name, constant.Format(g), constant.Format(w)))
+			failures = append(failures, Failure{
+				Text: fmt.Sprintf("payload %s = %s, want %s", f.Name, constant.Format(g), constant.Format(w)),
+				Got:  f.Name + " = " + constant.Format(g),
+				Want: f.Name + " = " + constant.Format(w),
+			})
 		}
 	}
 	return failures

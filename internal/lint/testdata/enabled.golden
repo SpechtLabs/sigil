@@ -1,12 +1,12 @@
 warn path-matches-name (deploy.production)
-deploy/misplaced.sigil:1:8 (deploy.production): deploy.production is in deploy/misplaced.sigil, not in a file named after it
+deploy/misplaced.sigil:1:8 (deploy.production): warning: deploy.production is in deploy/misplaced.sigil, not in a file named after it [path-matches-name]
   |
 1 | policy deploy.production: DeployApproval@1
   |        ^^^^^^^^^^^^^^^^^
   = help: move it to deploy/production.sigil, or rename it to match its file
 
 warn qualified-imports (deploy.production)
-deploy/misplaced.sigil:3:1 (deploy.production): selective import of deploy.common
+deploy/misplaced.sigil:3:1 (deploy.production): warning: selective import of deploy.common [qualified-imports]
   |
 3 | use deploy.common.{owns}
   | ^^^^^^^^^^^^^^^^^^^^^^^^

@@ -162,8 +162,12 @@ func (l *linter) reportf(lint string, d *bundle.Document, at ast.Node, help, for
 	if lv == Off {
 		return
 	}
+	sev := diag.SeverityWarning
+	if lv == Error {
+		sev = diag.SeverityError
+	}
 	l.out = append(l.out, Finding{
-		Error: &diag.Error{File: d.File, Doc: d.Name, Pos: at.Pos(), End: at.End(), Msg: fmt.Sprintf(format, args...), Help: help},
+		Error: &diag.Error{File: d.File, Doc: d.Name, Pos: at.Pos(), End: at.End(), Msg: fmt.Sprintf(format, args...), Help: help, Code: lint, Severity: sev},
 		Lint:  lint,
 		Level: lv,
 	})

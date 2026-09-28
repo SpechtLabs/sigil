@@ -7,30 +7,30 @@ module good.three: DeployApproval [15:1-15:34]
 
 == diagnostics ==
 
-errors_headers.sigil:1:1: expected a document header (`policy`, `module` or `kind`), found `let`
+errors_headers.sigil:1:1: error: expected a document header (`policy`, `module` or `kind`), found `let`
   |
 1 | let orphan = true
   | ^^^
   = help: every document starts with `policy name: Kind`, `module name: Kind` or `kind Name version N`
 
-errors_headers.sigil:3:8: expected a name after `policy`, found `:`
+errors_headers.sigil:3:8: error: expected a name after `policy`, found `:`
   |
 3 | policy : DeployApproval
   |        ^
 
-errors_headers.sigil:10:1: expected `}`, found `policy`
+errors_headers.sigil:10:1: error: expected `}`, found `policy`
    |
 10 | policy good.two: DeployApproval
    | ^^^^^^
    = help: to close the `{` at 7:11
 
-errors_headers.sigil:12:1: `---` separates documents and can't appear inside an expression
+errors_headers.sigil:12:1: error: `---` separates documents and can't appear inside an expression
    |
 12 | ---
    | ^^^
    = help: if you meant arithmetic, put spaces between the minus signs
 
-errors_headers.sigil:16:9: unterminated raw string literal
+errors_headers.sigil:16:9: error: unterminated raw string literal
    |
 16 | let b = `unterminated
    |         ^^^^^^^^^^^^^

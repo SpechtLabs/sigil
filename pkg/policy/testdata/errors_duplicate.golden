@@ -1,5 +1,5 @@
 == compile p ==
-9:8: policy p is defined twice
+9:8: error: policy p is defined twice
   |
 9 | policy p: DeployApproval@1
   |        ^

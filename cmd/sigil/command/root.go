@@ -39,6 +39,7 @@ func NewCommand(opts ...Option) *cobra.Command {
 
 	// Subcommands receive a pointer so they read the value cobra parsed.
 	outputFormat := output.Text
+	colorMode := output.ColorAuto
 
 	cmd := &cobra.Command{
 		Use:   "sigil",
@@ -59,9 +60,13 @@ sigil eval --kind deploy_approval.sigil --input release.json deploy/production.s
 	}
 
 	cmd.PersistentFlags().VarP(&outputFormat, "output", "o", "Output format: "+strings.Join(output.Formats, ", "))
-	// Only fails if the flag is missing or already has a completion func,
-	// both of which are programming errors caught by the tests.
+	// Execute reads --color before the parse; the flag is declared so it's
+	// documented, completed and accepted.
+	cmd.PersistentFlags().Var(&colorMode, "color", "When to color the output: "+strings.Join(output.Colors, ", "))
+	// These only fail if the flag is missing or already has a completion
+	// func, both of which are programming errors caught by the tests.
 	_ = cmd.RegisterFlagCompletionFunc("output", cobra.FixedCompletions(output.Formats, cobra.ShellCompDirectiveNoFileComp))
+	_ = cmd.RegisterFlagCompletionFunc("color", cobra.FixedCompletions(output.Colors, cobra.ShellCompDirectiveNoFileComp))
 
 	cmd.AddGroup(groupPolicy, groupKind, groupEditor, groupOther)
 	cmd.SetHelpCommandGroupID(groupOther.ID)

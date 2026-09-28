@@ -71,7 +71,7 @@ A policy with no rules is valid. Evaluate it:
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
-deploy.production: deny no_rule_matched (the kind's default)
+deploy.production: deny(no_rule_matched), the kind's default
 
 trace: no rule fired
 ```
@@ -98,11 +98,11 @@ when release.soak < 24h and not release.hotfix {
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
-deploy.production: deny soak_too_short
+deploy.production: deny(soak_too_short)
 
 trace: 1 candidate
-* deny     soak_too_short    deploy/production.sigil:4:3
-           release.soak < 24h and not release.hotfix
+  * deny(soak_too_short)  deploy/production.sigil:4:3
+      when release.soak < 24h and not release.hotfix
 ```
 
 :::
@@ -139,14 +139,13 @@ There's a typo on line 6. Check the file:
 
 ```shell
 $ sigil check --kind deploy_approval.sigil deploy/production.sigil
-Error: deploy/production.sigil:6:15: unknown field "lables" on type Service
+deploy/production.sigil:6:15: error: unknown field "lables" on type Service
   |
 6 |   and service.lables has {
   |               ^^^^^^
   = help: did you mean "labels"? Service declares: name, tier, owners, labels
 
-What you can do
-  • fix the documents above
+✗ checked 1 file, 1 error
 ```
 
 :::
@@ -157,13 +156,13 @@ In a YAML matcher, or in a language where unknown fields resolve to `null`, this
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input wrong-lifecycle.json deploy/production.sigil
-deploy.production: deny not_eligible
+deploy.production: deny(not_eligible)
 
 trace: 2 candidates
-* deny     not_eligible      deploy/production.sigil:12:3
-           not eligible
-  deny     soak_too_short    deploy/production.sigil:16:3
-           release.soak < 24h and not release.hotfix
+  * deny(not_eligible)    deploy/production.sigil:12:3
+      when not eligible
+    deny(soak_too_short)  deploy/production.sigil:16:3
+      when release.soak < 24h and not release.hotfix
 ```
 
 :::
@@ -246,19 +245,19 @@ when cleared {
 
 ```shell
 $ sigil check --kind deploy_approval.sigil deploy/production.sigil
-Error: deploy/production.sigil:34:5: decision review needs field "approvers"
+deploy/production.sigil:34:5: error: decision review needs field "approvers"
    |
 34 |     review(service_owner, approver: approvers)
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: review is declared as: decision review(approvers: list<string>) { service_owner }
-deploy/production.sigil:34:27: decision review has no payload field "approver"
+
+deploy/production.sigil:34:27: error: decision review has no payload field "approver"
    |
 34 |     review(service_owner, approver: approvers)
    |                           ^^^^^^^^
    = help: did you mean "approvers"? review is declared as: decision review(approvers: list<string>) { service_owner }
 
-What you can do
-  • fix the documents above
+✗ checked 1 file, 2 errors
 ```
 
 :::
@@ -280,14 +279,16 @@ Try to evaluate the base policy on its own:
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
-Error: deploy/production.sigil:4:1: param `approvers` has no value
+deploy/production.sigil:4:1: error: param `approvers` has no value
   |
 4 | param approvers: list<string>
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = help: bind it with policy.Params{"approvers": ...} when compiling, or give it a default
 
+Error: the policy doesn't compile, so nothing was evaluated
+
 What you can do
-  • fix the documents above; eval needs a policy that compiles
+  • fix the errors above; sigil check reports every problem in a bundle at once
 ```
 
 :::
@@ -315,16 +316,16 @@ when "payments-sre" in actor.teams {
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
-payments.production: review service_owner
+payments.production: review(service_owner)
   approvers = ["payments-leads"]
 
 trace: 2 candidates
-* review   service_owner     payments/production.sigil:5:1 → deploy/production.sigil:34:5
-           cleared
-           and service.tier in ["standard", "internal"] and owns_service
-           approvers = ["payments-leads"]
-  approve  payments_sre      payments/production.sigil:11:3
-           bake = 15m
+  * review(service_owner)  payments/production.sigil:5:1 → deploy/production.sigil:34:5
+      when cleared
+       and service.tier in ["standard", "internal"] and owns_service
+      approvers = ["payments-leads"]
+    approve(payments_sre)  payments/production.sigil:11:3
+      bake = 15m
 ```
 
 :::
@@ -413,14 +414,13 @@ The host now loads every team policy with `policy.Require("deploy.guardrails")`,
 
 ```shell
 $ sigil check --kind deploy_approval.sigil --require deploy.guardrails deploy/ payments/
-Error: payments/production.sigil:1:1: payments.production doesn't invoke deploy.guardrails
+payments/production.sigil:1:1: error: payments.production doesn't invoke deploy.guardrails
   |
 1 | policy payments.production: DeployApproval@1
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = help: the host requires deploy.guardrails for every DeployApproval policy; import it with `use deploy.guardrails` and invoke it at the top level
 
-What you can do
-  • fix the documents above
+✗ checked 4 files, 1 error
 ```
 
 :::
@@ -455,17 +455,17 @@ Here the `when` around `production(...)` is exactly what you want: the block's c
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
-payments.production: review service_owner
+payments.production: review(service_owner)
   approvers = ["payments-leads"]
 
 trace: 2 candidates
-* review   service_owner     payments/production.sigil:14:3 → deploy/production.sigil:16:5
-           service.labels["compliance"] != "pci"
-           and cleared
-           and service.tier in ["standard", "internal"] and owns_service
-           approvers = ["payments-leads"]
-  approve  payments_sre      payments/production.sigil:18:3
-           bake = 15m
+  * review(service_owner)  payments/production.sigil:14:3 → deploy/production.sigil:16:5
+      when service.labels["compliance"] != "pci"
+       and cleared
+       and service.tier in ["standard", "internal"] and owns_service
+      approvers = ["payments-leads"]
+    approve(payments_sre)  payments/production.sigil:18:3
+      bake = 15m
 ```
 
 :::
@@ -500,6 +500,7 @@ $ sigil test --kind deploy_approval.sigil -v
 --- PASS: payments/production_test.yaml:3: the owner's deploy goes to review
 --- PASS: payments/production_test.yaml:10: a beta service isn't eligible
 ok    payments/production_test.yaml  2 cases
+✓ 2 cases passed in 1 file
 ```
 
 :::

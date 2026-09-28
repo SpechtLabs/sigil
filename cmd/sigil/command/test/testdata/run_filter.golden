@@ -1,8 +1,11 @@
 --- FAIL: testdata/failing/main_test.yaml:3: wrong reason
-      got allow(admin), want allow(team_member)
+      want allow(team_member)
+      got  allow(admin)
 --- FAIL: testdata/failing/main_test.yaml:9: wrong payload
-      payload ttl = 8h, want 1h
+      want ttl = 1h
+      got  ttl = 8h
 FAIL  testdata/failing/main_test.yaml  2 of 2 cases failed
+✗ 2 of 2 test cases failed in 1 file
 --- error ---
 2 of 2 test cases failed
 advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

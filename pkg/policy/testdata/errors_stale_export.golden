@@ -1,5 +1,5 @@
 == compile p ==
-15:1: kind DeployApproval has precedence but no collect
+15:1: error: kind DeployApproval has precedence but no collect
    |
 15 | precedence deny
    | ^^^^^^^^^^^^^^^

@@ -1,12 +1,12 @@
 warn gated-assert (team.main)
-team.sigil:9:3 (team.main): deploy.baseline holds asserts and is invoked under `when`
+team.sigil:9:3 (team.main): warning: deploy.baseline holds asserts and is invoked under `when` [gated-assert]
   |
 9 |   baseline()
   |   ^^^^^^^^^^
   = help: its asserts only run while the condition holds; invoke it at the top level, or have the host require it
 
 warn gated-deny (team.main)
-team.sigil:9:3 (team.main): deploy.baseline holds deny rules and is invoked under `when`
+team.sigil:9:3 (team.main): warning: deploy.baseline holds deny rules and is invoked under `when` [gated-deny]
   |
 9 |   baseline()
   |   ^^^^^^^^^^

@@ -1,17 +1,22 @@
---- error ---
-testdata/lints/deploy/common.sigil:1:8: module deploy.common is defined twice
+testdata/lints/deploy/common.sigil:1:8: error: module deploy.common is defined twice
   |
 1 | module deploy.common: DeployApproval@1
   |        ^^^^^^^^^^^^^
   = help: the name belongs to the trusted source, defined at testdata/lints/deploy/common.sigil:1:1; documents resolve by name, so each name has one definition
-testdata/lints/deploy/guardrails.sigil:1:8: policy deploy.guardrails is defined twice
+
+testdata/lints/deploy/guardrails.sigil:1:8: error: policy deploy.guardrails is defined twice
   |
 1 | policy deploy.guardrails: DeployApproval@1
   |        ^^^^^^^^^^^^^^^^^
   = help: the name belongs to the trusted source, defined at testdata/lints/deploy/guardrails.sigil:1:1; documents resolve by name, so each name has one definition
-testdata/lints/deploy/production.sigil:1:8: policy deploy.production is defined twice
+
+testdata/lints/deploy/production.sigil:1:8: error: policy deploy.production is defined twice
   |
 1 | policy deploy.production: DeployApproval@1
   |        ^^^^^^^^^^^^^^^^^
   = help: the name belongs to the trusted source, defined at testdata/lints/deploy/production.sigil:1:1; documents resolve by name, so each name has one definition
-advice: fix the documents above
+
+✗ checked 4 files, 3 errors
+--- error ---
+check found 3 errors
+advice: each diagnostic above says where the problem is and how to fix it

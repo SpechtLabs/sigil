@@ -24,8 +24,8 @@ func TestStatusLines(t *testing.T) {
 	p := plain(&buf)
 
 	_ = p.Ok("formatted 3 files", "deploy/production.sigil")
-	_ = p.Info("checking")
-	_ = p.Warn("slow policy")
+	_ = p.Note("checking")
+	_ = p.Warning("slow policy")
 	_ = p.Fail("2 policies failed")
 
 	want := "✓ formatted 3 files\n  deploy/production.sigil\nℹ checking\n! slow policy\n✗ 2 policies failed\n"

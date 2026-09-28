@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 
 	"github.com/sierrasoftworks/humane-errors-go"
 	"github.com/spf13/cobra"
@@ -14,7 +15,9 @@ import (
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/config"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/usage"
 	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/lint"
@@ -76,7 +79,7 @@ sigil check --kind deploy_approval.sigil deploy/*.sigil payments/*.sigil
 
 # Check that every team policy invokes the guardrails unconditionally
 sigil check --kind deploy_approval.sigil --require deploy.guardrails --trusted deploy/ --policy 'payments.*' payments/`,
-		Args:              cobra.MinimumNArgs(1),
+		Args:              usage.AtLeast(1, "PATH"),
 		ValidArgsFunction: complete.SigilFiles,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kindFile, _ := cmd.Flags().GetString("kind")
@@ -207,89 +210,98 @@ func roots(b *bundle.Bundle, patterns, requires []string) ([]string, humane.Erro
 	return out, nil
 }
 
-// report prints the errors and findings and fails when there's an error.
+// report prints the diagnostics, then a summary, and fails when there's
+// an error: a compiler error, or a lint the configuration set to error.
 func report(out io.Writer, b *bundle.Bundle, errs diag.ErrorList, findings []lint.Finding, format output.Format) humane.Error {
-	failed := len(errs) + promoted(findings)
-	if format == output.Text {
-		return reportText(out, b, errs, findings, failed)
-	}
-	diags := make([]Diagnostic, 0, len(errs)+len(findings))
-	for _, e := range errs {
-		diags = append(diags, diagnostic(b, e, "error", ""))
-	}
-	for _, f := range findings {
-		sev := "warning"
-		if f.Level == lint.Error {
-			sev = "error"
+	diags := b.Resolve(collect(errs, findings))
+	failed := 0
+	for _, d := range diags {
+		if d.Severity == diag.SeverityError {
+			failed++
 		}
-		diags = append(diags, diagnostic(b, f.Error, sev, f.Lint))
+	}
+	if format == output.Text {
+		return reportText(out, b, diags, failed)
+	}
+	records := make([]Diagnostic, 0, len(diags))
+	for _, d := range diags {
+		records = append(records, diagnostic(d))
 	}
 	var err error
 	if format == output.YAML {
 		enc := yaml.NewEncoder(out)
 		enc.SetIndent(2)
-		err = enc.Encode(diags)
+		err = enc.Encode(records)
 	} else {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
-		err = enc.Encode(diags)
+		err = enc.Encode(records)
 	}
 	if err != nil {
 		return humane.Wrap(err, "the diagnostics couldn't be written", "check where the output is going")
 	}
 	if failed > 0 {
-		return humane.New(fmt.Sprintf("check found %d %s", failed, plural(failed, "error", "errors")), "each diagnostic says where the problem is and how to fix it")
+		return pretty.Fail(fmt.Sprintf("check found %s", problems(failed, len(diags)-failed)), "each diagnostic says where the problem is and how to fix it")
 	}
 	return nil
 }
 
-// reportText prints warnings to out and returns the errors, lints set to
-// error among them, as the command's error.
-func reportText(out io.Writer, b *bundle.Bundle, errs diag.ErrorList, findings []lint.Finding, failed int) humane.Error {
-	var warnings []*diag.Error
+// collect merges the errors and the findings into one list of
+// diagnostics; a finding's diagnostic already carries its lint's name and
+// level.
+func collect(errs diag.ErrorList, findings []lint.Finding) diag.ErrorList {
+	out := make(diag.ErrorList, 0, len(errs)+len(findings))
+	out = append(out, errs...)
 	for _, f := range findings {
-		e := *f.Error
-		e.Msg += " [" + f.Lint + "]"
-		if f.Level == lint.Error {
-			errs = append(errs, &e)
-			continue
-		}
-		e.Msg = "warning: " + e.Msg
-		warnings = append(warnings, &e)
+		out = append(out, f.Error)
 	}
-	if len(warnings) > 0 {
-		if _, err := io.WriteString(out, b.Render(warnings)+"\n"); err != nil {
-			return humane.Wrap(err, "the warnings couldn't be written", "check where the output is going")
-		}
-	}
-	if failed == 0 {
-		return nil
-	}
-	advice := "fix the documents above"
-	if promoted(findings) > 0 {
-		advice = "fix the documents above; a lint set to error in sigil.yaml fails the check like any other error"
-	}
-	return humane.New(b.Render(errs), advice)
+	return out
 }
 
-// promoted counts the findings of lints set to error.
-func promoted(findings []lint.Finding) int {
-	n := 0
-	for _, f := range findings {
-		if f.Level == lint.Error {
-			n++
-		}
+// reportText prints the diagnostics in file and position order, then one
+// line that sums the check up:
+//
+//	✓ checked 3 files, no problems found
+//	! checked 3 files, 2 warnings
+//	✗ checked 3 files, 1 error and 2 warnings
+func reportText(out io.Writer, b *bundle.Bundle, diags diag.ErrorList, failed int) humane.Error {
+	p := pretty.New(out)
+	if err := p.Diagnostics(diags, b.SourceOf); err != nil {
+		return err
 	}
-	return n
+	if len(b.Sources) == 0 && failed == 0 {
+		return p.Warning("no .sigil files found, so nothing was checked", "a directory contributes the files directly inside it; pass --recursive to include its subdirectories")
+	}
+	files := fmt.Sprintf("checked %d %s, ", len(b.Sources), plural(len(b.Sources), "file", "files"))
+	warnings := len(diags) - failed
+	switch {
+	case failed > 0:
+		if err := p.Fail(files + problems(failed, warnings)); err != nil {
+			return err
+		}
+		return pretty.Fail(fmt.Sprintf("check found %s", problems(failed, warnings)), "each diagnostic above says where the problem is and how to fix it")
+	case warnings > 0:
+		return p.Warning(files + problems(failed, warnings))
+	}
+	return p.Ok(files + "no problems found")
 }
 
-func diagnostic(b *bundle.Bundle, e *diag.Error, severity, lintName string) Diagnostic {
-	d := Diagnostic{Severity: severity, Lint: lintName, File: e.File, Message: e.Msg, Help: e.Help, Document: e.Doc}
+// problems spells `1 error`, `2 warnings` or `1 error and 2 warnings`.
+func problems(errors, warnings int) string {
+	var parts []string
+	if errors > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s", errors, plural(errors, "error", "errors")))
+	}
+	if warnings > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s", warnings, plural(warnings, "warning", "warnings")))
+	}
+	return strings.Join(parts, " and ")
+}
+
+func diagnostic(e *diag.Error) Diagnostic {
+	d := Diagnostic{Severity: e.Severity.String(), Lint: e.Code, File: e.File, Message: e.Msg, Help: e.Help, Document: e.Doc}
 	if e.Pos.IsValid() {
 		d.Line, d.Column = e.Pos.Line, e.Pos.Column
-		if d.Document == "" {
-			d.Document = b.DocumentAt(e.File, e.Pos)
-		}
 	}
 	return d
 }

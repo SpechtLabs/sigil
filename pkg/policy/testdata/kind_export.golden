@@ -1,5 +1,5 @@
 == compile p ==
-1:6: kind document DeployApproval doesn't match the host's kind
+1:6: error: kind document DeployApproval doesn't match the host's kind
   |
 1 | kind DeployApproval version 1
   |      ^^^^^^^^^^^^^^

@@ -1,5 +1,5 @@
 == compile payments.production ==
-teams/payments.sigil:3:8: module deploy.common is defined twice
+teams/payments.sigil:3:8: error: module deploy.common is defined twice
   |
 3 | module deploy.common: DeployApproval@1
   |        ^^^^^^^^^^^^^

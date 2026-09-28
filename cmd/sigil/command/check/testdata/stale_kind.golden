@@ -1,7 +1,10 @@
---- error ---
-testdata/stale/deploy_approval.sigil:1:6: kind document DeployApproval doesn't match the host's kind
+testdata/stale/deploy_approval.sigil:1:6: error: kind document DeployApproval doesn't match the host's kind
   |
 1 | kind DeployApproval version 2
   |      ^^^^^^^^^^^^^^
   = help: the host's Go definition is the contract; regenerate this file from Schema()
-advice: fix the documents above
+
+✗ checked 1 file, 1 error
+--- error ---
+check found 1 error
+advice: each diagnostic above says where the problem is and how to fix it

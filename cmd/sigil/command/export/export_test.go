@@ -71,8 +71,14 @@ func TestExport(t *testing.T) {
 			}
 			got := stdout.String()
 			if out != "" {
-				if got != "" {
-					t.Errorf("printed %q with --out", got)
+				// With --out, stdout carries one status line and the
+				// kind goes to the file.
+				mark := "✓ "
+				if tt.wantErr != "" {
+					mark = "✗ "
+				}
+				if !strings.HasPrefix(got, mark) {
+					t.Errorf("printed %q with --out, want a status line starting with %q", got, mark)
 				}
 				src, _ := os.ReadFile(out)
 				got = string(src)

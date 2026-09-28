@@ -29,3 +29,12 @@ func TestErrorString(t *testing.T) {
 		})
 	}
 }
+
+func TestSeverityString(t *testing.T) {
+	if got := diag.SeverityError.String(); got != "error" {
+		t.Errorf("SeverityError = %q", got)
+	}
+	if got := diag.SeverityWarning.String(); got != "warning" {
+		t.Errorf("SeverityWarning = %q", got)
+	}
+}

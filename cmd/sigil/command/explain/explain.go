@@ -14,7 +14,9 @@ import (
 
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/output"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/usage"
 	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/eval"
 )
@@ -53,7 +55,7 @@ sigil explain --kind deploy_approval.sigil --policy payments.production deploy/ 
 
 # Review every policy in a ConfigMap's bundle at once
 sigil explain --kind deploy_approval.sigil policies.sigil`,
-		Args:              cobra.MinimumNArgs(1),
+		Args:              usage.AtLeast(1, "PATH"),
 		ValidArgsFunction: complete.SigilFiles,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kindFile, _ := cmd.Flags().GetString("kind")
@@ -105,7 +107,7 @@ func run(out io.Writer, o *options, kindFile, pattern string, src project.Source
 	}
 	b.Check()
 	if errs := b.Errors(); errs != nil {
-		return humane.New(b.Render(errs), "fix the documents above; explain needs a bundle that checks")
+		return pretty.Diagnose(b.Resolve(errs), b.SourceOf, "the bundle doesn't check, so nothing was explained", "fix the errors above; sigil check reports every problem in a bundle at once")
 	}
 	roots, serr := selectRoots(b.Policies(), pattern)
 	if serr != nil {
@@ -115,7 +117,7 @@ func run(out io.Writer, o *options, kindFile, pattern string, src project.Source
 	for _, root := range roots {
 		prog, errs := b.Compile(root, bundle.Options{Static: true})
 		if errs != nil {
-			return humane.New(b.Render(errs), "fix the documents above; explain needs a policy that compiles")
+			return pretty.Diagnose(b.Resolve(errs), b.SourceOf, "policy "+root+" doesn't compile, so it wasn't explained", "fix the errors above; sigil check reports every problem in a bundle at once")
 		}
 		explanations = append(explanations, explain(prog))
 	}
@@ -136,17 +138,15 @@ func run(out io.Writer, o *options, kindFile, pattern string, src project.Source
 	if *o.output != output.Text {
 		return nil
 	}
+	p := pretty.New(out)
 	var text strings.Builder
 	for i, e := range explanations {
 		if i > 0 {
 			text.WriteString("\n")
 		}
-		writeText(&text, e)
+		writeText(&text, p.Theme(), e)
 	}
-	if _, err := io.WriteString(out, text.String()); err != nil {
-		return humane.Wrap(err, "the explanation couldn't be written", "check where the output is going")
-	}
-	return nil
+	return p.Print(text.String())
 }
 
 // selectRoots picks the policies to explain: every one, the one named,
@@ -233,36 +233,75 @@ func conds(cs []*eval.Cond) []string {
 	return out
 }
 
-// writeText prints an explanation in the layout the documentation shows.
-func writeText(b *strings.Builder, e Explanation) {
+// writeText prints an explanation in the layout the documentation shows,
+// styled by t: each rule as it's written in a policy, `deny(reason)`,
+// with the conditions it fires under, its payload, and the call chain
+// that reaches it.
+//
+//	payments.production: 9 rules from 4 policies
+//
+//	  deny(not_eligible)           payments.production:7 → guardrails:8
+//	    when not eligible
+//
+//	  review(service_owner)        payments.production:10 → deploy.production:16
+//	    when service.labels["compliance"] == "pci"
+//	     and cleared
+//	    with approvers = ["payments-leads", "security-leads"]
+//
+//	  assert named_actor (input)   payments.production:21
+//	    check actor.name != ""
+func writeText(b *strings.Builder, t pretty.Theme, e Explanation) {
 	docs := "policy"
 	if e.Documents != 1 {
 		docs = "policies"
 	}
-	fmt.Fprintf(b, "%s: %d rules from %d %s\n", e.Policy, len(e.Rules), e.Documents, docs)
-	for _, r := range e.Rules {
+	fmt.Fprintf(b, "%s: %s\n", t.Accent(e.Policy), t.Bold(fmt.Sprintf("%d rules from %d %s", len(e.Rules), e.Documents, docs)))
+	heads := make([]string, len(e.Rules))
+	width := 0
+	for i, r := range e.Rules {
+		heads[i] = head(r)
+		width = max(width, len(heads[i]))
+	}
+	for i, r := range e.Rules {
 		b.WriteString("\n")
-		head := r.Decision
-		reason := r.Reason
+		h := fmt.Sprintf("%-*s", width, heads[i])
 		if r.Kind == kindAssert {
-			head = kindAssert
-			reason += " (" + r.Phase + ")"
+			h = t.Warn(h)
+		} else {
+			h = t.Bold(h)
 		}
-		fmt.Fprintf(b, "%-8s %-17s %s\n", head, reason, strings.Join(r.Chain, " → "))
+		fmt.Fprintf(b, "  %s  %s\n", h, t.Location(strings.Join(r.Chain, " → ")))
 		if len(r.Conditions) == 0 && r.Kind == kindDecision {
-			b.WriteString("         always\n")
+			b.WriteString("    " + t.Muted("always") + "\n")
 		}
-		for i, c := range r.Conditions {
-			if i > 0 {
-				c = "and " + c
-			}
-			b.WriteString("         " + c + "\n")
-		}
+		writeConditions(b, t, "    ", r.Conditions)
 		if r.Check != "" {
-			b.WriteString("         check " + r.Check + "\n")
+			b.WriteString("    " + t.Muted("check") + " " + r.Check + "\n")
 		}
 		for _, p := range r.Payload {
-			b.WriteString("         " + p + "\n")
+			name, value, _ := strings.Cut(p, " = ")
+			b.WriteString("    " + t.Muted("with") + " " + t.Key(name+" =") + " " + value + "\n")
 		}
+	}
+}
+
+// head names a rule the way a policy writes it: `deny(not_eligible)`,
+// or `assert named_actor (input)`.
+func head(r Entry) string {
+	if r.Kind == kindAssert {
+		return "assert " + r.Reason + " (" + r.Phase + ")"
+	}
+	return r.Decision + "(" + r.Reason + ")"
+}
+
+// writeConditions writes the conditions a rule fires under, `when` the
+// first and `and` each one after, aligned on the expressions.
+func writeConditions(b *strings.Builder, t pretty.Theme, indent string, conds []string) {
+	for i, c := range conds {
+		if i == 0 {
+			b.WriteString(indent + t.Muted("when") + " " + c + "\n")
+			continue
+		}
+		b.WriteString(indent + " " + t.Muted("and") + " " + c + "\n")
 	}
 }

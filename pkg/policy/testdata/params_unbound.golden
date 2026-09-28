@@ -1,5 +1,5 @@
 == compile p ==
-3:1 (p): param `approvers` has no value
+3:1 (p): error: param `approvers` has no value
   |
 3 | param approvers: list<string>
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,7 +1,10 @@
---- error ---
-testdata/compile/teams/payments.sigil:5:22: min_soak: 10m is below the minimum 1h
+testdata/compile/teams/payments.sigil:5:22: error: min_soak: 10m is below the minimum 1h
   |
 5 | guardrails(min_soak: 10m)
   |                      ^^^
   = help: deploy.guardrails declares `param min_soak: duration = 24h, min: 1h`
-advice: fix the documents above
+
+✗ checked 2 files, 1 error
+--- error ---
+check found 1 error
+advice: each diagnostic above says where the problem is and how to fix it

@@ -3,20 +3,26 @@ testdata/lints/teams/payments.sigil:5:29: warning: eligible is imported from dep
 5 | use deploy.common.{cleared, eligible}
   |                             ^^^^^^^^
   = help: remove it from the import list
+
 testdata/lints/teams/payments.sigil:7:5: warning: let unused_tier is never read [unused-let]
   |
 7 | let unused_tier = service.tier
   |     ^^^^^^^^^^^
   = help: remove the let, or read it; a private let can't be imported
+
+testdata/lints/teams/payments.sigil:11:3: error: deploy.guardrails must be invoked unconditionally
+   |
+11 |   guardrails()
+   |   ^^^^^^^^^^^^
+   = help: the host requires deploy.guardrails for every DeployApproval policy; move the call to the top level
+
 testdata/lints/teams/payments.sigil:16:1: warning: deploy.production is invoked twice with the same arguments [duplicate-invocation]
    |
 16 | production(approvers: ["a", "b"])
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: the first is on line 14; every rule it holds already fires once, so remove one, or change its arguments
+
+✗ checked 4 files, 1 error and 3 warnings
 --- error ---
-testdata/lints/teams/payments.sigil:11:3: deploy.guardrails must be invoked unconditionally
-   |
-11 |   guardrails()
-   |   ^^^^^^^^^^^^
-   = help: the host requires deploy.guardrails for every DeployApproval policy; move the call to the top level
-advice: fix the documents above
+check found 1 error and 3 warnings
+advice: each diagnostic above says where the problem is and how to fix it

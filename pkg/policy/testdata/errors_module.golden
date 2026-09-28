@@ -1,5 +1,5 @@
 == compile m ==
-1:1 (m): m is a module, not a policy
+1:1 (m): error: m is a module, not a policy
   |
 1 | module m: DeployApproval@1
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^

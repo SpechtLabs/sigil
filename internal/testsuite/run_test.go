@@ -159,8 +159,15 @@ func TestRunCase(t *testing.T) {
 			if res.Err != nil {
 				t.Fatalf("RunCase() error = %v", res.Err)
 			}
-			if !reflect.DeepEqual(res.Failures, tt.want) {
-				t.Errorf("failures =\n%q\nwant\n%q", res.Failures, tt.want)
+			var texts []string
+			for _, f := range res.Failures {
+				texts = append(texts, f.Text)
+				if (f.Got == "") != (f.Want == "") {
+					t.Errorf("failure %q has got %q and want %q, want both or neither", f.Text, f.Got, f.Want)
+				}
+			}
+			if !reflect.DeepEqual(texts, tt.want) {
+				t.Errorf("failures =\n%q\nwant\n%q", texts, tt.want)
 			}
 			if res.Passed() != (len(tt.want) == 0) {
 				t.Errorf("Passed() = %v", res.Passed())
@@ -244,4 +251,11 @@ func runner(t *testing.T, src string, fsys fstest.MapFS) *testsuite.Runner {
 	t.Helper()
 	k := loadKind(t, src)
 	return &testsuite.Runner{Kind: k, Binding: gokind.Synthesize(k), FS: fsys}
+}
+
+func TestFailureString(t *testing.T) {
+	f := testsuite.Failure{Text: "got a, want b", Got: "a", Want: "b"}
+	if got := f.String(); got != "got a, want b" {
+		t.Errorf("String() = %q", got)
+	}
 }

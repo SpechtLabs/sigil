@@ -6,6 +6,7 @@ import (
 
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/placeholder"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/usage"
 )
 
 // NewCommand returns the breaking command.
@@ -27,7 +28,7 @@ main branch, so incompatible changes are caught before any policy fails.`,
 		Example: `# Compare the kind on main with the working copy
 git show main:policies/deploy_approval.sigil > /tmp/deploy_approval.main.sigil
 sigil breaking /tmp/deploy_approval.main.sigil policies/deploy_approval.sigil`,
-		Args:              cobra.ExactArgs(2),
+		Args:              usage.Exactly("OLD_KIND_FILE", "NEW_KIND_FILE"),
 		ValidArgsFunction: complete.SigilFilesUpTo(2),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return placeholder.NotImplemented(cmd)
