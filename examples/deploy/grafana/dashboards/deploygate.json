@@ -1672,7 +1672,7 @@
       "id": 8,
       "type": "timeseries",
       "title": "Evaluation errors",
-      "description": "Failed evaluations per second by stage (access or deploy) and kind. assertion covers input asserts, a request the caller has to fix (422), and outcome asserts such as the access guardrails' separation of duties, which the policy's owners have to (500). conflict in the access stage is an actor granted two exclusive roles, and runtime a policy that doesn't guard against its input; both answer 500. An empty chart means no evaluation errors in this range.",
+      "description": "Failed evaluations per second by stage (access or deploy) and kind. assertion covers input asserts, a request the caller has to fix (422), and outcome asserts such as the access guardrails' separation of duties, which the policy's owners have to (500). conflict in the access stage is an actor granted two exclusive roles, and runtime a policy that doesn't guard against its input, or a host function that panicked; both answer 500. timeout is an evaluation that ran past deploygate's evaluation timeout and answered 503: the service didn't decide in time. A request whose client left during the evaluation isn't a failure and isn't counted here; HTTP requests by status shows it as 499. An empty chart means no evaluation errors in this range.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"
@@ -1740,7 +1740,7 @@
       "id": 9,
       "type": "timeseries",
       "title": "HTTP requests by status",
-      "description": "API requests per second by status code, from the gin middleware. Only routes under /api/v1 count: the compose healthcheck polls /readyz every 5 seconds, and neither probes nor paths without a route say anything about the API. Deployments: 200 approve, 202 review, 403 deny. Access grants: 200 granted, 403 nothing granted. On both, a failed evaluation is 422 when the request failed an input assert and 500 when the policy failed: a conflict, an outcome assert or a runtime error. The k6 load test sends two requests the example policy fails on by design, so its runs show 500s.",
+      "description": "API requests per second by status code, from the gin middleware. Only routes under /api/v1 count: the compose healthcheck polls /readyz every 5 seconds, and neither probes nor paths without a route say anything about the API. Deployments: 200 approve, 202 review, 403 deny. Access grants: 200 granted, 403 nothing granted. On both, a failed evaluation is 422 when the request failed an input assert and 500 when the policy failed: a conflict, an outcome assert or a runtime error. 503 is an evaluation that ran past the evaluation timeout, or a request before both bundles loaded, and 499 a client that closed the request before the answer, which is no one's failure and belongs in neither error rate. The k6 load test sends two requests the example policy fails on by design, so its runs show 500s.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"

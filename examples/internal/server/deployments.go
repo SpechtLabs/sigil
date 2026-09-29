@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -96,7 +97,7 @@ func (s *Server) runDeploy(ctx context.Context, kind string, p *policy.Policy[de
 	defer span.End()
 
 	timer := s.metrics.EvaluationTimer(team)
-	res, err := p.Eval(ctx, in)
+	res, err := evalWithin(ctx, s.evaluationTimeout, p, in)
 	took := timer.ObserveDuration()
 	if res == nil {
 		// Eval documents a result on every path; this guards the contract
@@ -110,9 +111,8 @@ func (s *Server) runDeploy(ctx context.Context, kind string, p *policy.Policy[de
 	recordResult(span, resp)
 
 	if err != nil {
-		f := classify(p.Name(), err, len(resp.Trace) > 0, deployFallbackAdvice)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, f.herr.Error())
+		f := classify(p.Name(), err, deployFallbackAdvice)
+		failSpan(span, err, f.herr.Error())
 		return resp, f.status, &f
 	}
 
@@ -129,12 +129,13 @@ func (s *Server) runDeploy(ctx context.Context, kind string, p *policy.Policy[de
 }
 
 // deployFailed answers a failed deploy evaluation with the status classify
-// picked, 422 for a failed input assert and 500 for a failure of the policy:
-// the fallback decision the host acts on, the error, and for failed asserts
-// which ones.
+// picked, 422 for a failed input assert, 500 for a failure of the policy and
+// 503 for one that ran out of time: the fallback decision the host acts on,
+// the error, and for failed asserts which ones. A request the client
+// canceled gets 499 and no body.
 func (s *Server) deployFailed(c *gin.Context, resp *DecisionResponse, f failure) {
-	if f.kind == "" {
-		writeError(c, f.status, f.herr)
+	where := []zap.Field{zap.String("stage", telemetry.StageDeploy), zap.String("team", resp.Team), zap.String("policy", resp.Policy)}
+	if answerUncounted(c, f, where...) {
 		return
 	}
 
@@ -144,15 +145,9 @@ func (s *Server) deployFailed(c *gin.Context, resp *DecisionResponse, f failure)
 	// they do for a failed access stage.
 	s.metrics.ObserveEvaluationError(telemetry.StageDeploy, resp.Team, f.kind)
 	ctx := c.Request.Context()
+	fallback := []zap.Field{zap.String("decision", resp.Decision), zap.String("reason", resp.Reason)}
 	telemetry.FromContext(ctx).LogContext(ctx, f.logLevel(), "deploy evaluation failed, answering with the fallback decision",
-		zap.String("team", resp.Team),
-		zap.String("policy", resp.Policy),
-		zap.String("error_kind", f.kind),
-		zap.Int("status", f.status),
-		zap.String("decision", resp.Decision),
-		zap.String("reason", resp.Reason),
-		zap.Error(f.herr),
-	)
+		f.logFields(slices.Concat(where, fallback)...)...)
 
 	resp.Error, resp.Asserts, resp.Conflict = NewErrorResponse(f.herr), f.asserts, f.conflict
 	c.JSON(f.status, resp)
@@ -160,25 +155,22 @@ func (s *Server) deployFailed(c *gin.Context, resp *DecisionResponse, f failure)
 
 // accessFailed answers a deployment whose access stage failed, before the
 // deploy policy ran, with the status classify picked: 422 for a failed input
-// assert, 500 for a conflict, a failed outcome assert or a runtime error. The
-// deploy kind's default is the decision the host acts on. The deploy stage
-// didn't decide anything, so no decision is counted.
+// assert, 500 for a conflict, a failed outcome assert or a runtime error,
+// 503 for an evaluation that ran out of time, and 499 without a body for a
+// request the client canceled. The deploy kind's default is the decision
+// the host acts on. The deploy stage didn't decide anything, so no decision
+// is counted.
 func (s *Server) accessFailed(c *gin.Context, team, policyName string, st accessStage) {
-	f := classify(st.policy, st.err, len(st.trace) > 0, "the deploy policy didn't run; the decision fields hold the fallback, deny")
-	if f.kind == "" {
-		writeError(c, f.status, f.herr)
+	f := classify(st.policy, st.err, "the deploy policy didn't run; the decision fields hold the fallback, deny")
+	where := []zap.Field{zap.String("stage", telemetry.StageAccess), zap.String("team", team), zap.String("policy", st.policy)}
+	if answerUncounted(c, f, where...) {
 		return
 	}
 
 	s.metrics.ObserveEvaluationError(telemetry.StageAccess, team, f.kind)
 	ctx := c.Request.Context()
 	telemetry.FromContext(ctx).LogContext(ctx, f.logLevel(), "access evaluation failed, denying the deployment",
-		zap.String("team", team),
-		zap.String("policy", st.policy),
-		zap.String("error_kind", f.kind),
-		zap.Int("status", f.status),
-		zap.Error(f.herr),
-	)
+		f.logFields(where...)...)
 
 	resp := fallbackResponse(team, policyName)
 	resp.Access = &AccessBlock{Policy: st.policy, Grants: st.grants}

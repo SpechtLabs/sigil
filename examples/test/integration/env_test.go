@@ -48,11 +48,12 @@ type env struct {
 }
 
 type envConfig struct {
-	dir        string
-	accessDir  string
-	copyTeams  bool
-	copyAccess bool
-	skipLoad   bool
+	dir               string
+	accessDir         string
+	copyTeams         bool
+	copyAccess        bool
+	skipLoad          bool
+	evaluationTimeout time.Duration
 }
 
 type envOption func(*envConfig)
@@ -68,6 +69,12 @@ func withCopiedTeams() envOption {
 // reason.
 func withCopiedAccess() envOption {
 	return func(c *envConfig) { c.copyAccess = true }
+}
+
+// withEvaluationTimeout bounds each evaluation by d instead of the server's
+// default, so a spec can run a stage out of time without waiting a second.
+func withEvaluationTimeout(d time.Duration) envOption {
+	return func(c *envConfig) { c.evaluationTimeout = d }
 }
 
 // unloaded builds the env without loading either bundle, the state a pod is
@@ -135,6 +142,7 @@ func newEnv(opts ...envOption) *env {
 		server.WithAccessStore(e.access),
 		server.WithMetrics(e.metrics),
 		server.WithTracerProvider(tp),
+		server.WithEvaluationTimeout(cfg.evaluationTimeout),
 	)
 	Expect(herr).To(Succeed())
 

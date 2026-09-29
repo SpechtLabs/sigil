@@ -220,7 +220,21 @@ type envOptions struct {
 	dirs bool
 	// teamOverrides replace files in the copied team bundle; they imply dirs.
 	teamOverrides map[string]string
+	// evaluationTimeout replaces the server's default, which is too long
+	// for a test to wait out.
+	evaluationTimeout time.Duration
+	// onSpanStart is called with the name of every span that starts, so a
+	// test can act at a known point inside a request.
+	onSpanStart spanStartHook
 }
+
+// spanStartHook is a span processor that only reports span starts.
+type spanStartHook func(name string)
+
+func (h spanStartHook) OnStart(_ context.Context, s sdktrace.ReadWriteSpan) { h(s.Name()) }
+func (spanStartHook) OnEnd(sdktrace.ReadOnlySpan)                           {}
+func (spanStartHook) Shutdown(context.Context) error                        { return nil }
+func (spanStartHook) ForceFlush(context.Context) error                      { return nil }
 
 // loaded is a server with both embedded bundles loaded.
 var loaded = envOptions{deployLoaded: true, accessLoaded: true}
@@ -237,7 +251,11 @@ type testEnv struct {
 func newEnv(t *testing.T, o envOptions) testEnv {
 	t.Helper()
 	spans := tracetest.NewInMemoryExporter()
-	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(spans))
+	tpOpts := []sdktrace.TracerProviderOption{sdktrace.WithSyncer(spans)}
+	if o.onSpanStart != nil {
+		tpOpts = append(tpOpts, sdktrace.WithSpanProcessor(o.onSpanStart))
+	}
+	tp := sdktrace.NewTracerProvider(tpOpts...)
 	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
 	env := testEnv{spans: spans, metrics: telemetry.NewMetrics()}
@@ -267,6 +285,7 @@ func newEnv(t *testing.T, o envOptions) testEnv {
 		server.WithAccessStore(accessSt),
 		server.WithMetrics(env.metrics),
 		server.WithTracerProvider(tp),
+		server.WithEvaluationTimeout(o.evaluationTimeout),
 	)
 	if err != nil {
 		t.Fatalf("New: %v", err)

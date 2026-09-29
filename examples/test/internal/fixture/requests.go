@@ -2,6 +2,7 @@ package fixture
 
 import (
 	"encoding/json"
+	"strings"
 
 	humane "github.com/sierrasoftworks/humane-errors-go"
 )
@@ -114,6 +115,26 @@ func Soak(soak string) Mutator {
 // Hotfix marks the release as a hotfix.
 func Hotfix() Mutator {
 	return func(r *DeployRequest) { r.Release.Hotfix = true }
+}
+
+// SlowToDecide makes the deploy policy's region check run far past any
+// evaluation timeout. `cleared` checks that every region the service lists
+// is one the actor holds. The service lists "z" 50,000 times, and the actor
+// holds 49,999 other regions before "z", so each of the 50,000 lookups walks
+// the whole list: over a billion comparisons, from a body of about 300 KB,
+// well under the service's 1 MiB cap. The access stage doesn't read regions
+// and stays fast, so it's the deploy stage that runs out of time.
+func SlowToDecide() Mutator {
+	const n = 50_000
+	return func(r *DeployRequest) {
+		r.Service.Labels["regions"] = strings.TrimSuffix(strings.Repeat("z,", n), ",")
+		regions := make([]string, n)
+		for i := range n - 1 {
+			regions[i] = "y"
+		}
+		regions[n-1] = "z"
+		r.Actor.Regions = regions
+	}
 }
 
 // JSON renders the request. The request holds only strings, bools, slices

@@ -13,11 +13,12 @@ import (
 
 func TestServeConfig(t *testing.T) {
 	defaults := config.Config{
-		Addr:            ":8080",
-		Teams:           []string{"payments", "checkout"},
-		ReloadInterval:  30 * time.Second,
-		ShutdownTimeout: 15 * time.Second,
-		LogFormat:       "json",
+		Addr:              ":8080",
+		Teams:             []string{"payments", "checkout"},
+		ReloadInterval:    30 * time.Second,
+		ShutdownTimeout:   15 * time.Second,
+		EvaluationTimeout: time.Second,
+		LogFormat:         "json",
 	}
 
 	tests := []struct {
@@ -30,28 +31,31 @@ func TestServeConfig(t *testing.T) {
 		{name: "defaults", edit: func(*config.Config) {}},
 		{
 			name: "flags",
-			args: []string{"--addr", ":9090", "--policies", "/etc/p", "--access-policies", "/etc/a", "--team", "payments", "--reload-interval", "0", "--debug", "--log-format", "console"},
+			args: []string{"--addr", ":9090", "--policies", "/etc/p", "--access-policies", "/etc/a", "--team", "payments", "--reload-interval", "0", "--evaluation-timeout", "250ms", "--debug", "--log-format", "console"},
 			edit: func(c *config.Config) {
 				c.Addr, c.PoliciesDir, c.AccessPoliciesDir, c.Teams = ":9090", "/etc/p", "/etc/a", []string{"payments"}
 				c.ReloadInterval, c.Debug, c.LogFormat = 0, true, "console"
+				c.EvaluationTimeout = 250 * time.Millisecond
 			},
 		},
 		{
 			name: "environment",
 			env: map[string]string{
-				"DEPLOYGATE_ADDR":             ":7070",
-				"DEPLOYGATE_POLICIES":         "/mnt/policies",
-				"DEPLOYGATE_ACCESS_POLICIES":  "/mnt/access",
-				"DEPLOYGATE_TEAMS":            "payments, checkout,billing",
-				"DEPLOYGATE_RELOAD_INTERVAL":  "1m",
-				"DEPLOYGATE_SHUTDOWN_TIMEOUT": "5s",
-				"DEPLOYGATE_DEBUG":            "true",
-				"DEPLOYGATE_LOG_FORMAT":       "console",
+				"DEPLOYGATE_ADDR":               ":7070",
+				"DEPLOYGATE_POLICIES":           "/mnt/policies",
+				"DEPLOYGATE_ACCESS_POLICIES":    "/mnt/access",
+				"DEPLOYGATE_TEAMS":              "payments, checkout,billing",
+				"DEPLOYGATE_RELOAD_INTERVAL":    "1m",
+				"DEPLOYGATE_SHUTDOWN_TIMEOUT":   "5s",
+				"DEPLOYGATE_EVALUATION_TIMEOUT": "2s",
+				"DEPLOYGATE_DEBUG":              "true",
+				"DEPLOYGATE_LOG_FORMAT":         "console",
 			},
 			edit: func(c *config.Config) {
 				c.Addr, c.PoliciesDir, c.AccessPoliciesDir = ":7070", "/mnt/policies", "/mnt/access"
 				c.Teams = []string{"payments", "checkout", "billing"}
 				c.ReloadInterval, c.ShutdownTimeout, c.Debug, c.LogFormat = time.Minute, 5*time.Second, true, "console"
+				c.EvaluationTimeout = 2 * time.Second
 			},
 		},
 		{
@@ -68,6 +72,7 @@ func TestServeConfig(t *testing.T) {
 		{name: "unknown log format", args: []string{"--log-format", "xml"}, wantErr: "unknown log format xml"},
 		{name: "negative reload interval", args: []string{"--reload-interval", "-1s"}, wantErr: "negative"},
 		{name: "no shutdown budget", args: []string{"--shutdown-timeout", "0"}, wantErr: "shutdown timeout"},
+		{name: "no evaluation budget", args: []string{"--evaluation-timeout", "0"}, wantErr: "evaluation timeout 0s isn't positive"},
 		{name: "empty team list", env: map[string]string{"DEPLOYGATE_TEAMS": " , "}, wantErr: "no team to serve"},
 	}
 	for _, tt := range tests {
@@ -104,6 +109,7 @@ func TestServeConfig(t *testing.T) {
 			if got.Addr != want.Addr || got.PoliciesDir != want.PoliciesDir || got.AccessPoliciesDir != want.AccessPoliciesDir ||
 				!slices.Equal(got.Teams, want.Teams) ||
 				got.ReloadInterval != want.ReloadInterval || got.ShutdownTimeout != want.ShutdownTimeout ||
+				got.EvaluationTimeout != want.EvaluationTimeout ||
 				got.Debug != want.Debug || got.LogFormat != want.LogFormat {
 				t.Errorf("config = %+v, want %+v", *got, want)
 			}
