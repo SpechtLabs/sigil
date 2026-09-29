@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0](https://github.com/SpechtLabs/sigil/compare/v0.3.0...v0.4.0) (2026-09-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* add a filter expression for lists ([#56](https://github.com/SpechtLabs/sigil/issues/56))
+
+### Features
+
+* add a filter expression for lists ([#56](https://github.com/SpechtLabs/sigil/issues/56)) ([b5b724e](https://github.com/SpechtLabs/sigil/commit/b5b724ec2417046253299e57dc6d800d33a4e42c))
+
 ## [0.3.0](https://github.com/SpechtLabs/sigil/compare/v0.2.1...v0.3.0) (2026-09-28)
 
 
