@@ -17,7 +17,10 @@ func TestExecuteExitCodes(t *testing.T) {
 		{[]string{"deploy", "sre"}, 0},
 		{[]string{"deploy", "short-soak"}, 2},
 		{[]string{"access", "outsider"}, 2},
+		// A policy's failure answers 500 with the fallback, and a caller's
+		// failed input assert 422; both refuse the request.
 		{[]string{"access", "break-glass-platform"}, 2},
+		{[]string{"access", "compliance-member"}, 2},
 		{[]string{"deploy", "unnamed-actor"}, 2},
 		{[]string{"deploy", "--team", "unknown"}, 1},
 	}

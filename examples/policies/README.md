@@ -98,7 +98,7 @@ evaluate rules that call `split`.
 A test case expects a decision, an outcome or failing asserts. It can't expect
 a conflict: a conflict fails every one of those forms, and the format has no
 key for the conflicting candidates. The break-glass and `platform` conflict is
-covered by the Go integration suite, through the API's 409. To test a conflict
+covered by the Go integration suite, through the API's 500. To test a conflict
 against the policy itself, call `Eval` from Go and check the
 `*policy.ConflictError` it returns: [Testing a
 conflict](../../docs/reference/cli.md#testing-a-conflict) shows this conflict

@@ -18,9 +18,10 @@ type ErrorResponse struct {
 // ErrorEnvelope wraps an [ErrorResponse] in the `error` field. It is the body
 // of every error that comes without a decision: a bad request, an unknown
 // team or route, a bundle that isn't loaded yet, a failed reload and a
-// failure on the server's side. A failed evaluation, 409 or 422, answers with
+// failure on the server's side. A failed evaluation, 422 or 500, answers with
 // a [DecisionResponse] or an [AccessResponse] instead, and its Error field
-// holds the same ErrorResponse.
+// holds the same ErrorResponse, so a client reads the error the same way
+// from either body.
 type ErrorEnvelope struct {
 	Error *ErrorResponse `json:"error"`
 }

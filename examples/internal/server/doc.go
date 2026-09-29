@@ -18,9 +18,11 @@
 //
 // A failed evaluation still answers with a decision, the kind's fallback,
 // deny, next to the error and the failed asserts or conflicting candidates
-// that explain it. A failure of the deploy policy answers 422. A failure of
-// the access policy answers 409 for a conflict and 422 otherwise. Every
-// other error is a humane error, rendered as an [ErrorEnvelope].
+// that explain it. The status says whose fault the failure is, the same in
+// both stages: a failed input assert is the caller's and answers 422, and a
+// conflict, a failed outcome assert or a runtime error is the policy's and
+// answers 500. Every other error is a humane error, rendered as an
+// [ErrorEnvelope].
 //
 // # Observability
 //

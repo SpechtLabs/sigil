@@ -113,7 +113,7 @@ cases:
   # evaluation fails with a conflict naming both. The test format has no
   # expectation for a conflict: a case expects an outcome, a decision or
   # failing asserts, and a conflict fails any of them. The Go integration
-  # suite covers it through the API's 409.
+  # suite covers it through the API's 500.
 
   # auditor compliance_member.
   - name: a compliance member audits

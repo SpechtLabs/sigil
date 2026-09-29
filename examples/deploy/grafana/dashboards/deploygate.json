@@ -1672,7 +1672,7 @@
       "id": 8,
       "type": "timeseries",
       "title": "Evaluation errors",
-      "description": "Failed evaluations per second by stage (access or deploy) and kind. assertion is usually a bad request: an input assert, or the access guardrails' separation-of-duties assert. conflict in the access stage is an actor granted two exclusive roles (409); runtime points at a defect in a policy. An empty chart means no evaluation errors in this range.",
+      "description": "Failed evaluations per second by stage (access or deploy) and kind. assertion covers input asserts, a request the caller has to fix (422), and outcome asserts such as the access guardrails' separation of duties, which the policy's owners have to (500). conflict in the access stage is an actor granted two exclusive roles, and runtime a policy that doesn't guard against its input; both answer 500. An empty chart means no evaluation errors in this range.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"
@@ -1740,7 +1740,7 @@
       "id": 9,
       "type": "timeseries",
       "title": "HTTP requests by status",
-      "description": "API requests per second by status code, from the gin middleware. Only routes under /api/v1 count: the compose healthcheck polls /readyz every 5 seconds, and neither probes nor paths without a route say anything about the API. Deployments: 200 approve, 202 review, 403 deny, 409 access conflict, 422 failed evaluation. Access grants: 200 granted, 403 nothing granted, 409 conflict, 422 failed assert.",
+      "description": "API requests per second by status code, from the gin middleware. Only routes under /api/v1 count: the compose healthcheck polls /readyz every 5 seconds, and neither probes nor paths without a route say anything about the API. Deployments: 200 approve, 202 review, 403 deny. Access grants: 200 granted, 403 nothing granted. On both, a failed evaluation is 422 when the request failed an input assert and 500 when the policy failed: a conflict, an outcome assert or a runtime error. The k6 load test sends two requests the example policy fails on by design, so its runs show 500s.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"

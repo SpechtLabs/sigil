@@ -26,8 +26,8 @@ const cases = [
   { name: 'assert', file: 'unnamed-actor.json', path: deploy, status: 422, decision: 'deny', assert: 'named_actor' },
   { name: 'grants', file: 'access-member.json', path: access, status: 200, roles: ['reader', 'deployer'] },
   { name: 'no-grants', file: 'access-outsider.json', path: access, status: 403, roles: [] },
-  { name: 'exclusive', file: 'access-break-glass-platform.json', path: access, status: 409, conflict: true },
-  { name: 'separation-of-duties', file: 'access-compliance-member.json', path: access, status: 422, assert: 'sod_auditor_deployer' },
+  { name: 'exclusive', file: 'access-break-glass-platform.json', path: access, status: 500, conflict: true },
+  { name: 'separation-of-duties', file: 'access-compliance-member.json', path: access, status: 500, assert: 'sod_auditor_deployer' },
 ].map((item) => ({ ...item, body: open(`${__ENV.REQUESTS_DIR || '/requests'}/${item.file}`) }));
 
 const scenarios = {

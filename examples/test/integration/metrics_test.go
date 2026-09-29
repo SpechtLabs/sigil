@@ -126,8 +126,8 @@ var _ = Describe("Metrics", func() {
 			Expect(families.Count(fixture.MetricDecisions, nil)).To(BeZero())
 			Expect(families.Count(fixture.MetricAccessGrants, nil)).To(BeZero())
 		},
-		Entry("a failed separation-of-duties assert", "assertion", fixture.ComplianceMember, http.StatusUnprocessableEntity),
-		Entry("admin and release manager in one outcome", "conflict", fixture.BreakGlassPlatform, http.StatusConflict),
+		Entry("a failed separation-of-duties assert", "assertion", fixture.ComplianceMember, http.StatusInternalServerError),
+		Entry("admin and release manager in one outcome", "conflict", fixture.BreakGlassPlatform, http.StatusInternalServerError),
 	)
 
 	It("counts a failed deploy evaluation as an error of the deploy stage and not as a decision", func() {

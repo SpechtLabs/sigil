@@ -46,7 +46,8 @@ type AccessRequest struct {
 
 // DecisionResponse is what a deployment request returns: the decision the
 // host acts on, the trace that explains it, and the roles the access stage
-// granted. When an evaluation fails, with HTTP 409 or 422, the decision
+// granted. When an evaluation fails, with HTTP 422 for a failed input assert
+// the caller has to fix or 500 for a failure of the policy, the decision
 // fields hold the fallback, deny, and Error says what went wrong.
 type DecisionResponse struct {
 	// Team is the team from the path.
@@ -80,7 +81,7 @@ type AccessBlock struct {
 }
 
 // AccessResponse is what POST /api/v1/access/grants returns: 200 when at
-// least one role is granted, 403 when none is, and 409 or 422 with Error when
+// least one role is granted, 403 when none is, and 422 or 500 with Error when
 // the evaluation failed, in which case Grants is empty.
 type AccessResponse struct {
 	Policy      string `json:"policy"`

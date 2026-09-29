@@ -31,19 +31,19 @@ var _ = Describe("Evaluating a deployment", func() {
 		// An access failure ends the request before the deploy policy
 		// runs, so no deploy decision is made on roles nobody granted.
 
-		It("answers 422 for an actor without a name", func() {
+		It("answers 422 for an actor without a name, a failed input assert the caller can fix", func() {
 			resp, out := deploygate.Deploy(Default, fixture.TeamCheckout, fixture.OwnerRequest(fixture.ActorName("")))
-			fixture.ExpectAsserts(Default, resp, out.Asserts, out.Error,
+			fixture.ExpectAsserts(Default, resp, http.StatusUnprocessableEntity, out.Asserts, out.Error,
 				fixture.AssertEntry{Reason: "named_actor", Policy: "access.guardrails"})
 		})
 
-		It("answers 422 for an actor who would audit their own deploys", func() {
+		It("answers 500 for an actor who would audit their own deploys, a failed outcome assert", func() {
 			resp, out := deploygate.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(fixture.ComplianceMember...)))
-			fixture.ExpectAsserts(Default, resp, out.Asserts, out.Error,
+			fixture.ExpectAsserts(Default, resp, http.StatusInternalServerError, out.Asserts, out.Error,
 				fixture.AssertEntry{Reason: "sod_auditor_deployer", Policy: "access.guardrails"})
 		})
 
-		It("answers 409 naming both sides when admin and release manager collide", func() {
+		It("answers 500 naming both sides when admin and release manager collide", func() {
 			resp, out := deploygate.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(fixture.BreakGlassPlatform...)))
 			fixture.ExpectBreakGlassConflict(Default, resp, out.Conflict, out.Error)
 		})
@@ -78,20 +78,20 @@ var _ = Describe("Asking for access", func() {
 		accessEntries(),
 	)
 
-	It("answers 409 naming both sides when admin and release manager collide", func() {
+	It("answers 500 naming both sides when admin and release manager collide", func() {
 		resp, out := deploygate.Access(Default, fixture.AccessFor(fixture.BreakGlassPlatform...))
 		fixture.ExpectBreakGlassConflict(Default, resp, out.Conflict, out.Error)
 	})
 
-	It("answers 422 when separation of duties fails", func() {
+	It("answers 500 when separation of duties fails", func() {
 		resp, out := deploygate.Access(Default, fixture.AccessFor(fixture.ComplianceMember...))
-		fixture.ExpectAsserts(Default, resp, out.Asserts, out.Error,
+		fixture.ExpectAsserts(Default, resp, http.StatusInternalServerError, out.Asserts, out.Error,
 			fixture.AssertEntry{Reason: "sod_auditor_deployer", Policy: "access.guardrails"})
 	})
 
 	It("answers 422 for an actor without a name", func() {
 		resp, out := deploygate.Access(Default, fixture.AccessFor(fixture.TeamPayments).Named(""))
-		fixture.ExpectAsserts(Default, resp, out.Asserts, out.Error,
+		fixture.ExpectAsserts(Default, resp, http.StatusUnprocessableEntity, out.Asserts, out.Error,
 			fixture.AssertEntry{Reason: "named_actor", Policy: "access.guardrails"})
 	})
 

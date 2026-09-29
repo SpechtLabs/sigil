@@ -110,10 +110,12 @@ func ExpectAccess(g gomega.Gomega, c AccessCase, resp *http.Response, out Access
 	g.Expect(out.Trace).To(gomega.HaveLen(len(c.Grants)))
 }
 
-// ExpectAsserts asserts a 422 for failed asserts: every reason named, each
-// with its policy, and an error that says what failed.
-func ExpectAsserts(g gomega.Gomega, resp *http.Response, asserts []AssertEntry, herr *ErrorBody, want ...AssertEntry) {
-	g.Expect(resp).To(gomega.HaveHTTPStatus(http.StatusUnprocessableEntity))
+// ExpectAsserts asserts the answer to failed asserts: the status, 422 for an
+// input assert, which is the caller's to fix, and 500 for an outcome assert,
+// which is the policy's; every reason named, each with its policy; and an
+// error that says what failed.
+func ExpectAsserts(g gomega.Gomega, resp *http.Response, status int, asserts []AssertEntry, herr *ErrorBody, want ...AssertEntry) {
+	g.Expect(resp).To(gomega.HaveHTTPStatus(status))
 	g.Expect(herr).NotTo(gomega.BeNil())
 	if herr == nil {
 		return
@@ -131,12 +133,12 @@ func ExpectAsserts(g gomega.Gomega, resp *http.Response, asserts []AssertEntry, 
 	}
 }
 
-// ExpectBreakGlassConflict asserts the 409 for a break-glass platform
+// ExpectBreakGlassConflict asserts the 500 for a break-glass platform
 // member: the kind declares admin and release_manager exclusive, both
-// fired, and the answer names each side so the policy's owners can find
-// both rules.
+// fired, which is a defect in the policy and not in the request, and the
+// answer names each side so the policy's owners can find both rules.
 func ExpectBreakGlassConflict(g gomega.Gomega, resp *http.Response, conflict *Conflict, herr *ErrorBody) {
-	g.Expect(resp).To(gomega.HaveHTTPStatus(http.StatusConflict))
+	g.Expect(resp).To(gomega.HaveHTTPStatus(http.StatusInternalServerError))
 	g.Expect(herr).NotTo(gomega.BeNil())
 	g.Expect(conflict).NotTo(gomega.BeNil(), "the response has no conflict block")
 	if conflict == nil {

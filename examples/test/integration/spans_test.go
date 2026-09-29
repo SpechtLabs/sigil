@@ -122,8 +122,8 @@ var _ = Describe("Traces", func() {
 	})
 
 	DescribeTable("marks a failed access stage as an error and never runs the deploy policy",
-		func(groups []string, status int) {
-			resp, _ := e.client.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(groups...)))
+		func(mutate fixture.Mutator, status int, serverStatus codes.Code) {
+			resp, _ := e.client.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(mutate))
 			Expect(resp).To(HaveHTTPStatus(status))
 
 			span := e.waitForSpan(spanAccess)
@@ -131,12 +131,16 @@ var _ = Describe("Traces", func() {
 			Expect(span.Events).To(ContainElement(HaveField("Name", "exception")))
 
 			// Once the server span is in, the request is over, so a missing
-			// evaluate span means it never started.
-			e.serverSpan()
+			// evaluate span means it never started. The HTTP middleware
+			// marks the server span as an error for a 5xx only, so a
+			// policy's failure shows up as a failed request and the
+			// caller's failed input assert doesn't.
+			Expect(e.serverSpan().Status.Code).To(Equal(serverStatus))
 			Expect(e.spansNamed(spanEvaluate)).To(BeEmpty())
 		},
-		Entry("a failed separation-of-duties assert", fixture.ComplianceMember, http.StatusUnprocessableEntity),
-		Entry("admin and release manager in one outcome", fixture.BreakGlassPlatform, http.StatusConflict),
+		Entry("a failed input assert", fixture.ActorName(""), http.StatusUnprocessableEntity, codes.Unset),
+		Entry("a failed separation-of-duties assert", fixture.Groups(fixture.ComplianceMember...), http.StatusInternalServerError, codes.Error),
+		Entry("admin and release manager in one outcome", fixture.Groups(fixture.BreakGlassPlatform...), http.StatusInternalServerError, codes.Error),
 	)
 
 	It("doesn't trace probes and scrapes", func() {
