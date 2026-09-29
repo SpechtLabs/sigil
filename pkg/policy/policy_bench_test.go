@@ -10,18 +10,6 @@ import (
 	"github.com/spechtlabs/sigil/pkg/policy"
 )
 
-func benchmarkKind(collect bool) *policy.Kind[benchtest.Input] {
-	deny := policy.NewDecision[policy.None]("deny", "fallback", "blocked")
-	allow := policy.NewDecision[benchtest.Payload]("allow", "member", "oncall")
-	opts := []policy.Option{policy.WithVersion(1)}
-	if collect {
-		opts = append(opts, policy.WithCollect(deny, allow))
-	} else {
-		opts = append(opts, policy.WithDecisions(deny, allow), policy.WithDefault(deny, "fallback"))
-	}
-	return policy.NewKind[benchtest.Input]("Bench", opts...)
-}
-
 func BenchmarkPolicyCompile(b *testing.B) {
 	k := benchmarkKind(false)
 	for _, n := range []int{1, 64} {
