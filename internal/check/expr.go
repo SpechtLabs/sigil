@@ -192,7 +192,7 @@ func (c *Checker) unifyElem(e ast.Expr, t, elem types.Type) (types.Type, bool) {
 func (c *Checker) mapLit(x *ast.MapLit, env *Env, hint types.Type) types.Type {
 	if m, ok := elemOf(hint).(*types.Map); ok && m.Key != nil && m.Value != nil {
 		for _, e := range x.Entries {
-			if c.ExprAs(e.Key, env, m.Key) == types.Invalid || c.ExprAs(e.Value, env, m.Value) == types.Invalid {
+			if c.bareKey(e.Key, env, m.Key) || c.ExprAs(e.Key, env, m.Key) == types.Invalid || c.ExprAs(e.Value, env, m.Value) == types.Invalid {
 				return types.Invalid
 			}
 		}
@@ -200,6 +200,9 @@ func (c *Checker) mapLit(x *ast.MapLit, env *Env, hint types.Type) types.Type {
 	}
 	var key, val types.Type
 	for i, e := range x.Entries {
+		if c.bareKey(e.Key, env, key) {
+			return types.Invalid
+		}
 		kt := c.expr(e.Key, env, nil)
 		if kt == types.Invalid {
 			return types.Invalid
@@ -244,6 +247,33 @@ func (c *Checker) mapLit(x *ast.MapLit, env *Env, hint types.Type) types.Type {
 		}
 	}
 	return &types.Map{Key: key, Value: val}
+}
+
+// bareKey reports a map key that is a bare name nothing declares, and
+// reports whether it did. A key is an expression, so `{team: "payments"}`
+// reads `team` as a name; written that way it's almost always the string
+// key of a YAML or JSON habit, so the help suggests the quoted string, the
+// mirror of the quoted reason a constructor rejects. key is the map's key
+// type so far, nil when no key has set it; when it isn't string, quoting
+// wouldn't compile either, and the key is left to the plain name error.
+func (c *Checker) bareKey(k ast.Expr, env *Env, key types.Type) bool {
+	id, ok := k.(*ast.Ident)
+	if !ok || key != nil && !types.Identical(key, types.String) {
+		return false
+	}
+	if _, found := env.Lookup(id.Name); found {
+		return false
+	}
+	// Next to a declared name that's close, both fixes compile and mean
+	// different things, so the help offers both and the author picks. The
+	// string comes first because a key that reads a name is rare.
+	help := fmt.Sprintf("a map key is an expression, so `%s` reads as a name; for the string key, write `%q`", id.Name, id.Name)
+	if closest, found := env.Closest(id.Name); found {
+		help = fmt.Sprintf("%s, or did you mean `%s`?", help, closest)
+	}
+	c.errorf(id, help, "unknown name `%s`", id.Name)
+	c.record(id, types.Invalid)
+	return true
 }
 
 // fitsValue checks that a map value of type t matches the map's value

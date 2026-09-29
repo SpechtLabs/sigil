@@ -223,6 +223,8 @@ MapEntry     ::= Coalesce ":" Expr
 
 Syntax alone accepts a few things the checker rejects: `outcome` outside an `assert` condition, a call expression on anything but a host function name, a call statement on anything but a decision or an imported policy, a non-literal pattern after `like` or `matches`, a constructor reason that isn't a declared reason name, a missing `@N` pin in a header, and `.name` on something that isn't a struct, a decision in an `assert` or a whole import. Leaving those to the checker gives better error messages than a parse failure would.
 
+A `MapEntry` key is an expression like any other, so the `team` in `{team: "payments"}` is a name, not a string. When no name `team` is declared, the error's help suggests `"team"`, the mirror of the hint that drops the quotes from a constructor reason.
+
 ## Operator precedence
 
 The expression grammar encodes this table, lowest to highest. It matches [Expressions](/reference/expressions/).
