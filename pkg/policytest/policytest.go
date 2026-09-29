@@ -42,8 +42,8 @@
 //	    expect:
 //	      asserts: [named_user]
 //
-// The complete format is described in the CLI reference, under
-// https://sigil.specht-labs.de/reference/cli/#sigil-test. A test file
+// The complete format is described in the test file reference at
+// https://sigil.specht-labs.de/reference/test-files/. A test file
 // can't expect a conflict; test one with [policy.Policy.Eval] and
 // [errors.As] on a [*policy.ConflictError].
 //

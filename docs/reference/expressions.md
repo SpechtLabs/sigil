@@ -5,9 +5,13 @@ createTime: 2026/09/24 22:30:00
 permalink: /reference/expressions/
 ---
 
-This page is the policy author's reference for every operator: its precedence, the operand types it accepts and what it evaluates to.
+Every operator in the policy language: its precedence, the operand types it accepts and what it evaluates to.
 
-Expressions appear in `when` conditions, `assert` conditions, `let` bindings, param defaults, policy invocation arguments and decision payloads. Every expression has a static type that the compiler knows before evaluation, and nothing converts between types implicitly. The types themselves are on [Types](/reference/types/).
+- Expressions appear in `when` conditions, `assert` conditions, `let` bindings, param defaults, policy invocation arguments and decision payloads.
+- Every expression has a static type that the compiler knows before evaluation.
+- Nothing converts between types implicitly. The types are on [Types](/reference/types/).
+
+Why the operators look the way they do: [Why the language looks like this](/understanding/language-choices/).
 
 ## Operator precedence
 
@@ -30,26 +34,26 @@ From lowest to highest:
 | 7     | `-`, `present`              | prefix          | Unary minus; presence of an optional                                                      |
 | 8     | `.field` `?.field` `[key]` `f(args)` | left (postfix) | Field access, optional chaining, map or list index, host function call              |
 
-Parentheses override precedence as usual. Quantifiers (`any x in xs: ...`, `all x in xs: ...`) and filters (`filter x in xs: ...`) aren't in the table because they're prefix forms whose body extends as far right as possible; see [Quantifiers](#quantifiers) and [Filters](#filters).
+- Parentheses override precedence.
+- Quantifiers (`any x in xs: ...`, `all x in xs: ...`) and filters (`filter x in xs: ...`) aren't in the table. They're prefix forms whose body extends as far right as possible; see [Quantifiers](#quantifiers) and [Filters](#filters).
+- Level-4 operators are non-associative. `a < b < c`, `a == b == c` and `a in b == c` are compile errors; add parentheses.
+- `xor` shares level 1 with `or` but can't be chained or mixed with it. `a xor b xor c` and `a or b xor c` are compile errors; add parentheses.
 
-A few consequences worth spelling out:
-
-- `not` binds looser than comparisons, so `not a == b` means `not (a == b)`, and `not "admin" in actor.roles` means `not ("admin" in actor.roles)`. Prefer `"admin" not in actor.roles`.
-- `??` binds tighter than comparisons, so `owner ?? "unknown" == "team-a"` means `(owner ?? "unknown") == "team-a"`.
-- `+` binds tighter than `??`, so `a ?? b + c` means `a ?? (b + c)`.
-- `xor` shares level 1 with `or` but can't be chained or mixed with it. `a xor b xor c` and `a or b xor c` are compile errors; parenthesize to say which grouping you mean.
-
-Level-4 operators are non-associative. `a < b < c`, `a == b == c` and `a in b == c` are compile errors; add parentheses to say what you mean. They all share one level, and refusing to chain them avoids a class of misreadings.
+| Expression                        | Parses as                              |
+| --------------------------------- | -------------------------------------- |
+| `not a == b`                      | `not (a == b)`                         |
+| `not "admin" in actor.roles`      | `not ("admin" in actor.roles)`; prefer `"admin" not in actor.roles` |
+| `owner ?? "unknown" == "team-a"`  | `(owner ?? "unknown") == "team-a"`     |
+| `a ?? b + c`                      | `a ?? (b + c)`                         |
 
 ## Boolean operators
 
-`and`, `or`, `xor` and `not` take `bool` operands and produce `bool`. There's no truthiness: `when approvers { ... }` is a compile error because `approvers` is a `list<string>`, not a `bool`.
+`and`, `or`, `xor` and `not` take `bool` operands and produce `bool`.
 
-The operators are words, not `&&`, `||` and `!`. Words read better across multi-line conditions and pair with `not in`, `all in` and the other word operators.
-
-`and` and `or` short-circuit and evaluate left to right. The right operand of `a and b` is never evaluated when `a` is false, which matters for [runtime errors](/reference/evaluation/): a list index or host function call on the right can't fault when the guard on the left fails.
-
-`xor` is the textbook exclusive or: true when exactly one of its two operands is true.
+- There's no truthiness. `when approvers { ... }` is a compile error because `approvers` is a `list<string>`, not a `bool`.
+- `and` and `or` short-circuit and evaluate left to right. The right operand of `a and b` isn't evaluated when `a` is false, so a list index or host function call on the right can't raise a [runtime error](/reference/evaluation/#runtime-errors) when the guard on the left fails.
+- `xor` is true when exactly one of its two operands is true. It doesn't short-circuit: both operands are evaluated, and either can raise a runtime error.
+- `xor` takes exactly two operands. Chaining it is a compile error; for "exactly one of several", use [`one in`](#list-set-operators).
 
 | `a`     | `b`     | `a xor b` |
 | ------- | ------- | --------- |
@@ -62,37 +66,46 @@ The operators are words, not `&&`, `||` and `!`. Words read better across multi-
 release.hotfix xor release.scheduled
 ```
 
-It can't short-circuit, because the result always depends on both sides, so both operands are evaluated and either can raise a runtime error. `xor` takes exactly two operands. Chaining it would compute parity (an odd number of true operands), which is almost never what a reader expects from `a xor b xor c`, so it's a compile error; for "exactly one of several" use [`one in`](#list-set-operators).
-
 ## Comparison
-
-`==` and `!=` require both operands to have the same type. `3 == 3.0` is a compile error because `int` and `float` are different types, and so is `release.soak == 30` because `30` is an `int`, not a `duration`.
 
 | Operators                   | Operand types                                         |
 | --------------------------- | ----------------------------------------------------- |
 | `==` `!=`                   | `bool`, `int`, `float`, `string`, `duration`, `timestamp`, [`decision`](#decision-values-and-outcome) |
 | `<` `<=` `>` `>=`           | `int`, `float`, `duration`, `timestamp`               |
 
-String comparison is case-sensitive, because Kubernetes labels and most identifiers in this domain are. `"Prod" == "prod"` is false.
-
-Comparing an optional (`?T`) value is a compile error until it's unwrapped with `??`.
-
-`==` doesn't work on lists, maps or structs. A policy rarely means "these two lists are identical"; it means subset, overlap or membership, which have their own operators. And one `==` would hide a walk over a whole nested value.
-
-That includes comparing with an empty literal. `actor.regions != []` is a compile error: the `[]` takes its type from the other side, and `!=` isn't defined for `list<string>`. The error suggests an emptiness test that compiles: `any x in actor.regions: true` is true when the list has an element, and `not (any x in actor.regions: true)` when it's empty. A kind that declares a host function such as `fn len(list<string>) -> int` can write `len(actor.regions) > 0` instead. A map can't be quantified over, so testing one for emptiness needs such a host function.
-
-Strings aren't ordered. Byte-wise order is well defined, but it makes `"v10" < "v9"` true, which is exactly the result that gets a version rule wrong. Sigil ships no version comparison, so today it's a host function the kind declares, with a Go implementation the host registers through `policy.WithFunc`:
+- Both operands must have the same type. `3 == 3.0` is a compile error (`int` against `float`), and so is `release.soak == 30` (`duration` against `int`).
+- String comparison is case-sensitive: `"Prod" == "prod"` is false.
+- Comparing an optional (`?T`) value is a compile error until it's unwrapped with `??`.
+- `==` and `!=` don't apply to lists, maps or structs. For lists, use the [membership](#membership-in-and-not-in) and [set](#list-set-operators) operators.
+- `!=` isn't defined for lists, so `xs != []` is a compile error that suggests `any x in xs: true`; see [Test whether a list is empty](/guides/patterns/#test-whether-a-list-is-empty).
+- Strings aren't ordered. `<` on strings is a compile error. To compare versions, declare a host function in the kind; see [Compare versions](/guides/patterns/#compare-versions).
 
 ```sigil
-// In the kind; the name and the Go function behind it are the host's choice.
-fn version_below(string, string) -> bool
+release.soak >= min_soak
+service.tier == "critical"
 ```
 
-A policy then calls it like any other host function: `version_below(service.labels["version"], "2.0.0")`. [Host-ordered types](/reference/types/#host-ordered-types), which would let `<` compare versions directly, are planned.
+```text
+deploy/production.sigil:7:6: error: `==` needs operands of the same type, found duration and int
+  |
+7 | when release.soak == 30 {
+  |      ^^^^^^^^^^^^^^^^^^
+  = help: a bare number is never a duration; write a literal like `30m`
+
+deploy/production.sigil:3:6: error: `!=` isn't defined for list<string>
+  |
+3 | when actor.regions != [] {
+  |      ^^^^^^^^^^^^^^^^^^^
+  = help: lists have no `!=`; to test that `actor.regions` isn't empty, write `any x in actor.regions: true`, or call a host function such as `len` if the kind declares one
+```
+
+::: warning Planned
+[Host-ordered types](/project/planned/#host-ordered-types) would let `<` compare values such as versions directly.
+:::
 
 ## Membership: `in` and `not in`
 
-`in` has two meanings, picked by the type of the right-hand side:
+The type of the right-hand side picks the meaning of `in`:
 
 | Form                 | Left type | Right type    | True when                         |
 | -------------------- | --------- | ------------- | --------------------------------- |
@@ -105,20 +118,20 @@ A policy then calls it like any other host function: `version_below(service.labe
 service.tier in ["critical", "standard"]     // list literal
 ```
 
-A map key is tested with [`has`](#map-containment-has), never with `in`, so there's one way to write it. `"env" in service.labels` is a compile error that suggests `service.labels has "env"`.
-
-`x not in y` is exactly `not (x in y)`. The parser reads `not in` as a single operator when `not` follows an operand, and as unary `not` when it starts an expression.
+- A map key is tested with [`has`](#map-containment-has), never with `in`. `"env" in service.labels` is a compile error that suggests `service.labels has "env"`.
+- `x not in y` is exactly `not (x in y)`.
+- The parser reads `not in` as one operator when `not` follows an operand, and as unary `not` when it starts an expression.
 
 ## List set operators
 
 `all in`, `any in`, `one in` and `exclusive in` take two lists of the same element type and produce `bool`.
 
-| Form               | True when                                                         |
-| ------------------ | ----------------------------------------------------------------- |
-| `a all in b`       | every element of `a` is in `b` (subset)                           |
-| `a any in b`       | at least one element of `a` is in `b` (intersection is non-empty) |
-| `a one in b`       | exactly one distinct element of `a` is in `b`                     |
-| `a exclusive in b` | at most one distinct element of `a` is in `b`                     |
+| Form               | True when                                                         | Empty left side |
+| ------------------ | ----------------------------------------------------------------- | --------------- |
+| `a all in b`       | every element of `a` is in `b` (subset)                           | true            |
+| `a any in b`       | at least one element of `a` is in `b` (intersection is non-empty) | false           |
+| `a one in b`       | exactly one distinct element of `a` is in `b`                     | false           |
+| `a exclusive in b` | at most one distinct element of `a` is in `b`                     | true            |
 
 ```sigil
 split(service.labels["regions"], ",") all in actor.regions
@@ -127,15 +140,12 @@ actor.teams any in service.owners
 [read, write, admin] one in outcome
 ```
 
-`exclusive in` is mutual exclusion as separation-of-duties rules mean it: holding none of the listed values is fine, holding two is not. `one in` additionally requires one of them to be present. With two elements, `[a, b] one in xs` is `(a in xs) xor (b in xs)`.
+- `exclusive in` is true when `b` holds none or one of the listed values, and false when it holds two or more. `one in` also requires one to be present.
+- With two elements, `[a, b] one in xs` is `(a in xs) xor (b in xs)`.
+- `one in` and `exclusive in` count distinct elements of `a` that appear in `b`. Repeats don't count twice on either side: `["x", "x"] exclusive in ["x"]` and `["x", "y"] exclusive in ["x", "x"]` are both true.
+- With a one-element list on the left, `exclusive in` is always true and `one in` means `in`. No lint flags either yet.
 
-Both count distinct elements of `a` that appear in `b`. Repeats don't count twice on either side, so `["x", "x"] exclusive in ["x"]` is true, and so is `["x", "y"] exclusive in ["x", "x"]`. With a one-element list on the left, `exclusive in` is always true and `one in` means the same as `in`; no lint flags that yet.
-
-An empty left side makes `all in` and `exclusive in` true, and `any in` and `one in` false. Whether `[] all in b` should stay vacuously true is an [open question](/project/open-questions/#vacuous-all-in).
-
-::: tip Split returns a list with one empty string
-Host functions follow their Go implementation. Go's `strings.Split("", ",")` returns `[""]`, not `[]`. So when the `regions` label is missing, `split(service.labels["regions"], ",")` yields `[""]`, and `[""] all in actor.regions` is false. That example fails closed by accident of `split`, not by design; don't rely on it for a different function.
-:::
+Whether `[] all in b` should stay vacuously true is an [open question](/project/open-questions/#vacuous-all-in).
 
 ## Map containment: `has`
 
@@ -155,55 +165,55 @@ service.labels has {
 service.labels has "app.kubernetes.io/managed-by"
 ```
 
-The right-hand map doesn't have to be a literal. An empty right-hand map makes `has` true.
-
-`m has k` is the only way to test for a key. `in` doesn't apply to maps, and `not in` doesn't either: write `not m has k`, which reads the same way because `not` binds looser than `has`.
+- The right-hand map doesn't have to be a literal.
+- An empty right-hand map makes `has` true.
+- `m has k` is the only way to test for a key. Neither `in` nor `not in` applies to maps; write `not m has k`, which parses as `not (m has k)`.
 
 ## Pattern matching: `like` and `matches`
 
-Both take a `string` on the left and a pattern on the right, and the pattern must be a string literal (plain or raw, optionally in parentheses) so it compiles once, at policy compile time. A pattern built from an expression, even a `let` that holds a literal, is a compile error, and so is a `matches` pattern that isn't a valid regular expression.
+Both take a `string` on the left and a pattern on the right.
 
-`like` is a glob that must match the whole string. `*` matches any run of characters, including an empty one, and `?` matches exactly one character. Every other character, `[` and `\` included, matches itself, so a glob can't be invalid.
+- The pattern must be a string literal, plain or raw, optionally in parentheses. It compiles once, when the policy compiles.
+- A pattern built from an expression, even a `let` that holds a literal, is a compile error.
+
+| Operator  | Syntax                           | Matches                                  | Invalid pattern     |
+| --------- | -------------------------------- | ---------------------------------------- | ------------------- |
+| `like`    | glob: `*` is any run of characters, including none; `?` is exactly one character; every other character, `[` and `\` included, matches itself | the whole string; `*` crosses `/` and `.` | impossible          |
+| `matches` | Go RE2 regular expression        | anywhere in the string, as Go's `regexp.MatchString`; anchor with `^` and `$` for the whole string | compile error |
 
 ```sigil
 service.name like "payments-*"
+service.labels["team"] matches `^team-[a-z]+$`   // a raw string avoids double escaping
 ```
 
-`matches` is a Go RE2 regular expression. It's true if the pattern matches anywhere in the string, as with Go's `regexp.MatchString`, so anchor with `^` and `$` when you mean the whole string. Raw strings avoid double escaping:
+- A glob has no character classes or escapes. Use `matches` for anything richer.
+- RE2 runs in linear time in the input length. Why that matters: [Halting by construction](/understanding/halting/).
 
-```sigil
-service.labels["team"] matches `^team-[a-z]+$`
-```
+## Optional default
 
-RE2 runs in linear time in the input length, which keeps the [halting guarantee](/understanding/halting/) intact.
-
-A glob is `*` and `?` only, with `*` crossing `/` and `.`, and no character classes or escapes: Sigil matches strings, not paths. Anything richer belongs in `matches`.
-
-## Optional default: `??`
-
-`a ?? b` requires `a` to have an optional type `?T` and `b` to have type `T`. The result has type `T`: the value of `a` if present, otherwise `b`. `b` is only evaluated when `a` is absent.
+`a ?? b` unwraps an optional, with `b` as the default when `a` is absent.
 
 ```sigil
 // assuming the kind declares `ticket: ?string` on Release
 release.ticket ?? "none"
 ```
 
-`??` is right-associative, so `a ?? b ?? c` means `a ?? (b ?? c)` and works when `a` and `b` are both `?T` and `c` is `T`.
+- `a ?? b` requires `a` of optional type `?T` and `b` of type `T`. The result is `T`: the value of `a` if present, otherwise `b`.
+- `b` is only evaluated when `a` is absent.
+- `??` is right-associative: `a ?? b ?? c` means `a ?? (b ?? c)` and works when `a` and `b` are `?T` and `c` is `T`.
+- `??` on a value that isn't optional is a compile error.
+- Struct types have no literal, so the only default for an optional struct (`?Release`) is another value of that struct type, such as an input: `(parent_release ?? release).soak`. Its fields are usually read with [optional chaining](#optional-chaining) instead.
 
-Applying `??` to a value that isn't optional is a compile error.
+## Optional chaining
 
-Struct types have no literal, so the only default for an optional struct (`?Release`) is another value of the same struct type, such as an input: `(parent_release ?? release).soak`. Usually its fields are read with optional chaining instead.
-
-## Optional chaining: `?.`
-
-`x?.name` reads a field of an optional struct. If `x` is absent, the result is absent; otherwise it's the field of the struct inside. The result is optional, so it's unwrapped with `??` like any other:
+`x?.name` reads a field of an optional struct. If `x` is absent, the result is absent; otherwise it's the field of the struct inside. The result is optional and is unwrapped with `??`:
 
 ```sigil
 // assuming the kind declares `release: ?Release`
 release?.soak ?? 5m
 ```
 
-A `?.` makes the rest of its chain optional too, as in TypeScript. A chain is a run of `.name`, `?.name` and `[index]` that no parentheses break. When a `?.` finds its operand absent, nothing after it in the chain runs, so it can't fail either:
+A chain is a run of `.name`, `?.name` and `[index]` that no parentheses break. A `?.` makes the rest of its chain optional, as in TypeScript. When a `?.` finds its operand absent, nothing after it in the chain runs, so nothing after it can fail:
 
 ```sigil
 // Release declares `parent: ?Commit`; Commit declares `author: Actor` and `merged_by: ?Actor`
@@ -212,17 +222,16 @@ release.parent?.author.roles[5] ?? ""       // no index error when there's no pa
 release.parent?.merged_by?.name ?? ""       // `merged_by` is optional itself, so it needs its own `?.`
 ```
 
-- The type of a chain with a `?.` in it is its last link's type made optional. A last link that's optional already stays `?T`; optionals don't nest.
-- A `?.` only skips what comes after an absent value. A link that is optional itself still needs its own `?.`: `release.parent?.merged_by.name` is a compile error that suggests `?.name`.
+- The type of a chain with a `?.` in it is its last link's type made optional. A last link that's already optional stays `?T`; optionals don't nest.
+- A `?.` only skips what comes after an absent value. A link that's optional itself needs its own `?.`: `release.parent?.merged_by.name` is a compile error that suggests `?.name`.
 - Parentheses end a chain. `(release.parent?.author).name` reads a field of a `?Actor` and is a compile error.
-- `?.` on a value that can't be absent is a compile error, like `??` on one: `service?.name` suggests `service.name`.
-- `?.` reads struct fields only. There's no `?[` for indexing, because a kind can't declare an optional list or map. A chain that ends at a list or map field is optional, though: `release.parent?.author.roles` is a `?list<string>`, unwrapped with `?? []`.
-
-Optional chaining can't tell an absent struct from a present one whose field is zero: with `release?.soak ?? 0s`, both give `0s`. [`present`](#presence-present) can.
+- `?.` on a value that can't be absent is a compile error: `service?.name` suggests `service.name`.
+- `?.` reads struct fields only. There's no `?[`, because a kind can't declare an optional list or map. A chain that ends at a list or map field is optional: `release.parent?.author.roles` is a `?list<string>`, unwrapped with `?? []`.
+- Optional chaining can't tell an absent struct from a present one whose field is zero: with `release?.soak ?? 0s`, both give `0s`. [`present`](#presence-present) can.
 
 ## Presence: `present`
 
-`present x` is `true` when the optional `x` holds a value and `false` when it's absent. It tells absence apart from a zero value, which `??` can't:
+`present x` is `true` when the optional `x` holds a value and `false` when it's absent. It tells absence apart from a zero value.
 
 ```sigil
 when not present release { deny(no_release) }
@@ -230,9 +239,9 @@ when present release.ticket { ... }                 // an empty ticket is presen
 when present release.parent?.merged_by { ... }      // any optional, including a chain
 ```
 
-- The operand must be optional. `present` on a value that can't be absent is a compile error, like `??` and `?.`.
-- It binds like unary minus, to one operand chain: `present release.parent and x` means `(present release.parent) and x`, and `present release.ticket ?? ""` is a compile error, because `present` applies first and yields a `bool`.
-- It only tests. Inside `when present release { ... }`, `release` is still optional, and its fields are still read with `?.`. There's no flow typing that would narrow it to `Release`.
+- The operand must be optional. `present` on a value that can't be absent is a compile error.
+- It binds like unary minus, to one operand chain. `present release.parent and x` means `(present release.parent) and x`. `present release.ticket ?? ""` is a compile error: `present` applies first and yields a `bool`.
+- It only tests. Inside `when present release { ... }`, `release` is still optional and its fields are still read with `?.`. There's no flow typing.
 
 ## Arithmetic
 
@@ -246,22 +255,27 @@ Binary `+` and `-` are left-associative and defined only for these combinations:
 | `timestamp` | `+` `-`  | `duration`  | `timestamp` |
 | `timestamp` | `-`      | `timestamp` | `duration`  |
 
-Unary `-` applies to `int`, `float` and `duration`.
-
-There's no `+` on strings or lists and no `*`, `/` or `%` at all. Integer and duration overflow is a runtime error, not a wrap-around; see [Evaluation semantics](/reference/evaluation/).
-
 ```sigil
 release.soak + 2h >= min_soak
 now - release.built_at > 2h        // assuming an input `now` and a field `built_at`, both timestamps
 ```
 
-The table is complete: any other combination, including `+` on strings, is a compile error that says so.
+- Unary `-` applies to `int`, `float` and `duration`.
+- The table is complete. Any other combination, including `+` on strings or lists, is a compile error that says so.
+- There's no `*`, `/` or `%`.
+- Integer and duration overflow is a [runtime error](/reference/evaluation/#runtime-errors), not a wrap-around.
 
 ## Field access, indexing and calls
 
 These are postfix and bind tightest.
 
-`x.field` reads a field of a struct value. A field the struct type doesn't declare is a compile error:
+| Form      | Reads                                   | Rules                                                                                 |
+| --------- | --------------------------------------- | ------------------------------------------------------------------------------------- |
+| `x.field` | a field of a struct value               | A field the struct type doesn't declare is a compile error                            |
+| `common.name` | a `let` through a whole-file import such as `use deploy.common` | See [Policy files](/reference/policy-files/#use)                       |
+| `m[k]`    | a map value                             | `k` must have the map's key type. A missing key yields the value type's zero value, like Go: `service.labels["absent"]` is `""` |
+| `xs[i]`   | a list element                          | `i` is an `int`. An index out of range, including a negative one, is a runtime error |
+| `f(a, b)` | a host function declared with `fn` in the kind | Arguments are positional; their count and types must match the signature   |
 
 ```text
 deploy/production.sigil:9:16: error: unknown field "teir" on type Service
@@ -271,17 +285,15 @@ deploy/production.sigil:9:16: error: unknown field "teir" on type Service
   = help: did you mean "tier"? Service declares: name, tier, owners, labels
 ```
 
-`common.name` reads a `let` through a whole-file import such as `use deploy.common`. See [Policy files](/reference/policy-files/#use).
+Host function calls:
 
-`m[k]` indexes a map. `k` must have the map's key type. A missing key yields the zero value of the value type, like Go: `service.labels["absent"]` is `""`.
-
-`xs[i]` indexes a list with an `int`. An index out of range, including a negative one, is a runtime error.
-
-`f(a, b)` calls a host function declared in the kind with an `fn` signature. Arguments are positional, and their count and types must match the signature. There are no built-in functions: `split`, `len` and every other function exist only when the kind declares them. Calling a name the kind doesn't declare is a compile error, and policies can't define functions. A host function isn't a value, so its bare name without parentheses is a compile error. Host functions must be pure. An error returned by a host function is a runtime error.
+- There are no built-in functions. `split`, `len` and every other function exist only when the kind declares them.
+- Calling a name the kind doesn't declare is a compile error. Policies can't define functions.
+- A host function isn't a value; its bare name without parentheses is a compile error.
+- Host functions must be pure.
+- An error returned by a host function is a runtime error.
 
 ## Quantifiers
-
-A quantifier tests a condition against every element of a list:
 
 ```sigil
 any r in actor.roles: r like "sre-*"
@@ -293,62 +305,59 @@ all r in actor.roles: r != "admin"
 | `any x in xs: body`   | `body` holds for at least one element | false      |
 | `all x in xs: body`   | `body` holds for every element        | true       |
 
-The range `xs` must be a list; quantifying over a map is a compile error. The body must be `bool`. `x` is bound to each element in turn, has the list's element type, and is only visible inside the body. Evaluation stops at the first element that decides the result.
+- The range `xs` must be a list. Quantifying over a map is a compile error.
+- The body must be `bool`.
+- `x` is bound to each element in turn, has the list's element type, and is only visible inside the body.
+- `x` follows the no-shadowing rule: naming it after an input, param, let, imported name or host function is a compile error.
+- Evaluation stops at the first element that decides the result.
+- A quantifier starts an expression; the binary `all in` and `any in` follow an operand. The parser tells `all r in xs: ...` from `a all in b` by that position; see [Grammar](/reference/grammar/).
 
-A quantifier starts an expression, while the binary `all in` and `any in` operators follow an operand. That position is how the parser tells `all r in xs: ...` apart from `a all in b`; the [Grammar](/reference/grammar/) page has the details.
-
-The body extends as far right as possible:
+The body extends as far right as possible. To end a quantifier early, wrap it in parentheses:
 
 ```sigil
 any r in actor.roles: r like "sre-*" and eligible
 // parses as
 any r in actor.roles: (r like "sre-*" and eligible)
-```
 
-To end a quantifier early, wrap it in parentheses:
-
-```sigil
 (any r in actor.roles: r like "sre-*") and eligible
 ```
 
-Read quickly, the first form looks like two conditions joined by `and`. `sigil fmt` therefore adds parentheses around every quantifier body whose top level is `and`, `or` or `xor`, which changes nothing about how it parses and makes the body's extent visible.
-
-The quantifier variable follows the no-shadowing rule: naming it after an input, param, let, imported name or host function is a compile error.
+`sigil fmt` adds parentheses around every quantifier body whose top level is `and`, `or` or `xor`. They don't change how it parses.
 
 ## Filters
-
-A filter keeps the elements of a list for which a condition holds:
 
 ```sigil
 filter a in approvers: a != requestor.name
 filter r in actor.roles: r like "prod-*"
 ```
 
-`filter x in xs: body` has the type of `xs`, so filtering a `list<string>` gives a `list<string>`. The elements that pass keep their order, and an element that's in the list twice and passes is kept twice. When none passes, the result is the empty list.
+`filter x in xs: body` keeps the elements of `xs` for which `body` holds.
 
-Everything else follows the quantifier rules. The range must be a list, and filtering a map is a compile error. The body must be `bool`. `x` has the list's element type, is only visible inside the body, and can't shadow another name. The body extends as far right as possible, and `sigil fmt` puts parentheses around one whose top level is `and`, `or` or `xor`. Unlike a quantifier, a filter never stops early, because its result depends on every element.
-
-A filter is a prefix form, so as the operand of an operator it needs parentheses, just like a quantifier:
+- The result has the type of `xs`: filtering a `list<string>` gives a `list<string>`.
+- Elements that pass keep their order. An element that's in the list twice and passes is kept twice.
+- When none passes, the result is the empty list.
+- A filter never stops early. Its body runs for every element.
+- The quantifier rules apply; see [Quantifiers](#quantifiers).
+- As the operand of an operator, a filter needs parentheses.
+- A filter or a quantifier can't be an [invocation](/reference/policy-files/#policy-invocation) argument; arguments are bound when the policy compiles.
 
 ```sigil
 "prod-admin" in (filter r in actor.roles: r like "prod-*")
 (filter r in actor.roles: r like "prod-*") all in allowed_roles
-```
-
-Its usual place is a `let`, which names the result once for every rule and payload that reads it. The typical case is an approver list that must never contain the person asking for approval:
-
-```sigil
 let approvers = filter a in managers: a != requestor.name
 ```
 
-A filter can't be an [invocation](/reference/policy-files/#policy-invocation) argument, for the same reason a quantifier can't: arguments are bound when the policy compiles. [Common patterns](/guides/patterns/#keep-the-requestor-off-the-approvers) walks through the approver case, including what to do when the filter leaves nobody.
+For the approver recipe, including what to do when the filter leaves nobody, see [Keep the requestor off the approvers](/guides/patterns/#keep-the-requestor-off-the-approvers).
 
 ## Decision values and `outcome`
 
-Inside an `assert`, a policy can test what evaluation decided. Two things make that possible:
+Inside an `assert` condition, a policy can test what evaluation decided.
 
-- A decision's name, used as an operand, is a value of type [`decision`](/reference/types/#decision), and so is a decision with one of its reasons: `approve` matches an approve with any reason, `approve.release_manager` that reason only. A constructor always has parentheses, so `approve in outcome` can't be mistaken for a call. Like `outcome`, a decision value is only a value inside an `assert` condition: `when deny == approve` has nothing to say, so it's a compile error that points at the constructor form.
-- `outcome` is a `list<decision>` holding each distinct decision and reason the host will get back, in the kind's declaration order. In a `collect one` kind it holds exactly one element, the winner or the default. In a [collecting kind](/reference/kind-files/#collecting-kinds) it holds every outcome that fired, or the default if the kind declares one and nothing fired.
+| Operand            | Type             | Meaning                                                                                  |
+| ------------------ | ---------------- | ---------------------------------------------------------------------------------------- |
+| `approve`          | [`decision`](/reference/types/#decision) | the decision with any reason                                     |
+| `approve.release_manager` | `decision` | the decision with that reason only                                                     |
+| `outcome`          | `list<decision>` | each distinct decision and reason the host gets back, in the kind's declaration order    |
 
 ```sigil
 assert("sod_customer_dev",
@@ -358,15 +367,22 @@ assert("rm_needs_ticket",
   approve.release_manager not in outcome or present release.ticket)
 ```
 
-Membership over `outcome` matches rather than compares: a bare decision is in `outcome` when any of its reasons is, and a qualified one only when that reason is. `==` and `!=` between two decision values are exact, so `approve == approve.lgtm` is false.
-
-`outcome` can only appear in an `assert` condition. A `when` condition or a `let` that read it could make a rule depend on its own result: `when admin not in outcome { admin(x) }` would fire exactly when it doesn't. See [Assertions](/reference/evaluation/#assertions) for when asserts run.
-
-Decision values can be compared with `==` and `!=`, tested with `in` and the list operators, and collected in lists, and nothing else. A decision can't be a map value: a missing key reads as the zero value of the value type, and a decision has none, so `{"a": approve}` is a compile error. To read what a decision carries, go through its candidates.
+- A decision's bare name is a value; a [constructor](/reference/decisions/#constructors-not-calls) always has parentheses. `approve in outcome` is never a call.
+- Decision values and `outcome` exist only inside `assert` conditions.
+- `when deny == approve` is a compile error that points at the constructor form.
+- `outcome` in a `when` condition or a `let` is a compile error: "`outcome` can only be read in an assert condition".
+- In a `collect one` kind, `outcome` holds exactly one element: the winner or the default.
+- In a [collecting kind](/reference/evaluation/#collecting-kinds), `outcome` holds every outcome that fired, or the default if the kind declares one and nothing fired.
+- Membership over `outcome` matches: a bare decision is in `outcome` when any of its reasons is, and a qualified one only when that reason is.
+- `==` and `!=` between two decision values are exact: `approve == approve.lgtm` is false.
+- Decision values can be compared with `==` and `!=`, tested with `in` and the list operators, and collected in lists, and nothing else.
+- A decision can't be a map value, because it has no zero value for a missing key: `{"a": approve}` is a compile error.
+- To read what a decision carries, go through its [candidates](#candidates).
+- When asserts run: [Assertions](/reference/evaluation/#assertions). Why `outcome` is readable only there: [Asserts and decisions](/understanding/asserts/).
 
 ### Candidates
 
-`outcome.review` is the list of `review` candidates the host gets back, each with the decision's payload fields and its `reason`. The decision's name picks the payload type, so every field is checked against the kind:
+`outcome.<decision>` is the list of that decision's candidates the host gets back, each with the decision's payload fields and its `reason`. Every field is checked against the kind.
 
 ```sigil
 assert("no_self_review",
@@ -376,17 +392,26 @@ assert("short_admin_grants",
   all g in outcome.admin: g.ttl <= 8h)
 ```
 
-A reason after the decision narrows the list to that reason, `outcome.review.manager_approval`, and on one candidate `r.reason` is a [decision value](#decision-values-and-outcome) with its reason, so `r.reason == review.manager_approval` and `r.reason in [review]` both work. A kind can't declare a payload field called `reason`, so the name is always free. A decision without a payload gives candidates that only have `reason`.
+- A reason after the decision narrows the list: `outcome.review.manager_approval`.
+- On one candidate, `r.reason` is a [decision value](#decision-values-and-outcome) with its reason, so `r.reason == review.manager_approval` and `r.reason in [review]` both work.
+- A kind can't declare a payload field called `reason`. A decision without a payload gives candidates that only have `reason`.
+- `all` over no candidates is true.
+- A policy can range over candidates with `any`, `all` or [`filter`](#filters) and read each one's fields, and nothing else. Indexing the list, comparing candidates with `==` or `in`, and putting one into a list or map literal are compile errors that say so.
+- A filter over candidates is a list of candidates, with the same rules.
+- Candidates only exist in `assert` conditions.
 
-The list holds exactly the candidates the host acts on, the same ones `Decision[T].MatchAll` returns in Go:
+The list holds exactly the candidates the host acts on, the ones `Decision[T].MatchAll` returns in Go:
 
-- In a `collect one` kind, at most one: the winner, or the default when nothing fired and the default is of that decision. Under `precedence`, a candidate that lost to a higher rank isn't in it, because the host never sees it.
-- In a [collecting kind](/reference/kind-files/#collecting-kinds), every candidate of the decision at the top rank, after equal ones fold. Two reviews with different approvers are both there.
+| Kind                | `outcome.<decision>` holds                                                                                              |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `collect one`       | At most one: the winner, or the default when nothing fired and the default is of that decision. Under `precedence`, a candidate that lost to a higher rank isn't in it |
+| [collecting](/reference/evaluation/#collecting-kinds) | Every candidate of the decision at the top rank, after equal ones fold. Two reviews with different approvers are both there |
 
-Because a collecting kind can return several candidates of one decision, a guardrail says `all`: with `any`, one clean review would hide a self-review next to it. `all` over no candidates is true, which is what a guardrail wants when the decision didn't fire.
-
-Candidates have no equality and no order. The order a collecting kind returns them in falls back to source position, and an assert that read `outcome.review[0]` would change its answer when someone moved a rule. So a policy can range over a list of candidates with `any`, `all` or [`filter`](#filters), and read the fields of each one, and nothing else: indexing the list, comparing candidates with `==` or `in`, or putting one into a list or map literal is a compile error that says so. A filter over candidates is still a list of candidates, with the same rules. Like `outcome`, candidates only exist in `assert` conditions.
+Why guardrails use `all`, and why candidates have no equality or order: [Asserts and decisions](/understanding/asserts/).
 
 ## Evaluation order
 
-Operands are evaluated left to right. `and`, `or`, `??` and quantifiers skip work they don't need, and anything they skip can't raise a runtime error. A filter runs its body for every element, so a body that raises a runtime error for any element fails the filter. Since expressions have no side effects and host functions are pure, evaluation order is otherwise unobservable.
+- Operands are evaluated left to right.
+- `and`, `or`, `??` and quantifiers skip work they don't need. Anything they skip can't raise a runtime error.
+- A filter runs its body for every element, so a body that raises a runtime error for any element fails the filter.
+- Expressions have no side effects and host functions are pure, so evaluation order is otherwise unobservable.

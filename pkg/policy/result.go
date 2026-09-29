@@ -43,7 +43,7 @@ type Entry struct {
 }
 
 // Trace explains a [Result]: every decision constructor evaluation
-// reached, whether it won or not. `sigil explain` prints the same trace.
+// reached, whether it won or not. `sigil eval` prints the same trace.
 type Trace struct {
 	Candidates []Candidate // sorted by precedence (or declaration order) and then position, so a winner comes first
 }

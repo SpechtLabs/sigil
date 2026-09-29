@@ -5,13 +5,9 @@ createTime: 2026/09/24 22:30:00
 permalink: /reference/policy-files/
 ---
 
-This page is the reference for the statements policy authors write in `.sigil` files, and for how the documents in those files form a bundle.
+The statements of policy and module documents in `.sigil` files.
 
-A policy opens with a `policy` header, lists its imports, and then contains any number of `param`, `let`, `when` and `assert` statements and policy invocations in any order. Each statement starts with a keyword or with the name of an imported policy followed by `(`, so a policy needs no separators and no significant whitespace.
-
-Shared matchers live in a second kind of document, the [module](#modules), which holds only imports and `let`s.
-
-A `.sigil` file holds one or more documents, each a policy, a module or a kind. The host loads a bundle of files and finds documents by the names in their headers, not by file path, so a whole policy tree can live in one file, for example a single key of a Kubernetes ConfigMap. See [Bundles and resolution](#bundles-and-resolution).
+A complete team policy is in the [tour](/getting-started/tour/#the-team-policy).
 
 ## Statements at a glance
 
@@ -25,7 +21,7 @@ A `.sigil` file holds one or more documents, each a policy, a module or a kind. 
 | `assert("<reason>", <expr>)`       | top level or nested     | Condition that must hold, or evaluation fails with an assertion error   |
 | `<policy>(<param>: <expr>, ...)`   | top level or nested     | Invokes an imported policy, adding its rules with its params bound      |
 
-Kind files use a different set of statements; see [Kind files](/reference/kind-files/).
+After the imports, statements come in any order. [Modules](#modules) allow only `use` and `let`. Kind files use a different set of statements; see [Kind files](/reference/kind-files/).
 
 ## `policy`
 
@@ -33,21 +29,15 @@ Kind files use a different set of statements; see [Kind files](/reference/kind-f
 policy deploy.production: DeployApproval@1
 ```
 
-The header is the first statement of a policy document, and each policy document has exactly one. The name is a dotted [policy name](/reference/lexical/) and the part after the colon names the kind whose contract the policy is checked against. Every input, host function, type and decision the policy can refer to comes from that kind.
+- The header is the first statement of a policy document. Each policy document has exactly one.
+- The name is a dotted [policy name](/reference/lexical/#policy-names).
+- The part after the colon names the kind the policy is checked against. Every input, host function, type and decision the policy can refer to comes from that kind.
+- Referring to a kind the host doesn't know is a compile error.
+- `@1` pins the kind version the policy was written against. The pin is required; a missing pin is an error that suggests the kind's current version. Which pins the host accepts: [Versioning](/reference/kind-files/#versioning). How a name the kind added later is treated: [Identifiers](#identifiers).
 
-`@1` pins the kind version the policy was written against. The pin is required, and a header without one is a compile error that suggests the kind's current version. The policy always compiles against the kind the host has; the pin decides whether the host accepts it at all, and how a name the kind added later is treated:
-
-- A pin older than the kind's `accepts` is rejected, because the host has declared a breaking change since.
-- A pin newer than the kind's version is rejected, because the host doesn't have that kind yet.
-- A pin older than the kind's version, but still accepted, lets the policy keep a name the kind added since; see [Identifiers](#identifiers).
-
-Moving a pin forward is a one-line diff that says "we checked this against the new version", which is what a reviewer should look for. The versioning rules are on [Kind files](/reference/kind-files/#versioning).
-
-Referring to a kind the host doesn't know is a compile error.
+Why: [Kinds as contracts](/understanding/kinds/).
 
 ## `use`
-
-`use` brings names from another file into scope. It never adds rules by itself: an imported policy contributes nothing until it's [invoked](#policy-invocation).
 
 ```sigil
 use deploy.production                         // binds `production`
@@ -57,20 +47,38 @@ use deploy.common.{cleared, owns_service}     // selective
 use deploy.common.{owns_service as owner}     // selective with alias
 ```
 
-- A path names a document in the bundle: `use deploy.common` finds the document whose header is `module deploy.common`, in whichever file it lives. See [Bundles and resolution](#bundles-and-resolution).
+`use` brings names from another document into scope. It never adds rules by itself: an imported policy contributes nothing until it's [invoked](#policy-invocation).
+
+| Form | Binds |
+| --- | --- |
+| `use a.b` of a module | Qualifier `b`: `b.cleared` reads the module's `cleared` |
+| `use a.b` of a policy | Name `b`, to invoke and to read its `pub let`s as `b.<let>` |
+| `use a.b as c` | The same, under the name `c` |
+| `use a.b.{x, y}` | Each listed `pub let` under its own name |
+| `use a.b.{x as z}` | The listed `pub let` under the name after `as` |
+
 - The last path segment is the bound name unless `as` renames it.
-- A whole import of a [module](#modules) binds a qualifier: `common.cleared` reads the module's `cleared`. A whole import of a policy binds a name you can invoke.
-- A selective import, `use deploy.common.{...}`, binds each listed `let` under its own name, or under the name after `as`.
+- A path names a document in the bundle: `use deploy.common` finds the document whose header is `module deploy.common`, in whichever file it lives. See [Name resolution](/reference/bundles/#name-resolution).
 - The imported document must implement the same kind. Importing a module or policy written for another kind, or a kind document, is a compile error.
 - Imports come right after the header, before any `param`, `let`, rule or invocation.
 - An imported name that collides with an input, host function, param, `let` or another import is a compile error. Nothing shadows silently.
-- There are no wildcard imports. Every name used in a document is either defined there or listed in a `use`, so a reader can always find where it comes from.
+- There are no wildcard imports. Every name used in a document is either defined there or listed in a `use`.
 - The import graph must be acyclic.
-- An unused import is a lint warning, not an error, so commenting out a rule while debugging doesn't break the build.
+- An unused import is the [`unused-import`](/reference/lints/) lint warning, not an error.
+
+```text
+payments/production.sigil:3:31: error: `release` is already the name of an input
+  |
+3 | use deploy.common.{cleared as release}
+  |                               ^^^^^^^
+  = help: every name in a document means one thing; rename one of them
+```
 
 ### Importing from a policy
 
-A policy's `pub let`s can be imported too, the same way as a module's. A `pub let` in a policy can't depend on a param, directly or through other `let`s: a param has no value outside an invocation, so a param-dependent `let` would mean nothing in the importing document. The compiler tracks the dependency and reports it where the `let` is declared, not where someone imports it:
+- A policy's `pub let`s are imported the same way as a module's: selectively, `use deploy.guardrails.{is_hotfix}`, or through a whole import, `guardrails.is_hotfix`.
+- A whole import of a policy also binds the name you invoke it by, so one `use` serves both.
+- A `pub let` in a policy can't depend on a param, directly or through other `let`s. The compiler reports it where the `let` is declared, not where someone imports it.
 
 ```text
 deploy/guardrails.sigil:5:9: error: let `soak_ok` can't be `pub`: it reads param `min_soak`
@@ -79,10 +87,6 @@ deploy/guardrails.sigil:5:9: error: let `soak_ok` can't be `pub`: it reads param
   |         ^^^^^^^
   = help: a param has no value outside an invocation; move the let to a module, or drop `pub`
 ```
-
-In practice this pushes shared matchers into modules, which is where they belong.
-
-A policy's param-free `pub let` is read the same two ways as a module's: selectively, `use deploy.guardrails.{is_hotfix}`, or through a whole import, `guardrails.is_hotfix`. A whole import of a policy also binds the name you invoke it by, so one `use` serves both.
 
 ## `param`
 
@@ -95,9 +99,12 @@ A param is a typed value supplied when the policy gets instantiated. It has a na
 
 - A param without a default is required. Instantiating the policy without binding it is a compile error.
 - A default must have the declared type and must be a constant expression: literals, list and map literals of literals, and arithmetic on those. It can't read inputs, lets or other params.
-- The type can be any type from [Types](/reference/types/) except optional types, because an optional param would just be a param with a default.
+- The type can be any type from [Types](/reference/types/) except optional types.
 
-Params are bound in one of two ways, both type-checked at compile time: by another policy that [invokes](#policy-invocation) this one, or by the Go host through `policy.Params` when it compiles or loads the policy. See the [Go API](/reference/go-api/).
+| Bound by | Checked |
+| --- | --- |
+| A policy that [invokes](#policy-invocation) this one | At compile time, at the argument |
+| The Go host, through `policy.Params` when it compiles or loads the policy; see [Load options](/reference/go-api/#load-options) | By `Load` or `Compile` |
 
 ### Bounds
 
@@ -105,11 +112,15 @@ Params are bound in one of two ways, both type-checked at compile time: by anoth
 param min_soak: duration = 24h, min: 1h, max: 48h
 ```
 
-`min` and `max` limit the values a caller may bind. A guardrail uses them so that a team invoking it can adjust a threshold but can't switch the rule off: `guardrails(min_soak: 0s)` is a compile error.
+`min` and `max` limit the values a caller may bind: `guardrails(min_soak: 0s)` is a compile error.
 
-- Bounds apply to `int`, `float` and `duration` params. Each is optional, both are inclusive, and they may come in either order.
-- A bound is a constant of the param's type, like a default. `min` can't be above `max`, and the default must lie between them.
-- Invocation arguments are constants, so every bound is checked when the policy compiles, at the argument that breaks it. A value bound from Go through `policy.Params` is checked by `Load` or `Compile`. Nothing is left to evaluation time, so a bad value never fails an evaluation.
+- Bounds apply to `int`, `float` and `duration` params.
+- Each is optional, both are inclusive, and they may come in either order.
+- A bound is a constant of the param's type, like a default.
+- `min` can't be above `max`, and the default must lie between them.
+- An invocation argument is checked against the bounds when the policy compiles, at the argument that breaks it.
+- A value bound from Go through `policy.Params` is checked by `Load` or `Compile`.
+- Nothing is left to evaluation time, so a bad value never fails an evaluation.
 - `min` and `max` are names in a named-argument position, not keywords, so a kind can still declare `fn max(int, int) -> int`.
 
 ```text
@@ -120,7 +131,7 @@ teams/payments.sigil:5:22: error: min_soak: 0s is below the minimum 1h
   = help: deploy.guardrails declares `param min_soak: duration = 24h, min: 1h, max: 48h`
 ```
 
-Bounds are only as trustworthy as the file that declares them: for a required guardrail, [`policy.From`](/reference/go-api/#where-required-policies-come-from) loads that file from a source the host trusts.
+For a required guardrail, [`policy.From`](/reference/bundles/#trusted-sources) loads the file that declares its bounds from a trusted source. Why: [Composition without templating](/understanding/composition/).
 
 ## `let`
 
@@ -130,13 +141,23 @@ let cleared =
   split(service.labels["regions"], ",") all in actor.regions
 ```
 
-A `let` binds a name to an expression. The compiler infers the type from the expression; there's no annotation. The expression can use inputs, params, host functions, other lets and imported lets (`cleared`, or `common.cleared` through a whole-module import).
+A `let` binds a name to an expression.
 
+- The compiler infers the type from the expression. There's no annotation.
+- The expression can use inputs, params, host functions, other lets and imported lets (`cleared`, or `common.cleared` through a whole-module import).
 - A top-level `let` is visible in the whole document. A `let` inside a `when` body is visible in that body and the blocks nested in it, and nowhere else, not even in the `when`'s own condition. See [Scoped lets](#scoped-lets).
 - A `let` is private to its document unless it's declared `pub let`. Only a `pub let` can be imported. See [Exporting lets](#exporting-lets).
 - Lets must form a directed acyclic graph. `let a = b` together with `let b = a` is a compile error, and so is any longer cycle.
 - A let is a name for an expression, not a mutable variable. It can't be reassigned, and binding the same name twice is a compile error.
-- The order of `let` statements in a file doesn't matter; a let may refer to one declared further down. The same holds inside a `when` body.
+- The order of `let` statements doesn't matter; a let may refer to one declared further down. The same holds inside a `when` body.
+
+```text
+deploy/fresh.sigil:4:37: error: let `fresh` depends on itself
+  |
+4 | let settled = release.hotfix or not fresh
+  |                                     ^^^^^
+  = help: lets form a directed acyclic graph; a let can't depend on itself, even through other lets
+```
 
 ### Scoped lets
 
@@ -151,8 +172,8 @@ when active {
 A `let` inside a body names a sub-expression that several nested blocks share, without making it visible to the rest of the document.
 
 - It can read everything its body can: inputs, params, top-level lets, imports, and the lets of every enclosing body.
-- It can't shadow anything. Its name can't be taken by an input, host function, decision, param, import or any other `let` in the document, including a `let` in an unrelated `when` body. Names are unique per document so that a trace and [`sigil explain`](/reference/cli/#sigil-explain) can name every `let` without saying which block it came from.
-- It can't be `pub`. Nothing outside its body can see it, so there's nothing to export.
+- It can't shadow anything. Its name can't be taken by an input, host function, decision, param, import or any other `let` in the document, including a `let` in an unrelated `when` body.
+- It can't be `pub`.
 - It's only evaluated when its body is reached, so it can rely on the enclosing conditions: in `when len(xs) > 0 { let first = xs[0] ... }`, with `len` a host function the kind declares, the index can't fail. See [Evaluation semantics](/reference/evaluation/#lets).
 
 ### Exporting lets
@@ -164,9 +185,10 @@ pub let cleared = split(service.labels["regions"], ",") all in actor.regions and
 let restricted = service.labels has "restricted"
 ```
 
-`pub let` makes a top-level `let` importable. A `let` without `pub` is private: other lets and rules in the same document can use it, and a `use` that names it is a compile error. The rule is the same for modules and policies, so a module author can refactor private helpers without breaking an importer, and a policy never exports something by accident.
-
-Because a private `let` has no readers outside its document, one that nothing reads is a lint warning; see [`unused-let`](/reference/cli/#lints).
+- `pub let` makes a top-level `let` importable.
+- A `let` without `pub` is private: other lets and rules in the same document can use it, and a `use` that names it is a compile error.
+- The rule is the same for modules and policies.
+- A private `let` that nothing reads is the [`unused-let`](/reference/lints/) lint warning.
 
 ## `when`
 
@@ -184,13 +206,13 @@ when cleared {
 }
 ```
 
-A `when` block has a condition and a body in braces. The condition must have type `bool`; anything else is a compile error, so there's no truthiness.
+A `when` block has a condition and a body in braces.
 
-The body contains nested `when` blocks, [scoped lets](#scoped-lets), [decision constructors](/reference/decisions/), [asserts](#assert) and [policy invocations](#policy-invocation), and nothing else. There's no `param`, no `use` and no bare expression inside a body.
-
-There's no `else`. Write `when not x { ... }` instead. A nested `when` fires only if every enclosing condition holds, which makes nesting a conjunction. The full rules live on [Evaluation semantics](/reference/evaluation/).
-
-A body may contain more than one decision constructor; each one that's reached becomes its own candidate. The examples in these docs mostly use one constructor per body, which keeps traces easy to read.
+- The condition must have type `bool`. Anything else is a compile error; there's no truthiness.
+- The body contains nested `when` blocks, [scoped lets](#scoped-lets), [decision constructors](/reference/decisions/), [asserts](#assert) and [policy invocations](#policy-invocation), and nothing else. There's no `param`, no `use` and no bare expression inside a body.
+- There's no `else`. Write `when not x { ... }` instead.
+- A nested `when` fires only if every enclosing condition holds: nesting is a conjunction. See [Evaluation semantics](/reference/evaluation/).
+- A body may contain more than one decision constructor. Each one that's reached becomes its own candidate.
 
 ## `assert`
 
@@ -205,17 +227,17 @@ assert("sod_customer_dev",
   [customer_data_writer, development_environment_writer] exclusive in outcome)
 ```
 
-An assert states something that must be true whenever it's reached. If its condition is false, evaluation fails: `Eval` returns an assertion error, and the host records it as an error, not as a decision. Use a decision for an outcome you expect, such as denying a deploy that hasn't soaked, and an assert for a state that means the policy, the host or the input is wrong.
+An assert states something that must be true whenever it's reached. If its condition is false, evaluation fails: `Eval` returns an assertion error, and the host records it as an error, not as a decision.
 
 - The condition must have type `bool`. It can read inputs, params, lets and imported lets, and, unlike any other expression, [`outcome`](/reference/expressions/#decision-values-and-outcome), the decisions evaluation produced, with their payloads through [`outcome.<decision>`](/reference/expressions/#candidates).
-- The reason comes first, as in a [decision constructor](/reference/decisions/). Unlike a decision reason it's a string literal, not a name the kind declares, because an assert belongs to its policy and the kind has no say in it; it's still a stable identifier for metrics and grep, and dynamic text isn't allowed. `assert(cond, "reason")` is a parse error that says so.
-- An assert may appear at the top level or inside a `when` body. Inside a body it's only checked when every enclosing condition holds, the same conjunction rule as for decisions. An assert in an invoked policy gets the invocation's enclosing conditions too.
+- The reason comes first, as in a [decision constructor](/reference/decisions/). It's a string literal, not a name the kind declares. Dynamic text isn't allowed.
+- `assert(cond, "reason")` is a parse error that says so.
+- An assert may appear at the top level or inside a `when` body. Inside a body it's only checked when every enclosing condition holds. An assert in an invoked policy gets the invocation's enclosing conditions too.
 - An assert never produces a candidate and never changes the outcome. It can only fail the evaluation.
-- An assert whose condition reads `outcome` is an outcome assert and is checked once the outcome exists. Every other assert is an input assert and is checked before any rule runs, so it works as a precondition. The checker decides which from the condition; there's no keyword for it.
 
-`xor`, `one in` and `exclusive in` exist mostly for asserts. `exclusive in` over `outcome` is how a [collecting kind](/reference/kind-files/#collecting-kinds) keeps two decisions from being granted together. The two phases in detail, and what the host gets back when one fails, is on [Evaluation semantics](/reference/evaluation/#assertions).
+An assert that reads `outcome` is checked after the rules, every other assert before them; see [Assertions](/reference/evaluation/#assertions). `exclusive in` over `outcome` keeps two decisions of a [collecting kind](/reference/kind-files/#collecting-kinds) from being granted together. The two phases, and what the host gets back when one fails, are on [Evaluation semantics](/reference/evaluation/#assertions).
 
-The open design questions about asserts are listed under [Assertions](/project/open-questions/#assertions).
+Why: [Asserts and decisions](/understanding/asserts/). Open design questions: [Assertions](/project/open-questions/#assertions).
 
 ## Policy invocation
 
@@ -230,21 +252,22 @@ when service.labels["compliance"] == "pci" {
 }
 ```
 
-An imported policy is invoked like a decision constructor. A decision constructor produces one candidate; an invocation produces the invoked policy's whole candidate set, with its params bound to the arguments. Both can go anywhere the other can: at the top level or inside a `when` body.
+An imported policy is invoked like a decision constructor. A decision constructor produces one candidate; an invocation produces the invoked policy's whole candidate set, with its params bound to the arguments. Both can go at the top level or inside a `when` body.
 
-An invocation inside `when` blocks adds the enclosing conditions to every rule of the invoked policy. It's the same rule as nested `when`: nesting is conjunction. The `production(...)` call above behaves exactly as if `deploy.production`'s rules were pasted inside the block. See [Evaluation semantics](/reference/evaluation/#invocation).
-
-- Arguments are named-only, like decision payloads, and a trailing comma is allowed. Every param without a default must be bound, and each value must have the param's type. An unknown name, a type mismatch, or a required param left unbound is a compile error.
+- An invocation inside `when` blocks adds the enclosing conditions to every rule of the invoked policy. The `production(...)` call above behaves exactly as if `deploy.production`'s rules were pasted inside the block. See [Evaluation semantics](/reference/evaluation/#invocation).
+- Arguments are named-only, like decision payloads, and a trailing comma is allowed.
+- Every param without a default must be bound, and each value must have the param's type. An unknown name, a type mismatch, or a required param left unbound is a compile error.
 - Params with defaults can be left out. The parentheses are still required: `baseline()` invokes a policy (hypothetical here) whose params all have defaults.
-- Arguments may reference constants and the invoking policy's own params, but not inputs or `let`s, not even a `let` that only holds a constant. That keeps every invocation a static instantiation, so [`sigil explain`](/reference/cli/#sigil-explain) can print concrete values. A team can pass its own params through: `production(approvers: approvers)`.
+- Arguments may reference constants and the invoking policy's own params, but not inputs or `let`s, not even a `let` that only holds a constant. A team can pass its own params through: `production(approvers: approvers)`.
 - Only an imported policy of the same kind can be invoked. Invoking a module is a compile error.
-- A policy can be invoked more than once with different arguments. Each call is a separate instantiation with its own params. Invoking it twice with identical arguments is legal, and the [`duplicate-invocation`](/reference/cli/#lints) lint warns about it.
+- A policy can be invoked more than once with different arguments. Each call is a separate instantiation with its own params.
+- Invoking a policy twice with identical arguments is legal; the [`duplicate-invocation`](/reference/lints/) lint warns about it.
 - The invocation graph must be acyclic. A policy that invokes itself, directly or through others, is a compile error.
 - A host can require that certain policies are invoked unconditionally, so a `when` can't switch their denies off. See [Required policies](/reference/evaluation/#required-policies).
 
-## Modules
+Why: [Composition without templating](/understanding/composition/).
 
-A module is a file of shared, typed matchers. It has no rules and no params, so importing from it can never change a decision by itself. Its header pins a kind version the same way a policy's does.
+## Modules
 
 ```sigil
 module deploy.common: DeployApproval@1
@@ -261,84 +284,23 @@ pub let eligible =
   }
 ```
 
-- The header names the kind, because the `let`s read inputs and have to type-check against them.
+A module is a document of shared, typed matchers. It has no rules and no params, so importing from it can never change a decision by itself.
+
+- The header names the kind and pins a kind version the same way a policy's does. The `let`s read inputs and type-check against them.
 - A module may contain `use` and `let` statements only. `param`, `when`, `assert`, decision constructors and invocations are compile errors.
 - A module may `use` other modules.
 - Only `pub let`s are exported. A module's other lets are private helpers for its own `pub let`s.
-- A host can't load or evaluate a module; it has no rules to evaluate.
-
-## Bundles and resolution
-
-### Documents
-
-A file holds one or more documents. A document is a policy, a module or a kind, and it starts with its header: `policy`, `module` or `kind`. It ends where the next header starts, or at the end of the file.
-
-```sigil
-module deploy.common: DeployApproval@1
-
-pub let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
-
----
-
-policy deploy.guardrails: DeployApproval@1
-
-param min_soak: duration = 24h
-
-when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
-}
-```
-
-A header keyword can't start a statement inside a document, so the parser knows a new document has started when it meets one at the top level. Inside braces, after `.` or as a named argument, `policy`, `module` and `kind` are ordinary names: a `type Resource { kind: string }` body or a `resource.kind` read never ends a document. See [Grammar](/reference/grammar/#source-files). The `---` separator is optional. It's there because YAML users expect it, and because it makes document boundaries easy to scan in a long file. `sigil fmt` always writes it between documents, so a bundle has one canonical form. See [Lexical structure](/reference/lexical/#document-separators) for how `---` lexes.
-
-- A `---` before the first document or after the last one is allowed, and so are several in a row. `sigil fmt` removes the extras.
-- A comment directly above a header belongs to the document that follows it: `sigil fmt` writes the `---` above the comment, not between the comment and the header.
-- A file with no documents at all is valid and contributes nothing.
-
-### Bundles
-
-A bundle is every document in every file the host or the CLI loads, indexed by the name in each header. Files are plain containers:
-
-- `use deploy.common` resolves to the document named `deploy.common`, wherever it is. One key per team, one file per policy, or everything in one file all resolve the same way.
-- A name defined twice in a bundle is a compile error that points at both definitions.
-- Kind documents aren't part of the index, and they're never taken as the contract. The kind always comes from the host's Go definition, or from `--kind` in the CLI. A kind document with the same kind name must match that contract exactly, or the load fails, which catches a stale export; one for another kind is ignored. A `use` of a kind's name is a compile error.
-- The host names the root policy explicitly, so one bundle can hold many policies and the host picks the entry point. A module can't be a root; it has no rules to evaluate.
-- A host can load required policies from a separate, trusted source with `policy.From`. Every name that source defines is reserved, and a bundle document that claims one is a compile error. See [Where required policies come from](/reference/go-api/#where-required-policies-come-from).
-
-A bundle is loaded as a whole. A syntax error in any document fails the load, even in a document the root never uses. That keeps loading simple and predictable; the place to catch a broken document is `sigil check` in CI, before a bundle ships. On a hot reload, the host keeps the last policy that loaded; see [Hot reload](/reference/go-api/#hot-reload). Giving each team its own key or file keeps one team's mistakes out of other teams' review diffs, even though the load still fails as a whole. See [Policies in a ConfigMap](/guides/configmaps/).
+- A host can't load or evaluate a module. `Load` on a module's name fails with `deploy.common is a module, not a policy`.
 
 ```text
-policies.sigil:42:8: error: policy payments.access is defined twice
-   |
-42 | policy payments.access: DeployApproval@1
-   |        ^^^^^^^^^^^^^^^
-   = help: first defined at teams/payments.sigil:1:1; documents resolve by name, so each name has one definition
+deploy/common.sigil:3:1: error: a module can't contain `param`
+  |
+3 | param min_soak: duration = 24h
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: a module holds only imports and lets; rules, params and invocations belong in a policy
 ```
 
-### Loading files
-
-The host passes the bundle as an `fs.FS`; see the [Go API](/reference/go-api/#loading-and-evaluating). The loader reads every file whose name ends in `.sigil`, in every directory, so ConfigMap keys need the extension too (`policies.sigil`). It skips every file or directory whose name starts with `.`. Skipping dot entries is what makes a mounted ConfigMap volume work: kubelet keeps the real files in a hidden `..2026_09_25_…` directory, links it as `..data`, and links each key at the top level, so without the rule every document would be read three times and collide with itself. Symbolic links are followed: the loader checks each entry with `fs.Stat`, not with the directory entry's type, because in a mounted ConfigMap every key at the top level is a symbolic link.
-
-The CLI takes files, directories and stdin; see [CLI & editor tooling](/reference/cli/#inputs).
-
-### File names
-
-Nothing in the language ties a file's path to the names inside it. In a policy repository, keeping them aligned still helps readers and lets CODEOWNERS map to namespaces, so it's a lint: `path-matches-name` warns when a file holds a document whose name doesn't match the file's path, with each `.` turned into `/` and `.sigil` appended.
-
-| Name                  | Expected file               |
-| --------------------- | --------------------------- |
-| `deploy.common`       | `deploy/common.sigil`       |
-| `deploy.production`   | `deploy/production.sigil`   |
-| `payments.production` | `payments/production.sigil` |
-
-The file may sit under any directory: `policies/deploy/common.sigil` matches `deploy.common` too. The lint is off by default. It's a review aid, not a security control: it helps in a repository, and does nothing for a bundle that arrives through `policy.MapFS`. Required policies are protected by `policy.From`; see [Required policies](/reference/evaluation/#required-policies).
-
-::: warning Planned
-A prefix rule for multi-document files isn't implemented: today `deploy.sigil` holding `deploy.common` and `deploy.guardrails` gets a warning for each document. The plan is to accept a file whose documents all share a prefix when its path is that prefix.
-:::
-
-### Identifiers
+## Identifiers
 
 Each policy and module has one flat top-level namespace containing:
 
@@ -346,36 +308,18 @@ Each policy and module has one flat top-level namespace containing:
 - the document's own params and lets, including the lets inside `when` bodies,
 - every name bound by a `use`.
 
-Any collision between two of these is a compile error, and nothing shadows anything. A `param` named `release` in a kind that declares `input release` fails to compile, and so does a quantifier or filter variable named `approvers` in a policy that has a param by that name.
+| Case | Result |
+| --- | --- |
+| Two of these names collide | Compile error. Nothing shadows anything |
+| A `param` named `release` in a kind that declares `input release` | Compile error |
+| A quantifier or filter variable named `approvers` in a policy with a param of that name | Compile error |
+| A `let` called `deny` in a kind that declares `decision deny` | Compile error. Decision names are in the namespace, because a bare decision name is a [value](/reference/types/#decision) in `assert` conditions |
+| An import whose bound name is a decision | Compile error; rename it with `as` |
+| A reason with the same name as anything else | Allowed. Reasons aren't in the namespace: `let release_manager = ...` is fine next to `approve(release_manager)` |
+| A document pinned below the kind's current version collides with an input, host function or decision | Allowed. The document's own name wins, the kind's name is out of reach in that document, and the [`shadowed-kind-name`](/reference/lints/) lint says so |
+| The same collision in a document pinned to the current version | Compile error |
+| Two of the document's own names collide, at any pin | Compile error |
 
-There's one exception, and it only exists so that adding a name to a kind never breaks a policy. When a document pinned below the kind's current version collides with an input, host function or decision, the kind must have added that name after the document was written, because the collision would have been an error at the pinned version. The document's own name wins, the kind's new name is out of reach in that document, and the `shadowed-kind-name` lint says so. The same collision in a document pinned to the current version is an error. Collisions between two of the document's own names are always errors.
+Reasons only appear after a decision's name, as `approve.release_manager`, or in a constructor's first slot.
 
-Decision names are part of that namespace, because a bare decision name is a [value](/reference/types/#decision) in `assert` conditions. A let called `deny` in a kind that declares `decision deny` is a compile error, and so is an import whose bound name is a decision: rename it with `as`. Reasons aren't in the namespace: they only appear after a decision's name, as `approve.release_manager`, or in a constructor's first slot, so a reason may share its name with anything: `let release_manager = ...` is fine next to `approve(release_manager)`.
-
-The goal of the single flat namespace and the no-shadowing rule is that any name in a policy has exactly one meaning, which you can find without knowing scoping rules.
-
-## A complete file
-
-The team policy from the [tour](/getting-started/tour/). It imports two platform policies and one shared matcher, invokes the guardrails unconditionally, picks approvers by compliance scope, and adds one approval of its own:
-
-```sigil
-policy payments.production: DeployApproval@1
-
-use deploy.guardrails
-use deploy.production
-use deploy.common.{cleared}
-
-guardrails(min_soak: 4h)
-
-when service.labels["compliance"] == "pci" {
-  production(approvers: ["payments-leads", "security-leads"])
-}
-
-when service.labels["compliance"] != "pci" {
-  production(approvers: ["payments-leads"])
-}
-
-when cleared and "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
-}
-```
+Why: [Why the language looks like this](/understanding/language-choices/) and [Adding a name never breaks a policy](/understanding/kinds/#adding-a-name-never-breaks-a-policy).

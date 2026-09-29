@@ -3,10 +3,10 @@ title: Performance
 icon: mdi:speedometer
 createTime: 2026/09/28 21:00:00
 permalink: /reference/performance/
-description: What compiling and evaluating Sigil policies costs, as measured, and how to measure it yourself
+description: What compiling and evaluating Sigil policies costs, as measured
 ---
 
-A host compiles a policy once and evaluates it for every request. Every number on this page comes from one machine: an Apple M5 Pro with 18 CPU cores and 64 GB of memory, running macOS 26.6.2 and Go 1.27.1, with the benchmarks limited to two CPUs (`GOMAXPROCS=2`). On it, evaluating a realistic policy takes under two microseconds and allocates 1.5 to 5 KiB, including the result and the trace the host gets back, and compiling the same policy takes a few microseconds per rule. The same benchmarks took about 1.6 times as long on an Apple M1 Max, a 2021 chip: times scale with the machine, allocation counts don't. Read the times as orders of magnitude, and [measure your own](#measure-it-yourself) before sizing a service on them.
+What compiling and evaluating Sigil policies costs, as measured on one machine; see [how these numbers were measured](#how-these-numbers-were-measured). Evaluating a realistic policy takes under two microseconds and allocates 1.5 to 5 KiB, including the result and the trace the host gets back. Times scale with the machine and allocation counts don't, so read the times as orders of magnitude and [measure your own](/project/contributing/#measure-performance) before sizing a service on them.
 
 ## What to expect
 
@@ -14,7 +14,8 @@ A host compiles a policy once and evaluates it for every request. Every number o
 - **Evaluation cost follows the rules that match.** Every rule's condition is evaluated, and each rule that matches also builds a candidate that's folded, ranked and traced. In the synthetic 64-rule policy below, a rule costs about 130 ns when it doesn't match and 350 ns when it does, so the policy takes 8.5 µs when one rule matches and 22 µs when all of them do. Most real policies decide with a handful of matching rules.
 - **Compiled policies are safe to share.** A compiled policy is immutable. Concurrent evaluations share no mutable state and take no locks, so any number of goroutines can evaluate the same policy.
 - **Allocation is predictable.** An evaluation allocates the same number of objects every time for the same input and outcome; no evaluation benchmark's count varied between samples. Most of it is the result and the trace a host receives.
-- **Every evaluation halts.** Sigil has no loops or recursion; quantifiers and filters range over finite lists, so an evaluation ends as long as its host functions do. Its cost still grows with the input's lists and there's no cost budget yet, so bound input sizes and evaluate under a context with a deadline, which `Eval` checks while it runs. See [Halting by construction](/understanding/halting/).
+- **Every evaluation halts.** Its cost grows with the input's lists, and there's no cost budget yet; see [Halting by construction](/understanding/halting/).
+- **Checking the context is nearly free.** The [context checks](/reference/evaluation/#context-checks) cost about 2.5% in the tightest loop, a quantifier comparing two ints, and nothing measurable on the evaluation benchmarks below. Under `context.Background()`, which is never done, nothing is polled.
 
 ## Evaluating policies
 
@@ -75,7 +76,7 @@ Apple M5 Pro, `GOMAXPROCS=2`, medians of ten samples:
 | Tokenize a file | 1.1 µs, 176 B | 53 µs, 8.6 KiB |
 | Format a file | 4.6 µs, 6.4 KiB | 202 µs, 278 KiB |
 
-Building a kind from Go types takes 3.1 µs, loading an exported kind file 6.4 µs, and decoding one JSON input into the kind's Go type 0.6 µs.
+Building a kind from Go types takes 3.1 µs; it records where every input field lives, so `Eval` reads the host's values in place without copying them. Loading an exported kind file takes 6.4 µs, and decoding one JSON input into the kind's Go type 0.6 µs.
 
 ::: details Every benchmark
 Apple M5 Pro, `GOMAXPROCS=2`, medians of ten samples each; see [how they were measured](#how-these-numbers-were-measured).
@@ -160,31 +161,4 @@ Every number on this page was measured on 29 September 2026 on an Apple M5 Pro w
 - Time per operation depends on the machine. Allocated bytes and allocation counts change little between machines with the same Go version and architecture, so they're the numbers to compare across machines. Allocated bytes aren't retained heap.
 - For scale, an Apple M1 Max, a 2021 chip with 10 CPU cores and 64 GB running macOS 26.2, ran the same benchmarks the same day with the same settings, on a revision from before the last two changes to the engine. The 14 benchmarks those changes don't touch took 1.4 to 1.7 times as long there, 1.6 times on average, with the same allocation counts.
 
-## Measure it yourself
-
-From a checkout of the repository, the engine's benchmarks run with the same settings as above:
-
-```sh
-mise run bench
-```
-
-That prints each benchmark's medians, writes the raw samples to `benchmark-results/`, and takes a few minutes. Narrow it to what you're changing, or compare against another revision, with the flags in [Testing, fuzzing and benchmarking Sigil](/guides/testing/#measure-performance):
-
-```sh
-mise run bench -- --filter PolicyEval ./pkg/policy
-mise run bench -- --baseline main
-```
-
-The example service's policies have a benchmark of their own. From `examples/`:
-
-```sh
-go test ./internal/store -run '^$' -bench BenchmarkPolicies -benchmem -count 10 -cpu 2 -benchtime 200ms
-```
-
-For the service measurement, start the example's stack as the [example service guide](/guides/example-service/#run-it) shows, then run the load test from `examples/` at the same rate:
-
-```sh
-RATE=1000 DURATION=2m mise run loadtest
-```
-
-k6 writes its report under `examples/results/`, and the deploygate dashboard in Grafana shows the run's throughput and latency next to the service's profiles.
+To run the same benchmarks and the load test yourself, see [Measure performance](/project/contributing/#measure-performance).

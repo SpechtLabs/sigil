@@ -80,7 +80,7 @@
 // unsigned integers, channels, funcs, interfaces, anonymous structs, and
 // pointers to slices or maps, since a nil slice or map already reads as
 // empty. The full rules are at
-// https://sigil.specht-labs.de/reference/kind-files/#go-type-mapping.
+// https://sigil.specht-labs.de/reference/go-api/#go-type-mapping.
 //
 // NewKind panics when the contract can't be exported, listing every
 // problem at once, the way [regexp.MustCompile] panics on a bad pattern.
@@ -187,5 +187,7 @@
 // calls its real host functions.
 //
 // The Go API reference, with every option's kind file equivalent, is at
-// https://sigil.specht-labs.de/reference/go-api/.
+// https://sigil.specht-labs.de/reference/go-api/, and a step-by-step guide
+// from Go structs to a typed decision is at
+// https://sigil.specht-labs.de/guides/embed-go/.
 package policy
