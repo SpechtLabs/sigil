@@ -17,6 +17,7 @@ const (
 	MetricEvalErrors   = "deploygate_evaluation_errors_total"
 	MetricReloads      = "deploygate_policy_reloads_total"
 	MetricLastReload   = "deploygate_policy_last_reload_timestamp_seconds"
+	MetricReloadOK     = "deploygate_policy_last_reload_successful"
 	MetricPolicyInfo   = "deploygate_policy_loaded_info"
 
 	MetricRequests        = "deploygate_requests_total"
@@ -86,18 +87,25 @@ func (f Families) Find(name string, labels Labels) *dto.Metric {
 // series doesn't exist yet: a counter with labels only appears after its
 // first increment, which is the "before" of many specs.
 func (f Families) Value(name string, labels Labels) float64 {
-	m := f.Find(name, labels)
+	return seriesValue(f.Find(name, labels))
+}
 
-	switch {
-	case m == nil:
+// Sum adds up the counter or gauge series of the named family that match
+// labels, zero when none does, so a spec can check that no series of a
+// family moved without naming each one.
+func (f Families) Sum(name string, labels Labels) float64 {
+	family, ok := f[name]
+	if !ok {
 		return 0
-	case m.GetCounter() != nil:
-		return m.GetCounter().GetValue()
-	case m.GetGauge() != nil:
-		return m.GetGauge().GetValue()
-	default:
-		return m.GetUntyped().GetValue()
 	}
+
+	sum := 0.0
+	for _, m := range family.GetMetric() {
+		if labels.match(m) {
+			sum += seriesValue(m)
+		}
+	}
+	return sum
 }
 
 // Count returns how many series of the named family match labels.
@@ -114,6 +122,23 @@ func (f Families) Count(name string, labels Labels) int {
 		}
 	}
 	return n
+}
+
+// seriesValue returns the value of a counter, gauge or untyped series, and
+// zero for none.
+func seriesValue(m *dto.Metric) float64 {
+	if m == nil {
+		return 0
+	}
+
+	switch {
+	case m.GetCounter() != nil:
+		return m.GetCounter().GetValue()
+	case m.GetGauge() != nil:
+		return m.GetGauge().GetValue()
+	default:
+		return m.GetUntyped().GetValue()
+	}
 }
 
 func (l Labels) match(m *dto.Metric) bool {

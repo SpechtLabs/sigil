@@ -57,45 +57,47 @@ var _ = Describe("Metrics", func() {
 		Expect(families.Find(fixture.MetricAccessDuration, fixture.Labels{"team": fixture.TeamPayments})).NotTo(BeNil())
 	})
 
-	DescribeTable("counts a failed access evaluation by team, kind and stage",
+	DescribeTable("counts a failed access evaluation by team, kind and stage, and no decision",
 		func(kind string, groups []string, status int) {
 			labels := fixture.Labels{"team": fixture.TeamPayments, "kind": kind, "stage": "access"}
-			before := scrapeMetrics(Default).Value(fixture.MetricEvalErrors, labels)
+			before := scrapeMetrics(Default)
 
 			resp, _ := deploygate.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(groups...)))
 			Expect(resp).To(HaveHTTPStatus(status))
 
-			after := scrapeMetrics(Default).Value(fixture.MetricEvalErrors, labels)
-			Expect(after - before).To(BeNumerically("==", 1))
+			after := scrapeMetrics(Default)
+			Expect(after.Value(fixture.MetricEvalErrors, labels) - before.Value(fixture.MetricEvalErrors, labels)).
+				To(BeNumerically("==", 1))
+			// The deploy policy never ran, so no decision series moved, the
+			// fallback's deny(no_rule_matched) included.
+			Expect(after.Sum(fixture.MetricDecisions, nil)).To(Equal(before.Sum(fixture.MetricDecisions, nil)))
 		},
 		Entry("a failed separation-of-duties assert", "assertion", fixture.ComplianceMember, http.StatusUnprocessableEntity),
 		Entry("admin and release manager in one outcome", "conflict", fixture.BreakGlassPlatform, http.StatusConflict),
 	)
 
-	It("counts successful reloads and stamps the time of the last one", func() {
-		success := fixture.Labels{"result": "success"}
-		before := scrapeMetrics(Default).Value(fixture.MetricReloads, success)
+	It("counts successful reloads and stamps each kind's time and health", func() {
+		before := scrapeMetrics(Default)
 
 		resp, body := deploygate.Reload(Default)
 		Expect(resp).To(HaveHTTPStatus(http.StatusOK))
 		kinds := fixture.Decode[fixture.PoliciesResponse](Default, body).Kinds
-		Expect(kinds).NotTo(BeEmpty())
-		loaded := kinds[0].LoadedAt
-		for _, k := range kinds {
-			if k.LoadedAt.Before(loaded) {
-				loaded = k.LoadedAt
-			}
-		}
+		Expect(kinds).To(HaveLen(2))
 
 		families := scrapeMetrics(Default)
-		after := families.Value(fixture.MetricReloads, success)
-		Expect(after).To(BeNumerically(">=", 1))
-		Expect(after - before).To(BeNumerically(">=", 1))
+		for _, k := range kinds {
+			kind := fixture.Labels{"kind": k.Kind}
+			success := fixture.Labels{"kind": k.Kind, "result": "success"}
+			Expect(families.Value(fixture.MetricReloads, success)-before.Value(fixture.MetricReloads, success)).
+				To(BeNumerically(">=", 1), k.Kind)
 
-		// The poller may reload again between the POST and the scrape, so
-		// the gauge is at least the earliest loaded_at the POST reported.
-		Expect(families.Value(fixture.MetricLastReload, nil)).
-			To(BeNumerically(">=", float64(loaded.Unix())))
+			// The poller may reload again between the POST and the scrape,
+			// so each kind's gauge is at least the loaded_at the POST
+			// reported for it.
+			Expect(families.Value(fixture.MetricLastReload, kind)).
+				To(BeNumerically(">=", float64(k.LoadedAt.Unix())), k.Kind)
+			Expect(families.Value(fixture.MetricReloadOK, kind)).To(BeNumerically("==", 1), k.Kind)
+		}
 	})
 
 	It("exposes every loaded policy as an info series", func() {

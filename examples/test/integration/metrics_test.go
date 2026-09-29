@@ -11,6 +11,14 @@ import (
 	"github.com/spechtlabs/sigil/examples/test/internal/fixture"
 )
 
+// What the failed deploy evaluation spec adds to its copy of the checkout
+// policy: an input assert next to the one checkout has, which a hotfix fails.
+const (
+	checkoutPolicy = "checkout/production.sigil"
+	checkoutAssert = `assert("named_actor", actor.name != "")`
+	hotfixAssert   = `assert("no_hotfix", not release.hotfix)`
+)
+
 var _ = Describe("Metrics", func() {
 	// Every spec gets an env with a registry of its own, so the values are
 	// exact: the startup loads and the spec's own requests, nothing else.
@@ -31,10 +39,16 @@ var _ = Describe("Metrics", func() {
 			// alert on the failure ratio has something to divide by.
 			Expect(families.Find(fixture.MetricReloads, failure)).NotTo(BeNil(), kind)
 			Expect(families.Value(fixture.MetricReloads, failure)).To(BeNumerically("==", 0), kind)
-		}
 
-		Expect(families.Value(fixture.MetricLastReload, nil)).
-			To(BeNumerically("~", float64(clockStart.Unix()), 1e-3))
+			// Each bundle has its own clock starting at clockStart, and
+			// its own pair of gauges.
+			Expect(families.Value(fixture.MetricLastReload, fixture.Labels{"kind": kind})).
+				To(BeNumerically("~", float64(clockStart.Unix()), 1e-3), kind)
+			Expect(families.Find(fixture.MetricReloadOK, fixture.Labels{"kind": kind})).NotTo(BeNil(), kind)
+			Expect(families.Value(fixture.MetricReloadOK, fixture.Labels{"kind": kind})).To(BeNumerically("==", 1), kind)
+		}
+		Expect(families.Count(fixture.MetricLastReload, nil)).To(Equal(2))
+		Expect(families.Count(fixture.MetricReloadOK, nil)).To(Equal(2))
 
 		Expect(families.Count(fixture.MetricPolicyInfo, nil)).To(Equal(3))
 		for _, labels := range []fixture.Labels{
@@ -115,6 +129,31 @@ var _ = Describe("Metrics", func() {
 		Entry("a failed separation-of-duties assert", "assertion", fixture.ComplianceMember, http.StatusUnprocessableEntity),
 		Entry("admin and release manager in one outcome", "conflict", fixture.BreakGlassPlatform, http.StatusConflict),
 	)
+
+	It("counts a failed deploy evaluation as an error of the deploy stage and not as a decision", func() {
+		// The shipped policies can't fail in the deploy stage once the
+		// access stage passed, so this spec gives checkout an input assert
+		// of its own.
+		f := newEnv(withCopiedTeams())
+		editFile(f.dir, checkoutPolicy, checkoutAssert, checkoutAssert+"\n"+hotfixAssert)
+		resp, _ := f.client.Reload(Default)
+		Expect(resp).To(HaveHTTPStatus(http.StatusOK))
+
+		resp, out := f.client.Deploy(Default, fixture.TeamCheckout,
+			fixture.OwnerRequest(fixture.Owners(fixture.TeamCheckout), fixture.Groups(fixture.TeamCheckout), fixture.Hotfix()))
+		Expect(resp).To(HaveHTTPStatus(http.StatusUnprocessableEntity))
+		Expect(out.Asserts).To(ConsistOf(HaveField("Reason", "no_hotfix")))
+		// The body still carries the fallback the host acts on...
+		Expect(out.Decision).To(Equal(fixture.DecisionDeny))
+		Expect(out.Reason).To(Equal("no_rule_matched"))
+
+		// ...but the metrics count it only as the failure it is.
+		families := f.families()
+		Expect(families.Value(fixture.MetricEvalErrors, fixture.Labels{
+			"team": fixture.TeamCheckout, "kind": "assertion", "stage": "deploy",
+		})).To(BeNumerically("==", 1))
+		Expect(families.Count(fixture.MetricDecisions, nil)).To(BeZero())
+	})
 
 	It("doesn't count requests it refused before evaluating", func() {
 		resp, _ := e.client.PostRaw(Default, fixture.DeploymentsPath(fixture.TeamPayments), `{`)

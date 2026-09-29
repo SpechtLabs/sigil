@@ -136,11 +136,11 @@ func (s *Server) deployFailed(c *gin.Context, resp *DecisionResponse, f failure)
 		return
 	}
 
-	// A policy's failure still answers with the fallback decision, so it
-	// counts as that decision too; an error that isn't the policy's, which
-	// answered 500 above, decided nothing.
+	// The answer carries the fallback decision, but the policy didn't make
+	// it, so it counts as an evaluation error and not as a decision: a real
+	// deny(no_rule_matched) and a failure stay apart in the metrics, as
+	// they do for a failed access stage.
 	s.metrics.ObserveEvaluationError(telemetry.StageDeploy, resp.Team, f.kind)
-	s.metrics.ObserveDecision(resp.Team, resp.Policy, resp.Decision, resp.Reason)
 	ctx := c.Request.Context()
 	telemetry.FromContext(ctx).WarnContext(ctx, "deploy evaluation failed, answering with the fallback decision",
 		zap.String("team", resp.Team),

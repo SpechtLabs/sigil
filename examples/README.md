@@ -399,13 +399,17 @@ The reload answers `500 Internal Server Error`. The error's message says what ha
 the DeployApproval policies from /etc/deploygate/policies don't load: payments.production failed to compile, so the previous bundle keeps serving
 ```
 
-deploygate keeps serving the bundle it loaded last, so the SRE deploy above still reports `Bake: 30m`, and `mise run demo policies` still reports the team bundle's earlier `loaded_at`. The failure shows up in the metrics, and on the dashboard's "Failed reloads" and "Policy reloads" panels:
+deploygate keeps serving the bundle it loaded last, so the SRE deploy above still reports `Bake: 30m`, and `mise run demo policies` still reports the team bundle's earlier `loaded_at`. The failure shows up in the metrics, and on the dashboard's "Reload health", "Failed reloads" and "Policy reloads" panels:
 
 ```bash
-mise run demo metrics | grep deploygate_policy_reloads_total
+mise run demo metrics | grep deploygate_policy_
 ```
 
-The `kind="DeployApproval",result="failure"` series has gone up. The poller may have tried before you did, so it can be one more than the reloads you asked for; it reports a broken bundle once, though, not at every poll. Alert on that counter: while it's rising, the running policy is stale. Put the `}` back, set the bake to `15m` again and reload, and the success counter moves instead. The same thing happens when a whole broken document lands in the directory, because a bundle loads as a whole: one team's typo stops every team's reload, never every team's deploys.
+`deploygate_policy_last_reload_successful{kind="DeployApproval"}` is now `0`, while `deploygate_policy_last_reload_timestamp_seconds{kind="DeployApproval"}` still holds the time of the bundle that serves. The access bundle's series haven't moved. `deploygate_policy_reloads_total{kind="DeployApproval",result="failure"}` went up too; the poller may have tried before you did, so it can be one more than the reloads you asked for.
+
+Alert on the gauge, `deploygate_policy_last_reload_successful == 0` for five minutes, and not on the counter. The poller reports a broken bundle once, not at every poll, so the counter goes up once and then stays flat: an alert on its rate fires, then resolves while the broken bundle is still there and the old one keeps serving. The gauge stays `0` from the failed attempt until a load of that bundle succeeds. The age of the last successful load can't replace it, because a bundle only reloads when its directory changes, on `SIGHUP` or when someone asks: a week nobody touched the policies and a week of rejected edits both end with a week-old timestamp.
+
+Put the `}` back, set the bake to `15m` again and reload, and the gauge is back at `1` and the success counter moves. The same thing happens when a whole broken document lands in the directory, because a bundle loads as a whole: one team's typo stops every team's reload, never every team's deploys.
 
 ## Observe it
 
@@ -602,7 +606,7 @@ The flags are described in the [CLI reference](../docs/reference/cli.md).
 
 There are four layers, from fastest to slowest. `mise run test` runs the first three with `go test -race ./...`, and vets the fourth; none of them needs Docker.
 
-- **Unit tests** are table-driven `testing` tests next to the code in `internal/` and `cmd/demo-cli`.
+- **Unit tests** are table-driven `testing` tests next to the code in `internal/` and `cmd/demo-cli`. One more sits next to the Grafana dashboard and checks that its JSON parses and that no two panels overlap.
 - **Policy tests** run the same `*_test.yaml` files `sigilc test` runs, from `go test`, with `policytest.Run` and the real kinds. `internal/deploy/kind_test.go` and `internal/access/kind_test.go` load them the way the service does, with the guardrails required from `policies/platform/deploy` and `policies/platform/access`, and `policytest.Schema` fails when an exported kind file is stale. A test file can't expect a conflict, so the break-glass conflict is covered by the integration suite's `409`; [Testing a conflict](../docs/reference/cli.md#testing-a-conflict) shows how to test it against `Eval` directly, with plain `testing` and with Ginkgo.
 - **Integration tests** in `test/integration` are a Ginkgo suite that wires the real store and server the way `cmd/deploygate` does and serves them with `httptest`. Spans go to an in-memory exporter and metrics to a fresh registry per spec, so the specs assert exact values: every span attribute, candidate and grant event, each counter after a known set of requests. It covers every grant of the access endpoint, the `403` of an empty outcome, the `409` conflict with both candidates named and the `422` separation-of-duties assert, on both endpoints. Fake clocks pin `loaded_at` and fire polls by hand, so the reload specs cover polling, `SIGHUP` and last-known-good for both bundles without waiting, on private copies of `policies/teams` and `policies/access`. The suite also checks that the embedded bundles decide every case the same way as the directories they were built from, and it posts every file under `requests/` and checks that each answers with the status this walkthrough shows.
 - **End-to-end tests** in `test/e2e` are a Ginkgo suite behind the `e2e` build tag that talks to the compose stack over HTTP only, and checks Mimir metrics, Tempo spans, Loki logs with resolvable trace IDs, Pyroscope profiles and all four Grafana datasources.
@@ -729,7 +733,8 @@ Any other path answers `404` with the same error model. The server shuts down gr
 | `deploygate_access_grants_total` | counter | `team`, `role`, `reason` |
 | `deploygate_access_evaluation_duration_seconds` | histogram | `team` |
 | `deploygate_policy_reloads_total` | counter | `kind`, `result`: `success` or `failure` |
-| `deploygate_policy_last_reload_timestamp_seconds` | gauge | none; the time of the last successful load |
+| `deploygate_policy_last_reload_timestamp_seconds` | gauge | `kind`; the time of that bundle's last successful load |
+| `deploygate_policy_last_reload_successful` | gauge | `kind`; `1` when that bundle's latest load attempt succeeded, `0` when it failed |
 | `deploygate_policy_loaded_info` | gauge, always 1 | `kind`, `team`, `policy`, `source`; `team` is empty for the access root |
 
 The server's middleware adds the HTTP request metrics to the same registry:
@@ -741,7 +746,7 @@ The server's middleware adds the HTTP request metrics to the same registry:
 
 Every label is bounded. `url` is the route template, `/api/v1/teams/:team/deployments`, or `unmatched` for a path without a route, so made-up team names and scanned paths can't create new series, and a method outside the standard set counts as `other`. Scrapes of `/metrics` aren't counted, because they would dominate the request rate.
 
-`deploygate_decisions_total` counts deploy decisions only. A request whose access stage fails never reaches the deploy policy, so it counts as an evaluation error with `stage="access"` and as nothing else.
+`deploygate_decisions_total` counts the decisions a deploy policy made, and nothing else. A failed evaluation answers with the kind's default, `deny` / `no_rule_matched`, but the policy didn't decide it, so it counts only in `deploygate_evaluation_errors_total`, in either stage: with `stage="access"` when the access stage failed and the deploy policy never ran, with `stage="deploy"` when the deploy policy itself failed. A `deny` / `no_rule_matched` in `deploygate_decisions_total` is always a request no rule matched.
 
 Each deployment request gets the gin server span and, below it, two siblings. The `deploygate.access` span comes first, with `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.environment` and `sigil.grants`, plus one `sigil.grant` event per grant with its `role`, `reason` and `ttl`. The `deploygate.evaluate` span follows, with `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.roles`, `sigil.decision`, `sigil.reason` and `sigil.candidates`, plus one `sigil.candidate` event per trace entry. A failed evaluation sets its span's status to error; when the access stage fails, there is no `deploygate.evaluate` span at all. The access endpoint records the same `deploygate.access` span on its own. Reloads run in a `deploygate.policies.reload` span with `sigil.source`, `sigil.kind`, `deploygate.reload.trigger` (`startup`, `manual`, `sighup` or `poll`) and, on success, `sigil.policies`; a rejected bundle sets the status to error and records the diagnostics. The first loads sit under a `deploygate.startup` span, and a graceful shutdown runs in a `server.shutdown` span.
 

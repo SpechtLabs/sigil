@@ -108,10 +108,6 @@ deploygate_policy_loaded_info{kind="DeployApproval",policy="payments.production"
 	if err := testutil.CollectAndCompare(m.loadedInfo, strings.NewReader(want)); err != nil {
 		t.Errorf("a reload of one kind must replace only that kind's series: %v", err)
 	}
-	if got := testutil.ToFloat64(m.lastReload); got != float64(at.Unix()) {
-		t.Errorf("last reload = %v, want %v", got, at.Unix())
-	}
-
 	want = `
 # HELP deploygate_policy_reloads_total Attempts to load a policy bundle, by the kind it implements and result. A failure keeps the previous bundle serving.
 # TYPE deploygate_policy_reloads_total counter
@@ -152,5 +148,81 @@ deploygate_evaluation_errors_total{kind="conflict",stage="access",team="payments
 	}
 	if got := testutil.CollectAndCount(m.accessEvaluationDuration); got != 1 {
 		t.Errorf("access evaluation duration series = %d, want 1", got)
+	}
+}
+
+// TestReloadHealth follows each kind's two reload gauges through loads that
+// succeed and fail. The time moves only on a success, the health gauge on
+// every attempt, and neither ever moves for the other kind.
+func TestReloadHealth(t *testing.T) {
+	const deploy, access = "DeployApproval", "AccessGrant"
+	first := time.Unix(1_790_000_000, 0)
+	later := first.Add(time.Hour)
+	success := func(kind string, at time.Time) func(*Metrics) {
+		return func(m *Metrics) { m.ObserveReloadSuccess(kind, at, "embedded", nil) }
+	}
+	failure := func(kind string) func(*Metrics) {
+		return func(m *Metrics) { m.ObserveReloadFailure(kind) }
+	}
+
+	tests := []struct {
+		name  string
+		steps []func(*Metrics)
+		// deploy's time, deploy's health, access's time, access's health.
+		want [4]float64
+	}{
+		{name: "prepared, nothing loaded yet"},
+		{
+			name:  "a success stamps the time and marks the kind healthy",
+			steps: []func(*Metrics){success(deploy, first)},
+			want:  [4]float64{float64(first.Unix()), 1, 0, 0},
+		},
+		{
+			name:  "a failure before any success",
+			steps: []func(*Metrics){failure(access)},
+		},
+		{
+			name:  "a failure keeps the time of the last good load",
+			steps: []func(*Metrics){success(deploy, first), failure(deploy)},
+			want:  [4]float64{float64(first.Unix()), 0, 0, 0},
+		},
+		{
+			name:  "a success after a failure marks the kind healthy again",
+			steps: []func(*Metrics){success(deploy, first), failure(deploy), success(deploy, later)},
+			want:  [4]float64{float64(later.Unix()), 1, 0, 0},
+		},
+		{
+			name:  "one kind's failure leaves the other kind's series alone",
+			steps: []func(*Metrics){success(deploy, first), success(access, later), failure(access)},
+			want:  [4]float64{float64(first.Unix()), 1, float64(later.Unix()), 0},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewMetrics()
+			m.PrepareReloads(deploy)
+			m.PrepareReloads(access)
+			for _, step := range tt.steps {
+				step(m)
+			}
+
+			got := [4]float64{
+				testutil.ToFloat64(m.lastReload.WithLabelValues(deploy)),
+				testutil.ToFloat64(m.reloadSuccessful.WithLabelValues(deploy)),
+				testutil.ToFloat64(m.lastReload.WithLabelValues(access)),
+				testutil.ToFloat64(m.reloadSuccessful.WithLabelValues(access)),
+			}
+			if got != tt.want {
+				t.Errorf("gauges = %v, want %v", got, tt.want)
+			}
+			// Both kinds have both series from the start, so an alert on
+			// either kind has a series before that kind's first load ends.
+			if n := testutil.CollectAndCount(m.lastReload); n != 2 {
+				t.Errorf("last reload series = %d, want 2", n)
+			}
+			if n := testutil.CollectAndCount(m.reloadSuccessful); n != 2 {
+				t.Errorf("reload health series = %d, want 2", n)
+			}
+		})
 	}
 }
