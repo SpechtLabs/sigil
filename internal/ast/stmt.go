@@ -10,42 +10,46 @@ import (
 // parse error still has a File, holding every document and statement that
 // did parse, so tools can work on the rest.
 type File struct {
-	Name string
-	Docs []Doc
+	Name string // the file name given to the parser, used in diagnostics
+	Docs []Doc  // the documents in source order
 }
 
-// Doc is a document: a policy, a module or a kind.
+// Doc is a document: a [*PolicyDoc], [*ModuleDoc] or [*KindDoc].
 type Doc interface {
 	Node
 	docNode()
 }
 
 // Stmt is a statement in a policy or module: use, param, let, when, assert
-// or a call.
+// or a call. Only the statement types in this package implement it.
 type Stmt interface {
 	Node
 	stmtNode()
 }
 
-// Decl is a declaration in a kind document.
+// Decl is a declaration in a kind document: type, input, fn, decision,
+// precedence, exclusive, collect or default. Only the declaration types in
+// this package implement it.
 type Decl interface {
 	Node
 	declNode()
 }
 
-// Type is a type expression: a name, `?T`, `list<T>` or `map<K, V>`.
+// Type is a type expression: a name, `?T`, `list<T>` or `map<K, V>`, as a
+// [*NamedType], [*OptionalType], [*ListType] or [*MapType].
 type Type interface {
 	Node
 	typeNode()
 }
 
 // PolicyName is a dotted name such as `deploy.common`, as written after
-// `policy`, `module` and `use`.
+// `policy`, `module` and `use`. Parts is never empty in a tree the parser
+// built; Pos and End assume it isn't.
 type PolicyName struct {
 	Parts []*Ident
 }
 
-// String joins the parts with dots.
+// String joins the parts with dots, as the name is written in source.
 func (n *PolicyName) String() string {
 	parts := make([]string, len(n.Parts))
 	for i, p := range n.Parts {
@@ -61,10 +65,11 @@ func (n *PolicyName) Pos() token.Pos { return n.Parts[0].Pos() }
 func (n *PolicyName) End() token.Pos { return n.Parts[len(n.Parts)-1].End() }
 
 // PolicyDoc is `policy name: Kind@N` followed by imports and statements.
-// The span runs from the header keyword to the end of the last statement.
+// The imports are in Uses, never in Stmts. The span runs from the header
+// keyword to the end of the last statement.
 type PolicyDoc struct {
 	Name  *PolicyName
-	Kind  *Ident
+	Kind  *Ident  // the kind named after `:`
 	Pin   *IntLit // the kind version after `@`; nil when the header has none
 	Uses  []*UseStmt
 	Stmts []Stmt
@@ -74,7 +79,7 @@ type PolicyDoc struct {
 // ModuleDoc is `module name: Kind@N` followed by imports and lets.
 type ModuleDoc struct {
 	Name *PolicyName
-	Kind *Ident
+	Kind *Ident  // the kind named after `:`
 	Pin  *IntLit // the kind version after `@`; nil when the header has none
 	Uses []*UseStmt
 	Lets []*LetStmt
@@ -166,7 +171,7 @@ type NamedType struct {
 	Name *Ident
 }
 
-// OptionalType is `?T`.
+// OptionalType is `?T`. QPos is the position of `?`.
 type OptionalType struct {
 	Elem Type
 	QPos token.Pos
@@ -197,7 +202,7 @@ type TypeDecl struct {
 type Field struct {
 	Name    *Ident
 	Type    Type
-	Default Expr
+	Default Expr // nil without a default
 }
 
 // InputDecl is `input name: type`.

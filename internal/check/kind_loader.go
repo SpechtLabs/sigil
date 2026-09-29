@@ -78,8 +78,8 @@ func (l *kindLoader) fn(d *ast.FnDecl) {
 	l.kind.Funcs = append(l.kind.Funcs, f)
 }
 
-// decision loads a decision, taking `reason: string` off the front of its
-// fields: the model implies it, and a decision without it is an error.
+// decision loads a decision: its payload fields with their constant
+// defaults, and the reasons its block declares.
 func (l *kindLoader) decision(d *ast.DecisionDecl) {
 	if d == nil {
 		return

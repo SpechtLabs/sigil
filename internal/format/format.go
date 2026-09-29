@@ -1,5 +1,5 @@
 // Package format prints Sigil source in its one canonical style, the way
-// gofmt does for Go. It's what `sigil fmt` runs.
+// gofmt does for Go. It's what `sigil fmt` runs, through [Source].
 //
 // The formatter reprints the syntax tree, so spacing and indentation are
 // always normalized, and takes its few layout decisions from where the
@@ -9,6 +9,12 @@
 // next line when it was written there. Comments aren't part of the tree;
 // they come from a second pass over the tokens and are put back by
 // position, each on its own line or trailing the code it followed.
+//
+// Formatting is idempotent and keeps every comment. The formatted source
+// parses to the same tree as the original, except that a quantifier or
+// filter body with a top-level `and`, `or` or `xor` gains parentheses,
+// which show how far the body extends. The package's corpus test and fuzz
+// target check these properties.
 package format
 
 import (
@@ -24,7 +30,12 @@ import (
 // Source formats src, a file of any number of policy, module and kind
 // documents. A file that doesn't parse isn't formatted: the result is
 // nil and the list holds the parse errors, since reprinting a partial
-// tree would drop whatever didn't parse.
+// tree would drop whatever didn't parse. The file name only appears in
+// those errors.
+//
+// The output uses two spaces per indentation level and ends with a single
+// newline, or is empty for a file with nothing in it. Source doesn't modify
+// src and is safe for concurrent use.
 func Source(file string, src []byte) ([]byte, diag.ErrorList) {
 	f, errs := parser.ParseFile(file, src)
 	if errs != nil {

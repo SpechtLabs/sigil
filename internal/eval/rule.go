@@ -17,11 +17,11 @@ type Cond struct {
 // Rule is one decision constructor as compiled: everything about a
 // candidate that doesn't depend on the input.
 type Rule struct {
-	Decision *kind.Decision
-	payload  reflect.Type // the Go payload struct, or nil without a binding
+	Decision *kind.Decision // the decision the constructor names
+	payload  reflect.Type   // the Go payload struct, or nil without a binding
 	Reason   string
-	Policy   string // the document the constructor is in
-	File     string
+	Policy   string  // the document the constructor is in
+	File     string  // the file that document is in
 	Conds    []*Cond // enclosing conditions, outermost first, the invoking blocks' included
 	Chain    []Site  // the invocations the rule was reached through, outermost first
 	Args     []Arg   // the payload arguments as written, for explain
@@ -32,15 +32,16 @@ type Rule struct {
 	rrank    int // the reason's position in the decision's ranking, or 0
 }
 
-// Outcome renders the candidate's decision and reason as a decision
-// value: `approve.release_manager`.
+// Outcome returns the rule's decision and reason as a decision value,
+// `approve.release_manager`, which is how `outcome` and a candidate's
+// `reason` field read it.
 func (r *Rule) Outcome() string { return r.Decision.Name + "." + r.Reason }
 
 // Arg is one payload argument as written, with params replaced by their
 // bound values.
 type Arg struct {
-	Name string
-	Text string
+	Name string // the payload field
+	Text string // the argument's source, whitespace collapsed
 }
 
 // payloadField is how one payload field's value is produced when the
@@ -53,11 +54,12 @@ type payloadField struct {
 	index []int
 }
 
-// Candidate is a rule that fired, with its payload evaluated.
+// Candidate is a rule that fired, with its payload evaluated. The kind's
+// default is a Candidate too, one without a position.
 type Candidate struct {
 	*Rule
 	Payload map[string]any //nolint:emptyinterface // the untyped view of the payload, as Go values
-	Typed   Value          // the payload struct, when the kind has a binding
+	Typed   Value          // the payload struct, when the kind has a binding; invalid otherwise
 }
 
 // fire builds the candidate for r in frame f, evaluating the payload.

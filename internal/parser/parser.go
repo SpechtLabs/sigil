@@ -1,14 +1,24 @@
 // Package parser turns Sigil source into an AST.
 //
+// The parser sits between the lexer and the type checker. [ParseFile]
+// parses a file of policy, module and kind documents into an [ast.File];
+// [ParseExpr] parses a single expression. Both return every diagnostic as a
+// [diag.ErrorList], lexical errors included, sorted by position.
+//
 // Statements are parsed by recursive descent and expressions by a Pratt
-// parser (see expr.go), as docs/reference/grammar.md plans. The parser is
-// hand-written so that every error can say what was expected at that point
-// and, where one is obvious, how to fix it.
+// parser, as the grammar at https://sigil.specht-labs.de/reference/grammar/ plans.
+// The parser is hand-written so that every error can say what was expected at that point and, where one
+// is obvious, how to fix it. It checks syntax only: names, types and the
+// rules of a kind are the checker's job.
 //
 // The parser reads tokens from the lexer on demand, skipping comments, and
 // keeps one token of lookahead beyond the current one. That's all the
 // grammar needs: one token everywhere, and a second only at the start of a
-// call argument.
+// call argument. The parser also peeks at the second token in a few other
+// places to give a better error, or to stop a dotted name before the `.{`
+// of a selective import.
+//
+// Parsing has no shared state, so separate calls may run concurrently.
 package parser
 
 import (
@@ -177,9 +187,12 @@ func span(t token.Token) ast.Span {
 	return ast.Span{From: t.Pos, To: t.End}
 }
 
-// ParseExpr parses src as one expression, as tests and tools such as
-// `sigil eval --expr` need. The file name only appears in diagnostics. On
-// failure the expression is nil and the list holds every diagnostic.
+// ParseExpr parses src as one expression, as tests need, and as the Go kind
+// builder does to read a payload field's default from a struct tag. The
+// file name only appears in diagnostics. The
+// whole of src must be the expression: anything after it is an error. On
+// failure the expression is nil and the list holds every diagnostic; on
+// success the list is nil.
 func ParseExpr(file string, src []byte) (ast.Expr, diag.ErrorList) { //nolint:returninterface // an AST root is any expression node
 	p := newParser(file, src)
 	var x ast.Expr

@@ -12,15 +12,15 @@ import (
 
 // Exported is what a checked document offers to documents that import
 // or invoke it: its pub lets with their types, and, for a policy, its
-// params. The bundle builds one per document and hands them to later
-// documents through a Resolver.
+// params. The checker builds one per document, and the bundle hands them
+// to later documents through a [Resolver].
 type Exported struct {
-	Lets    map[string]types.Type // pub lets
-	Name    string
-	Private []string // lets that aren't pub, for the hint when one is imported
-	Params  []*ExportedParam
-	Module  bool
-	Kind    bool // the name belongs to a kind document, which can't be imported
+	Lets    map[string]types.Type // pub lets, by name, with their types
+	Name    string                // the name in the document's header, like `deploy.guardrails`
+	Private []string              // lets that aren't pub, sorted, for the hint when one is imported
+	Params  []*ExportedParam      // a policy's params in declaration order; nil for a module
+	Module  bool                  // the document is a module, imported for its lets, not a policy to invoke
+	Kind    bool                  // the name belongs to a kind document, which can't be imported
 	// Failed marks a document that couldn't be checked, such as one in an
 	// import cycle. Importing from it is accepted without a word, so its
 	// own error isn't repeated at every use.
@@ -29,10 +29,10 @@ type Exported struct {
 
 // ExportedParam is one param of an invocable policy.
 type ExportedParam struct {
-	Type     types.Type
-	Decl     *ast.ParamStmt
+	Type     types.Type     // the declared type, or [types.Invalid] if it didn't resolve
+	Decl     *ast.ParamStmt // the declaration, with its default and bounds
 	Name     string
-	Required bool
+	Required bool // the param has no default, so every invocation binds it
 }
 
 // Param returns the param called name, or nil.
@@ -45,7 +45,7 @@ func (e *Exported) Param(name string) *ExportedParam {
 	return nil
 }
 
-// ParamNames lists the params in declaration order.
+// ParamNames lists the params in declaration order, for messages.
 func (e *Exported) ParamNames() []string {
 	names := make([]string, len(e.Params))
 	for i, p := range e.Params {
@@ -54,7 +54,7 @@ func (e *Exported) ParamNames() []string {
 	return names
 }
 
-// LetNames lists the pub lets, sorted.
+// LetNames lists the pub lets, sorted, for messages.
 func (e *Exported) LetNames() []string {
 	names := make([]string, 0, len(e.Lets))
 	for n := range e.Lets {
@@ -64,15 +64,17 @@ func (e *Exported) LetNames() []string {
 	return names
 }
 
-// Resolver finds the document a `use` names, by the name in its header.
-// It returns false for a name the bundle doesn't define.
+// Resolver finds the document a `use` names, by the name in its header,
+// like `deploy.common`. It returns false for a name the bundle doesn't
+// define. A kind's name resolves to an [Exported] with Kind set, so the
+// checker can say it can't be imported.
 type Resolver func(name string) (*Exported, bool)
 
 // Read is an imported let an expression reads: the document it comes
 // from and the let's name there.
 type Read struct {
-	Doc string
-	Let string
+	Doc string // the document's header name
+	Let string // the let's own name in that document, before any alias
 }
 
 // uses binds every import. A whole import binds the document under its

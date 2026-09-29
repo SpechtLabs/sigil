@@ -9,13 +9,13 @@ type Struct struct {
 	Fields []*Field
 }
 
-// Field is one field of a Struct.
+// Field is one field of a [Struct] or a [Candidate]: its name and type.
 type Field struct {
 	Type Type
 	Name string
 }
 
-// String returns the struct's name.
+// String implements [Type]. It returns the struct's name.
 func (s *Struct) String() string { return s.Name }
 
 // Field returns the field called name, or nil.
@@ -28,7 +28,8 @@ func (s *Struct) Field(name string) *Field {
 	return nil
 }
 
-// FieldNames returns the field names in declaration order, for messages
+// FieldNames returns the field names in declaration order, joined with
+// commas, for messages
 // like "Service declares: name, tier, owners, labels".
 func (s *Struct) FieldNames() string {
 	names := make([]string, len(s.Fields))

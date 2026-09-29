@@ -15,8 +15,9 @@ import (
 
 // Conforms reports whether v is a constant of type t, in the Go
 // representation constants use: bool, int64, float64, string,
-// time.Duration, time.Time, []any for lists, map[any]any for maps and
-// nil for an absent optional.
+// [time.Duration], [time.Time], []any for lists, map[any]any for maps and
+// nil for an absent optional. It checks every element of a list or map.
+// No value conforms to a struct type or to decision.
 func Conforms(v any, t types.Type) bool {
 	switch t := t.(type) {
 	case types.Basic:
@@ -69,7 +70,11 @@ func Conforms(v any, t types.Type) bool {
 }
 
 // Format renders a constant as a Sigil literal, for signatures and
-// messages.
+// messages. Map entries are sorted, so the output is stable. nil prints
+// as `none`, a timestamp as a quoted RFC 3339 string, and a value outside
+// the representation [Conforms] describes as its Go type in angle
+// brackets. The minimum int64 prints as arithmetic, since its magnitude
+// isn't a valid literal.
 func Format(v any) string {
 	if v == nil {
 		return "none"
@@ -111,7 +116,9 @@ func Format(v any) string {
 
 // FormatDuration renders d as a duration literal: the largest units
 // first, each at most once, and `0s` for zero. Negative durations get a
-// leading minus, which is the unary operator in source.
+// leading minus, which is the unary operator in source. A remainder
+// below a millisecond has no literal; it prints as `+<n>ns`, which the
+// lexer rejects, so the value stays exact and visibly so.
 func FormatDuration(d time.Duration) string {
 	if d == 0 {
 		return "0s"
@@ -146,8 +153,9 @@ func FormatDuration(d time.Duration) string {
 }
 
 // Compare orders two constants of one ordered type with a literal, int64,
-// float64 or time.Duration: negative when a is less than b, zero when
-// they're equal, positive when a is greater. Anything else is equal.
+// float64 or [time.Duration]: negative when a is less than b, zero when
+// they're equal, positive when a is greater. Values of any other Go type
+// compare equal. b must have the same Go type as a, or Compare panics.
 func Compare(a, b any) int { //nolint:emptyinterface // constants are typed by their Sigil type; see Conforms
 	switch a := a.(type) {
 	case int64:
@@ -172,8 +180,10 @@ func formatMap(m map[any]any) string { //nolint:emptyinterface // constants are 
 }
 
 // Ordered returns a Go value of an ordered type in the representation
-// Compare takes: int64, float64 or time.Duration. Anything else comes
-// back unchanged.
+// [Compare] takes: int64, float64 or [time.Duration]. A named Go type
+// whose kind is int, int64 or float64 converts to int64 or float64, so a
+// host's value can be checked against a param's bounds. Anything else
+// comes back unchanged.
 func Ordered(v any) any { //nolint:emptyinterface // constants are typed by their Sigil type; see Conforms
 	switch x := v.(type) {
 	case time.Duration, int64, float64:

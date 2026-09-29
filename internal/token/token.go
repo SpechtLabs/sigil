@@ -1,10 +1,17 @@
 // Package token defines the lexical tokens of the Sigil language and the
 // source positions that tokens, AST nodes and diagnostics carry.
 //
-// The token kinds follow the lexical grammar in docs/reference/lexical.md.
-// Keywords get a kind each, because the parser picks statement and
+// It sits under every other stage of the compiler and imports nothing from
+// the repository. The lexer turns source into a stream of [Token] values, the
+// parser consumes them, and every later stage reports problems at a [Pos]
+// taken from a token or a node.
+//
+// The token kinds follow the lexical grammar at
+// https://sigil.specht-labs.de/reference/lexical/.
+// Keywords get a [Kind] each, because the parser picks statement and
 // expression parsers by looking at one token, and a switch on a kind is both
-// faster and easier to read than a string comparison.
+// faster and easier to read than a string comparison. [Lookup] maps an
+// identifier's spelling to its keyword kind.
 package token
 
 import (
@@ -12,17 +19,20 @@ import (
 	"strconv"
 )
 
-// Kind classifies a token.
+// Kind classifies a token. The zero Kind is [Illegal].
 type Kind uint8
 
-// The token kinds. The unexported markers delimit the classes that IsLiteral,
-// IsOperator and IsKeyword report.
+// The token kinds. The unexported markers delimit the classes that
+// [Kind.IsLiteral], [Kind.IsOperator] and [Kind.IsKeyword] report. The
+// comment after a literal kind is an example; after an operator it is the
+// spelling. Each keyword kind KwX is the reserved word x, in lower case.
 const (
 	// Illegal is a token the lexer could not classify. The lexer records an
 	// error for every Illegal token it emits; the token itself carries the
 	// offending source text so the parser can resynchronize.
 	Illegal Kind = iota
-	// EOF marks the end of the source. Next keeps returning it.
+	// EOF marks the end of the source. Once the source is exhausted, the
+	// lexer's Next method keeps returning it.
 	EOF
 
 	// Comment is a line comment, including the leading `//`. The lexer emits
@@ -47,22 +57,22 @@ const (
 	GtEq      // >=
 	Plus      // +
 	Minus     // -
-	Coalesce  // ??
-	Question  // ?
-	OptDot    // ?.
-	At        // @
+	Coalesce  // ??, the fallback for an absent optional
+	Question  // ?, which makes a type optional: ?T
+	OptDot    // ?., a field access through an optional
+	At        // @, before the kind version a header pins
 	Dot       // .
 	Comma     // ,
 	Colon     // :
 	Assign    // =
-	Arrow     // ->
+	Arrow     // ->, before a host function's result type
 	LParen    // (
 	RParen    // )
 	LBracket  // [
 	RBracket  // ]
 	LBrace    // {
 	RBrace    // }
-	Separator // ---
+	Separator // ---, between two documents in one file
 	operatorEnd
 
 	keywordBeg
@@ -209,7 +219,8 @@ func Lookup(ident string) Kind {
 }
 
 // String returns the spelling of an operator or keyword, and a description
-// such as "identifier" or "end of file" for the other kinds.
+// such as "identifier" or "end of file" for the other kinds. A value outside
+// the declared kinds formats as "kind(N)".
 func (k Kind) String() string {
 	if int(k) < len(names) && names[k] != "" {
 		return names[k]
@@ -228,16 +239,19 @@ func (k Kind) IsKeyword() bool { return keywordBeg < k && k < keywordEnd }
 
 // Pos is a position in a source file. Offset is what code uses to slice the
 // source; Line and Column are what people read in diagnostics.
+//
+// Positions compare by Offset within one file. They carry no file name; a
+// diagnostic pairs them with one.
 type Pos struct {
 	Offset int // byte offset from the start of the source, starting at 0
 	Line   int // line number, starting at 1
-	Column int // column in characters (not bytes), starting at 1
+	Column int // column in characters, not bytes, starting at 1; a tab is one column
 }
 
 // IsValid reports whether p was set. The zero Pos is not a position.
 func (p Pos) IsValid() bool { return p.Line > 0 }
 
-// String formats p as line:column.
+// String formats p as line:column, or as "-" when p is not valid.
 func (p Pos) String() string {
 	if !p.IsValid() {
 		return "-"
@@ -250,13 +264,15 @@ func (p Pos) String() string {
 // is the token's length in bytes, and a multi-line raw string has End on a
 // later line than Pos.
 type Token struct {
-	Text string
-	Pos  Pos
-	End  Pos
+	Text string // the source text exactly as written, quotes included; empty for EOF
+	Pos  Pos    // the token's first character
+	End  Pos    // just after the token's last character
 	Kind Kind
 }
 
-// String formats t for test output and debugging.
+// String formats t for test output and debugging: the position and kind,
+// followed by the quoted text for identifiers, literals, comments and
+// Illegal tokens.
 func (t Token) String() string {
 	switch {
 	case t.Kind == EOF:

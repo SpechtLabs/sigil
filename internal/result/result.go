@@ -1,12 +1,16 @@
 // Package result turns one evaluation of a compiled policy into what a
-// host acts on: the outcome, which falls back to the kind's default when
-// nothing fired or the evaluation failed, the trace, with the conditions
-// that held for the candidates of the winning decisions, and the failure
-// that stopped it, if any.
+// host acts on. A [Result] holds the outcome, which falls back to the
+// kind's default when nothing fired or the evaluation failed, the trace,
+// with the conditions that held for the candidates of the winning
+// decisions, and the failure that stopped it, if any.
 //
-// Package policy converts a Result into its public Result and error
-// types; the sigil CLI reads it directly, since it has no host Go type
-// to instantiate a policy.Policy with.
+// It sits after the evaluator: [Evaluate] runs an
+// [github.com/spechtlabs/sigil/internal/eval.Policy] and shapes its
+// Outcome into a [Result] whose outcome follows the table under Failed
+// evaluations at https://sigil.specht-labs.de/reference/evaluation/. Package
+// [github.com/spechtlabs/sigil/pkg/policy] converts a Result into its
+// public Result and error types; the sigil CLI reads it directly, since it
+// has no host Go type to instantiate a policy.Policy with.
 package result
 
 import (
@@ -18,7 +22,7 @@ import (
 	"github.com/spechtlabs/sigil/internal/token"
 )
 
-// Result is one evaluation.
+// Result is one evaluation, successful or not.
 type Result struct {
 	Failure *Failure // why the evaluation failed; nil when it didn't
 	Policy  string   // the root policy
@@ -50,7 +54,7 @@ type Candidate struct {
 
 // Condition is a `when` condition that held.
 type Condition struct {
-	Text     string
+	Text     string // the condition's source, whitespace collapsed and params replaced by their values
 	Position Position
 }
 
@@ -70,16 +74,16 @@ type Runtime struct {
 
 // Conflict is a set of candidates the kind says can't stand together.
 type Conflict struct {
-	Msg        string
-	Candidates []Candidate
+	Msg        string      // what conflicts, for the error message
+	Candidates []Candidate // the candidates that conflict, with the conditions that held
 }
 
 // Assert is a failing assert.
 type Assert struct {
-	Cause    *Runtime // set when the condition, or an enclosing one, raised
-	Reason   string
-	Policy   string
-	Chain    []Position
+	Cause    *Runtime    // set when the condition, or an enclosing one, raised
+	Reason   string      // the assert's reason, empty when it gives none
+	Policy   string      // the document the assert is in
+	Chain    []Position  // the invocations it was reached through, outermost first
 	Outcome  []Candidate // for an outcome assert, the candidates that formed the outcome it read
 	Position Position
 }
@@ -88,12 +92,16 @@ type Assert struct {
 type Position struct {
 	File     string
 	Document string
-	Line     int
-	Column   int
+	Line     int // starting at 1; 0 when the position is unknown
+	Column   int // in characters, starting at 1
 }
 
 // Evaluate evaluates prog against input, a value of the kind's input
-// struct or a pointer to one.
+// struct or a pointer to one, and never returns nil. When the evaluation
+// fails, Failure says why and the outcome is the fallback: the kind's
+// default, or empty for a collecting kind. The trace then holds every
+// candidate the rules produced, which is none after failed input asserts
+// or a runtime error. It's safe for concurrent use, as prog is.
 func Evaluate(prog *eval.Policy, input any) *Result { //nolint:emptyinterface // the input struct, whatever its Go type
 	b := builder{prog: prog}
 	out, rerr := prog.Eval(input)
@@ -135,9 +143,9 @@ func Evaluate(prog *eval.Policy, input any) *Result { //nolint:emptyinterface //
 	return failed
 }
 
-// Fallback is the result of an evaluation that failed or never ran: the
-// kind's default, or an empty outcome for a collecting kind, with the
-// given trace.
+// Fallback returns the result of an evaluation that failed or never ran,
+// such as one whose context was done: the kind's default, or an empty
+// outcome for a collecting kind, with the given trace and no Failure.
 func Fallback(prog *eval.Policy, trace []Candidate) *Result {
 	return builder{prog: prog}.Fallback(trace)
 }
@@ -168,7 +176,9 @@ func (p Position) String() string {
 	return b.String()
 }
 
-// Chain formats positions as a call chain, joined by arrows.
+// Chain formats positions as a call chain, each as [Position.String]
+// formats it, joined by arrows:
+// `payments/production.sigil:14:3 → deploy/production.sigil:16:5`.
 func Chain(ps []Position) string {
 	parts := make([]string, len(ps))
 	for i, p := range ps {

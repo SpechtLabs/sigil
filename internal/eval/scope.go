@@ -10,6 +10,9 @@ import (
 // expressions compiled on first reference and evaluated at most once
 // per frame, and quantifier and filter variables get frame slots as the
 // compiler meets them. Inputs and host functions come from the binding.
+//
+// Compiling mutates the scope, so it isn't safe for concurrent use until
+// every expression over it is compiled.
 type Scope struct {
 	binding *gokind.Binding
 	consts  map[string]Value
@@ -23,7 +26,9 @@ type Scope struct {
 	nconds  int // `when` conditions, each with a memo slot in a frame
 }
 
-// NewScope returns a scope over the kind's binding.
+// NewScope returns an empty scope over the kind's binding. A nil b gives a
+// scope that reads no input and calls no host function, which is enough
+// for constant expressions.
 func NewScope(b *gokind.Binding) *Scope {
 	return &Scope{binding: b, consts: map[string]Value{}, names: map[string]int{}, decls: map[string]*ast.LetStmt{}, slots: map[string]int{}}
 }
@@ -31,9 +36,11 @@ func NewScope(b *gokind.Binding) *Scope {
 // Bind makes name a constant, as a param bound at compile time is.
 func (s *Scope) Bind(name string, v Value) { s.consts[name] = v }
 
-// Let declares a let and returns its index. The expression is supplied
-// with SetLet once compiled, so lets can be declared before any of them
-// is compiled and refer to each other in any order.
+// Let declares a let and returns its index, the same index when name is
+// declared already. The expression is supplied with [Scope.SetLet] once
+// compiled, so lets can be declared before any of them is compiled and
+// refer to each other in any order. A policy's scope compiles its lets
+// from their declarations on first reference instead.
 func (s *Scope) Let(name string) int {
 	if i, ok := s.names[name]; ok {
 		return i
@@ -44,11 +51,14 @@ func (s *Scope) Let(name string) int {
 	return i
 }
 
-// SetLet sets the expression of the let with index i.
+// SetLet sets the expression of the let with index i, as [Scope.Let]
+// returned it. It must be set before an expression reading the let is
+// evaluated.
 func (s *Scope) SetLet(i int, e Expr) { s.lets[i] = e }
 
-// Declare gives name a slot and returns it. The caller binds the value
-// with Frame.Set before evaluating.
+// Declare gives name a slot and returns it, the same slot when name has
+// one already. The caller binds the value with [Frame.Set] before
+// evaluating.
 func (s *Scope) Declare(name string) int {
 	if slot, ok := s.slots[name]; ok {
 		return slot
@@ -79,7 +89,8 @@ func (s *Scope) bindVar(name string) (int, func()) {
 	}
 }
 
-// Cond reserves a memo slot for a `when` condition and returns it.
+// Cond reserves a memo slot for a `when` condition and returns it. A
+// frame evaluates the condition once and keeps its result there.
 func (s *Scope) Cond() int {
 	s.nconds++
 	return s.nconds - 1

@@ -1,8 +1,11 @@
 package ast
 
 // Inspect walks the expression tree under x in depth-first order, calling
-// fn for every node. When fn returns false the node's children are
-// skipped. Statements aren't walked; callers start from an expression.
+// fn for every node, x included, before its children. When fn returns false
+// the node's children are skipped. The walk visits the [Ident] after a `.`
+// and the variable a quantifier or filter binds, as well as operands. A nil
+// x is not visited. Statements aren't walked; callers start from an
+// expression.
 func Inspect(x Expr, fn func(Expr) bool) {
 	if x == nil || !fn(x) {
 		return

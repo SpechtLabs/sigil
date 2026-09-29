@@ -11,7 +11,7 @@ import (
 // ErrUnbound is the error a synthesized host function returns: the
 // kind file carries the function's signature, but nothing implements it.
 type ErrUnbound struct {
-	Name string
+	Name string // the host function's name
 }
 
 // synth is one Synthesize run.
@@ -22,13 +22,14 @@ type synth struct {
 
 // Synthesize builds a binding for a kind that has no Go types behind it,
 // such as one loaded from a kind file. Every struct type, the input and
-// every payload become a Go struct built with reflect.StructOf, so the
+// every payload become a Go struct built with [reflect.StructOf], so the
 // evaluator reads them exactly like a host's own structs. Every host
-// function is bound to one that fails with *ErrUnbound when it's called,
-// so a policy that never reaches a call still evaluates.
+// function is bound to one that fails with [*ErrUnbound] when it's called,
+// so a policy that never reaches a call still evaluates. `int` becomes
+// int64, `float` float64, and a decision value a string.
 //
-// The kind must be valid; Validate rejects the recursive types StructOf
-// couldn't build.
+// The kind must be valid; [kind.Kind.Validate] rejects the recursive types
+// StructOf couldn't build, and Synthesize doesn't check again.
 func Synthesize(k *kind.Kind) *Binding {
 	s := &synth{
 		binding: &Binding{
@@ -60,6 +61,8 @@ func Synthesize(k *kind.Kind) *Binding {
 	return s.binding
 }
 
+// Error implements the error interface. It says the function has no
+// implementation in this binary and how to build one that has.
 func (e *ErrUnbound) Error() string {
 	return "no implementation in this sigil binary; build a host binary with " + e.Name + " linked in (see sigil's pkg/cli)"
 }

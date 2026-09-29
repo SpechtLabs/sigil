@@ -9,7 +9,11 @@ import (
 	"github.com/spechtlabs/sigil/internal/token"
 )
 
-// ParseFloat decodes a Float literal.
+// ParseFloat decodes a Float literal to the nearest float64. It checks
+// text with [strconv.ParseFloat], which accepts more than the lexer does,
+// such as `NaN`; the lexer's scanner is what enforces Sigil's float syntax.
+// It fails when strconv rejects text or the value is out of range for a
+// float64. A returned error carries no position.
 func ParseFloat(text string) (float64, *diag.Error) {
 	v, err := strconv.ParseFloat(text, 64)
 	if err != nil {

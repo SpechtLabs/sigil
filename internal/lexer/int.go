@@ -12,7 +12,7 @@ import (
 )
 
 // ParseInt decodes an Int literal. The literal is decimal and must fit in a
-// signed 64-bit integer.
+// signed 64-bit integer. A returned error carries no position.
 func ParseInt(text string) (int64, *diag.Error) {
 	v, err := strconv.ParseInt(text, 10, 64)
 	if err != nil {

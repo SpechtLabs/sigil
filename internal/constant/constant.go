@@ -1,18 +1,21 @@
 // Package constant evaluates the constant expressions the language allows
-// in a few places: payload field defaults and the default decision in a
-// kind, param defaults, and invocation arguments. A constant is a
-// literal, a list or map literal of constants, or `+`, `-` and unary
-// minus applied to constants, as docs/reference/policy-files.md specifies
-// for param defaults.
+// in a few places: payload field defaults and the default decision's
+// arguments in a kind, a `default=` tag option on a Go payload field,
+// param defaults and their `min` and `max` bounds, and invocation
+// arguments. A constant is a literal, a list or map literal of constants,
+// or `+`, `-` and unary minus applied to constants, as the reference
+// specifies for param defaults at https://sigil.specht-labs.de/reference/policy-files/.
 //
 // Evaluation is checked against the type the constant must have, which
 // every one of those places knows: the field's, the param's. That's what
 // gives an empty `[]` its element type and what turns a mismatch into a
-// message naming both types.
+// message naming both types. Integer and duration arithmetic reports
+// overflow instead of wrapping, and float arithmetic must stay finite, so
+// every constant can be printed back as a literal.
 //
 // The package also owns the Go representation of a constant value:
-// Conforms says which Go values stand for which Sigil type, and Format
-// prints one back as a literal.
+// [Conforms] says which Go values stand for which Sigil type, [Format]
+// prints one back as a literal, and [Compare] orders two of them.
 package constant
 
 import (
@@ -29,9 +32,12 @@ import (
 const help = "a constant is a literal, a list or map of literals, or `+` and `-` applied to those"
 
 // Eval evaluates x as a constant of type want and returns its value in
-// the representation Conforms accepts: bool, int64, float64, string,
-// time.Duration, []any and map[any]any. An optional type takes a constant
-// of its element type. The error, if any, points into x.
+// the representation [Conforms] accepts: bool, int64, float64, string,
+// [time.Duration], []any and map[any]any. An optional type takes a
+// constant of its element type. A timestamp, a decision or a struct has
+// no constant, so wanting one is an error. The error, if any, spans the
+// part of x that's wrong and has no File set; the caller fills it in. x
+// must not be nil.
 func Eval(x ast.Expr, want types.Type) (any, *diag.Error) {
 	if opt, ok := want.(*types.Optional); ok {
 		want = opt.Elem
@@ -51,7 +57,8 @@ func Eval(x ast.Expr, want types.Type) (any, *diag.Error) {
 
 // AddInt returns a+b, or a-b when sub is set, and false on overflow.
 // Constant folding and the evaluator both use it, so an overflow is
-// caught the same way at compile time and at run time.
+// caught the same way at compile time and at run time. Durations use it
+// too, as their int64 nanoseconds.
 func AddInt(a, b int64, sub bool) (int64, bool) {
 	if sub {
 		if b == math.MinInt64 {

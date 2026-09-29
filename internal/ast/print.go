@@ -8,8 +8,10 @@ import (
 
 // Sprint renders an expression with every operator application in
 // parentheses, so the tree's shape is visible: `a or b and c` prints as
-// `(a or (b and c))`. It's for tests and debugging; the formatter will
-// produce canonical source instead.
+// `(a or (b and c))`. It's for tests and debugging; canonical source comes
+// from the formatter in internal/format. A nil node prints as `<nil>`, a
+// [BadExpr] as `<error>`, and a node that isn't an expression as its Go
+// type in angle brackets.
 func Sprint(n Node) string {
 	var b strings.Builder
 	sprint(&b, n)

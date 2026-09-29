@@ -2,8 +2,17 @@ package check
 
 import "strings"
 
-// Nearest is nearest for tools outside the checker, such as the input
-// decoder and the lint configuration, so every "did you mean" agrees.
+// Nearest returns the candidate an author most likely meant by name, for
+// a "did you mean" hint, and false when none is close enough to be a
+// plausible typo or when name is itself a candidate. Distance counts
+// insertions, deletions, substitutions and adjacent transpositions on the
+// lowercased strings, so `teir` for `tier` counts one and `release`
+// for `Release` counts nothing; the limit is a third of name's length,
+// and at least one. Ties go to the earlier candidate.
+//
+// The checker uses the same rule internally. Tools outside it, such as
+// the input decoder and the lint configuration, call Nearest so every
+// "did you mean" agrees.
 func Nearest(name string, candidates []string) (string, bool) {
 	return nearest(name, candidates)
 }
@@ -12,9 +21,9 @@ func Nearest(name string, candidates []string) (string, bool) {
 // mean" hint on unknown fields, types and names. It returns the
 // candidate nearest to name when it's near enough to be a plausible
 // typo, and false otherwise. Distance is Damerau-Levenshtein on the
-// lowercased strings, so a transposition (`teir`) and a case slip
-// (`release` for `Release`) each count one; the limit is a third of the
-// name's length, and at least one. Ties go to the earlier candidate.
+// lowercased strings, so a transposition (`teir`) counts one and a case
+// slip (`release` for `Release`) counts nothing; the limit is a third of
+// the name's length, and at least one. Ties go to the earlier candidate.
 func nearest(name string, candidates []string) (string, bool) {
 	limit := max(1, len(name)/3)
 	best, bestDist := "", limit+1

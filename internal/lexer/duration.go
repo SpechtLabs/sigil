@@ -15,13 +15,17 @@ import (
 // rank the "largest first" rule compares.
 var durationUnits = [...]string{"d", "h", "m", "s", "ms"}
 
-// ParseDuration decodes a Duration literal such as `1h30m`. Each unit may
-// appear at most once, in descending order, and the total must fit in a
-// time.Duration. The text must already have the shape ( digits unit )+,
-// which the lexer guarantees.
+// ParseDuration decodes a Duration literal such as `1h30m`. The units are
+// d, h, m, s and ms. Each unit may appear at most once, in descending order,
+// and the total must fit in a [time.Duration]. Text that isn't a sequence
+// of components, each digits followed by a unit, is rejected as invalid,
+// so ParseDuration is also safe on text the lexer didn't scan, such as a
+// duration a host passes as a string.
+// The empty string decodes to zero without an error. A returned error
+// carries no position.
 //
 // The rules are Sigil's, so the validation is ours. The arithmetic is
-// time.ParseDuration's: once the text is known to be well-formed, the only
+// [time.ParseDuration]'s: once the text is known to be well-formed, the only
 // way it can still fail is by overflowing. Go has no `d` unit, so day
 // components are rewritten as hours first.
 func ParseDuration(text string) (time.Duration, *diag.Error) {

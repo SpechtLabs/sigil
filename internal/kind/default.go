@@ -2,9 +2,10 @@ package kind
 
 // Default is the kind's default decision: the constructor call that
 // applies when no rule fires. Args holds the constant payload values it
-// passes by field name.
+// passes by field name, in the representation [constant.Conforms]
+// describes. Fields it leaves out take their declared defaults.
 type Default struct {
 	Args     map[string]any //nolint:emptyinterface // constants are typed by their Sigil type; see constant.Conforms
-	Decision string
-	Reason   string
+	Decision string         // the decision the default constructs
+	Reason   string         // one of the decision's reasons
 }

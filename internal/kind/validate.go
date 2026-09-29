@@ -20,6 +20,7 @@ var identRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 //
 //	kind                          the header
 //	kind.version                  the version number
+//	kind.accepts                  the oldest accepted version
 //	type T                        a type's name
 //	type T.field F                a field's name
 //	type T.field F.type           a field's type
@@ -45,9 +46,12 @@ type validator struct {
 }
 
 // Validate checks the rules a kind must satisfy and returns one
-// diagnostic per violation. The model doesn't know where it came from, so
-// positions come from locate, which may be nil: NewKind panics with the
-// bare messages, while a kind-file loader supplies the spans.
+// diagnostic per violation, in the order it checks them, or nil when the
+// kind is valid. The model doesn't know where it came from, so positions
+// come from locate, which may be nil: NewKind panics with the bare
+// messages, while a kind-file loader supplies the spans. The diagnostics
+// have no File set. [types.Invalid] passes wherever a type is checked,
+// since whoever put it there has reported why. Validate doesn't modify k.
 func (k *Kind) Validate(locate Locator) diag.ErrorList {
 	v := &validator{kind: k, locate: locate}
 	v.header()

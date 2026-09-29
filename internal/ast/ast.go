@@ -1,10 +1,3 @@
-// Package ast declares the syntax tree the parser builds and the later
-// stages walk.
-//
-// Every node knows where it came from: Pos is its first character and End
-// the position just after its last, so a diagnostic can underline any node.
-// Literal nodes keep both the source text, for the formatter, and the decoded
-// value, for the checker and evaluator.
 package ast
 
 import (
@@ -15,11 +8,14 @@ import (
 
 // Node is anything with a position in the source.
 type Node interface {
+	// Pos returns the position of the node's first character.
 	Pos() token.Pos
+	// End returns the position just after the node's last character.
 	End() token.Pos
 }
 
-// Expr is an expression node.
+// Expr is an expression node. Only the expression types in this package
+// implement it.
 type Expr interface {
 	Node
 	exprNode()
@@ -29,11 +25,12 @@ type Expr interface {
 // directly, such as a literal or a bracketed construct. Nodes built from
 // children derive their range from them instead.
 type Span struct {
-	From token.Pos
-	To   token.Pos
+	From token.Pos // the first character
+	To   token.Pos // just after the last character
 }
 
-// Pos returns the start of the span.
+// Pos returns the start of the span. Embedding a Span gives a node its
+// [Node] methods.
 func (s Span) Pos() token.Pos { return s.From }
 
 // End returns the position just after the span.
@@ -47,27 +44,31 @@ type BadExpr struct {
 }
 
 // Ident is a name: an input, param, let, function, decision, quantifier
-// variable, or a field after `.`. Fields may be spelled like keywords.
+// variable, or a field after `.`. Declarations, imports and arguments use
+// it for their names too. Fields may be spelled like keywords.
 type Ident struct {
 	Name string
 	Span
 }
 
-// IntLit is an integer literal.
+// IntLit is an integer literal. Text is the source; Value is the decoded
+// integer.
 type IntLit struct {
 	Text string
 	Span
 	Value int64
 }
 
-// FloatLit is a float literal.
+// FloatLit is a float literal. Text is the source; Value is the decoded
+// float.
 type FloatLit struct {
 	Text string
 	Span
 	Value float64
 }
 
-// DurationLit is a duration literal such as `1h30m`.
+// DurationLit is a duration literal such as `1h30m`. Text is the source;
+// Value is the decoded duration.
 type DurationLit struct {
 	Text string
 	Span
@@ -120,7 +121,8 @@ type ParenExpr struct {
 	Span
 }
 
-// UnaryExpr is a prefix operator applied to an operand: `not x` or `-x`.
+// UnaryExpr is a prefix operator applied to an operand: `not x`, `-x` or
+// `present x`. OpPos is the position of the operator.
 type UnaryExpr struct {
 	X     Expr
 	OpPos token.Pos
@@ -162,6 +164,8 @@ type CallExpr struct {
 }
 
 // QuantExpr is a quantifier `any x in xs: body` or `all x in xs: body`.
+// Var is bound to each element of Range in turn while Body is evaluated.
+// QuantPos is the position of the keyword.
 type QuantExpr struct {
 	Var      *Ident
 	Range    Expr
@@ -171,7 +175,8 @@ type QuantExpr struct {
 }
 
 // FilterExpr is a filter `filter x in xs: body`: the elements of xs for
-// which body holds, in their order.
+// which body holds, in their order. Var and Range work as in [QuantExpr].
+// FilterPos is the position of the keyword.
 type FilterExpr struct {
 	Var       *Ident
 	Range     Expr
