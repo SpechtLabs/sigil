@@ -52,6 +52,19 @@ func WithAddr(addr string) Option {
 	}
 }
 
+// WithEvaluationTimeout bounds each policy evaluation, the access stage and
+// the deploy stage each on its own. An evaluation still running at the
+// deadline stops and answers 503 with the fallback decision. The default is
+// one second, thousands of times what the example policies take, and a
+// duration that isn't positive keeps it.
+func WithEvaluationTimeout(d time.Duration) Option {
+	return func(s *Server) {
+		if d > 0 {
+			s.evaluationTimeout = d
+		}
+	}
+}
+
 // WithShutdownTimeout bounds how long Serve waits for in-flight requests
 // when its context ends. The default is 15 seconds, and a duration that
 // isn't positive keeps it.

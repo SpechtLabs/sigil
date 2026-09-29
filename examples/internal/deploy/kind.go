@@ -98,6 +98,11 @@ var (
 // always wins over a team's approval. The reasons of deny and approve are
 // ranked too, so two rules of the same decision never conflict: a deploy that
 // is both ineligible and too fresh is denied as not_eligible.
+//
+// A host function that panics fails the evaluation closed, with the default
+// and a [policy.RuntimeError], instead of unwinding into gin's recovery,
+// which would answer an empty 500 that skips the request metrics and the
+// evaluation error count. See [policy.WithRecoverHostPanics].
 var Kind = policy.NewKind[Input]("DeployApproval",
 	policy.WithVersion(1),
 	policy.WithDecisions(Deny, Review, Approve),
@@ -105,4 +110,5 @@ var Kind = policy.NewKind[Input]("DeployApproval",
 	policy.WithReasonPrecedence(Approve, "release_manager", "payments_sre"),
 	policy.WithDefault(Deny, "no_rule_matched"),
 	policy.WithFunc("split", strings.Split),
+	policy.WithRecoverHostPanics(),
 )

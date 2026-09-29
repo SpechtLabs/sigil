@@ -46,6 +46,29 @@ var _ = Describe("Evaluating a deployment", func() {
 		fixture.Entries(fixture.AccessFailureCases()),
 	)
 
+	// An outcome assert that fails when no rule fired leaves the trace as
+	// empty as a failed input assert does, but it's still the policy that
+	// failed, so it answers 500, not the caller's 422.
+	It("answers 500 for an outcome assert that fails with nothing fired", func() {
+		f := newEnv(withCopiedTeams())
+		editFile(f.dir, checkoutPolicy, checkoutAssert,
+			checkoutAssert+"\n"+`assert("decided_by_a_rule", deny.no_rule_matched not in outcome)`)
+		resp, _ := f.client.Reload(Default)
+		Expect(resp).To(HaveHTTPStatus(http.StatusOK))
+
+		// A critical service is outside checkout's tiers and the owner isn't
+		// a release manager, so no rule fires and the default decides.
+		resp, out := f.client.Deploy(Default, fixture.TeamCheckout, fixture.OwnerRequest(
+			fixture.Owners(fixture.TeamCheckout), fixture.Groups(fixture.TeamCheckout), fixture.Tier("critical"), fixture.Hotfix()))
+
+		fixture.ExpectAsserts(Default, resp, http.StatusInternalServerError, out.Asserts, out.Error,
+			fixture.AssertEntry{Reason: "decided_by_a_rule", Policy: "checkout.production"})
+		Expect(out.Trace).To(BeEmpty())
+		Expect(f.families().Value(fixture.MetricEvalErrors, fixture.Labels{
+			"team": fixture.TeamCheckout, "kind": "assertion", "stage": "deploy",
+		})).To(BeNumerically("==", 1))
+	})
+
 	Context("when the request can't be evaluated", func() {
 		It("answers 404 naming the teams it does serve", func() {
 			resp, body := shared.client.PostJSON(Default, fixture.DeploymentsPath("marketing"), fixture.OwnerRequest())

@@ -16,6 +16,15 @@ func TestKindFileIsCurrent(t *testing.T) {
 	policytest.Schema(t, deploy.Kind, "../../policies/deploy_approval.sigil")
 }
 
+// TestKindRecoversHostPanics fails when the kind stops recovering host
+// function panics. split can't be made to panic from a policy, so the
+// option is checked where the kind records it rather than by a panic.
+func TestKindRecoversHostPanics(t *testing.T) {
+	if !deploy.Kind.Contract().Binding.RecoverHostPanics {
+		t.Error("deploy.Kind doesn't set policy.WithRecoverHostPanics")
+	}
+}
+
 // TestPolicies runs every *_test.yaml under policies/teams against the team
 // bundle, loaded the way the service loads it: the platform's deploy
 // documents are the trusted source of the required guardrails. The trusted

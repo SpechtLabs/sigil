@@ -167,6 +167,30 @@ func ExpectNoDeployDecision(g gomega.Gomega, out DecisionResponse, team string) 
 	ExpectGrants(g, []GrantRef{}, out.Access.Grants)
 }
 
+// ExpectTimedOut asserts the answer to [OwnerRequest] against team, built
+// with [SlowToDecide], whose deploy stage ran past the evaluation timeout:
+// 503, because the service didn't decide in time, not because the request
+// or the policy is wrong; the deploy kind's fallback, with an empty trace,
+// since Eval returns none from an evaluation it stopped; the team member's
+// roles the access stage granted before; and an error that names the
+// timeout.
+func ExpectTimedOut(g gomega.Gomega, resp *http.Response, out DecisionResponse, team string) {
+	g.Expect(resp).To(gomega.HaveHTTPStatus(http.StatusServiceUnavailable))
+	g.Expect(out.Team).To(gomega.Equal(team))
+	g.Expect(out.Decision).To(gomega.Equal(DecisionDeny))
+	g.Expect(out.Reason).To(gomega.Equal("no_rule_matched"))
+	g.Expect(out.Trace).NotTo(gomega.BeNil(), "trace must be [], not null")
+	g.Expect(out.Trace).To(gomega.BeEmpty())
+	g.Expect(out.Error).NotTo(gomega.BeNil())
+	if out.Error != nil {
+		g.Expect(out.Error.Message).To(gomega.ContainSubstring("evaluation timeout"))
+	}
+	g.Expect(out.Access).NotTo(gomega.BeNil(), "the response has no access block")
+	if out.Access != nil {
+		ExpectGrants(g, member, out.Access.Grants)
+	}
+}
+
 // ExpectBreakGlassConflict asserts the 500 for a break-glass platform
 // member: the kind declares admin and release_manager exclusive, both
 // fired, which is a defect in the policy and not in the request, and the

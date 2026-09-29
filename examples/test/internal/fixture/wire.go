@@ -75,8 +75,8 @@ type (
 // The response bodies. Payloads stay raw so specs can compare them with
 // MatchJSON, which checks the exact shape including duration strings.
 type (
-	// DecisionResponse is the body of an evaluation, including the 422 and
-	// 500 of a failed one.
+	// DecisionResponse is the body of an evaluation, including the 422, 500
+	// and 503 of a failed one.
 	DecisionResponse struct {
 		Error    *ErrorBody      `json:"error"`
 		Access   *AccessBlock    `json:"access"`
@@ -109,7 +109,7 @@ type (
 	}
 
 	// AccessResponse is the body of POST /api/v1/access/grants, including
-	// the 403 of an empty outcome and the 422 and 500 of a failed
+	// the 403 of an empty outcome and the 422, 500 and 503 of a failed
 	// evaluation.
 	AccessResponse struct {
 		Error       *ErrorBody    `json:"error"`

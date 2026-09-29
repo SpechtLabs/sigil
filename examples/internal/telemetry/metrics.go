@@ -15,11 +15,15 @@ const Namespace = "deploygate"
 
 // The error kinds deploygate_evaluation_errors_total counts. A conflict is a
 // defect in a policy while a failed assert is usually a bad input, so they are
-// alerted on separately.
+// alerted on separately. A timeout is an evaluation that ran past the
+// evaluation timeout, deploygate's failure to answer in time. A request the
+// client canceled isn't a kind: nothing failed, so it isn't counted here, and
+// deploygate_requests_total{code="499"} records it.
 const (
 	ErrorKindAssertion = "assertion"
 	ErrorKindRuntime   = "runtime"
 	ErrorKindConflict  = "conflict"
+	ErrorKindTimeout   = "timeout"
 )
 
 // The stages of a deployment request, as deploygate_evaluation_errors_total
@@ -93,7 +97,7 @@ func NewMetrics() *Metrics {
 		evaluationErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: Namespace,
 			Name:      "evaluation_errors_total",
-			Help:      "Evaluations that failed, by team, kind of failure (assertion, runtime, conflict) and stage (access, deploy).",
+			Help:      "Evaluations that failed, by team, kind of failure (assertion, runtime, conflict, timeout) and stage (access, deploy). A request the client canceled isn't a failure and isn't counted.",
 		}, []string{labelTeam, labelKind, "stage"}),
 		grants: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: Namespace,

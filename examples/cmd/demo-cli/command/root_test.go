@@ -185,6 +185,39 @@ func TestHTTPFailures(t *testing.T) {
 	}
 }
 
+// TestFailedEvaluationExitCodes checks which 5xx answers to a deployment
+// are the policy's refusal, exit 2, and which aren't, exit 1: a failed
+// evaluation names its policy and carries the fallback, whether the policy
+// failed (500) or ran out of time (503), and any other 5xx doesn't.
+func TestFailedEvaluationExitCodes(t *testing.T) {
+	fallback := `{"team":"payments","policy":"payments.production","decision":"deny","reason":"no_rule_matched","payload":{},"trace":[],"error":{"message":"payments.production wasn't decided within deploygate's evaluation timeout"}}`
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		code   int
+		want   string
+	}{
+		{"a policy that failed", 500, fallback, 2, "DENY: no_rule_matched"},
+		{"a policy that ran out of time", 503, fallback, 2, "evaluation timeout"},
+		{"bundles not loaded yet", 503, `{"error":{"message":"no policy bundle is loaded yet"}}`, 1, "no policy bundle is loaded yet"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			t.Cleanup(srv.Close)
+			output, err := execute(t, "", "--url", srv.URL, "deploy")
+			if got := testExitCode(err); got != tt.code || !strings.Contains(output, tt.want) {
+				t.Fatalf("exit = %d, want %d; output:\n%s", got, tt.code, output)
+			}
+		})
+	}
+}
+
 func TestTimeoutAndCancellation(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()

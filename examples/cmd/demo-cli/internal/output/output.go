@@ -217,7 +217,7 @@ func (e *ResponseError) Error() string {
 // ExitCode returns 2 for policy refusals and 1 for other HTTP failures. A
 // refusal is a deny or an empty grant, 403, or a failed evaluation, which
 // answers with the fallback: 422 when the request failed an input assert,
-// 500 when the policy failed. See [refused].
+// 500 when the policy failed, 503 when it ran out of time. See [refused].
 func (e *ResponseError) ExitCode() int {
 	if e.refused {
 		return 2
@@ -226,14 +226,15 @@ func (e *ResponseError) ExitCode() int {
 }
 
 // refused reports whether a response refuses the request on the policy's
-// behalf. 403 and 422 always do. A 500 does when its body names the policy
-// that failed, which a failed evaluation's body does and an error without a
-// decision, such as a failed reload, doesn't.
+// behalf. 403 and 422 always do. A 500 or a 503 does when its body names
+// the policy that failed, which a failed evaluation's body does and an
+// error without a decision, such as a failed reload or a bundle that isn't
+// loaded yet, doesn't.
 func refused(status int, data []byte) bool {
 	switch status {
 	case http.StatusForbidden, http.StatusUnprocessableEntity:
 		return true
-	case http.StatusInternalServerError:
+	case http.StatusInternalServerError, http.StatusServiceUnavailable:
 		var body struct {
 			Policy string `json:"policy"`
 		}

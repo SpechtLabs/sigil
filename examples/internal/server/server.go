@@ -42,8 +42,9 @@ const (
 
 // Defaults for the options.
 const (
-	DefaultAddr            = ":8080"
-	DefaultShutdownTimeout = 15 * time.Second
+	DefaultAddr              = ":8080"
+	DefaultShutdownTimeout   = 15 * time.Second
+	DefaultEvaluationTimeout = time.Second
 )
 
 // maxBodyBytes caps a request body. A deploy request is a few hundred bytes;
@@ -74,8 +75,9 @@ type Server struct {
 	tracerProvider trace.TracerProvider
 	tracer         trace.Tracer
 
-	addr            string
-	shutdownTimeout time.Duration
+	addr              string
+	shutdownTimeout   time.Duration
+	evaluationTimeout time.Duration
 }
 
 // New builds the server and its routes. [WithStore] and [WithAccessStore]
@@ -84,8 +86,9 @@ type Server struct {
 // [WithTracerProvider] it uses the global tracer provider.
 func New(opts ...Option) (*Server, humane.Error) {
 	s := &Server{
-		addr:            DefaultAddr,
-		shutdownTimeout: DefaultShutdownTimeout,
+		addr:              DefaultAddr,
+		shutdownTimeout:   DefaultShutdownTimeout,
+		evaluationTimeout: DefaultEvaluationTimeout,
 	}
 	for _, opt := range opts {
 		opt(s)

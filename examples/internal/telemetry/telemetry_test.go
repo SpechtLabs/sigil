@@ -127,6 +127,7 @@ func TestAccessAndErrorMetrics(t *testing.T) {
 	m.ObserveGrant("payments", "deployer", "oncall")
 	m.ObserveEvaluationError(StageAccess, "payments", ErrorKindConflict)
 	m.ObserveEvaluationError(StageDeploy, "checkout", ErrorKindAssertion)
+	m.ObserveEvaluationError(StageDeploy, "payments", ErrorKindTimeout)
 	m.AccessTimer("payments").ObserveDuration()
 
 	want := `
@@ -138,10 +139,11 @@ deploygate_access_grants_total{reason="oncall",role="deployer",team="payments"} 
 		t.Error(err)
 	}
 	want = `
-# HELP deploygate_evaluation_errors_total Evaluations that failed, by team, kind of failure (assertion, runtime, conflict) and stage (access, deploy).
+# HELP deploygate_evaluation_errors_total Evaluations that failed, by team, kind of failure (assertion, runtime, conflict, timeout) and stage (access, deploy). A request the client canceled isn't a failure and isn't counted.
 # TYPE deploygate_evaluation_errors_total counter
 deploygate_evaluation_errors_total{kind="assertion",stage="deploy",team="checkout"} 1
 deploygate_evaluation_errors_total{kind="conflict",stage="access",team="payments"} 1
+deploygate_evaluation_errors_total{kind="timeout",stage="deploy",team="payments"} 1
 `
 	if err := testutil.CollectAndCompare(m.evaluationErrors, strings.NewReader(want)); err != nil {
 		t.Error(err)

@@ -32,15 +32,16 @@ const EnvPrefix = "DEPLOYGATE"
 // underscores. teams is the exception: its flag is the singular --team,
 // because it repeats.
 const (
-	keyAddr            = "addr"
-	keyPolicies        = "policies"
-	keyAccessPolicies  = "access-policies"
-	keyTeams           = "teams"
-	keyReloadInterval  = "reload-interval"
-	keyShutdownTimeout = "shutdown-timeout"
-	keyDebug           = "debug"
-	keyLogFormat       = "log-format"
-	flagTeam           = "team"
+	keyAddr              = "addr"
+	keyPolicies          = "policies"
+	keyAccessPolicies    = "access-policies"
+	keyTeams             = "teams"
+	keyReloadInterval    = "reload-interval"
+	keyShutdownTimeout   = "shutdown-timeout"
+	keyEvaluationTimeout = "evaluation-timeout"
+	keyDebug             = "debug"
+	keyLogFormat         = "log-format"
+	flagTeam             = "team"
 )
 
 // Defaults for the serve flags. They are what the Dockerfile and the compose
@@ -51,12 +52,14 @@ var (
 )
 
 // The defaults that are single values, one per serve flag: --addr,
-// --reload-interval, --shutdown-timeout and --log-format.
+// --reload-interval, --shutdown-timeout, --evaluation-timeout and
+// --log-format.
 const (
-	DefaultAddr            = ":8080"
-	DefaultReloadInterval  = 30 * time.Second
-	DefaultShutdownTimeout = 15 * time.Second
-	DefaultLogFormat       = "json"
+	DefaultAddr              = ":8080"
+	DefaultReloadInterval    = 30 * time.Second
+	DefaultShutdownTimeout   = 15 * time.Second
+	DefaultEvaluationTimeout = time.Second
+	DefaultLogFormat         = "json"
 )
 
 // Config is the resolved configuration of `deploygate serve`.
@@ -79,6 +82,10 @@ type Config struct {
 	ReloadInterval time.Duration
 	// ShutdownTimeout bounds the graceful shutdown.
 	ShutdownTimeout time.Duration
+	// EvaluationTimeout bounds each policy evaluation, the access stage and
+	// the deploy stage each on its own. An evaluation still running at the
+	// deadline stops and the request answers 503 with the fallback decision.
+	EvaluationTimeout time.Duration
 	// Debug turns on debug logging and gin's debug mode.
 	Debug bool
 	// LogFormat is "json" or "console".
@@ -123,6 +130,7 @@ func Load(v *viper.Viper) (Config, humane.Error) {
 		Teams:             splitTeams(v.GetStringSlice(keyTeams)),
 		ReloadInterval:    v.GetDuration(keyReloadInterval),
 		ShutdownTimeout:   v.GetDuration(keyShutdownTimeout),
+		EvaluationTimeout: v.GetDuration(keyEvaluationTimeout),
 		Debug:             v.GetBool(keyDebug),
 		LogFormat:         v.GetString(keyLogFormat),
 	}
@@ -149,6 +157,10 @@ func (c Config) Validate() humane.Error {
 	if c.ShutdownTimeout <= 0 {
 		return humane.New("the shutdown timeout "+c.ShutdownTimeout.String()+" isn't positive",
 			"set --shutdown-timeout to a positive duration such as 15s")
+	}
+	if c.EvaluationTimeout <= 0 {
+		return humane.New("the evaluation timeout "+c.EvaluationTimeout.String()+" isn't positive",
+			"set --evaluation-timeout to a positive duration such as 1s; an evaluation without a deadline could hold a request for as long as its input makes it run")
 	}
 	if c.LogFormat != "json" && c.LogFormat != "console" {
 		return humane.New("unknown log format "+c.LogFormat, "set --log-format to json or console")
@@ -211,6 +223,7 @@ gracefully.`,
 	flags.StringSlice(flagTeam, DefaultTeams, "team to serve, repeatable; team t evaluates policy t.production")
 	flags.Duration(keyReloadInterval, DefaultReloadInterval, "how often to poll the policies directory for changes; 0 disables polling")
 	flags.Duration(keyShutdownTimeout, DefaultShutdownTimeout, "how long a graceful shutdown may take")
+	flags.Duration(keyEvaluationTimeout, DefaultEvaluationTimeout, "how long one policy evaluation may take before the request answers 503 with the fallback decision")
 	flags.Bool(keyDebug, false, "debug logging and gin debug mode")
 	flags.String(keyLogFormat, DefaultLogFormat, "log format: json or console")
 

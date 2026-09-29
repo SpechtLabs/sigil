@@ -2,14 +2,15 @@ package server_test
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/spechtlabs/sigil/examples/internal/server"
 )
@@ -248,11 +249,14 @@ func TestDeployments(t *testing.T) {
 // TestDeployStageFailures breaks checkout's policy in each way a deploy
 // evaluation can fail after the access stage passed. A failed input assert
 // is the caller's and answers 422; everything else is the policy's and
-// answers 500. Every answer carries the fallback and the grants.
+// answers 500. Every answer carries the fallback and the grants. The
+// request is checkout's owner shipping a hotfix, which checkout's policy
+// sends to review, unless edit changes it.
 func TestDeployStageFailures(t *testing.T) {
 	tests := []struct {
 		name        string
 		extra       string // appended to checkout's policy
+		edit        func(r, actor map[string]any)
 		wantStatus  int
 		wantKind    string
 		wantMessage string
@@ -278,6 +282,21 @@ func TestDeployStageFailures(t *testing.T) {
 			wantTrace:   true,
 		},
 		{
+			// A critical service is outside checkout's tiers and the owner
+			// isn't a release manager, so no rule fires and the outcome is
+			// the default. The trace is as empty as after a failed input
+			// assert, and the answer is still the policy's 500.
+			name:  "an outcome assert that fails with nothing fired is the policy's",
+			extra: `assert("decided_by_a_rule", deny.no_rule_matched not in outcome)`,
+			edit: func(r, _ map[string]any) {
+				r["service"].(map[string]any)["tier"] = "critical"
+			},
+			wantStatus:  http.StatusInternalServerError,
+			wantKind:    "assertion",
+			wantMessage: "the outcome of checkout.production fails its asserts: decided_by_a_rule",
+			wantAssert:  "decided_by_a_rule",
+		},
+		{
 			name:        "a runtime error is the policy's",
 			extra:       "when actor.regions[9] == \"eu\" {\n  deny(not_eligible)\n}",
 			wantStatus:  http.StatusInternalServerError,
@@ -301,6 +320,9 @@ func TestDeployStageFailures(t *testing.T) {
 			rec := do(h, http.MethodPost, "/api/v1/teams/checkout/deployments", deployRequest(func(r, actor map[string]any) {
 				checkoutOwner(r, actor)
 				r["release"].(map[string]any)["hotfix"] = true
+				if tt.edit != nil {
+					tt.edit(r, actor)
+				}
 			}))
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("status = %d, want %d; body %s", rec.Code, tt.wantStatus, rec.Body)
@@ -335,39 +357,135 @@ func TestDeployStageFailures(t *testing.T) {
 	}
 }
 
-// TestCanceledRequest sends requests whose context is already canceled, so
-// Eval fails without a policy failure to classify. That's no one's decision:
-// it answers 500 with the error model and no fallback, and counts no
-// evaluation error.
+// TestCanceledRequest cancels requests before and during the evaluation.
+// The client is gone either way, so it answers 499 with no body, counts no
+// evaluation error and no decision, and marks no span as failed: a client
+// that gives up says nothing about the policy or the service.
 func TestCanceledRequest(t *testing.T) {
 	tests := []struct {
 		name string
 		path string
 		body string
+		// during cancels the request shortly after the deploy stage
+		// starts, while a policy that's slow for the input runs, instead
+		// of before the request is sent.
+		during bool
 	}{
-		{name: "deployment", path: "/api/v1/teams/payments/deployments", body: deployRequest(nil)},
-		{name: "access grants", path: "/api/v1/access/grants", body: accessRequest("ada", "", "payments", "production", "payments")},
+		{name: "deployment canceled before the access stage", path: "/api/v1/teams/payments/deployments", body: deployRequest(nil)},
+		{name: "access grants canceled before the evaluation", path: "/api/v1/access/grants", body: accessRequest("ada", "", "payments", "production", "payments")},
+		{name: "deployment canceled during the deploy stage", path: "/api/v1/teams/payments/deployments", body: deployRequest(slowToDecide), during: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := newEnv(t, loaded).srv.Handler()
 			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
+			defer cancel()
+			opts := loaded
+			if tt.during {
+				opts.onSpanStart = func(name string) {
+					if name == "deploygate.evaluate" {
+						time.AfterFunc(10*time.Millisecond, cancel)
+					}
+				}
+			} else {
+				cancel()
+			}
+			env := newEnv(t, opts)
+			h := env.srv.Handler()
 			req := httptest.NewRequestWithContext(ctx, http.MethodPost, tt.path, strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 
-			if rec.Code != http.StatusInternalServerError {
-				t.Fatalf("status = %d, want 500; body %s", rec.Code, rec.Body)
+			if rec.Code != server.StatusClientClosedRequest {
+				t.Fatalf("status = %d, want 499; body %s", rec.Code, rec.Body)
 			}
-			var body map[string]json.RawMessage
-			decode(t, rec, &body)
-			if _, ok := body["error"]; !ok || len(body) != 1 {
-				t.Errorf("body %s, want only the error model, no fallback", rec.Body)
+			if rec.Body.Len() != 0 {
+				t.Errorf("body %s, want none: no one is left to read it", rec.Body)
 			}
-			if metrics := do(h, http.MethodGet, "/metrics", "").Body.String(); strings.Contains(metrics, "deploygate_evaluation_errors_total{") {
-				t.Error("a canceled request counted as an evaluation error")
+			metrics := do(h, http.MethodGet, "/metrics", "").Body.String()
+			for _, unwanted := range []string{"deploygate_evaluation_errors_total{", "deploygate_decisions_total{"} {
+				if strings.Contains(metrics, unwanted) {
+					t.Errorf("a canceled request counted in %s", unwanted)
+				}
+			}
+			if want := `deploygate_requests_total{code="499",method="POST"`; !strings.Contains(metrics, want) {
+				t.Errorf("/metrics doesn't contain %s", want)
+			}
+			spans := env.spans.GetSpans()
+			for _, s := range spans {
+				if s.Status.Code == codes.Error {
+					t.Errorf("span %s is marked failed: %v", s.Name, s.Status)
+				}
+			}
+			if evalSpan, ok := findSpan(spans, "deploygate.evaluate"); tt.during && (!ok || countEvents(evalSpan, "exception") != 1) {
+				t.Errorf("deploygate.evaluate = %+v, present %v; want the deploy stage stopped by the cancellation", evalSpan.Events, ok)
+			}
+		})
+	}
+}
+
+// TestEvaluationDeadline runs each stage out of time. The deploy stage gets
+// a policy that's slow for its input and a short evaluation timeout; the
+// access stage gets a request whose deadline passed before it arrived,
+// which the evaluation timeout can only shorten. Either way the service
+// didn't decide in time: 503 with the fallback, counted as a timeout of the
+// stage that ran out.
+func TestEvaluationDeadline(t *testing.T) {
+	tests := []struct {
+		name      string
+		path      string
+		body      string
+		expired   bool // whether the request's own deadline has passed
+		wantStage string
+		wantTeam  string
+	}{
+		{name: "the deploy stage", path: "/api/v1/teams/payments/deployments", body: deployRequest(slowToDecide), wantStage: "deploy", wantTeam: "payments"},
+		{name: "the access stage of a deployment", path: "/api/v1/teams/checkout/deployments", body: deployRequest(nil), expired: true, wantStage: "access", wantTeam: "checkout"},
+		{name: "the access stage of a grants request", path: "/api/v1/access/grants", body: accessRequest("ada", "", "payments", "production", "payments"), expired: true, wantStage: "access", wantTeam: "payments"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newEnv(t, envOptions{deployLoaded: true, accessLoaded: true, evaluationTimeout: 50 * time.Millisecond})
+			h := env.srv.Handler()
+			ctx := context.Background()
+			if tt.expired {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithDeadline(ctx, time.Now().Add(-time.Second))
+				defer cancel()
+			}
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			start := time.Now()
+			h.ServeHTTP(rec, req)
+			if took := time.Since(start); took > 5*time.Second {
+				t.Errorf("the request took %v, far past the 50ms evaluation timeout", took)
+			}
+
+			if rec.Code != http.StatusServiceUnavailable {
+				t.Fatalf("status = %d, want 503; body %s", rec.Code, rec.Body)
+			}
+			var resp struct {
+				server.DecisionResponse
+				Grants []server.GrantResult `json:"grants"`
+			}
+			decode(t, rec, &resp)
+			if resp.Error == nil || !strings.Contains(resp.Error.Message, "wasn't decided within deploygate's evaluation timeout") {
+				t.Errorf("error = %+v, want the timeout explained", resp.Error)
+			}
+			if len(resp.Trace) != 0 || len(resp.Grants) != 0 {
+				t.Errorf("trace, grants = %+v, %+v; want none from an evaluation that ran out of time", resp.Trace, resp.Grants)
+			}
+			if strings.Contains(tt.path, "deployments") && (resp.Decision != "deny" || resp.Reason != "no_rule_matched") {
+				t.Errorf("decision = %s(%s), want the fallback deny(no_rule_matched)", resp.Decision, resp.Reason)
+			}
+
+			metrics := do(h, http.MethodGet, "/metrics", "").Body.String()
+			if want := `deploygate_evaluation_errors_total{kind="timeout",stage="` + tt.wantStage + `",team="` + tt.wantTeam + `"} 1`; !strings.Contains(metrics, want) {
+				t.Errorf("/metrics doesn't contain %s", want)
+			}
+			if strings.Contains(metrics, "deploygate_decisions_total{") {
+				t.Error("an evaluation that ran out of time counted its fallback as a decision")
 			}
 		})
 	}
@@ -612,4 +730,20 @@ func attributes(kvs []attribute.KeyValue) map[attribute.Key]attribute.Value {
 		out[kv.Key] = kv.Value
 	}
 	return out
+}
+
+// slowToDecide makes the deploy policy's region check take far longer than
+// any test waits. `cleared` checks that every region the service lists is
+// one the actor holds; the service lists "z" 50,000 times, and the actor
+// holds 49,999 other regions before "z", so each lookup walks the whole
+// list: over a billion comparisons, from a body well under the 1 MiB cap.
+func slowToDecide(r, actor map[string]any) {
+	const n = 50_000
+	r["service"].(map[string]any)["labels"].(map[string]string)["regions"] = strings.TrimSuffix(strings.Repeat("z,", n), ",")
+	regions := make([]string, n)
+	for i := range n - 1 {
+		regions[i] = "y"
+	}
+	regions[n-1] = "z"
+	actor["regions"] = regions
 }

@@ -141,6 +141,27 @@ func (c *Client) PostRaw(g gomega.Gomega, path, body string) (*http.Response, []
 	return c.Send(g, http.MethodPost, path, "application/json", strings.NewReader(body))
 }
 
+// Abandon posts v rendered as JSON to path and gives up after wait, the way
+// a client that stops waiting closes its connection mid-request. It expects
+// the server not to have answered by then, so the request must take longer
+// than wait, such as a deployment built with [SlowToDecide].
+func (c *Client) Abandon(g gomega.Gomega, path string, v any, wait time.Duration) {
+	body, err := json.Marshal(v)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err == nil {
+		_ = resp.Body.Close()
+	}
+	g.Expect(err).To(gomega.MatchError(context.DeadlineExceeded), "POST %s%s answered within %v", c.baseURL, path, wait)
+}
+
 // Send performs one request and reads the whole body. It puts a fresh reader
 // back on the response, because HaveHTTPStatus prints the body when it fails
 // and an already drained body would make that message empty.

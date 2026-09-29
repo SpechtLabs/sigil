@@ -19,10 +19,13 @@
 // A failed evaluation still answers with a decision, the kind's fallback,
 // deny, next to the error and the failed asserts or conflicting candidates
 // that explain it. The status says whose fault the failure is, the same in
-// both stages: a failed input assert is the caller's and answers 422, and a
+// both stages: a failed input assert is the caller's and answers 422, a
 // conflict, a failed outcome assert or a runtime error is the policy's and
-// answers 500. Every other error is a humane error, rendered as an
-// [ErrorEnvelope].
+// answers 500, and an evaluation that ran past the evaluation timeout,
+// [WithEvaluationTimeout], is deploygate's and answers 503. A request the
+// client canceled during an evaluation answers
+// [StatusClientClosedRequest] with no body and counts as no failure. Every
+// other error is a humane error, rendered as an [ErrorEnvelope].
 //
 // # Observability
 //

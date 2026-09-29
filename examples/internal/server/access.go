@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 	humane "github.com/sierrasoftworks/humane-errors-go"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -32,9 +31,10 @@ type accessStage struct {
 // on its own and answers with the roles it grants. The status says whether
 // anything was granted: 200 when at least one role was, 403 when none was.
 // A failed evaluation grants nothing and answers with the status classify
-// picks: 422 for a failed input assert, the caller's to fix, and 500 for a
+// picks: 422 for a failed input assert, the caller's to fix, 500 for a
 // conflict, a failed outcome assert or a runtime error, which are the
-// policy's.
+// policy's, and 503 when the evaluation ran out of time. A request the
+// client canceled gets 499 and no body.
 func (s *Server) grants(c *gin.Context) {
 	snap, ok := s.access.Snapshot()
 	if !ok {
@@ -69,20 +69,15 @@ func (s *Server) grants(c *gin.Context) {
 	}
 
 	if st.err != nil {
-		f := classify(st.policy, st.err, len(st.trace) > 0, "no role is granted; act as if grants were empty")
-		if f.kind == "" {
-			writeError(c, f.status, f.herr)
+		f := classify(st.policy, st.err, "no role is granted; act as if grants were empty")
+		where := []zap.Field{zap.String("stage", telemetry.StageAccess), zap.String("team", req.Team), zap.String("policy", st.policy)}
+		if answerUncounted(c, f, where...) {
 			return
 		}
 		s.metrics.ObserveEvaluationError(telemetry.StageAccess, req.Team, f.kind)
 		ctx := c.Request.Context()
 		telemetry.FromContext(ctx).LogContext(ctx, f.logLevel(), "access evaluation failed, granting nothing",
-			zap.String("team", req.Team),
-			zap.String("policy", st.policy),
-			zap.String("error_kind", f.kind),
-			zap.Int("status", f.status),
-			zap.Error(f.herr),
-		)
+			f.logFields(where...)...)
 		resp.Error, resp.Asserts, resp.Conflict = NewErrorResponse(f.herr), f.asserts, f.conflict
 		c.JSON(f.status, resp)
 		return
@@ -113,7 +108,7 @@ func (s *Server) runAccess(ctx context.Context, p *policy.Policy[access.Input], 
 	defer span.End()
 
 	timer := s.metrics.AccessTimer(in.Team)
-	res, err := p.Eval(ctx, in)
+	res, err := evalWithin(ctx, s.evaluationTimeout, p, in)
 	took := timer.ObserveDuration()
 
 	st := accessStage{policy: p.Name(), grants: []GrantResult{}, trace: []CandidateResult{}, err: err}
@@ -136,8 +131,7 @@ func (s *Server) runAccess(ctx context.Context, p *policy.Policy[access.Input], 
 	}
 
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "access evaluation failed")
+		failSpan(span, err, "access evaluation failed")
 		return st
 	}
 

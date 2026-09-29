@@ -75,8 +75,13 @@ var (
 // release management, so a policy that grants both contradicts itself: the
 // host declares the pair exclusive, and such an evaluation fails with a
 // conflict instead of handing out two grants.
+//
+// The kind has no host functions yet, and recovers their panics anyway, so
+// the first one added fails closed like the deploy kind's do. See
+// [policy.WithRecoverHostPanics].
 var Kind = policy.NewKind[Input]("AccessGrant",
 	policy.WithVersion(1),
 	policy.WithCollect(Reader, Deployer, ReleaseManager, Admin, Auditor),
 	policy.WithExclusive(Admin, ReleaseManager),
+	policy.WithRecoverHostPanics(),
 )

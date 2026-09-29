@@ -130,6 +130,7 @@ func start(ctx context.Context, cfg config.Config) (*service, humane.Error) {
 		server.WithMetrics(metrics),
 		server.WithAddr(cfg.Addr),
 		server.WithShutdownTimeout(cfg.ShutdownTimeout),
+		server.WithEvaluationTimeout(cfg.EvaluationTimeout),
 	)
 	if herr != nil {
 		span.SetStatus(codes.Error, "building the server failed")
@@ -144,6 +145,7 @@ func start(ctx context.Context, cfg config.Config) (*service, humane.Error) {
 		zap.String("policies", teamSource),
 		zap.String("access_policies", accessSource),
 		zap.Duration("reload_interval", cfg.ReloadInterval),
+		zap.Duration("evaluation_timeout", cfg.EvaluationTimeout),
 	)
 	return svc, nil
 }
