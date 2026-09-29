@@ -5,7 +5,7 @@ createTime: 2026/09/24 22:30:00
 permalink: /guides/team-policies/
 ---
 
-This guide is for the platform team that writes shared policies and the product teams that build on them. It shows how to give each team its own version of a policy without copying it and without running it through a text templater. The platform writes shared policies with typed params. Each team either composes them by invoking them from its own policy, or gets their params bound from Go. The host makes sure the guardrails can't be switched off. Two sections, [Require the guardrails from the host](#require-the-guardrails-from-the-host) and [Bind params from Go instead](#bind-params-from-go-instead), show the host's side, in Go.
+By the end of this guide, the platform's shared policies take typed params, each team gets its own version by invoking them or by binding their params from Go, and the host makes sure no team can switch the guardrails off. Nothing is copied or run through a text templater.
 
 The examples build on the `DeployApproval` kind and the `deploy.*` files from the [tour](/getting-started/tour/).
 
@@ -34,9 +34,17 @@ param approvers: list<string>
 param tiers: list<string> = ["standard", "internal"]
 ```
 
-`approvers` has no default, so `deploy.production` can't be evaluated until someone binds it. That's deliberate: a deploy gate with no reviewers makes no sense, and a missing required param is a compile error rather than a runtime surprise.
+`approvers` has no default, because a deploy gate with no reviewers makes no sense. `deploy.production` can't be evaluated until someone binds it, and a policy that invokes it without `approvers` fails to compile instead of surprising anyone at run time.
 
 Anything you don't make a param is fixed for every team. In the platform's files, the eligibility labels and the rules themselves are fixed.
+
+Bound every param a team could use to switch a guardrail off. Without a bound, a team can invoke `guardrails(min_soak: 0s)`, and the `soak_too_short` rule dutifully compares against zero. Declare the lowest value you accept with [`min`](/reference/policy-files/#bounds), and that invocation fails to compile:
+
+```sigil
+param min_soak: duration = 24h, min: 1h
+```
+
+Lists such as `approvers` can't be bounded, so review team policies that change them, or [bind them from Go](#bind-params-from-go-instead) where the platform controls the values.
 
 ## Compose with invocations
 
@@ -64,14 +72,7 @@ when cleared and "payments-sre" in actor.teams {
 }
 ```
 
-The rules:
-
-- `use` only imports. `use deploy.production` binds the name `production`; nothing happens until the policy calls it.
-- An invocation adds every rule of the invoked policy, with its params bound. Params you don't mention keep their defaults; required params you don't mention are a compile error.
-- Arguments are named, and each one is type-checked against the param's declared type. `min_soak: "4h"` fails because a string isn't a duration. Arguments may use constants and the team policy's own params, but not inputs, so every invocation is a fixed instantiation.
-- An invocation inside `when` blocks adds their conditions to every rule it brings in. The two `production(...)` calls above give PCI-scoped services a second approver group.
-- The invoked policy must implement the same kind. Invoking a policy written for some other kind, say one for access requests, inside a `DeployApproval` policy is a compile error.
-- `use deploy.production` finds the document whose header is `policy deploy.production`, anywhere in the bundle the host passes to `Load`. The files can be laid out however suits the team, including all of them in one ConfigMap key; see [Policies in a ConfigMap](/guides/configmaps/).
+Each invocation adds the invoked policy's rules with its params bound by named, type-checked arguments, and an invocation inside `when` adds the condition to every rule it brings in, which is how the two `production(...)` calls above give PCI-scoped services a second approver group. [Policy invocation](/reference/policy-files/#policy-invocation) has the full rules.
 
 To check what a composition adds up to, run [`sigil explain`](/reference/cli/#sigil-explain) on the team file. It prints every rule the policy can fire, with each call's conditions pushed into the rule and each param replaced by its bound value.
 
@@ -84,7 +85,7 @@ p, err := Deploy.Load(policies, "payments.production",
 	policy.Require("deploy.guardrails"))
 ```
 
-The compiler checks that `deploy.guardrails` is reachable from the root through top-level invocations only. Here's what a team sees if it tries to skip the guardrails for PCI services:
+The compiler checks that `deploy.guardrails` is reachable from the root through top-level invocations only. A team that gates the guardrails to skip them for PCI services gets:
 
 ```text
 payments/production.sigil:7:3: error: deploy.guardrails must be invoked unconditionally
@@ -94,16 +95,16 @@ payments/production.sigil:7:3: error: deploy.guardrails must be invoked uncondit
   = help: the host requires deploy.guardrails for every DeployApproval policy; move the call to the top level
 ```
 
-A team policy that doesn't invoke the guardrails at all fails too, with `payments.production doesn't invoke deploy.guardrails`. In CI, `sigil check --require deploy.guardrails` runs the same check; see [Policies in a ConfigMap](/guides/configmaps/#check-in-ci-what-the-service-will-load). Put the `Require` wherever the host loads team policies, so no team can forget it.
+A team policy that doesn't invoke the guardrails at all fails too, with `payments.production doesn't invoke deploy.guardrails`. In CI, `sigil check --require deploy.guardrails` runs the same check; see [Check policies in CI](/guides/ci/#require-the-guardrails). Put the `Require` wherever the host loads team policies, so no team can forget it.
 
-`Require` checks a name, and any document can claim a name. When teams can write to the bundle, the host also passes `policy.From` with a source only the platform controls, so the guardrails, and everything they import, come from there and nowhere else:
+When teams can write to the bundle, also pass `policy.From` with a source only the platform controls, since `Require` on its own only checks a name ([why](/understanding/bundles/#why-required-policies-need-a-trusted-source)):
 
 ```go
 p, err := Deploy.Load(teamFS, "payments.production",
 	policy.Require("deploy.guardrails", policy.From(platformFS)))
 ```
 
-A team document that claims `deploy.guardrails` or `deploy.common` is then a compile error. [Policies in a ConfigMap](/guides/configmaps/#protect-the-guardrails) shows the full setup.
+[Policies in a ConfigMap](/guides/configmaps/#load-it-in-the-service) shows the full setup, and [Trusted sources](/reference/bundles/#trusted-sources) the rules.
 
 ## Bind params from Go instead
 
@@ -166,9 +167,7 @@ use deploy.common                         // qualified: common.cleared
 use deploy.common.{owns_service as owner} // renamed: owner
 ```
 
-Imported names live in the same top-level namespace as inputs, params and lets. Importing something as `release` or `actor` is a compile error, because it would collide with an input.
-
-Only `pub let`s can be imported, and a policy can mark its own lets `pub` too, as long as they don't read a param. A param has no value outside an invocation, so the compiler rejects such a `pub let` where it's declared and suggests moving it to a module.
+Only `pub let`s can be imported, and an imported name can't collide with an input or any other name; see [`use`](/reference/policy-files/#use), [Exporting lets](/reference/policy-files/#exporting-lets) and [Identifiers](/reference/policy-files/#identifiers).
 
 ## Invoke the same policy twice
 
@@ -210,22 +209,11 @@ Every rule of every invocation runs against every input, unless a `when` around 
 
 ## Know what a team can and can't change
 
-Composition adds candidates and never removes them. Combined with the kind's `precedence deny > review > approve` and the host's `Require`, that gives you a clear line:
-
-| A team can | A team can't |
-| --- | --- |
-| Add approvals that win when the platform's policies say nothing, turning the kind's default deny into an approve | Override a deny from a required policy |
-| Add reviews and denies, making the result stricter | Gate a required policy behind `when`, or leave it out |
-| Gate, repeat or skip policies the host doesn't require | Turn a review into an approve (review outranks approve) |
-| Change any param, including loosening ones like `min_soak` | Remove or edit a rule of an invoked policy |
-| Import shared matchers from modules | Import a `let` that reads a param |
-
-The first row is the point of the whole mechanism: the guardrails' `not_eligible` and `soak_too_short` denies hold no matter what a team adds. The [tour](/getting-started/tour/#the-same-release-after-two-hours) shows a team approval losing to a guardrail deny.
-
-The fourth row is the gap, and [bounds](/reference/policy-files/#bounds) close it. Without them, a team can invoke `guardrails(min_soak: 0s)`, and the `soak_too_short` rule dutifully compares against zero, which switches the soak requirement off. Declare `param min_soak: duration = 24h, min: 1h` in the guardrail and that invocation fails to compile. Lists such as `approvers` can't be bounded, so review team policies that change them, or bind them from Go where the platform controls the values.
+Composition adds candidates and never removes them, so with the guardrails required and their params [bounded](#decide-what-teams-may-tune), a team can make the result stricter or approve what the platform leaves open, but never override a guardrail's deny. [Composition without templating](/understanding/composition/) lays out exactly what a team can and can't change, and why; the [tour](/getting-started/tour/#the-same-release-after-two-hours) shows a team approval losing to a guardrail deny.
 
 ## Further reading
 
 - [Composition without templating](/understanding/composition/) explains why `use` only imports and what `Require` guarantees.
 - [Policy files](/reference/policy-files/) is the precise definition of `use`, `param`, invocation and modules.
 - [Evaluation semantics](/reference/evaluation/) covers how invocations flatten and how ties between candidates of the same decision resolve.
+- [Test your policies](/guides/test-policies/) pins what each team policy decides, and [Check policies in CI](/guides/ci/) runs the checks on every pull request.

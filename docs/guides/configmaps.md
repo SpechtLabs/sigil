@@ -5,13 +5,11 @@ createTime: 2026/09/25 10:00:00
 permalink: /guides/configmaps/
 ---
 
-This guide is for the platform team that runs a Sigil host service on Kubernetes and owns the policy repository around it. It shows how to ship policies to the service as a ConfigMap built with kustomize, how to keep the platform's guardrails out of reach of whoever writes that ConfigMap, and how to check in CI exactly what the service will load. The Go snippets are for whoever maintains the service; the rest is YAML and shell.
+By the end of this guide your teams' policies ship to a Sigil host service as a ConfigMap built with kustomize, the platform's guardrails stay out of reach of whoever writes that ConfigMap, the service reloads a changed ConfigMap without an outage, and CI checks exactly what the service will load. The Go snippets are for whoever maintains the service; the rest is YAML and shell.
 
-It builds on the `deploy.*` and `payments.production` documents from the [tour](/getting-started/tour/). The service is a deploy gate that loads `payments.production` and requires `deploy.guardrails`.
+It builds on the `deploy.*` and `payments.production` documents from the [tour](/getting-started/tour/) and on the host from [Embed Sigil in a Go service](/guides/embed-go/). The service is a deploy gate that loads `payments.production` and requires `deploy.guardrails`.
 
-## Why files are only containers
-
-A ConfigMap is a flat map from keys to strings, and a key can't contain `/`. A layout such as `deploy/common.sigil` can't survive the trip into one. That's why Sigil resolves `use deploy.common` by the name in each document's header rather than by file path: the loader reads every document in every file it's given, and indexes them by name. Whether the documents arrive as one key per file, one key per team or one key for everything, they resolve the same way. The rules are in [Bundles and resolution](/reference/policy-files/#bundles-and-resolution).
+Documents resolve by the name in their header, not by file path, so the flat keys of a ConfigMap hold them however you split them; see [Name resolution](/reference/bundles/#name-resolution) and [Bundles and trust](/understanding/bundles/).
 
 ## Decide what's trusted
 
@@ -22,11 +20,11 @@ Two sets of documents end up in the service, and they deserve different trust:
 | `deploy.common`, `deploy.guardrails`, `deploy.production` | The platform team | Embedded in the service binary with `embed.FS`, or a separate ConfigMap only the platform team can write |
 | `payments.production` and every other team policy | Each team | A shared ConfigMap, one key per team |
 
-The split matters because documents resolve by name. If the guardrails lived in the same ConfigMap as the team policies, anyone who can edit that ConfigMap could replace `deploy.guardrails` with a document of the same name and no denies, and `policy.Require` would still pass. Loading the platform's documents from their own source with `policy.From` rules that out; see [Protect the guardrails](#protect-the-guardrails).
+Keep the platform's documents out of the team ConfigMap, and load them with `policy.From` as [Load it in the service](#load-it-in-the-service) shows, so whoever writes the ConfigMap can't replace the guardrails. [Why required policies need a trusted source](/understanding/bundles/#why-required-policies-need-a-trusted-source) explains the threat.
 
 ## Lay out the repository
 
-Give each platform document its own file, at the path its name spells, and give each team one file for all its documents. That's what reviewers and CODEOWNERS work with:
+Give each platform document its own file, at the path its name spells, and give each team one file for all its documents, so reviewers and CODEOWNERS can work per file:
 
 ```text
 policies/
@@ -41,7 +39,9 @@ policies/
 └── kustomization.yaml
 ```
 
-The kind file stays out of the ConfigMap. The service defines the kind in Go and never trusts a kind document from a bundle; if one turns up with the same kind name, the load fails unless it matches the Go definition exactly.
+Put CODEOWNERS on `deploy/` and on each team's file, and turn on the [`path-matches-name`](/reference/lints/#path-matches-name) lint only if your teams keep one document per file, as the [example service](/guides/example-service/) does with `teams/payments/production.sigil`, since it flags a file that holds several; both are review aids, and `policy.From` is what the service enforces ([why](/understanding/bundles/)).
+
+Keep the kind file out of the ConfigMap. The service defines the kind in Go and never takes a kind document from a bundle as the contract; if one turns up with the same kind name, the load fails unless it matches the Go definition exactly. See [Kind documents in a bundle](/reference/bundles/#kind-documents-in-a-bundle).
 
 ## Generate the ConfigMap
 
@@ -58,7 +58,7 @@ configMapGenerator:
       - teams/checkout.sigil
 ```
 
-The key names don't matter to Sigil beyond ending in `.sigil`, as long as they're unique; base names such as `production.sigil` in several directories would collide, so give those an explicit key (`payments.sigil=payments/production.sigil`).
+Sigil only needs each key to end in `.sigil`, which the loader requires of every file, and to be unique. Base names such as `production.sigil` in several directories would collide, so give those an explicit key (`payments.sigil=payments/production.sigil`).
 
 A key can hold several documents. Separate them with `---`, which is optional but keeps a long file scannable, and which `sigil fmt` writes for you:
 
@@ -95,7 +95,23 @@ guardrails(min_soak: 1h)
 production(approvers: ["payments-leads"], tiers: ["standard", "internal", "critical"])
 ```
 
-Inside a YAML block scalar the `---` lines are indented along with everything else, so YAML doesn't mistake them for its own document markers.
+The `---` lines don't clash with YAML. In the generated ConfigMap the value is a block scalar written with `|`, and the `---` lines are indented with the rest of the text, so YAML doesn't read them as its own document markers:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deploy-team-policies-5f7h8m2k9t
+data:
+  payments.sigil: |
+    policy payments.production: DeployApproval@1
+    ...
+
+    ---
+
+    policy payments.staging: DeployApproval@1
+    ...
+```
 
 ## Load it in the service
 
@@ -114,7 +130,7 @@ containers:
         readOnly: true
 ```
 
-and load the team bundle with the guardrails pinned to the embedded source:
+and load the team bundle with `os.DirFS`, with the guardrails pinned to the embedded source:
 
 ```go
 // The platform's deploy/*.sigil, copied in at build time.
@@ -130,28 +146,71 @@ func load() (*policy.Policy[Input], error) {
 
 `payments.production` imports `deploy.guardrails`, `deploy.production` and `deploy.common` by name as usual, and they resolve to the embedded documents. A team document that claims any of those names is a compile error.
 
-Kubelet doesn't write the keys as plain files. It writes them into a hidden, timestamped directory, links that as `..data`, and links each key at the top level. The loader skips every entry whose name starts with `.` and follows the symbolic links, so it reads each key exactly once.
+`os.DirFS` reads the mounted volume unchanged, although kubelet doesn't write the keys as plain files. It writes them into a hidden, timestamped directory such as `..2026_09_25_…`, links that as `..data`, and links each key at the top level. Two loader rules make that work, and together they read each key exactly once:
 
-A service that reads the ConfigMap through the Kubernetes API instead gets its `data` as a `map[string]string`, which `policy.MapFS` turns into a file system:
+- The loader skips every file or directory whose name starts with `.`. Without that, it would read every document three times, through the key, `..data` and the timestamped directory, and each would collide with itself.
+- The loader follows symbolic links: it checks each entry with `fs.Stat`, not with the directory entry's type. Every top-level key is a link into `..data/`, so a loader that only accepted regular files would load nothing at all, without an error.
+
+The exact rules are in [Loading files](/reference/bundles/#loading-files).
+
+A service that reads the ConfigMap through the Kubernetes API instead gets its `data` as a `map[string]string`. `policy.MapFS` turns that into an in-memory `fs.FS`, with each key as a file name:
 
 ```go
+cm, err := client.CoreV1().ConfigMaps("deploy-gate").Get(ctx, "deploy-team-policies", metav1.GetOptions{})
+if err != nil {
+	return err
+}
+
 p, err := Deploy.Load(policy.MapFS(cm.Data), "payments.production",
 	policy.Require("deploy.guardrails", policy.From(platformFS)))
 ```
+
+Either way, the service names the root it loads, so one ConfigMap can serve many policies.
 
 ## Reload without an outage
 
 kustomize appends a content hash to the generated ConfigMap's name, so by default a policy change rolls the Deployment. New pods load the new bundle, and a bundle that fails to load stops the new pods from becoming ready, so the rollout stalls on the old pods instead of serving without a policy.
 
-To pick up changes without a rollout, turn the hash off (`generatorOptions: {disableNameSuffixHash: true}`) and reload in place:
+To pick up changes without a rollout, turn the hash off (`generatorOptions: {disableNameSuffixHash: true}`) and reload in place.
+
+Keep the compiled policy behind an `atomic.Pointer`. A compiled policy is immutable, so a reload is a pointer swap, and in-flight evaluations keep using the policy they started with:
+
+```go
+var current atomic.Pointer[policy.Policy[Input]]
+
+res, err := current.Load().Eval(ctx, input)
+```
+
+Reload with last-known-good semantics. A bundle loads as a whole, so one team's typo fails the reload for every team. Compile the new bundle first, swap only on success, and otherwise keep serving the old policy, log the error and record it in a metric you alert on:
+
+```go
+func reload(fsys fs.FS) {
+	p, err := Deploy.Load(fsys, "payments.production",
+		policy.Require("deploy.guardrails", policy.From(platformFS)))
+	if err != nil {
+		slog.Error("policy reload failed, keeping the last good policy", "err", err)
+		lastReloadSuccessful.Set(0) // alert on this: the running policy is now stale
+		return
+	}
+	current.Store(p)
+	lastReloadSuccessful.Set(1)
+}
+```
+
+Alert on a gauge like this one staying at `0`, not on the rate of a failure counter: a service that only reloads when the content changes reports a broken bundle once, and an alert on the counter's rate resolves while the stale bundle keeps serving.
+
+At startup there's no last good policy, so a failed `Load` should stop the process. On Kubernetes that holds a rollout at the old pods instead of serving without a policy.
+
+Trigger the reload the way the mounted volume actually changes:
 
 - **Watch `..data`, not the key.** Kubelet updates a mounted ConfigMap by writing a new timestamped directory and swapping the `..data` symlink to it. The key files themselves never change, so a watcher on `/etc/sigil/payments.sigil` can miss the update. Watch the directory and reload when `..data` is replaced. Polling works too: the [example service](/guides/example-service/) hashes the content of every `.sigil` file it can reach through the links, every 30 seconds by default, and reloads when the hash changes.
-- **Keep the last known good policy.** A bundle loads as a whole, so one team's typo fails the reload for every team. Compile first, swap only on success, and otherwise keep serving the old policy, log the error and increment a failure metric you alert on; the [Go API](/reference/go-api/#hot-reload) shows the pattern.
 - **Don't use `subPath` mounts.** A ConfigMap mounted with `subPath` never receives updates at all.
+
+The example service's `internal/store` package does all of this for several roots at once, with reloads on a signal and on a poll, and reports each bundle's reload health; see [Watch it reload](/guides/example-service/#watch-it-reload).
 
 ## Check in CI what the service will load
 
-The loader fails on any broken document, even one the root never imports, and on any name defined twice. That keeps loading predictable, and it makes CI the place to catch problems. Check the team documents with the same trusted source and the same requirement the host uses, and name the roots:
+The loader fails on any broken document, even one the root never imports, and on any name defined twice, so CI is the place to catch problems. Check the team documents with the same trusted source and the same requirement the host uses, and name the roots:
 
 ```shell
 sigil fmt --check .
@@ -174,19 +233,11 @@ kustomize build overlays/production \
 
 Errors from stdin still name the document, as in `<stdin>:42:5 (payments.production)`, so they point back to a file in the repository.
 
-## Protect the guardrails
-
-`policy.Require` checks that a policy with the required name is invoked unconditionally. `policy.From` decides which document that is. Together:
-
-- The guardrails, and everything they import and invoke, come from the platform's source. A team can't redefine `deploy.common.eligible` to hollow them out.
-- Every name the platform's source defines is reserved. A team document named `deploy.guardrails` or `deploy.common` is a compile error in CI and at load time, not a silent override.
-- The team ConfigMap can then be writable by teams, by a GitOps controller or by anything else, without that writer being able to switch the guardrails off.
-
-In the repository, CODEOWNERS on `deploy/` and on each team's file keeps reviews routed to the right people. The [`path-matches-name`](/reference/cli/#lints) lint checks the platform's side of that layout, but it wants every document in a file of its own, at the path its name spells, so it flags a team file that holds several documents. Turn it on if your teams keep one document per file, as the [example service](/guides/example-service/) does with `teams/payments/production.sigil`. Either way these are review aids; `policy.From` is what the service enforces.
+The rest of a policy repository's pipeline, tests and the kind export check included, is in [Check policies in CI](/guides/ci/).
 
 ## Further reading
 
-- [Bundles and resolution](/reference/policy-files/#bundles-and-resolution) has the exact rules for documents, duplicates and which files the loader reads.
-- [Where required policies come from](/reference/go-api/#where-required-policies-come-from) specifies `policy.From`.
-- [CLI & editor tooling](/reference/cli/#inputs) covers files, directories, stdin, `--policy` and `--trusted`.
+- [Bundles](/reference/bundles/) has the exact rules for documents, duplicates and which files the loader reads.
+- [Trusted sources](/reference/bundles/#trusted-sources) specifies `policy.From`.
+- [CLI reference](/reference/cli/#inputs) covers files, directories, stdin, `--policy` and `--trusted`.
 - [Per-team policies](/guides/team-policies/) covers what goes into the documents themselves.

@@ -5,35 +5,11 @@ createTime: 2026/09/24 22:30:00
 permalink: /guides/evolve-a-kind/
 ---
 
-This guide is for host engineers who own a kind. Policies across other teams compile against your exported kind file, so changing a Go struct is changing a public contract. Here's how to tell which changes are safe, how to catch the unsafe ones in CI, and how to ship a change that would otherwise break policies.
-
-::: warning `sigil breaking` is planned
-The command exists but only reports that it isn't implemented yet. Until it is, the version numbers are yours to check in review; [Check for breaking changes in CI](#check-for-breaking-changes-in-ci) shows what CI can catch today. Everything else on this page works as described.
-:::
+Policies across other teams compile against your exported kind file, so changing a Go struct changes a public contract. With this guide you tell which kind changes are safe, catch the unsafe ones in CI, and ship a breaking change without turning any policy repository red.
 
 ## Keep the exported kind in the policy repo
 
-The kind is defined in Go, and `Schema()` renders it as a `.sigil` file that starts with the `kind` keyword. Commit that text wherever policies live, and regenerate it with `go generate` so it can't drift from the code:
-
-```go
-//go:generate go run ./cmd/export-kind -o ../policies/deploy_approval.sigil
-```
-
-```go
-// cmd/export-kind/main.go
-func main() {
-	out := flag.String("o", "deploy_approval.sigil", "where to write the kind file")
-	flag.Parse()
-
-	if err := os.WriteFile(*out, []byte(deploygate.Deploy.Schema()), 0o644); err != nil {
-		log.Fatal(err)
-	}
-}
-```
-
-A host that builds its own `sigil` binary with package `cli` doesn't need the program: `sigil export --out ../policies/deploy_approval.sigil` writes the same file, and `policytest.Schema` fails `go test` when the copy is stale (see [Exporting the kind](/reference/go-api/#exporting-the-kind)).
-
-Every change to the kind now shows up as a diff to `deploy_approval.sigil` in the same pull request as the Go change. Reviewers see the contract change, not just the struct change.
+Commit the exported kind file, `deploy_approval.sigil`, where the policies live, and regenerate it from Go with `sigil export --out` in the host binary, as [Export the kind](/guides/host-binary/#export-the-kind) shows, so every kind change reaches review as a diff to that file in the same pull request as the Go change.
 
 ## Bump the version, raise `accepts` when it breaks
 
@@ -63,23 +39,13 @@ payments/production.sigil:1:44: error: DeployApproval@1 is no longer accepted; t
 
 A pin above `version` fails too, because the document was written for a kind this host doesn't have yet.
 
-Nothing enforces the two numbers yet. The planned `sigil breaking` will fail CI when you forget either one; until then, make them part of the review of every kind change.
+Nothing enforces the two numbers yet, so make them part of the review of every kind change.
 
 ## Know what's compatible
 
-A change is compatible when every policy that compiled before still compiles and still means the same thing.
+A change is compatible when every policy that compiled before still compiles and still means the same thing. Look your change up in the compatibility table in [Kind files](/reference/kind-files/#versioning), and make the one decision this page turns on: is it breaking? If it is, raise `accepts` along with `version`, and ship it in steps as [below](#ship-a-breaking-change). If it isn't, bump `version` only.
 
-| Change | Effect |
-| --- | --- |
-| Add an input, type field, function, decision or reason | Compatible |
-| Add a payload field with a default | Compatible |
-| Remove or rename anything | Breaking |
-| Change a type | Breaking |
-| Add a payload field without a default | Breaking |
-| Reorder `precedence`, add or reorder a scoped `precedence`, add an `exclusive` set, or change `default` | Breaking in behavior, even though every policy still compiles |
-| Switch between `collect one` and `collect all` | Breaking |
-
-Adding things is safe, because no existing policy refers to them. That includes names: inputs, functions and decisions share one namespace with each policy's own names, but a policy pinned to an older version keeps a name you add later, so a new `input approvers` doesn't break a policy that already declares `param approvers`. The policy just can't reach your new input until its team renames the param and moves the pin; the `shadowed-kind-name` lint reminds them. See [Adding a name never breaks a policy](/reference/kind-files/#adding-a-name-never-breaks-a-policy). Removing or renaming is always breaking, because the type checker rejects any policy that still uses the old name. That's the point: the break shows up at compile time, in the policy repo's CI, instead of as a rule that silently stops matching.
+Additions are compatible, new names included: a policy pinned below the version that added a name keeps its own, and the `shadowed-kind-name` lint tells its team to rename and move the pin ([how the pin makes that safe](/understanding/kinds/#adding-a-name-never-breaks-a-policy)). Removals and renames are always breaking, and the type checker reports them in the policy repo's CI.
 
 ## Add a payload field
 
@@ -118,20 +84,10 @@ Sometimes that's what you want, because every policy author should make a consci
 
 ## Watch for changes that compile but change results
 
-Two changes pass the type checker and still change decisions: reordering `precedence` and changing `default`.
+Reordering `precedence` and changing `default` pass the type checker and still change decisions. Swapping `review` and `approve` makes the tour's service-owner deploy skip review ([the example](/understanding/kinds/#why-raise-accepts-for-a-change-that-still-compiles)), and a `default` changed from `deny(no_rule_matched)` to a review sends every deploy no rule covered to a human's queue. For either change:
 
-Swap review and approve in the `DeployApproval` kind:
-
-```diff
--precedence deny > review > approve
-+precedence deny > approve > review
-```
-
-Every policy compiles. But the service-owner deploy from the [tour](/getting-started/tour/#a-service-owner-ships-after-six-hours-of-soak), which produced a review from `deploy.production` and an approval from the payments team, now resolves to `approve`. The payments team's SRE fast path suddenly bypasses review, and no compiler told anyone.
-
-Changing the `default` from `deny(no_rule_matched)` to a review is the same kind of change: every deploy that no rule covered used to be refused and now lands in a human's queue.
-
-Test cases catch these, because they pin decisions rather than types. Treat both changes as breaking and raise `accepts`, which the planned `sigil breaking` will insist on. That's what makes them safe to ship: every policy written against the old order stops loading until its team has looked at the new one.
+1. Treat it as breaking and raise `accepts`, so every policy written against the old behavior stops loading until its team has looked at the new one.
+2. Keep test cases that pin decisions and reasons. They catch these changes where the type checker can't, because they pin decisions rather than types.
 
 ## Check for breaking changes in CI
 
@@ -144,8 +100,10 @@ Three checks run today, split between the two repositories:
 None of them checks the header. Whether `version` moved, and whether `accepts` should have, is a question for the reviewer of the kind file diff.
 
 ::: warning Planned: `sigil breaking`
-`sigil breaking OLD_KIND_FILE NEW_KIND_FILE` is meant to compare two versions of a kind file, modeled on `buf breaking`: classify every change by the table above, and fail when `version` didn't move or when a breaking change didn't raise `accepts`. It would need nothing but the two kind files, so it could run in either repository, against the kind file on the main branch. Today it exits with "not implemented yet".
+[`sigil breaking OLD_KIND_FILE NEW_KIND_FILE`](/project/planned/#sigil-breaking) will classify every change by the compatibility table and fail when `version` didn't move or a breaking change didn't raise `accepts`. Today it exits with "not implemented yet".
 :::
+
+The commands for these checks, with the rest of a policy repository's job, are in [Check policies in CI](/guides/ci/#keep-the-kind-file-current).
 
 ## Ship a breaking change
 
