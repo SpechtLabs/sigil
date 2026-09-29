@@ -27,14 +27,14 @@ What each failure returns, outcome and trace, is in [Failed evaluations](/refere
 
 Each failure has its own error type, and the type says whose fault it is. Match them with `errors.As` and `errors.Is`:
 
-| Error | Whose fault | Status deploygate answers |
-| --- | --- | --- |
-| `*policy.AssertionError` with `Phase == policy.InputAsserts` | The caller's: the policy rejected the input before any rule ran | `422` |
-| `*policy.AssertionError` with `Phase == policy.OutcomeAsserts` | The policy's: it produced an outcome it forbids | `500` |
-| `*policy.ConflictError` | The policy's: rules claimed outcomes that can't stand together | `500` |
-| `*policy.RuntimeError` | The policy's or the host's: an index out of range, an overflow, or a host function that failed | `500` |
-| `context.DeadlineExceeded` | The service's: it didn't decide in time | `503` |
-| `context.Canceled` | No one's: the caller left before the answer | `499`, no body |
+| Error                                                          | Whose fault                                                                                    | Status deploygate answers |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------- |
+| `*policy.AssertionError` with `Phase == policy.InputAsserts`   | The caller's: the policy rejected the input before any rule ran                                | `422`                     |
+| `*policy.AssertionError` with `Phase == policy.OutcomeAsserts` | The policy's: it produced an outcome it forbids                                                | `500`                     |
+| `*policy.ConflictError`                                        | The policy's: rules claimed outcomes that can't stand together                                 | `500`                     |
+| `*policy.RuntimeError`                                         | The policy's or the host's: an index out of range, an overflow, or a host function that failed | `500`                     |
+| `context.DeadlineExceeded`                                     | The service's: it didn't decide in time                                                        | `503`                     |
+| `context.Canceled`                                             | No one's: the caller left before the answer                                                    | `499`, no body            |
 
 In Go, the same mapping:
 
@@ -106,14 +106,17 @@ if err != nil {
 	if kind, _ := classify(err); kind != "" {
 		evalFailures.WithLabelValues(kind).Inc()
 	}
+
 	var ae *policy.AssertionError
 	if errors.As(err, &ae) {
 		for _, f := range ae.Failures {
 			assertFailures.WithLabelValues(ae.Phase.String(), f.Reason).Inc()
 		}
 	}
+
 	return res, err
 }
+
 decisions.WithLabelValues(res.Decision, res.Reason).Inc()
 ```
 

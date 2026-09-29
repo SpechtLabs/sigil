@@ -83,10 +83,8 @@ The platform team owns three files under `deploy/`. They split along the lines S
 module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
-pub let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
-pub let eligible =
-  "deployer" in actor.roles
+pub let cleared = split(service.labels["regions"], ",") all in actor.regions
+pub let eligible = "deployer" in actor.roles
   and environment == "production"
   and service.labels has {
     "app.kubernetes.io/managed-by": "argocd",
@@ -196,8 +194,7 @@ The team's own rule reuses `cleared` from the module instead of copying it, and 
 A team could also write `when false { guardrails(min_soak: 4h) }`, which would switch every guardrail off. The host prevents that when it loads the policy:
 
 ```go
-p, err := Deploy.Load(policies, "payments.production",
-	policy.Require("deploy.guardrails"))
+p, err := Deploy.Load(policies, "payments.production", policy.Require("deploy.guardrails"))
 ```
 
 `policy.Require` makes the compiler check that `deploy.guardrails` is invoked at the top level, with no `when` around the call. Move `guardrails(min_soak: 4h)` into one of the `when` blocks and loading fails with an error pointing at the call. With the check in place, every deny the guardrails produce is always a candidate.

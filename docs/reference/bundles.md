@@ -14,8 +14,7 @@ Why: [Bundles and trust](/understanding/bundles/).
 ```sigil
 module deploy.common: DeployApproval@1
 
-pub let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
+pub let cleared = split(service.labels["regions"], ",") all in actor.regions
 
 ---
 
@@ -41,15 +40,15 @@ when release.soak < min_soak and not release.hotfix {
 
 A bundle is every document in every file the host or the CLI loads, indexed by the name in each header.
 
-| Rule | Consequence |
-| --- | --- |
-| Each name has one definition | A name defined twice in a bundle is a compile error that points at both definitions |
-| The host names the root policy | One bundle can hold many policies; the host picks the entry point |
-| A module can't be a root | It has no rules to evaluate. `Load` on a module's name fails with `deploy.common is a module, not a policy` |
-| A bundle holds the documents of one kind | A policy or module written for another kind is a compile error, `document is for kind AccessGrant, not DeployApproval`. A host with two kinds reads them from separate directories |
-| A bundle loads as a whole | A syntax error in any document fails the load, even in a document the root never uses |
-| `Compile` takes a one-file bundle | The source string may hold several documents, imports resolve among them, and every document is checked; see [Loading](/reference/go-api/#loading) |
-| The CLI builds one bundle from all its arguments | A name defined in two files is an error there too; see [Inputs](/reference/cli/#inputs) |
+| Rule                                             | Consequence                                                                                                                                                                        |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Each name has one definition                     | A name defined twice in a bundle is a compile error that points at both definitions                                                                                                |
+| The host names the root policy                   | One bundle can hold many policies; the host picks the entry point                                                                                                                  |
+| A module can't be a root                         | It has no rules to evaluate. `Load` on a module's name fails with `deploy.common is a module, not a policy`                                                                        |
+| A bundle holds the documents of one kind         | A policy or module written for another kind is a compile error, `document is for kind AccessGrant, not DeployApproval`. A host with two kinds reads them from separate directories |
+| A bundle loads as a whole                        | A syntax error in any document fails the load, even in a document the root never uses                                                                                              |
+| `Compile` takes a one-file bundle                | The source string may hold several documents, imports resolve among them, and every document is checked; see [Loading](/reference/go-api/#loading)                                 |
+| The CLI builds one bundle from all its arguments | A name defined in two files is an error there too; see [Inputs](/reference/cli/#inputs)                                                                                            |
 
 ```text
 policies.sigil:42:8: error: policy payments.access is defined twice
@@ -73,12 +72,12 @@ On a hot reload, the host keeps the last policy that loaded; see [Reload without
 
 The host passes the bundle as an `fs.FS`, such as an `embed.FS`, `os.DirFS` or `policy.MapFS`; see [Loading](/reference/go-api/#loading).
 
-| Rule | Detail |
-| --- | --- |
-| Extension | The loader reads every file whose name ends in `.sigil`, in every directory. ConfigMap keys need the extension too (`policies.sigil`) |
-| Dot entries | Every file or directory whose name starts with `.` is skipped, which includes kubelet's `..data` directory and its timestamped siblings in a mounted ConfigMap |
-| Symbolic links | Followed. The loader checks each entry with `fs.Stat`, never with the directory entry's type (`DirEntry.Type()`) |
-| `policy.MapFS` | Turns a ConfigMap's `data`, a `map[string]string`, into an in-memory `fs.FS` with each key as a file name |
+| Rule           | Detail                                                                                                                                                         |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Extension      | The loader reads every file whose name ends in `.sigil`, in every directory. ConfigMap keys need the extension too (`policies.sigil`)                          |
+| Dot entries    | Every file or directory whose name starts with `.` is skipped, which includes kubelet's `..data` directory and its timestamped siblings in a mounted ConfigMap |
+| Symbolic links | Followed. The loader checks each entry with `fs.Stat`, never with the directory entry's type (`DirEntry.Type()`)                                               |
+| `policy.MapFS` | Turns a ConfigMap's `data`, a `map[string]string`, into an in-memory `fs.FS` with each key as a file name                                                      |
 
 The CLI takes files, directories and stdin; see [Inputs](/reference/cli/#inputs). To load a ConfigMap, see [Policies in a ConfigMap](/guides/configmaps/).
 

@@ -25,10 +25,8 @@ Sigil splits reuse along two lines that templating mixes up: sharing names and s
 module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
-pub let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
-pub let eligible =
-  "deployer" in actor.roles
+pub let cleared = split(service.labels["regions"], ",") all in actor.regions
+pub let eligible = "deployer" in actor.roles
   and environment == "production"
   and service.labels has {
     "app.kubernetes.io/managed-by": "argocd",
@@ -124,8 +122,7 @@ Composition is a union of candidates. An invocation adds the invoked policy's ru
 Gating is what makes invocation useful, and it's also what weakens that. An invocation inside `when` only contributes while the enclosing conditions hold. `when false { guardrails() }` disables every deny in `guardrails`, and a real condition does the same in subtler ways. So the guarantee that a base's denies hold can't come from the language alone any more. It comes from the host:
 
 ```go
-p, err := Deploy.Load(policies, "payments.production",
-	policy.Require("deploy.guardrails"))
+p, err := Deploy.Load(policies, "payments.production", policy.Require("deploy.guardrails"))
 ```
 
 The compiler checks that `deploy.guardrails` is invoked from the root through top-level invocations only, with no `when` on the path. Move `guardrails(min_soak: 4h)` into the PCI block above and the build fails:
@@ -156,13 +153,13 @@ In a [collecting kind](/reference/kind-files/#collecting-kinds) nothing outranks
 
 Put together, union-only composition, the kind's `precedence deny > review > approve` and the host's `Require` draw a clear line:
 
-| A team can | A team can't |
-| --- | --- |
-| Add approvals that win when the platform's policies say nothing, turning the kind's default deny into an approve | Override a deny from a required policy |
-| Add reviews and denies, making the result stricter | Gate a required policy behind `when`, or leave it out |
-| Gate, repeat or skip policies the host doesn't require | Turn a review into an approve (review outranks approve) |
-| Change any param, including loosening ones like `min_soak`, within the bounds the policy declares | Remove or edit a rule of an invoked policy |
-| Import shared matchers from modules | Import a `let` that reads a param |
+| A team can                                                                                                       | A team can't                                            |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Add approvals that win when the platform's policies say nothing, turning the kind's default deny into an approve | Override a deny from a required policy                  |
+| Add reviews and denies, making the result stricter                                                               | Gate a required policy behind `when`, or leave it out   |
+| Gate, repeat or skip policies the host doesn't require                                                           | Turn a review into an approve (review outranks approve) |
+| Change any param, including loosening ones like `min_soak`, within the bounds the policy declares                | Remove or edit a rule of an invoked policy              |
+| Import shared matchers from modules                                                                              | Import a `let` that reads a param                       |
 
 The first line of the right column is what the whole mechanism exists for: the guardrails' `not_eligible` and `soak_too_short` denies hold no matter what a team adds. The [tour](/getting-started/tour/#the-same-release-after-two-hours) shows a team approval losing to a guardrail deny. Three rows of the left column, turning the default into an approve, gating policies the host doesn't require, and changing params, are where the guarantee stops, and the next section goes through them.
 

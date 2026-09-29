@@ -44,15 +44,13 @@ Match positively in grants (`== "payments"`, `has {...}`), or check for the key 
 Labels are flat strings, so lists get packed into them. Split with the host's `split` function and compare with `all in` (every element on the left appears on the right) or `any in` (at least one does):
 
 ```sigil
-let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
+let cleared = split(service.labels["regions"], ",") all in actor.regions
 ```
 
 A missing label reads as `""`, and `split` is Go's `strings.Split`, which returns `[""]` for it, so the rule fails closed only by accident of `split`. A function that returned `[]` would make it vacuously true ([why](/understanding/strictness/#absent-data-follows-go)). Test for the label instead:
 
 ```sigil
-let cleared =
-  service.labels has "regions"
+let cleared = service.labels has "regions"
   and split(service.labels["regions"], ",") all in actor.regions
 ```
 
@@ -185,8 +183,7 @@ The policy only proposes who may approve. The approval itself happens in the hos
 To hold every team's policy to the rule, not just this one, put an assert on the reviews in `outcome` into a policy the host [requires](/reference/evaluation/#required-policies):
 
 ```sigil
-assert("no_self_review",
-  all r in outcome.review: actor.name not in r.approvers)
+assert("no_self_review", all r in outcome.review: actor.name not in r.approvers)
 ```
 
 `outcome.review` is every review the host gets back, with its payload (see [Candidates](/reference/expressions/#candidates)). Write `all`, not `any`: in a collecting kind that returns several reviews, `any` would let one clean review hide a self-review next to it. A team policy that forgets the filter then fails the evaluation with the offending approvers in the error, instead of quietly asking the requestor to approve their own change.
@@ -292,8 +289,7 @@ Define a matcher once as a `let` in a module and import it wherever it's needed:
 ```sigil
 module deploy.common: DeployApproval@1
 
-pub let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
+pub let cleared = split(service.labels["regions"], ",") all in actor.regions
 ```
 
 ```sigil

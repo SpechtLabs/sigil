@@ -13,11 +13,11 @@ The examples build on the `DeployApproval` kind and the `deploy.*` files from th
 
 Put each kind of reuse in its own file, so that a team can tell from an import line what it's getting:
 
-| File | Holds | Why separate |
-| --- | --- | --- |
-| `deploy/common.sigil`, a module | Shared `let`s only | Importing it can never change a decision |
-| `deploy/guardrails.sigil` | Denies only | The host requires it, so its denies always apply |
-| `deploy/production.sigil` | Approvals and reviews | Teams gate and tune it freely |
+| File                            | Holds                 | Why separate                                     |
+| ------------------------------- | --------------------- | ------------------------------------------------ |
+| `deploy/common.sigil`, a module | Shared `let`s only    | Importing it can never change a decision         |
+| `deploy/guardrails.sigil`       | Denies only           | The host requires it, so its denies always apply |
+| `deploy/production.sigil`       | Approvals and reviews | Teams gate and tune it freely                    |
 
 Keeping denies out of the approvals policy matters. A team is allowed to invoke `deploy.production` under any condition it likes, or not at all. If that policy held a deny too, gating it would switch the deny off, and the `gated-deny` lint would flag every team that does.
 
@@ -81,8 +81,7 @@ To check what a composition adds up to, run [`sigil explain`](/reference/cli/#si
 An invocation inside `when` only contributes while the condition holds, and that includes the guardrails. A team policy that wrapped `guardrails(...)` in a `when` would switch off its denies whenever the condition is false. The host rules that out by naming the policies every root policy must invoke unconditionally:
 
 ```go
-p, err := Deploy.Load(policies, "payments.production",
-	policy.Require("deploy.guardrails"))
+p, err := Deploy.Load(policies, "payments.production", policy.Require("deploy.guardrails"))
 ```
 
 The compiler checks that `deploy.guardrails` is reachable from the root through top-level invocations only. A team that gates the guardrails to skip them for PCI services gets:

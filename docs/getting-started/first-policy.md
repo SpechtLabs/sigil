@@ -118,8 +118,7 @@ Only some services go through this gate at all. Describe them once with a `let` 
 ```sigil
 policy deploy.production: DeployApproval@1
 
-let eligible =
-  "deployer" in actor.roles
+let eligible = "deployer" in actor.roles
   and environment == "production"
   and service.lables has {
     "app.kubernetes.io/managed-by": "argocd",
@@ -212,10 +211,8 @@ param approvers: list<string>
 param tiers: list<string> = ["standard", "internal"]
 
 let owns_service = actor.teams any in service.owners
-let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
-let eligible =
-  "deployer" in actor.roles
+let cleared = split(service.labels["regions"], ",") all in actor.regions
+let eligible = "deployer" in actor.roles
   and environment == "production"
   and service.labels has {
     "app.kubernetes.io/managed-by": "argocd",
@@ -358,10 +355,8 @@ The shared matchers move to a module, a document that holds only imports and `le
 module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
-pub let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
-pub let eligible =
-  "deployer" in actor.roles
+pub let cleared = split(service.labels["regions"], ",") all in actor.regions
+pub let eligible = "deployer" in actor.roles
   and environment == "production"
   and service.labels has {
     "app.kubernetes.io/managed-by": "argocd",

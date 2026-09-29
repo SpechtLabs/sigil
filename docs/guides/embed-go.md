@@ -140,9 +140,11 @@ var policies embed.FS
 func load() *policy.Policy[Input] {
 	p, err := Deploy.Load(policies, "payments.production",
 		policy.Require("deploy.guardrails"))
+
 	if err != nil {
 		log.Fatal(err) // every diagnostic, with file:line:col and a fix hint
 	}
+
 	return p
 }
 ```
@@ -189,12 +191,15 @@ func decide(ctx context.Context, p *policy.Policy[Input], in Input) error {
 	if r, ok := Review.Match(res); ok {
 		return requestReview(r.Approvers, res.Reason) // r is a typed ReviewData
 	}
+
 	if a, ok := Approve.Match(res); ok {
 		return startRollout(a.Bake)
 	}
+
 	if NoRuleMatched.Is(res) {
 		flagUncovered(p.Name()) // the default: no rule covers this deploy
 	}
+
 	return reject(res, nil)
 }
 ```

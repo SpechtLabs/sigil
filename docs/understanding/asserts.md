@@ -76,8 +76,7 @@ A [collecting kind](/reference/kind-files/#collecting-kinds) fits decisions that
 ```sigil
 policy access.guardrails: AccessGrant@1
 
-assert("sod_customer_dev",
-  [customer_data_writer, development_environment_writer] exclusive in outcome)
+assert("sod_customer_dev", [customer_data_writer, development_environment_writer] exclusive in outcome)
 ```
 
 `outcome` is the whole root's outcome, including when the assert sits in an invoked policy. That's what lets a required guardrail check what every other policy in the composition granted. Through [`outcome.<decision>`](/reference/expressions/#candidates) it can check what they carry too, such as the approvers of every review. It also means an assert can fail because of a rule in a policy it has never seen, and a guardrail needs exactly that reach. Required with `policy.Require`, the guardrail runs on every evaluation, and in a collecting kind, where nothing outranks anything, a required policy's asserts are the only guardrail there is.
@@ -89,8 +88,7 @@ assert("sod_customer_dev",
 A collecting kind can return several candidates of one decision, so a guardrail over candidates quantifies with `all`. For a collecting kind with a `review` decision and a `requestor` input:
 
 ```sigil
-assert("no_self_review",
-  all r in outcome.review: requestor.name not in r.approvers)
+assert("no_self_review", all r in outcome.review: requestor.name not in r.approvers)
 ```
 
 With `any`, one clean review would hide a self-review next to it. `all` over no candidates is true, which is what a guardrail wants when the decision didn't fire.

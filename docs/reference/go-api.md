@@ -7,11 +7,11 @@ permalink: /reference/go-api/
 
 Every exported symbol of the Go packages `policy`, `policytest` and `cli`: its signature, its rules, what it returns and how it fails.
 
-| Package | Import path | Holds |
-| --- | --- | --- |
-| `policy` | `github.com/spechtlabs/sigil/pkg/policy` | [Kinds](#kinds), [loading](#loading), [evaluating](#evaluating), [results](#result) |
-| `policytest` | `github.com/spechtlabs/sigil/pkg/policytest` | Running test files from `go test`; see [Package policytest](#package-policytest) |
-| `cli` | `github.com/spechtlabs/sigil/pkg/cli` | The `sigil` command line in a host binary; see [Package cli](#package-cli) |
+| Package      | Import path                                  | Holds                                                                               |
+| ------------ | -------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `policy`     | `github.com/spechtlabs/sigil/pkg/policy`     | [Kinds](#kinds), [loading](#loading), [evaluating](#evaluating), [results](#result) |
+| `policytest` | `github.com/spechtlabs/sigil/pkg/policytest` | Running test files from `go test`; see [Package policytest](#package-policytest)    |
+| `cli`        | `github.com/spechtlabs/sigil/pkg/cli`        | The `sigil` command line in a host binary; see [Package cli](#package-cli)          |
 
 The API is pre-1.0, so names and signatures can still change. To embed Sigil step by step, see [Embed Sigil in a Go service](/guides/embed-go/). [The example service](/guides/example-service/) uses all three packages.
 
@@ -23,11 +23,11 @@ The API is pre-1.0, so names and signatures can still change. To embed Sigil ste
 func NewKind[In any](name string, opts ...Option) *Kind[In]
 ```
 
-| Parameter | Is |
-| --- | --- |
-| `In` | The input struct. Its tagged fields become the kind's `input`s, and the structs it reaches become `type`s; see [Go type mapping](#go-type-mapping) |
-| `name` | The kind's name, which policies pin in their headers: `policy payments.production: DeployApproval@1` |
-| `opts` | The [kind options](#kind-options) |
+| Parameter | Is                                                                                                                                                 |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `In`      | The input struct. Its tagged fields become the kind's `input`s, and the structs it reaches become `type`s; see [Go type mapping](#go-type-mapping) |
+| `name`    | The kind's name, which policies pin in their headers: `policy payments.production: DeployApproval@1`                                               |
+| `opts`    | The [kind options](#kind-options)                                                                                                                  |
 
 - Returns the kind. Build it once, at package level.
 - The options must include `WithVersion`, and either `WithDecisions` with `WithDefault`, or `WithCollect`.
@@ -63,12 +63,12 @@ func (k *Kind[In]) Compile(src, name string, opts ...LoadOption) (*Policy[In], e
 func (k *Kind[In]) Contract() *contract.Kind
 ```
 
-| Method | Returns |
-| --- | --- |
-| `Name()` | The kind's name, as passed to `NewKind` |
-| `Schema()` | The kind as a kind file, in the [canonical form](/reference/kind-files/#canonical-form) and in `sigil fmt`'s [canonical style](/reference/cli/#sigil-fmt), so it passes `sigil fmt --check` as it is. It parses back into the same contract |
-| `Load`, `Compile` | A compiled policy; see [Loading](#loading) |
-| `Contract()` | The kind model and its binding to the Go types and functions, for this module's tooling, `cli` and `policytest`. Its type is internal to the module, so nothing outside it can use it |
+| Method            | Returns                                                                                                                                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Name()`          | The kind's name, as passed to `NewKind`                                                                                                                                                                                                     |
+| `Schema()`        | The kind as a kind file, in the [canonical form](/reference/kind-files/#canonical-form) and in `sigil fmt`'s [canonical style](/reference/cli/#sigil-fmt), so it passes `sigil fmt --check` as it is. It parses back into the same contract |
+| `Load`, `Compile` | A compiled policy; see [Loading](#loading)                                                                                                                                                                                                  |
+| `Contract()`      | The kind model and its binding to the Go types and functions, for this module's tooling, `cli` and `policytest`. Its type is internal to the module, so nothing outside it can use it                                                       |
 
 A `*Kind` is immutable and safe for concurrent use. To write `Schema()` to a file and keep it current, see [Build a host binary](/guides/host-binary/#export-the-kind).
 
@@ -95,18 +95,18 @@ func WithRecoverHostPanics() Option
 
 Each option corresponds to a declaration of a [kind file](/reference/kind-files/), which `Schema()` writes out.
 
-| Option | Kind file equivalent | Rules |
-| --- | --- | --- |
-| `WithVersion(n)` | `kind DeployApproval version n` | Contract version, bumped by every change to the kind. Required, and at least 1 |
-| `WithAccepts(n)` | `kind DeployApproval version 3, accepts: n` | Oldest version a policy or module may pin. From 1 to the version. Without it, every version is accepted. Raise it with a breaking change; see [Versioning](/reference/kind-files/#versioning) |
-| `WithDecisions(d...)` | `decision ...`, `collect one` and `precedence ...` | Argument order is precedence, highest first. Makes `WithDefault` required |
-| `WithCollect(d...)` | `decision ...` and `collect all` | Instead of `WithDecisions`: every fired decision applies. Argument order is declaration order |
-| `WithPrecedence(d...)` | `precedence ...` in a `collect all` kind | Ranks a `WithCollect` kind's decisions, so the outcome is every candidate at the top rank. Must list every decision. On a `WithDecisions` kind it makes `NewKind` panic |
-| `WithReasonPrecedence(reasons...)` | `precedence approve: release_manager > payments_sre` | Ranks one decision's reasons, highest first, given as [reason handles](#decisions-and-reasons). Must list every reason of that decision and no other decision's, once per decision |
-| `WithExclusive(outcomes...)` | `exclusive grant_a, grant_b` | Outcomes that can't fire together, each a decision handle or one reason, `GrantA.Reason("x")`. One set per call, of at least two outcomes. Two of them firing in one evaluation is a `*ConflictError`, under both collect modes |
-| `WithDefault(reason)` | `default deny(no_rule_matched)` | Result when no rule fires, given as a reason handle. Its payload fields take their defaults, so every payload field of its decision needs a `default=`. Required with `WithDecisions`, optional with `WithCollect` |
-| `WithFunc(name, fn)` | `fn split(string, string) -> list<string>` | One call per function. The Sigil signature is derived from `fn`'s type, which returns `T` or `(T, error)`; the name is always written out. Host functions must be pure, must terminate and must not panic; see [Evaluating](#evaluating) |
-| `WithRecoverHostPanics()` | none; it's host behavior, not contract | A panic in a host function becomes a `*RuntimeError` instead of unwinding out of `Eval`. Off by default |
+| Option                             | Kind file equivalent                                 | Rules                                                                                                                                                                                                                                    |
+| ---------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WithVersion(n)`                   | `kind DeployApproval version n`                      | Contract version, bumped by every change to the kind. Required, and at least 1                                                                                                                                                           |
+| `WithAccepts(n)`                   | `kind DeployApproval version 3, accepts: n`          | Oldest version a policy or module may pin. From 1 to the version. Without it, every version is accepted. Raise it with a breaking change; see [Versioning](/reference/kind-files/#versioning)                                            |
+| `WithDecisions(d...)`              | `decision ...`, `collect one` and `precedence ...`   | Argument order is precedence, highest first. Makes `WithDefault` required                                                                                                                                                                |
+| `WithCollect(d...)`                | `decision ...` and `collect all`                     | Instead of `WithDecisions`: every fired decision applies. Argument order is declaration order                                                                                                                                            |
+| `WithPrecedence(d...)`             | `precedence ...` in a `collect all` kind             | Ranks a `WithCollect` kind's decisions, so the outcome is every candidate at the top rank. Must list every decision. On a `WithDecisions` kind it makes `NewKind` panic                                                                  |
+| `WithReasonPrecedence(reasons...)` | `precedence approve: release_manager > payments_sre` | Ranks one decision's reasons, highest first, given as [reason handles](#decisions-and-reasons). Must list every reason of that decision and no other decision's, once per decision                                                       |
+| `WithExclusive(outcomes...)`       | `exclusive grant_a, grant_b`                         | Outcomes that can't fire together, each a decision handle or one reason, `GrantA.Reason("x")`. One set per call, of at least two outcomes. Two of them firing in one evaluation is a `*ConflictError`, under both collect modes          |
+| `WithDefault(reason)`              | `default deny(no_rule_matched)`                      | Result when no rule fires, given as a reason handle. Its payload fields take their defaults, so every payload field of its decision needs a `default=`. Required with `WithDecisions`, optional with `WithCollect`                       |
+| `WithFunc(name, fn)`               | `fn split(string, string) -> list<string>`           | One call per function. The Sigil signature is derived from `fn`'s type, which returns `T` or `(T, error)`; the name is always written out. Host functions must be pure, must terminate and must not panic; see [Evaluating](#evaluating) |
+| `WithRecoverHostPanics()`          | none; it's host behavior, not contract               | A panic in a host function becomes a `*RuntimeError` instead of unwinding out of `Eval`. Off by default                                                                                                                                  |
 
 - Options that take several values add up: `WithDecisions(Deny, Review)` and `WithDecisions(Deny), WithDecisions(Review)` declare the same kind, in the same order.
 - A kind takes `WithDecisions` or `WithCollect`, never both and never neither.
@@ -157,19 +157,19 @@ type DecisionRef interface {
 type OutcomeRef interface{ /* unexported methods */ }
 ```
 
-| Symbol | Does |
-| --- | --- |
-| `NewDecision[T](name, reasons...)` | Declares the decision `name` with payload struct `T` and the reasons policies may construct it with. Copies `reasons` |
-| `Decision[T].Name()` | The decision's name as policies write it, `"approve"` |
-| `Decision[T].Reasons()` | The declared reasons, in declaration order, as a copy |
-| `Decision[T].Reason(name)` | The reason handle for one declared reason. Panics when the decision doesn't declare `name`, with the hint the checker gives for the same typo in a policy |
-| `Decision[T].Match`, `.MatchAll` | Typed matching; see [Typed matching](#typed-matching) |
-| `Outcome.Decision()` | The name of the handle's decision, `"deny"` |
-| `Outcome.Name()` | The reason's name, `"no_rule_matched"` |
-| `Outcome.Is(res)` | Whether `res` is exactly that reason; see [Typed matching](#typed-matching) |
-| `None` | The payload of a decision that carries only a reason |
-| `DecisionRef` | Any `Decision[T]`, whatever its payload type, so decisions of different payload types pass together to `WithDecisions`, `WithCollect` and `WithPrecedence`. Only `Decision` implements it |
-| `OutcomeRef` | A decision, standing for any of its reasons, or an `Outcome` for one, as `WithExclusive` takes them. Only those two implement it |
+| Symbol                             | Does                                                                                                                                                                                      |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NewDecision[T](name, reasons...)` | Declares the decision `name` with payload struct `T` and the reasons policies may construct it with. Copies `reasons`                                                                     |
+| `Decision[T].Name()`               | The decision's name as policies write it, `"approve"`                                                                                                                                     |
+| `Decision[T].Reasons()`            | The declared reasons, in declaration order, as a copy                                                                                                                                     |
+| `Decision[T].Reason(name)`         | The reason handle for one declared reason. Panics when the decision doesn't declare `name`, with the hint the checker gives for the same typo in a policy                                 |
+| `Decision[T].Match`, `.MatchAll`   | Typed matching; see [Typed matching](#typed-matching)                                                                                                                                     |
+| `Outcome.Decision()`               | The name of the handle's decision, `"deny"`                                                                                                                                               |
+| `Outcome.Name()`                   | The reason's name, `"no_rule_matched"`                                                                                                                                                    |
+| `Outcome.Is(res)`                  | Whether `res` is exactly that reason; see [Typed matching](#typed-matching)                                                                                                               |
+| `None`                             | The payload of a decision that carries only a reason                                                                                                                                      |
+| `DecisionRef`                      | Any `Decision[T]`, whatever its payload type, so decisions of different payload types pass together to `WithDecisions`, `WithCollect` and `WithPrecedence`. Only `Decision` implements it |
+| `OutcomeRef`                       | A decision, standing for any of its reasons, or an `Outcome` for one, as `WithExclusive` takes them. Only those two implement it                                                          |
 
 - `T`'s tagged fields are the decision's payload fields, mapped as in [Go type mapping](#go-type-mapping). The reason is implicit on every decision and never appears in `T`.
 - Reasons are plain strings, as `Result.Reason` is.
@@ -202,18 +202,18 @@ Why reasons are declared names: [Decisions and reasons](/understanding/decisions
 
 `NewKind[In]` walks the input struct `In` by reflection. Every field with a `policy:"name"` tag becomes an input, every struct type it reaches becomes a `type` named after the Go type, and every tagged field of those structs becomes a field. Untagged fields and fields tagged `policy:"-"` are invisible to policies.
 
-| Go | Sigil |
-| --- | --- |
-| `string`, `bool` | `string`, `bool` |
-| `int`, `int64` | `int` |
-| `float64` | `float` |
-| `time.Duration` | `duration` |
-| `time.Time` | `timestamp` |
-| `[]T` | `list<T>` |
-| `map[K]T`, scalar `K` | `map<K, T>` |
-| `*T` | `?T` |
-| `*[]T`, `*map[K]T`, `**T` | rejected |
-| named struct with `policy:` tags | `type` |
+| Go                               | Sigil            |
+| -------------------------------- | ---------------- |
+| `string`, `bool`                 | `string`, `bool` |
+| `int`, `int64`                   | `int`            |
+| `float64`                        | `float`          |
+| `time.Duration`                  | `duration`       |
+| `time.Time`                      | `timestamp`      |
+| `[]T`                            | `list<T>`        |
+| `map[K]T`, scalar `K`            | `map<K, T>`      |
+| `*T`                             | `?T`             |
+| `*[]T`, `*map[K]T`, `**T`        | rejected         |
+| named struct with `policy:` tags | `type`           |
 
 - A named type follows its underlying type: `type Tier string` maps to `string`.
 - `*Struct` maps to `?Struct`, whose fields a policy reads with [optional chaining](/reference/expressions/#optional-chaining): `release?.soak ?? 0s`.
@@ -252,12 +252,12 @@ func (p *Policy[In]) Name() string
 func (p *Policy[In]) Eval(ctx context.Context, input In) (*Result, error)
 ```
 
-| Parameter | Is |
-| --- | --- |
-| `fsys` | The files to read, such as an `embed.FS`, `os.DirFS` or [`MapFS`](#mapfs) |
-| `src` | One source string, read as a one-file bundle |
-| `name` | The root policy's name |
-| `opts` | [Load options](#load-options) |
+| Parameter | Is                                                                        |
+| --------- | ------------------------------------------------------------------------- |
+| `fsys`    | The files to read, such as an `embed.FS`, `os.DirFS` or [`MapFS`](#mapfs) |
+| `src`     | One source string, read as a one-file bundle                              |
+| `name`    | The root policy's name                                                    |
+| `opts`    | [Load options](#load-options)                                             |
 
 `Load`:
 
@@ -281,19 +281,18 @@ func (p *Policy[In]) Eval(ctx context.Context, input In) (*Result, error)
 //go:embed policies
 var policies embed.FS
 
-p, err := Deploy.Load(policies, "payments.production",
-	policy.Require("deploy.guardrails"))
+p, err := Deploy.Load(policies, "payments.production", policy.Require("deploy.guardrails"))
 ```
 
-| Fails when | Error |
-| --- | --- |
-| A document doesn't parse, type-check or compile | `*CompileError` |
-| A name is defined twice | `*CompileError` |
-| A document is for another kind | `*CompileError`: `document is for kind AccessGrant, not DeployApproval` |
+| Fails when                                                   | Error                                                                                                                                                           |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A document doesn't parse, type-check or compile              | `*CompileError`                                                                                                                                                 |
+| A name is defined twice                                      | `*CompileError`                                                                                                                                                 |
+| A document is for another kind                               | `*CompileError`: `document is for kind AccessGrant, not DeployApproval`                                                                                         |
 | A kind document with the kind's name differs from `Schema()` | `*CompileError`: `kind document DeployApproval doesn't match the host's kind`; see [Kind documents in a bundle](/reference/bundles/#kind-documents-in-a-bundle) |
-| The root is a module | `*CompileError`: `deploy.common is a module, not a policy` |
-| A `Params` value or a `Require` doesn't hold | `*CompileError`; see [Load options](#load-options) |
-| `fsys` can't be read (`Load` only) | The error from reading `fsys` |
+| The root is a module                                         | `*CompileError`: `deploy.common is a module, not a policy`                                                                                                      |
+| A `Params` value or a `Require` doesn't hold                 | `*CompileError`; see [Load options](#load-options)                                                                                                              |
+| `fsys` can't be read (`Load` only)                           | The error from reading `fsys`                                                                                                                                   |
 
 ### Compile errors
 
@@ -352,11 +351,11 @@ type RequireOption interface{ /* unexported methods */ }
 func From(fsys fs.FS) RequireOption
 ```
 
-| Option | Does |
-| --- | --- |
-| `Params{...}` | Binds the root policy's params from Go |
-| `Require(name, ...)` | Requires the root policy to invoke the named policy unconditionally |
-| `From(fsys)` | Inside `Require`: takes the required policy, and everything it uses, from a trusted source |
+| Option               | Does                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------ |
+| `Params{...}`        | Binds the root policy's params from Go                                                     |
+| `Require(name, ...)` | Requires the root policy to invoke the named policy unconditionally                        |
+| `From(fsys)`         | Inside `Require`: takes the required policy, and everything it uses, from a trusted source |
 
 `LoadOption` is implemented by `Params` and `Require`; `RequireOption` only by `From`.
 
@@ -405,10 +404,10 @@ Why `From` exists: [Why required policies need a trusted source](/understanding/
 func (p *Policy[In]) Eval(ctx context.Context, input In) (*Result, error)
 ```
 
-| Parameter | Is |
-| --- | --- |
-| `ctx` | Cancels the evaluation |
-| `input` | One value of the kind's input struct |
+| Parameter | Is                                   |
+| --------- | ------------------------------------ |
+| `ctx`     | Cancels the evaluation               |
+| `input`   | One value of the kind's input struct |
 
 - Returns the [result](#result) with its trace, and an [error](#errors) when the evaluation failed.
 - Never returns a nil result. With an error, the result holds the kind's default decision, or an empty outcome for a collecting kind; see [Failed evaluations](/reference/evaluation/#failed-evaluations).
@@ -433,12 +432,12 @@ A `Resolver` that supplies input values by path instead of a Go struct is a prop
 
 ### Errors
 
-| Error | When | Fields |
-| --- | --- | --- |
-| `*RuntimeError` | An index out of range, integer overflow, or a host function that returned an error, or panicked under `WithRecoverHostPanics` | `Err`, `Message`, `Help`, `Policy`, `Position` |
-| `*ConflictError` | A [conflict](/reference/evaluation/#resolution): two members of an `exclusive` set fired, or a `collect one` kind has several candidates at its top rank | `Message`, `Policy`, `Candidates` |
-| `*AssertionError` | An [assert](/reference/evaluation/#assertions) failed | `Failures`, `Phase` |
-| The context's error | `ctx` was done before or during the evaluation | Unwrapped: `errors.Is(err, context.DeadlineExceeded)` holds for a deadline |
+| Error               | When                                                                                                                                                     | Fields                                                                     |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `*RuntimeError`     | An index out of range, integer overflow, or a host function that returned an error, or panicked under `WithRecoverHostPanics`                            | `Err`, `Message`, `Help`, `Policy`, `Position`                             |
+| `*ConflictError`    | A [conflict](/reference/evaluation/#resolution): two members of an `exclusive` set fired, or a `collect one` kind has several candidates at its top rank | `Message`, `Policy`, `Candidates`                                          |
+| `*AssertionError`   | An [assert](/reference/evaluation/#assertions) failed                                                                                                    | `Failures`, `Phase`                                                        |
+| The context's error | `ctx` was done before or during the evaluation                                                                                                           | Unwrapped: `errors.Is(err, context.DeadlineExceeded)` holds for a deadline |
 
 Tell them apart with `errors.As`.
 
@@ -577,12 +576,12 @@ type Condition struct {
 }
 ```
 
-| Field | `collect one` | `collect all` |
-| --- | --- | --- |
-| `Decision`, `Reason`, `Payload` | The winner, or the kind's default when nothing fired | Empty |
-| `Outcome` | That one entry | Every folded candidate; with precedence, every folded candidate at the top rank. Sorted by declaration order, then position. May be empty |
-| `Policy` | The policy the host evaluated | The same |
-| `Trace` | Every candidate | Every candidate |
+| Field                           | `collect one`                                        | `collect all`                                                                                                                             |
+| ------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `Decision`, `Reason`, `Payload` | The winner, or the kind's default when nothing fired | Empty                                                                                                                                     |
+| `Outcome`                       | That one entry                                       | Every folded candidate; with precedence, every folded candidate at the top rank. Sorted by declaration order, then position. May be empty |
+| `Policy`                        | The policy the host evaluated                        | The same                                                                                                                                  |
+| `Trace`                         | Every candidate                                      | Every candidate                                                                                                                           |
 
 - Equal candidates, with the same decision, reason and payload, fold into one outcome entry.
 - `Entry.Policy` and `Candidate.Policy` name the policy whose rule produced it. When the host evaluates `payments.production` and the `service_owner` review from `deploy.production` wins, `Result.Policy` is `payments.production`, and the entry and the candidate name `deploy.production`.
@@ -609,11 +608,11 @@ type Matched[T any] struct {
 }
 ```
 
-| Kind | `Match` | `Is` | `MatchAll` |
-| --- | --- | --- | --- |
-| `collect one` | `true` and the payload when the outcome is that decision | `true` when the outcome is that decision with that reason | The winner when it's that decision, and nothing otherwise |
-| `collect all` with precedence | `true` when the outcome is exactly one entry of that decision; `false` when the top rank holds more than one entry | As `Match`, comparing the reason too | Every entry of that decision |
-| `collect all` without precedence | Panics | Panics | Every entry of that decision |
+| Kind                             | `Match`                                                                                                            | `Is`                                                      | `MatchAll`                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | --------------------------------------------------------- |
+| `collect one`                    | `true` and the payload when the outcome is that decision                                                           | `true` when the outcome is that decision with that reason | The winner when it's that decision, and nothing otherwise |
+| `collect all` with precedence    | `true` when the outcome is exactly one entry of that decision; `false` when the top rank holds more than one entry | As `Match`, comparing the reason too                      | Every entry of that decision                              |
+| `collect all` without precedence | Panics                                                                                                             | Panics                                                    | Every entry of that decision                              |
 
 - `Match` returns the zero `T` and `false` for a nil result or another decision; `Is` returns `false`; `MatchAll` returns nil for a nil result.
 - `MatchAll` returns entries in outcome order, each a `Matched[T]` whose fields other than `Payload` are those of the `Entry` it came from.
@@ -652,12 +651,12 @@ func (p Position) String() string
 - `Line` and `Column` are 1-based, and `Column` counts characters, not bytes.
 - A position with line 0 is unknown, as for the kind's default decision, which has no source. `IsValid()` reports false for it.
 
-| Position | `String()` |
-| --- | --- |
+| Position                           | `String()`                                  |
+| ---------------------------------- | ------------------------------------------- |
 | File path doesn't say the document | `policies.sigil:42:5 (payments.production)` |
-| File path says the document | `deploy/production.sigil:16:5` |
-| No file, from `Compile` | `4:3 (payments.production)` |
-| Unknown | `-` |
+| File path says the document        | `deploy/production.sigil:16:5`              |
+| No file, from `Compile`            | `4:3 (payments.production)`                 |
+| Unknown                            | `-`                                         |
 
 The Go values always carry both the file and the document name, so a trace stays readable when many documents share one file, such as one ConfigMap key. The CLI prints positions the same way.
 
@@ -670,10 +669,10 @@ func Run[In any](t *testing.T, k *policy.Kind[In], fsys fs.FS, opts ...policy.Lo
 func Schema[In any](t testing.TB, k *policy.Kind[In], file string)
 ```
 
-| Function | Does |
-| --- | --- |
+| Function                   | Does                                                                                                                                                                                            |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Run(t, k, fsys, opts...)` | Runs every `*_test.yaml` file in every directory of `fsys` against the policies in `fsys`. Each file's `policy:` is loaded with `k.Load` and `opts`, the same options the host passes to `Load` |
-| `Schema(t, k, file)` | Fails the test when the kind file at `file`, on disk, isn't `k.Schema()`. The failure shows both versions |
+| `Schema(t, k, file)`       | Fails the test when the kind file at `file`, on disk, isn't `k.Schema()`. The failure shows both versions                                                                                       |
 
 - `Run` skips entries whose names start with `.`, as `Load` does.
 - Each test file becomes a subtest named after its path, and each case a subtest of it, so `go test -run 'TestPolicies/access/main_test.yaml/admins'` selects them.
@@ -706,11 +705,11 @@ func WithKind[In any](k *policy.Kind[In]) Option
 func WithVersion(version string) Option
 ```
 
-| Symbol | Does |
-| --- | --- |
-| `Main(opts...)` | Runs the `sigil` command line on `os.Args` and exits: status 1 when the command failed, after printing why, and 0 otherwise. An interrupt or `SIGTERM` cancels the running command. It doesn't return |
-| `WithKind(k)` | Links a kind into the binary. Repeat it for a host with several kinds. A nil `k` is ignored |
-| `WithVersion(v)` | Sets the version `sigil version` reports. When it's empty, the main module's version from the Go build info is reported |
+| Symbol           | Does                                                                                                                                                                                                  |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Main(opts...)`  | Runs the `sigil` command line on `os.Args` and exits: status 1 when the command failed, after printing why, and 0 otherwise. An interrupt or `SIGTERM` cancels the running command. It doesn't return |
+| `WithKind(k)`    | Links a kind into the binary. Repeat it for a host with several kinds. A nil `k` is ignored                                                                                                           |
+| `WithVersion(v)` | Sets the version `sigil version` reports. When it's empty, the main module's version from the Go build info is reported                                                                               |
 
 What a linked kind changes in each command is in [Host functions and host binaries](/reference/cli/#host-functions-and-host-binaries). To build one, see [Build a host binary](/guides/host-binary/#build-the-binary).
 
@@ -724,24 +723,24 @@ func main() {
 
 Every exported identifier of package `policy`:
 
-| Identifier | What it is |
-| --- | --- |
-| [`NewKind[In](name, opts...) *Kind[In]`](#newkind) | Builds a kind from the input struct `In`; panics on an invalid kind |
-| [`Kind[In].Name`, `.Schema`, `.Load`, `.Compile`, `.Contract`](#kind-methods) | The kind's name, its kind file, loading and compiling policies, and the tooling hook |
-| [`Option`, `WithVersion`, `WithAccepts`, `WithDecisions`, `WithCollect`, `WithPrecedence`, `WithReasonPrecedence`, `WithExclusive`, `WithDefault`, `WithFunc`, `WithRecoverHostPanics`](#kind-options) | Options for `NewKind` |
-| [`NewDecision[T](name, reasons...) Decision[T]`](#decisions-and-reasons) | Declares a decision with payload struct `T` |
-| [`Decision[T].Name`, `.Reasons`, `.Reason`, `.Match`, `.MatchAll`](#decisions-and-reasons) | The decision's name and reasons, one reason as an `Outcome` handle (panics on an undeclared one), and typed matching |
-| [`Outcome.Decision`, `.Name`, `.Is`](#decisions-and-reasons) | A reason handle's decision and reason names, and whether a result is exactly that reason |
-| [`DecisionRef`, `OutcomeRef`, `Outcome`](#decisions-and-reasons) | Any `Decision[T]`; a decision or one of its reasons; one reason |
-| [`None`](#decisions-and-reasons) | The payload of a decision that carries only a reason |
-| [`Matched[T]`](#typed-matching) | One entry `MatchAll` returns |
-| [`LoadOption`, `Params`, `Require`, `RequireOption`, `From`](#load-options) | Options for `Load` and `Compile` |
-| [`MapFS(files) fs.FS`](#mapfs) | A map of file names to contents as an `fs.FS` |
-| [`Policy[In].Eval`, `.Name`](#evaluating) | Evaluating a compiled policy, and its name |
-| [`Result`, `Entry`, `Trace`, `Candidate`, `Condition`](#result) | What an evaluation produced and why |
-| [`Position`](#positions) | A place in a bundle, with `IsValid` and `String` |
-| [`CompileError`, `Diagnostic`](#compile-errors) | A failed compile and its diagnostics: `Message`, `Help`, `Position`, `End` |
-| [`RuntimeError`, `ConflictError`, `AssertionError`, `AssertFailure`, `HostPanicError`](#errors) | A failed evaluation, and the cause of a runtime error a recovered host panic became |
-| [`AssertPhase`, `InputAsserts`, `OutcomeAsserts`](#assertionerror) | Which asserts an `AssertionError` reports |
+| Identifier                                                                                                                                                                                             | What it is                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| [`NewKind[In](name, opts...) *Kind[In]`](#newkind)                                                                                                                                                     | Builds a kind from the input struct `In`; panics on an invalid kind                                                  |
+| [`Kind[In].Name`, `.Schema`, `.Load`, `.Compile`, `.Contract`](#kind-methods)                                                                                                                          | The kind's name, its kind file, loading and compiling policies, and the tooling hook                                 |
+| [`Option`, `WithVersion`, `WithAccepts`, `WithDecisions`, `WithCollect`, `WithPrecedence`, `WithReasonPrecedence`, `WithExclusive`, `WithDefault`, `WithFunc`, `WithRecoverHostPanics`](#kind-options) | Options for `NewKind`                                                                                                |
+| [`NewDecision[T](name, reasons...) Decision[T]`](#decisions-and-reasons)                                                                                                                               | Declares a decision with payload struct `T`                                                                          |
+| [`Decision[T].Name`, `.Reasons`, `.Reason`, `.Match`, `.MatchAll`](#decisions-and-reasons)                                                                                                             | The decision's name and reasons, one reason as an `Outcome` handle (panics on an undeclared one), and typed matching |
+| [`Outcome.Decision`, `.Name`, `.Is`](#decisions-and-reasons)                                                                                                                                           | A reason handle's decision and reason names, and whether a result is exactly that reason                             |
+| [`DecisionRef`, `OutcomeRef`, `Outcome`](#decisions-and-reasons)                                                                                                                                       | Any `Decision[T]`; a decision or one of its reasons; one reason                                                      |
+| [`None`](#decisions-and-reasons)                                                                                                                                                                       | The payload of a decision that carries only a reason                                                                 |
+| [`Matched[T]`](#typed-matching)                                                                                                                                                                        | One entry `MatchAll` returns                                                                                         |
+| [`LoadOption`, `Params`, `Require`, `RequireOption`, `From`](#load-options)                                                                                                                            | Options for `Load` and `Compile`                                                                                     |
+| [`MapFS(files) fs.FS`](#mapfs)                                                                                                                                                                         | A map of file names to contents as an `fs.FS`                                                                        |
+| [`Policy[In].Eval`, `.Name`](#evaluating)                                                                                                                                                              | Evaluating a compiled policy, and its name                                                                           |
+| [`Result`, `Entry`, `Trace`, `Candidate`, `Condition`](#result)                                                                                                                                        | What an evaluation produced and why                                                                                  |
+| [`Position`](#positions)                                                                                                                                                                               | A place in a bundle, with `IsValid` and `String`                                                                     |
+| [`CompileError`, `Diagnostic`](#compile-errors)                                                                                                                                                        | A failed compile and its diagnostics: `Message`, `Help`, `Position`, `End`                                           |
+| [`RuntimeError`, `ConflictError`, `AssertionError`, `AssertFailure`, `HostPanicError`](#errors)                                                                                                        | A failed evaluation, and the cause of a runtime error a recovered host panic became                                  |
+| [`AssertPhase`, `InputAsserts`, `OutcomeAsserts`](#assertionerror)                                                                                                                                     | Which asserts an `AssertionError` reports                                                                            |
 
 Package [`policytest`](#package-policytest) exports `Run` and `Schema`; package [`cli`](#package-cli) exports `Main`, `Option`, `WithKind` and `WithVersion`.

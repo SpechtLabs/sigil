@@ -11,15 +11,15 @@ A complete team policy is in the [tour](/getting-started/tour/#the-team-policy).
 
 ## Statements at a glance
 
-| Statement                          | Where                   | Meaning                                                                 |
-| ---------------------------------- | ----------------------- | ----------------------------------------------------------------------- |
-| `policy <name>: <Kind>@<N>`        | first statement         | Names the policy, the kind it implements and the kind version it was written against |
-| `use <path>`                       | after the header        | Imports names from another policy or module. Never adds rules by itself |
-| `param <name>: <type> [= <expr>] [, min: <expr>] [, max: <expr>]` | top level | Typed input set at instantiation. No default means required; bounds limit what a caller may bind |
-| `[pub] let <name> = <expr>`        | top level or nested     | Named, reusable expression. `pub` lets other documents import it; only at the top level |
-| `when <expr> { ... }`              | top level or nested     | Rule block. Body holds nested `when` blocks, decisions, asserts and invocations |
-| `assert("<reason>", <expr>)`       | top level or nested     | Condition that must hold, or evaluation fails with an assertion error   |
-| `<policy>(<param>: <expr>, ...)`   | top level or nested     | Invokes an imported policy, adding its rules with its params bound      |
+| Statement                                                         | Where               | Meaning                                                                                          |
+| ----------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------ |
+| `policy <name>: <Kind>@<N>`                                       | first statement     | Names the policy, the kind it implements and the kind version it was written against             |
+| `use <path>`                                                      | after the header    | Imports names from another policy or module. Never adds rules by itself                          |
+| `param <name>: <type> [= <expr>] [, min: <expr>] [, max: <expr>]` | top level           | Typed input set at instantiation. No default means required; bounds limit what a caller may bind |
+| `[pub] let <name> = <expr>`                                       | top level or nested | Named, reusable expression. `pub` lets other documents import it; only at the top level          |
+| `when <expr> { ... }`                                             | top level or nested | Rule block. Body holds nested `when` blocks, decisions, asserts and invocations                  |
+| `assert("<reason>", <expr>)`                                      | top level or nested | Condition that must hold, or evaluation fails with an assertion error                            |
+| `<policy>(<param>: <expr>, ...)`                                  | top level or nested | Invokes an imported policy, adding its rules with its params bound                               |
 
 After the imports, statements come in any order. [Modules](#modules) allow only `use` and `let`. Kind files use a different set of statements; see [Kind files](/reference/kind-files/).
 
@@ -49,13 +49,13 @@ use deploy.common.{owns_service as owner}     // selective with alias
 
 `use` brings names from another document into scope. It never adds rules by itself: an imported policy contributes nothing until it's [invoked](#policy-invocation).
 
-| Form | Binds |
-| --- | --- |
-| `use a.b` of a module | Qualifier `b`: `b.cleared` reads the module's `cleared` |
+| Form                  | Binds                                                       |
+| --------------------- | ----------------------------------------------------------- |
+| `use a.b` of a module | Qualifier `b`: `b.cleared` reads the module's `cleared`     |
 | `use a.b` of a policy | Name `b`, to invoke and to read its `pub let`s as `b.<let>` |
-| `use a.b as c` | The same, under the name `c` |
-| `use a.b.{x, y}` | Each listed `pub let` under its own name |
-| `use a.b.{x as z}` | The listed `pub let` under the name after `as` |
+| `use a.b as c`        | The same, under the name `c`                                |
+| `use a.b.{x, y}`      | Each listed `pub let` under its own name                    |
+| `use a.b.{x as z}`    | The listed `pub let` under the name after `as`              |
 
 - The last path segment is the bound name unless `as` renames it.
 - A path names a document in the bundle: `use deploy.common` finds the document whose header is `module deploy.common`, in whichever file it lives. See [Name resolution](/reference/bundles/#name-resolution).
@@ -101,10 +101,10 @@ A param is a typed value supplied when the policy gets instantiated. It has a na
 - A default must have the declared type and must be a constant expression: literals, list and map literals of literals, and arithmetic on those. It can't read inputs, lets or other params.
 - The type can be any type from [Types](/reference/types/) except optional types.
 
-| Bound by | Checked |
-| --- | --- |
-| A policy that [invokes](#policy-invocation) this one | At compile time, at the argument |
-| The Go host, through `policy.Params` when it compiles or loads the policy; see [Load options](/reference/go-api/#load-options) | By `Load` or `Compile` |
+| Bound by                                                                                                                       | Checked                          |
+| ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
+| A policy that [invokes](#policy-invocation) this one                                                                           | At compile time, at the argument |
+| The Go host, through `policy.Params` when it compiles or loads the policy; see [Load options](/reference/go-api/#load-options) | By `Load` or `Compile`           |
 
 ### Bounds
 
@@ -137,8 +137,7 @@ For a required guardrail, [`policy.From`](/reference/bundles/#trusted-sources) l
 
 ```sigil
 let owns_service = actor.teams any in service.owners
-let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
+let cleared = split(service.labels["regions"], ",") all in actor.regions
 ```
 
 A `let` binds a name to an expression.
@@ -223,8 +222,7 @@ when service.tier == "critical" {
   assert("critical_needs_team_label", service.labels has "team")
 }
 
-assert("sod_customer_dev",
-  [customer_data_writer, development_environment_writer] exclusive in outcome)
+assert("sod_customer_dev", [customer_data_writer, development_environment_writer] exclusive in outcome)
 ```
 
 An assert states something that must be true whenever it's reached. If its condition is false, evaluation fails: `Eval` returns an assertion error, and the host records it as an error, not as a decision.
@@ -273,10 +271,8 @@ Why: [Composition without templating](/understanding/composition/).
 module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
-pub let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
-pub let eligible =
-  "deployer" in actor.roles
+pub let cleared = split(service.labels["regions"], ",") all in actor.regions
+pub let eligible = "deployer" in actor.roles
   and environment == "production"
   and service.labels has {
     "app.kubernetes.io/managed-by": "argocd",
@@ -308,17 +304,17 @@ Each policy and module has one flat top-level namespace containing:
 - the document's own params and lets, including the lets inside `when` bodies,
 - every name bound by a `use`.
 
-| Case | Result |
-| --- | --- |
-| Two of these names collide | Compile error. Nothing shadows anything |
-| A `param` named `release` in a kind that declares `input release` | Compile error |
-| A quantifier or filter variable named `approvers` in a policy with a param of that name | Compile error |
-| A `let` called `deny` in a kind that declares `decision deny` | Compile error. Decision names are in the namespace, because a bare decision name is a [value](/reference/types/#decision) in `assert` conditions |
-| An import whose bound name is a decision | Compile error; rename it with `as` |
-| A reason with the same name as anything else | Allowed. Reasons aren't in the namespace: `let release_manager = ...` is fine next to `approve(release_manager)` |
+| Case                                                                                                 | Result                                                                                                                                                  |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Two of these names collide                                                                           | Compile error. Nothing shadows anything                                                                                                                 |
+| A `param` named `release` in a kind that declares `input release`                                    | Compile error                                                                                                                                           |
+| A quantifier or filter variable named `approvers` in a policy with a param of that name              | Compile error                                                                                                                                           |
+| A `let` called `deny` in a kind that declares `decision deny`                                        | Compile error. Decision names are in the namespace, because a bare decision name is a [value](/reference/types/#decision) in `assert` conditions        |
+| An import whose bound name is a decision                                                             | Compile error; rename it with `as`                                                                                                                      |
+| A reason with the same name as anything else                                                         | Allowed. Reasons aren't in the namespace: `let release_manager = ...` is fine next to `approve(release_manager)`                                        |
 | A document pinned below the kind's current version collides with an input, host function or decision | Allowed. The document's own name wins, the kind's name is out of reach in that document, and the [`shadowed-kind-name`](/reference/lints/) lint says so |
-| The same collision in a document pinned to the current version | Compile error |
-| Two of the document's own names collide, at any pin | Compile error |
+| The same collision in a document pinned to the current version                                       | Compile error                                                                                                                                           |
+| Two of the document's own names collide, at any pin                                                  | Compile error                                                                                                                                           |
 
 Reasons only appear after a decision's name, as `approve.release_manager`, or in a constructor's first slot.
 

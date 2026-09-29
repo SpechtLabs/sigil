@@ -11,15 +11,15 @@ The code lives in [`examples/`](https://github.com/SpechtLabs/sigil/tree/main/ex
 
 ## What it shows
 
-| Piece | Where | Read more |
-| --- | --- | --- |
-| The `DeployApproval` kind, declared with `policy.NewKind` | `internal/deploy` | [Define the kind](/guides/embed-go/#define-the-kind) |
-| The `AccessGrant` kind, a `collect all` kind with an `exclusive` line | `internal/access` | [Collecting kinds](/reference/kind-files/#collecting-kinds) |
-| Both kind files, written by the host's own `sigilc export` and checked by a test | `cmd/sigilc`, `policies/*.sigil` | [Export the kind](/guides/host-binary/#export-the-kind) |
-| Platform guardrails embedded in the binary and required with `policy.From`, one trusted source per kind | `policies/embed.go`, `internal/store` | [Trusted sources](/reference/bundles/#trusted-sources) |
-| Team and access policies read from directories, reloaded with last-known-good semantics | `internal/store` | [Reload without an outage](/guides/configmaps/#reload-without-an-outage), [Policies in a ConfigMap](/guides/configmaps/) |
-| Results matched into typed payloads, with `Match` for the deploy kind and `MatchAll` for the access kind | `internal/server` | [Typed matching](/reference/go-api/#typed-matching) |
-| A counter and a span per decision and per grant, with the reason and the trace | `internal/telemetry` | |
+| Piece                                                                                                    | Where                                 | Read more                                                                                                                |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| The `DeployApproval` kind, declared with `policy.NewKind`                                                | `internal/deploy`                     | [Define the kind](/guides/embed-go/#define-the-kind)                                                                     |
+| The `AccessGrant` kind, a `collect all` kind with an `exclusive` line                                    | `internal/access`                     | [Collecting kinds](/reference/kind-files/#collecting-kinds)                                                              |
+| Both kind files, written by the host's own `sigilc export` and checked by a test                         | `cmd/sigilc`, `policies/*.sigil`      | [Export the kind](/guides/host-binary/#export-the-kind)                                                                  |
+| Platform guardrails embedded in the binary and required with `policy.From`, one trusted source per kind  | `policies/embed.go`, `internal/store` | [Trusted sources](/reference/bundles/#trusted-sources)                                                                   |
+| Team and access policies read from directories, reloaded with last-known-good semantics                  | `internal/store`                      | [Reload without an outage](/guides/configmaps/#reload-without-an-outage), [Policies in a ConfigMap](/guides/configmaps/) |
+| Results matched into typed payloads, with `Match` for the deploy kind and `MatchAll` for the access kind | `internal/server`                     | [Typed matching](/reference/go-api/#typed-matching)                                                                      |
+| A counter and a span per decision and per grant, with the reason and the trace                           | `internal/telemetry`                  |                                                                                                                          |
 
 ## Run it
 
@@ -47,16 +47,21 @@ The request describes the actor by their groups, `"groups": ["payments"]`, not b
 {
   "decision": "review",
   "reason": "service_owner",
-  "payload": {"approvers": ["payments-leads", "security-leads"]},
+  "payload": { "approvers": ["payments-leads", "security-leads"] },
   "trace": [
-    {"decision": "review", "reason": "service_owner", "policy": "deploy.production",
-     "location": "payments/production.sigil:10:3 → deploy/production.sigil:16:5", "winner": true}
+    {
+      "decision": "review",
+      "reason": "service_owner",
+      "policy": "deploy.production",
+      "location": "payments/production.sigil:10:3 → deploy/production.sigil:16:5",
+      "winner": true
+    }
   ],
   "access": {
     "policy": "access.main",
     "grants": [
-      {"role": "reader", "reason": "team_member"},
-      {"role": "deployer", "reason": "team_member", "ttl": "8h"}
+      { "role": "reader", "reason": "team_member" },
+      { "role": "deployer", "reason": "team_member", "ttl": "8h" }
     ]
   }
 }

@@ -15,10 +15,10 @@ Documents resolve by the name in their header, not by file path, so the flat key
 
 Two sets of documents end up in the service, and they deserve different trust:
 
-| Documents | Owned by | Ships as |
-| --- | --- | --- |
+| Documents                                                 | Owned by          | Ships as                                                                                                 |
+| --------------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------- |
 | `deploy.common`, `deploy.guardrails`, `deploy.production` | The platform team | Embedded in the service binary with `embed.FS`, or a separate ConfigMap only the platform team can write |
-| `payments.production` and every other team policy | Each team | A shared ConfigMap, one key per team |
+| `payments.production` and every other team policy         | Each team         | A shared ConfigMap, one key per team                                                                     |
 
 Keep the platform's documents out of the team ConfigMap, and load them with `policy.From` as [Load it in the service](#load-it-in-the-service) shows, so whoever writes the ConfigMap can't replace the guardrails. [Why required policies need a trusted source](/understanding/bundles/#why-required-policies-need-a-trusted-source) explains the threat.
 
@@ -187,11 +187,13 @@ Reload with last-known-good semantics. A bundle loads as a whole, so one team's 
 func reload(fsys fs.FS) {
 	p, err := Deploy.Load(fsys, "payments.production",
 		policy.Require("deploy.guardrails", policy.From(platformFS)))
+
 	if err != nil {
 		slog.Error("policy reload failed, keeping the last good policy", "err", err)
 		lastReloadSuccessful.Set(0) // alert on this: the running policy is now stale
 		return
 	}
+
 	current.Store(p)
 	lastReloadSuccessful.Set(1)
 }

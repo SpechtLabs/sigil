@@ -53,8 +53,7 @@ The evaluator keeps the math: an empty left side makes `all in` and `exclusive i
 A Go detail makes this sharper. The example deploy gate computes:
 
 ```sigil
-let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
+let cleared = split(service.labels["regions"], ",") all in actor.regions
 ```
 
 When the `regions` label is missing, `service.labels["regions"]` is `""`, and Go's `strings.Split("", ",")` returns `[""]`, not an empty list. So a missing label makes `cleared` false, which fails closed. An explicit empty list from some other source would make it vacuously true, which fails open. The same expression shape gives opposite safety properties depending on where the empty value came from. That argues for defining empty-left as false, or at least for a lint on every `all in` whose left side can be empty.

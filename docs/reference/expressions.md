@@ -17,34 +17,34 @@ Why the operators look the way they do: [Why the language looks like this](/unde
 
 From lowest to highest:
 
-| Level | Operators                   | Associativity   | Notes                                                                                     |
-| ----- | --------------------------- | --------------- | ----------------------------------------------------------------------------------------- |
-| 1     | `or`                        | left            | Short-circuits                                                                            |
-| 1     | `xor`                       | none            | Evaluates both sides; doesn't mix with `or` without parentheses                           |
-| 2     | `and`                       | left            | Short-circuits                                                                            |
-| 3     | `not`                       | prefix          | Unary                                                                                     |
-| 4     | `==` `!=` `<` `<=` `>` `>=` | none            | Strictly typed; no implicit coercion                                                      |
-| 4     | `in`, `not in`              | none            | Element in list, substring in string                                                      |
-| 4     | `all in`, `any in`          | none            | List subset and list intersection                                                         |
-| 4     | `one in`, `exclusive in`    | none            | Exactly one, or at most one, element of a list is in another                              |
-| 4     | `has`                       | none            | Map contains all given pairs, or a key                                                    |
-| 4     | `like`, `matches`           | none            | Glob and RE2 regex; the pattern must be a literal                                         |
-| 5     | `??`                        | right           | Default for optional values                                                               |
-| 6     | `+` `-`                     | left            | Numbers, durations, timestamps                                                            |
-| 7     | `-`, `present`              | prefix          | Unary minus; presence of an optional                                                      |
-| 8     | `.field` `?.field` `[key]` `f(args)` | left (postfix) | Field access, optional chaining, map or list index, host function call              |
+| Level | Operators                            | Associativity  | Notes                                                                  |
+| ----- | ------------------------------------ | -------------- | ---------------------------------------------------------------------- |
+| 1     | `or`                                 | left           | Short-circuits                                                         |
+| 1     | `xor`                                | none           | Evaluates both sides; doesn't mix with `or` without parentheses        |
+| 2     | `and`                                | left           | Short-circuits                                                         |
+| 3     | `not`                                | prefix         | Unary                                                                  |
+| 4     | `==` `!=` `<` `<=` `>` `>=`          | none           | Strictly typed; no implicit coercion                                   |
+| 4     | `in`, `not in`                       | none           | Element in list, substring in string                                   |
+| 4     | `all in`, `any in`                   | none           | List subset and list intersection                                      |
+| 4     | `one in`, `exclusive in`             | none           | Exactly one, or at most one, element of a list is in another           |
+| 4     | `has`                                | none           | Map contains all given pairs, or a key                                 |
+| 4     | `like`, `matches`                    | none           | Glob and RE2 regex; the pattern must be a literal                      |
+| 5     | `??`                                 | right          | Default for optional values                                            |
+| 6     | `+` `-`                              | left           | Numbers, durations, timestamps                                         |
+| 7     | `-`, `present`                       | prefix         | Unary minus; presence of an optional                                   |
+| 8     | `.field` `?.field` `[key]` `f(args)` | left (postfix) | Field access, optional chaining, map or list index, host function call |
 
 - Parentheses override precedence.
 - Quantifiers (`any x in xs: ...`, `all x in xs: ...`) and filters (`filter x in xs: ...`) aren't in the table. They're prefix forms whose body extends as far right as possible; see [Quantifiers](#quantifiers) and [Filters](#filters).
 - Level-4 operators are non-associative. `a < b < c`, `a == b == c` and `a in b == c` are compile errors; add parentheses.
 - `xor` shares level 1 with `or` but can't be chained or mixed with it. `a xor b xor c` and `a or b xor c` are compile errors; add parentheses.
 
-| Expression                        | Parses as                              |
-| --------------------------------- | -------------------------------------- |
-| `not a == b`                      | `not (a == b)`                         |
-| `not "admin" in actor.roles`      | `not ("admin" in actor.roles)`; prefer `"admin" not in actor.roles` |
-| `owner ?? "unknown" == "team-a"`  | `(owner ?? "unknown") == "team-a"`     |
-| `a ?? b + c`                      | `a ?? (b + c)`                         |
+| Expression                       | Parses as                                                           |
+| -------------------------------- | ------------------------------------------------------------------- |
+| `not a == b`                     | `not (a == b)`                                                      |
+| `not "admin" in actor.roles`     | `not ("admin" in actor.roles)`; prefer `"admin" not in actor.roles` |
+| `owner ?? "unknown" == "team-a"` | `(owner ?? "unknown") == "team-a"`                                  |
+| `a ?? b + c`                     | `a ?? (b + c)`                                                      |
 
 ## Boolean operators
 
@@ -68,10 +68,10 @@ release.hotfix xor release.scheduled
 
 ## Comparison
 
-| Operators                   | Operand types                                         |
-| --------------------------- | ----------------------------------------------------- |
-| `==` `!=`                   | `bool`, `int`, `float`, `string`, `duration`, `timestamp`, [`decision`](#decision-values-and-outcome) |
-| `<` `<=` `>` `>=`           | `int`, `float`, `duration`, `timestamp`               |
+| Operators         | Operand types                                                                                         |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `==` `!=`         | `bool`, `int`, `float`, `string`, `duration`, `timestamp`, [`decision`](#decision-values-and-outcome) |
+| `<` `<=` `>` `>=` | `int`, `float`, `duration`, `timestamp`                                                               |
 
 - Both operands must have the same type. `3 == 3.0` is a compile error (`int` against `float`), and so is `release.soak == 30` (`duration` against `int`).
 - String comparison is case-sensitive: `"Prod" == "prod"` is false.
@@ -107,10 +107,10 @@ deploy/production.sigil:3:6: error: `!=` isn't defined for list<string>
 
 The type of the right-hand side picks the meaning of `in`:
 
-| Form                 | Left type | Right type    | True when                         |
-| -------------------- | --------- | ------------- | --------------------------------- |
-| `x in xs`            | `T`       | `list<T>`     | `xs` contains an element equal to `x` |
-| `s in t`             | `string`  | `string`      | `s` is a substring of `t`         |
+| Form      | Left type | Right type | True when                             |
+| --------- | --------- | ---------- | ------------------------------------- |
+| `x in xs` | `T`       | `list<T>`  | `xs` contains an element equal to `x` |
+| `s in t`  | `string`  | `string`   | `s` is a substring of `t`             |
 
 ```sigil
 "deployer" in actor.roles                    // list element
@@ -151,10 +151,10 @@ Whether `[] all in b` should stay vacuously true is an [open question](/project/
 
 `has` takes a map on the left and either a map or a key on the right.
 
-| Form              | Right type     | True when                                                     |
-| ----------------- | -------------- | ------------------------------------------------------------- |
-| `m has {k: v, ...}` | `map<K, V>`  | every pair on the right is in `m` with an equal value         |
-| `m has k`         | `K`            | `m` has key `k`                                               |
+| Form                | Right type  | True when                                             |
+| ------------------- | ----------- | ----------------------------------------------------- |
+| `m has {k: v, ...}` | `map<K, V>` | every pair on the right is in `m` with an equal value |
+| `m has k`           | `K`         | `m` has key `k`                                       |
 
 ```sigil
 service.labels has {
@@ -176,10 +176,10 @@ Both take a `string` on the left and a pattern on the right.
 - The pattern must be a string literal, plain or raw, optionally in parentheses. It compiles once, when the policy compiles.
 - A pattern built from an expression, even a `let` that holds a literal, is a compile error.
 
-| Operator  | Syntax                           | Matches                                  | Invalid pattern     |
-| --------- | -------------------------------- | ---------------------------------------- | ------------------- |
-| `like`    | glob: `*` is any run of characters, including none; `?` is exactly one character; every other character, `[` and `\` included, matches itself | the whole string; `*` crosses `/` and `.` | impossible          |
-| `matches` | Go RE2 regular expression        | anywhere in the string, as Go's `regexp.MatchString`; anchor with `^` and `$` for the whole string | compile error |
+| Operator  | Syntax                                                                                                                                        | Matches                                                                                            | Invalid pattern |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | --------------- |
+| `like`    | glob: `*` is any run of characters, including none; `?` is exactly one character; every other character, `[` and `\` included, matches itself | the whole string; `*` crosses `/` and `.`                                                          | impossible      |
+| `matches` | Go RE2 regular expression                                                                                                                     | anywhere in the string, as Go's `regexp.MatchString`; anchor with `^` and `$` for the whole string | compile error   |
 
 ```sigil
 service.name like "payments-*"
@@ -216,10 +216,12 @@ release?.soak ?? 5m
 A chain is a run of `.name`, `?.name` and `[index]` that no parentheses break. A `?.` makes the rest of its chain optional, as in TypeScript. When a `?.` finds its operand absent, nothing after it in the chain runs, so nothing after it can fail:
 
 ```sigil
-// Release declares `parent: ?Commit`; Commit declares `author: Actor` and `merged_by: ?Actor`
+// Release declares `parent: ?Commit`;
+// Commit declares `author: Actor` and `merged_by: ?Actor`
+
 release.parent?.author.name ?? ""          // ?string, then string; `author` needs no `?.`
-release.parent?.author.roles[5] ?? ""       // no index error when there's no parent
-release.parent?.merged_by?.name ?? ""       // `merged_by` is optional itself, so it needs its own `?.`
+release.parent?.author.roles[5] ?? ""      // no index error when there's no parent
+release.parent?.merged_by?.name ?? ""      // `merged_by` is optional itself, so it needs its own `?.`
 ```
 
 - The type of a chain with a `?.` in it is its last link's type made optional. A last link that's already optional stays `?T`; optionals don't nest.
@@ -269,13 +271,13 @@ now - release.built_at > 2h        // assuming an input `now` and a field `built
 
 These are postfix and bind tightest.
 
-| Form      | Reads                                   | Rules                                                                                 |
-| --------- | --------------------------------------- | ------------------------------------------------------------------------------------- |
-| `x.field` | a field of a struct value               | A field the struct type doesn't declare is a compile error                            |
-| `common.name` | a `let` through a whole-file import such as `use deploy.common` | See [Policy files](/reference/policy-files/#use)                       |
-| `m[k]`    | a map value                             | `k` must have the map's key type. A missing key yields the value type's zero value, like Go: `service.labels["absent"]` is `""` |
-| `xs[i]`   | a list element                          | `i` is an `int`. An index out of range, including a negative one, is a runtime error |
-| `f(a, b)` | a host function declared with `fn` in the kind | Arguments are positional; their count and types must match the signature   |
+| Form          | Reads                                                           | Rules                                                                                                                           |
+| ------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `x.field`     | a field of a struct value                                       | A field the struct type doesn't declare is a compile error                                                                      |
+| `common.name` | a `let` through a whole-file import such as `use deploy.common` | See [Policy files](/reference/policy-files/#use)                                                                                |
+| `m[k]`        | a map value                                                     | `k` must have the map's key type. A missing key yields the value type's zero value, like Go: `service.labels["absent"]` is `""` |
+| `xs[i]`       | a list element                                                  | `i` is an `int`. An index out of range, including a negative one, is a runtime error                                            |
+| `f(a, b)`     | a host function declared with `fn` in the kind                  | Arguments are positional; their count and types must match the signature                                                        |
 
 ```text
 deploy/production.sigil:9:16: error: unknown field "teir" on type Service
@@ -300,10 +302,10 @@ any r in actor.roles: r like "sre-*"
 all r in actor.roles: r != "admin"
 ```
 
-| Form                  | True when                             | Empty list |
-| --------------------- | ------------------------------------- | ---------- |
-| `any x in xs: body`   | `body` holds for at least one element | false      |
-| `all x in xs: body`   | `body` holds for every element        | true       |
+| Form                | True when                             | Empty list |
+| ------------------- | ------------------------------------- | ---------- |
+| `any x in xs: body` | `body` holds for at least one element | false      |
+| `all x in xs: body` | `body` holds for every element        | true       |
 
 - The range `xs` must be a list. Quantifying over a map is a compile error.
 - The body must be `bool`.
@@ -353,18 +355,15 @@ For the approver recipe, including what to do when the filter leaves nobody, see
 
 Inside an `assert` condition, a policy can test what evaluation decided.
 
-| Operand            | Type             | Meaning                                                                                  |
-| ------------------ | ---------------- | ---------------------------------------------------------------------------------------- |
-| `approve`          | [`decision`](/reference/types/#decision) | the decision with any reason                                     |
-| `approve.release_manager` | `decision` | the decision with that reason only                                                     |
-| `outcome`          | `list<decision>` | each distinct decision and reason the host gets back, in the kind's declaration order    |
+| Operand                   | Type                                     | Meaning                                                                               |
+| ------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------- |
+| `approve`                 | [`decision`](/reference/types/#decision) | the decision with any reason                                                          |
+| `approve.release_manager` | `decision`                               | the decision with that reason only                                                    |
+| `outcome`                 | `list<decision>`                         | each distinct decision and reason the host gets back, in the kind's declaration order |
 
 ```sigil
-assert("sod_customer_dev",
-  [customer_data_writer, development_environment_writer] exclusive in outcome)
-
-assert("rm_needs_ticket",
-  approve.release_manager not in outcome or present release.ticket)
+assert("sod_customer_dev", [customer_data_writer, development_environment_writer] exclusive in outcome)
+assert("rm_needs_ticket", approve.release_manager not in outcome or present release.ticket)
 ```
 
 - A decision's bare name is a value; a [constructor](/reference/decisions/#constructors-not-calls) always has parentheses. `approve in outcome` is never a call.
@@ -385,11 +384,8 @@ assert("rm_needs_ticket",
 `outcome.<decision>` is the list of that decision's candidates the host gets back, each with the decision's payload fields and its `reason`. Every field is checked against the kind.
 
 ```sigil
-assert("no_self_review",
-  all r in outcome.review: requestor.name not in r.approvers)
-
-assert("short_admin_grants",
-  all g in outcome.admin: g.ttl <= 8h)
+assert("no_self_review", all r in outcome.review: requestor.name not in r.approvers)
+assert("short_admin_grants", all g in outcome.admin: g.ttl <= 8h)
 ```
 
 - A reason after the decision narrows the list: `outcome.review.manager_approval`.
@@ -402,10 +398,10 @@ assert("short_admin_grants",
 
 The list holds exactly the candidates the host acts on, the ones `Decision[T].MatchAll` returns in Go:
 
-| Kind                | `outcome.<decision>` holds                                                                                              |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `collect one`       | At most one: the winner, or the default when nothing fired and the default is of that decision. Under `precedence`, a candidate that lost to a higher rank isn't in it |
-| [collecting](/reference/evaluation/#collecting-kinds) | Every candidate of the decision at the top rank, after equal ones fold. Two reviews with different approvers are both there |
+| Kind                                                  | `outcome.<decision>` holds                                                                                                                                             |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `collect one`                                         | At most one: the winner, or the default when nothing fired and the default is of that decision. Under `precedence`, a candidate that lost to a higher rank isn't in it |
+| [collecting](/reference/evaluation/#collecting-kinds) | Every candidate of the decision at the top rank, after equal ones fold. Two reviews with different approvers are both there                                            |
 
 Why guardrails use `all`, and why candidates have no equality or order: [Asserts and decisions](/understanding/asserts/).
 
