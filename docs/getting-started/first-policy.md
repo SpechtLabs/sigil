@@ -507,7 +507,7 @@ ok    payments/production_test.yaml  2 cases
 
 :::
 
-`sigil test` finds every `*_test.yaml` under the current directory and runs it against all the `.sigil` files it finds there. Each case names the decision and the reason; since reasons are declared in the kind, a case that expects a reason nobody can construct fails before anything runs, and a dashboard grouping by reason keeps working as long as the tests pass. The first case also pins the payload, which is what tells it apart from a PCI deploy: that one is `review(service_owner)` too, with `security-leads` added to the approvers. The host's own test suite can run the same file from `go test` with [`policytest`](/reference/cli/#policytest-for-go-hosts).
+`sigil test` finds every `*_test.yaml` under the current directory and runs it against all the `.sigil` files it finds there. Each case names the decision and the reason; since reasons are declared in the kind, a case that expects a reason nobody can construct fails before anything runs, and a dashboard grouping by reason keeps working as long as the tests pass. The first case also pins the payload, which is what tells it apart from a PCI deploy: that one is `review(service_owner)` too, with `security-leads` added to the approvers. The host's own test suite can run the same file from `go test` with [`policytest`](/reference/go-api/#package-policytest).
 
 ## Where you are now
 
@@ -515,4 +515,5 @@ You've written a policy with a required param, invoked it from a team policy, sp
 
 - [Per-team policies](/guides/team-policies/) covers imports, invoking under conditions, binding params from Go, and what teams can and can't override.
 - [Common patterns](/guides/patterns/) collects recipes for labels, optionals, quantifiers and time.
+- [Test your policies](/guides/test-policies/) and [Check policies in CI](/guides/ci/) turn the test cases into a gate on every pull request.
 - The [policy files reference](/reference/policy-files/) is the precise definition of every statement you used.

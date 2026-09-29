@@ -18,7 +18,7 @@ config:
           theme: alt
           icon: mdi:book-open-page-variant
         - text: Embed it in Go
-          link: /reference/go-api/
+          link: /guides/embed-go/
           theme: alt
           icon: mdi:language-go
 

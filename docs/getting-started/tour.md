@@ -94,7 +94,7 @@ pub let eligible =
   }
 ```
 
-`module deploy.common: DeployApproval@1` names the module and the kind its expressions are checked against. The `@1` pins the kind version it was written against, so the host can tell a policy written for an older contract apart from a current one (see [Versioning](/reference/kind-files/#versioning)). Other files find it by that name, not by its path; the convention is still to keep `deploy.common` at `deploy/common.sigil`, and a file can hold several documents if that suits you better (see [Bundles and resolution](/reference/policy-files/#bundles-and-resolution)). A module holds only imports and `let`s, never rules, params or invocations, so importing from it can never change a decision by itself.
+`module deploy.common: DeployApproval@1` names the module and the kind its expressions are checked against. The `@1` pins the kind version it was written against, so the host can tell a policy written for an older contract apart from a current one (see [Versioning](/reference/kind-files/#versioning)). Other files find it by that name, not by its path; the convention is still to keep `deploy.common` at `deploy/common.sigil`, and a file can hold several documents if that suits you better (see [Bundles](/reference/bundles/)). A module holds only imports and `let`s, never rules, params or invocations, so importing from it can never change a decision by itself.
 
 A `let` names an expression so rules can refer to it, and it's evaluated against the same input as everything else. `pub` lets other files import it; a `let` without `pub` stays private to its file. A `let` can also sit inside a `when` body, where only that body sees it.
 

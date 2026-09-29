@@ -105,19 +105,32 @@ export default defineUserConfig({
         },
       ],
 
-      // How-to Guides: task-oriented recipes for policy and kind authors.
+      // How-to Guides: task-oriented recipes for policy authors and Go hosts.
       "/guides/": [
         {
-          text: "How-to Guides",
-          icon: "mdi:compass",
+          text: "Writing policies",
+          icon: "mdi:file-document-edit-outline",
+          collapsed: false,
           prefix: "/guides/",
           items: [
             { text: "Per-team policies", link: "team-policies", icon: "mdi:account-group" },
-            { text: "The example service", link: "example-service", icon: "mdi:rocket-launch-outline" },
             { text: "Common patterns", link: "patterns", icon: "mdi:puzzle" },
+            { text: "Test your policies", link: "test-policies", icon: "mdi:test-tube" },
+            { text: "Check policies in CI", link: "ci", icon: "mdi:check-decagram-outline" },
+          ],
+        },
+        {
+          text: "Embedding in Go",
+          icon: "mdi:language-go",
+          collapsed: false,
+          prefix: "/guides/",
+          items: [
+            { text: "Embed Sigil in a Go service", link: "embed-go", icon: "mdi:language-go" },
+            { text: "Handle failed evaluations", link: "handle-errors", icon: "mdi:alert-circle-outline" },
             { text: "Policies in a ConfigMap", link: "configmaps", icon: "mdi:kubernetes" },
+            { text: "Build a host binary", link: "host-binary", icon: "mdi:console" },
             { text: "Evolve a kind safely", link: "evolve-a-kind", icon: "mdi:source-branch" },
-            { text: "Testing Sigil itself", link: "testing", icon: "mdi:test-tube" },
+            { text: "The example service", link: "example-service", icon: "mdi:rocket-launch-outline" },
           ],
         },
       ],
@@ -132,10 +145,15 @@ export default defineUserConfig({
           items: [
             { text: "Design goals", link: "design-goals", icon: "mdi:compass-rose" },
             { text: "Prior art", link: "prior-art", icon: "mdi:bookshelf" },
+            { text: "Why the language looks like this", link: "language-choices", icon: "mdi:format-quote-open" },
+            { text: "Kinds as contracts", link: "kinds", icon: "mdi:file-certificate-outline" },
+            { text: "Decisions and reasons", link: "decisions", icon: "mdi:directions-fork" },
             { text: "Why rule order never matters", link: "order-independence", icon: "mdi:sort-variant-off" },
+            { text: "Asserts and decisions", link: "asserts", icon: "mdi:alert-octagon-outline" },
             { text: "Strict schema, forgiving data", link: "strictness", icon: "mdi:shield-check" },
             { text: "Halting by construction", link: "halting", icon: "mdi:timer-sand-complete" },
             { text: "Composition without templating", link: "composition", icon: "mdi:layers-triple" },
+            { text: "Bundles and trust", link: "bundles", icon: "mdi:package-variant-closed" },
           ],
         },
       ],
@@ -150,6 +168,7 @@ export default defineUserConfig({
           items: [
             { text: "Lexical structure", link: "lexical", icon: "mdi:format-letter-case" },
             { text: "Policy files", link: "policy-files", icon: "mdi:file-document-outline" },
+            { text: "Bundles", link: "bundles", icon: "mdi:package-variant-closed" },
             { text: "Expressions", link: "expressions", icon: "mdi:function-variant" },
             { text: "Types", link: "types", icon: "mdi:shape-outline" },
             { text: "Decisions", link: "decisions", icon: "mdi:directions-fork" },
@@ -159,13 +178,23 @@ export default defineUserConfig({
           ],
         },
         {
-          text: "Host & tooling",
+          text: "Tooling",
           icon: "mdi:tools",
           collapsed: false,
           prefix: "/reference/",
           items: [
+            { text: "CLI", link: "cli", icon: "mdi:console" },
+            { text: "Test files", link: "test-files", icon: "mdi:test-tube" },
+            { text: "Lints", link: "lints", icon: "mdi:alert-outline" },
+          ],
+        },
+        {
+          text: "Go host",
+          icon: "mdi:language-go",
+          collapsed: false,
+          prefix: "/reference/",
+          items: [
             { text: "Go API", link: "go-api", icon: "mdi:language-go" },
-            { text: "CLI & editor tooling", link: "cli", icon: "mdi:console" },
             { text: "Performance", link: "performance", icon: "mdi:speedometer" },
           ],
         },
@@ -180,7 +209,9 @@ export default defineUserConfig({
           prefix: "/project/",
           items: [
             { text: "Roadmap", link: "roadmap", icon: "mdi:timeline-outline" },
+            { text: "Planned designs", link: "planned", icon: "mdi:pencil-ruler" },
             { text: "Open questions", link: "open-questions", icon: "mdi:help-circle-outline" },
+            { text: "Contributing", link: "contributing", icon: "mdi:source-pull" },
           ],
         },
       ],

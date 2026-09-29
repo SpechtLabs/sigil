@@ -101,7 +101,7 @@ key for the conflicting candidates. The break-glass and `platform` conflict is
 covered by the Go integration suite, through the API's 500. To test a conflict
 against the policy itself, call `Eval` from Go and check the
 `*policy.ConflictError` it returns: [Testing a
-conflict](../../docs/reference/cli.md#testing-a-conflict) shows this conflict
+conflict](../../docs/guides/test-policies.md#test-a-conflict) shows this conflict
 tested with plain `testing` and with Ginkgo.
 
 ## Adding a team
