@@ -28,6 +28,8 @@ jobs:
   ci:
     name: CI
     uses: ./.github/workflows/ci.yaml
+    with:
+      skip-fuzz-and-bench: true
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
