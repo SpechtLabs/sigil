@@ -74,7 +74,7 @@ Strictness about the schema doesn't mean strictness about data. Real inputs have
 
 A missing map key yields the zero value of the map's value type. `service.labels["owner"]` on a service without that label is `""`, and `service.labels["owner"] == "payments"` is false, which is almost always what the author meant. If you need to tell "absent" apart from "empty", ask directly with `service.labels has "owner"`.
 
-This is the choice with the sharpest edge in the design, and it's worth being honest about. A zero value can still flow somewhere surprising. The `deploy.production` policy splits a label into a list:
+This is the choice with the sharpest edge in the design. A zero value can still flow somewhere surprising. The `deploy.production` policy splits a label into a list:
 
 ```sigil
 let cleared =
@@ -97,12 +97,22 @@ This is the one place Sigil makes the author think about absence explicitly. It'
 
 An optional struct has no literal to put on the right of `??`, so its fields are read with [optional chaining](/reference/expressions/#optional-chaining): `release?.soak ?? 0s`. The absence is still explicit, in the `?.` and in the `??` that ends it.
 
-## Runtime errors fail closed
-
-Static typing leaves very few ways for evaluation to go wrong: a list index out of range, integer overflow, or an error returned by a host function. When one happens, `Eval` returns a `*RuntimeError` together with a result that holds the kind's `default` decision. For a [collecting kind](/reference/kind-files/#collecting-kinds) the result's outcome is empty instead, because a default grant on an error would fail open. A failed assert and a conflict between candidates return the same fallback result.
-
-A host that fails closed can use that result directly without writing its own fallback. A host that wants to surface the error can do that too. What it can't get is a half-evaluated result where some rules ran and others didn't, because that's exactly the silent partial failure the rest of this page is trying to avoid.
-
 ## Why not be strict about data too
 
 A language that errors on every missing map key would force `has` checks in front of every label lookup, and policies would drown in them. Authors would start wrapping everything defensively, and the defensive wrappers would be where the bugs hide. Go's zero-value rule is predictable, familiar to every host author, and fails closed for the common "label equals value" check. The schema is the part where silence is dangerous, so that's where Sigil is loud.
+
+## Every failure fails closed
+
+Static typing leaves very few ways for evaluation to go wrong at run time: a list index out of range, integer overflow, or an error returned by a host function. Add a failed assert, a conflict between candidates and a context that's done, and that's every way an evaluation can fail. Each one returns an error together with a result that holds the kind's `default` decision. For a [collecting kind](/reference/kind-files/#collecting-kinds) the result's outcome is empty instead, even when the kind declares a default, because a default grant on an error would fail open. The [failed evaluations](/reference/evaluation/#failed-evaluations) table lists what each failure returns.
+
+The same fallback for every failure means a host that fails closed can use the result directly, without writing a fallback of its own for each error type. A host that wants to surface the error can do that too. What it can't get is a half-evaluated result where some rules ran and others didn't, because that's exactly the silent partial failure the rest of this page is trying to avoid. A runtime error in one rule fails the whole evaluation, not just that rule. And because every block is evaluated, the failure doesn't depend on block order: an input that triggers a runtime error always does.
+
+The trace follows the same rule. After a runtime error, or once the context is done, the trace is empty, even when rules had fired before the failure. The result can't depend on how far the evaluation got before a deadline cut it off, or which rule happened to run first. A conflict or a failed outcome assert is different: every rule has run by then, so the trace lists every candidate, and the host can see which rules claimed what.
+
+A usable fallback has one cost: it looks like a real decision. For `DeployApproval`, a failed evaluation comes back as `deny(no_rule_matched)`, so a metric labelled from the result would count a policy defect as an input no rule matched, and `Deny.Match` reports `true` on it. A host has to check the error before it reads the result. [Handle failed evaluations](/guides/handle-errors/) shows how, and how to count failures apart.
+
+## Related
+
+- [Kinds as contracts](/understanding/kinds/) covers where the schema comes from.
+- [Asserts and decisions](/understanding/asserts/) covers failing an evaluation on purpose.
+- [Halting by construction](/understanding/halting/) covers deadlines.

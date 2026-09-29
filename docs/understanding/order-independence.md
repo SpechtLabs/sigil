@@ -50,7 +50,7 @@ A release manager shipping a service that isn't managed by Argo CD produces two 
 
 A nested `when` fires only if every enclosing condition holds. The inner block above is shorthand for `cleared and service.tier == "critical" and ...`. Nesting exists to avoid repeating shared conditions, not to express "check this first, then that". Nothing short-circuits across blocks, and a decision reached in one block doesn't stop evaluation of the others.
 
-That also means decisions don't `return`. `deny(soak_too_short)` builds a value, the way `Err("...")` does in Rust; the host acts on the winner after evaluation finishes.
+That also means decisions don't `return`: the host acts on the winner after evaluation finishes. See [Constructors, not calls](/understanding/decisions/#constructors-not-calls).
 
 ## Why there's no `else`
 
@@ -80,10 +80,15 @@ A first-match engine can't give you that. It stopped looking after the first mat
 
 Precedence settles conflicts between different decisions. It doesn't settle ties within one decision: if two `approve` rules fire with different bake times, something has to happen, and picking the earlier one in the file would be the order dependence this page exists to rule out.
 
-Sigil answers with the kind, not with a position. Reasons are declared on each decision and can be ranked there, so `approve(release_manager)` and `approve(payments_sre)` compete the same way `deny` and `approve` do, by a line in the kind. Two candidates with the same decision and reason and the same payload are one outcome. Two with the same reason and different payloads are a contradiction, and the kind says what that means: a `collect one` kind refuses with a conflict error, a `collect all` kind hands both to the host. The [resolution rule](/reference/evaluation/#resolution) is fold, check `exclusive`, rank, count, and no step reads a position.
+Sigil answers with the kind, not with a position. Reasons are declared on each decision and can be ranked there, so `approve(release_manager)` and `approve(payments_sre)` compete the same way `deny` and `approve` do, by a line in the kind. No step of the [resolution rule](/reference/evaluation/#resolution) reads a position.
 
 Take the canonical example, a critical service deployed by someone who is a release manager and also on `payments-sre`. `deploy.production`'s `approve(release_manager)` (bake 1h, the kind's default) and the team's `approve(payments_sre, bake: 15m)` both fire. With `precedence approve: release_manager > payments_sre` in the kind, the release manager's approval wins, wherever the two rules sit. Without that line, the `collect one` deploy kind can't pick, so `Eval` returns a `*ConflictError` naming both candidates, together with the kind's default. A kind that wants the host to see both approvals declares `collect all` instead, and the host takes the shorter bake in a few lines of Go over `Approve.MatchAll`. Either way, moving the team rule above the call changes nothing.
 
 ## What you give up
 
-Order independence isn't free. You can't write "try the specific rule, fall back to the general one" as two rules in sequence; you have to make the general rule's condition exclude the specific case, or rely on the fact that the specific rule's decision has higher precedence. Authors coming from first-match engines find this awkward for about a day. After that, never again debugging "why did moving this rule break prod" tends to win them over.
+Order independence isn't free. You can't write "try the specific rule, fall back to the general one" as two rules in sequence; you have to make the general rule's condition exclude the specific case, or rely on the fact that the specific rule's decision has higher precedence. For authors used to first-match engines that's extra writing. What it buys is that nobody has to debug why moving a rule changed a result, because moving a rule can't.
+
+## Related
+
+- [Decisions and reasons](/understanding/decisions/) covers candidates, folding equal candidates and conflicts.
+- [Kinds as contracts](/understanding/kinds/#why-collect-is-always-spelled-out) covers why `collect one` needs `precedence`.
