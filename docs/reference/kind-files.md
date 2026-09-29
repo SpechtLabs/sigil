@@ -153,7 +153,7 @@ decision approve(bake: duration = 1h) {
 
 Declares a decision constructor: its payload schema in parentheses, and the reasons it can be constructed with in the block.
 
-- The block lists the decision's reasons, one identifier per line, at least one. A constructor names one of them, `approve(payments_sre, bake: 15m)`, and any other name is a compile error with a did-you-mean hint.
+- The block lists the decision's reasons, at least one, separated by whitespace; `sigil fmt` writes one per line. A constructor names one of them, `approve(payments_sre, bake: 15m)`, and any other name is a compile error with a did-you-mean hint.
 - Reasons are scoped to their decision. `deny` and `approve` may both declare `release_manager`; they're two names, `deny.release_manager` and `approve.release_manager`.
 - The block is a set. Its order means nothing; ranking reasons is a separate declaration, the [scoped `precedence`](#precedence).
 - Every parameter is a payload field with a type and an optional default. A field without a default is required at every call site. Defaults must be constants of the field's type, and field names must be unique within a decision. A field can't be called `reason`, since every constructor already names its reason first.

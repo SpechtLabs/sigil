@@ -120,7 +120,9 @@ precedence approve: release_manager > payments_sre
 default deny(no_rule_matched)
 ```
 
-A platform team writes rules against it. Each `when` block that holds produces a candidate decision, and the highest-precedence candidate wins. Denies go in a guardrails policy:
+A platform team writes rules against it. Each `when` block that holds produces a candidate decision, and the highest-precedence candidate wins. That's `collect one`: a single winner. A kind that says `collect all` instead returns every decision that holds, for decisions that combine rather than compete, such as the roles someone holds at once; see [Collecting kinds](/reference/kind-files/#collecting-kinds).
+
+Denies go in a guardrails policy:
 
 ```sigil
 policy deploy.guardrails: DeployApproval@1
