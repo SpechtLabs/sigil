@@ -17,8 +17,16 @@ import (
 	"github.com/spechtlabs/sigil/cmd/devtool/internal/gotool"
 )
 
-// benchSuffix names the files a comparison copies onto the base revision.
-const benchSuffix = "_bench_test.go"
+const (
+	// benchSuffix names the files a comparison copies onto the base revision.
+	benchSuffix = "_bench_test.go"
+	// setupSuffix names benchmark setup that stays with its revision:
+	// code that depends on an API a change may touch, such as building a
+	// kind with its options. The base keeps its own copy, so a change to
+	// that API doesn't break the base build, and takes the checkout's only
+	// when it has none, which is when the setup file is new.
+	setupSuffix = "_benchsetup_test.go"
+)
 
 // base is the exported base revision.
 type base struct {
@@ -164,6 +172,7 @@ func extractFile(root *os.Root, h *tar.Header, r io.Reader) humane.Error {
 // installWorkloads replaces the base revision's benchmarks and fixtures with
 // the checkout's, so both revisions run identical workloads. Removed or
 // renamed benchmarks must not leave stale base-only workloads behind.
+// Benchmark setup stays with its revision; see installSetup.
 func installWorkloads(head, base string, files []string, fixtures string) humane.Error {
 	err := filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), benchSuffix) {
@@ -180,6 +189,9 @@ func installWorkloads(head, base string, files []string, fixtures string) humane
 			return err
 		}
 	}
+	if err := installSetup(head, base, files); err != nil {
+		return err
+	}
 
 	dst := filepath.Join(base, fixtures)
 	if err := os.RemoveAll(dst); err != nil {
@@ -187,6 +199,34 @@ func installWorkloads(head, base string, files []string, fixtures string) humane
 	}
 	if err := os.CopyFS(dst, os.DirFS(filepath.Join(head, fixtures))); err != nil {
 		return humane.Wrap(err, "can't copy "+fixtures+" onto the base revision", "check that "+fixtures+" exists")
+	}
+	return nil
+}
+
+// installSetup gives the base revision the checkout's *_benchsetup_test.go
+// files it lacks, in the packages whose workloads were copied. A setup
+// file the base already has stays as it is, so each revision builds its
+// workloads' setup with its own API.
+func installSetup(head, base string, files []string) humane.Error {
+	dirs := make([]string, 0, len(files))
+	for _, rel := range files {
+		dirs = append(dirs, filepath.Dir(rel))
+	}
+	slices.Sort(dirs)
+	for _, dir := range slices.Compact(dirs) {
+		matches, err := filepath.Glob(filepath.Join(head, dir, "*"+setupSuffix))
+		if err != nil {
+			return humane.Wrap(err, "can't list the benchmark setup in "+dir, "rename the directory so its path has no glob metacharacters")
+		}
+		for _, src := range matches {
+			rel, _ := filepath.Rel(head, src) // src is inside head, since Glob built it from there
+			if _, err := os.Stat(filepath.Join(base, rel)); err == nil {
+				continue
+			}
+			if err := copyFile(src, filepath.Join(base, rel)); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

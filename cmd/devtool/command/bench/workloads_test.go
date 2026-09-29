@@ -95,11 +95,15 @@ func TestInstallWorkloads(t *testing.T) {
 		"library.go":                 "original library",
 		"internal/benchtest/old.go":  "old fixture",
 		"deep/renamed_bench_test.go": "renamed",
+		"kind_benchsetup_test.go":    "base setup",
 	})
 	writeFiles(t, head, map[string]string{
-		"current_bench_test.go":         "new workload",
-		"deep/current_bench_test.go":    "new deep workload",
-		"internal/benchtest/fixture.go": "new fixture",
+		"current_bench_test.go":              "new workload",
+		"deep/current_bench_test.go":         "new deep workload",
+		"internal/benchtest/fixture.go":      "new fixture",
+		"kind_benchsetup_test.go":            "head setup",
+		"deep/new_benchsetup_test.go":        "new setup",
+		"unrelated/other_benchsetup_test.go": "setup of a package without workloads",
 	})
 
 	if err := installWorkloads(head, base, []string{"current_bench_test.go", "deep/current_bench_test.go"}, "internal/benchtest"); err != nil {
@@ -114,6 +118,11 @@ func TestInstallWorkloads(t *testing.T) {
 		"current_bench_test.go":         "new workload",
 		"deep/current_bench_test.go":    "new deep workload",
 		"internal/benchtest/fixture.go": "new fixture",
+		// Setup stays with its revision, and comes from the checkout only
+		// where the base has none, in a package whose workloads it runs.
+		"kind_benchsetup_test.go":            "base setup",
+		"deep/new_benchsetup_test.go":        "new setup",
+		"unrelated/other_benchsetup_test.go": "",
 	}
 	for name, content := range want {
 		got, err := os.ReadFile(filepath.Join(base, name))
@@ -134,11 +143,12 @@ func TestInstallWorkloadsErrors(t *testing.T) {
 	}{
 		{name: "missing workload", files: []string{"missing_bench_test.go"}, wantErr: "can't copy missing_bench_test.go"},
 		{name: "missing fixtures", wantErr: "can't copy internal/benchtest"},
+		{name: "unlistable setup", files: []string{"bad[/x_bench_test.go"}, wantErr: "can't list the benchmark setup in bad["},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmp := t.TempDir()
-			writeFiles(t, tmp, map[string]string{"base/library.go": ""})
+			writeFiles(t, tmp, map[string]string{"base/library.go": "", "head/bad[/x_bench_test.go": ""})
 			err := installWorkloads(filepath.Join(tmp, "head"), filepath.Join(tmp, "base"), tt.files, "internal/benchtest")
 			checkErr(t, err, tt.wantErr)
 		})
