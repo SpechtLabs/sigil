@@ -9,7 +9,7 @@ An evaluation can fail: an assert doesn't hold, two rules conflict, a rule hits 
 
 ## Fail closed
 
-`Eval` never returns a nil result. When it returns an error, the result holds the kind's default decision, `deny(no_rule_matched)` for `DeployApproval`, or an empty outcome for a collecting kind. Act on that result and handle the error apart:
+`Eval` never returns a nil result. When it returns an error, the result holds the kind's default decision, `deny(no_rule_matched)` for `DeployApproval`, or an empty outcome for a collecting kind. A kind that [names its conflicts](#name-conflicts-in-the-result) returns its conflict outcome after a conflict instead. Act on that result and handle the error apart:
 
 ```go
 res, err := p.Eval(ctx, input)
@@ -21,7 +21,7 @@ if err != nil {
 
 Check `err` before anything reads the result. The fallback is a real `deny`, so `Deny.Match(res)` reports `true` on it, and a switch on the result alone can't tell a failure from a deny.
 
-What each failure returns, outcome and trace, is in [Failed evaluations](/reference/evaluation/#failed-evaluations). Why a failure always falls back to the default: [Strict schema, forgiving data](/understanding/strictness/).
+What each failure returns, outcome and trace, is in [Failed evaluations](/reference/evaluation/#failed-evaluations). Why every failure fails closed: [Strict schema, forgiving data](/understanding/strictness/#every-failure-fails-closed).
 
 ## Tell the failures apart
 
@@ -96,7 +96,7 @@ Every field of each error type is in [Errors](/reference/go-api/#errors). Why as
 
 ## Count failures in metrics
 
-Label your decision counter from the result only when `err` is nil. When an evaluation fails, a `collect one` kind's result holds the default, so a counter labeled from it counts every failure as `deny/no_rule_matched`, and a policy defect looks like inputs no rule matched. A `collect all` kind returns an empty outcome, so the failure isn't counted at all.
+Label your decision counter from the result only when `err` is nil. When an evaluation fails, a `collect one` kind's result holds the default, so a counter labeled from it counts the failure as `deny/no_rule_matched`, and a policy defect looks like inputs no rule matched. A kind that [names its conflicts](#name-conflicts-in-the-result) narrows that for conflicts, but not for anything else. A `collect all` kind returns an empty outcome, so the failure isn't counted at all.
 
 Count failures in a series of their own, labeled by the kind of failure, and never under the default's reason:
 
@@ -129,6 +129,47 @@ policy_assert_failures_total{phase="input", reason="negative_soak"}
 ```
 
 `Phase.String()` returns `input` or `outcome`, ready for a label. The kind declares every reason, so the decision series are known before the first evaluation; see [Decisions and reasons](/understanding/decisions/).
+
+## Name conflicts in the result
+
+Counting by the error only works where the error is. A log line, an audit record or a dashboard built from the result alone sees a conflict as `deny(no_rule_matched)`, and sends whoever reads it looking for the rule that should have matched, when several did. Give the kind a conflict outcome, so the result says what happened.
+
+Add a reason to `deny` that no rule constructs, rank it with the other deny reasons, and pass it to `policy.WithConflict`:
+
+```go
+var (
+	Deny = policy.NewDecision[policy.None]("deny",
+		"not_eligible", "soak_too_short", "no_rule_matched", "conflicting_rules")
+
+	ConflictingRules = Deny.Reason("conflicting_rules")
+)
+
+var Deploy = policy.NewKind[Input]("DeployApproval",
+	// A new conflict outcome changes results, so accepts rises with the version.
+	policy.WithVersion(2),
+	policy.WithAccepts(2),
+	policy.WithDecisions(Deny, Review, Approve), // order = precedence
+	policy.WithReasonPrecedence(NotEligible, SoakTooShort, NoRuleMatched, ConflictingRules),
+	policy.WithReasonPrecedence(ReleaseManager, PaymentsSRE),
+	policy.WithDefault(NoRuleMatched),
+	policy.WithConflict(ConflictingRules),
+	policy.WithFunc("split", strings.Split),
+)
+```
+
+The exported kind file ends with the two outcomes together:
+
+```sigil
+default deny(no_rule_matched)
+conflict deny(conflicting_rules)
+```
+
+A conflict now comes back as `deny(conflicting_rules)`, with the same `*policy.ConflictError` and the same trace, so a counter labeled from the result counts it as `deny/conflicting_rules`. Keep counting failures by the error all the same: a failed assert, a runtime error or a deadline still returns `deny(no_rule_matched)`.
+
+- Declaring, changing or removing the conflict outcome changes results without breaking a compile, so raise `accepts` with it, as [Evolve a kind safely](/guides/evolve-a-kind/#watch-for-changes-that-compile-but-change-results) explains.
+- Only a `WithDecisions` kind takes it. A collecting kind always returns an empty outcome from a failed evaluation, and `NewKind` panics on a `WithCollect` kind with `WithConflict`.
+
+The rules for the declaration are under [`conflict`](/reference/kind-files/#conflict), and why a kind names its conflicts under [Every failure fails closed](/understanding/strictness/#every-failure-fails-closed).
 
 ## Recover host panics
 

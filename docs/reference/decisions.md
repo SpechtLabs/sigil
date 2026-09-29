@@ -22,7 +22,7 @@ A constructor builds a value. Nothing runs, nothing returns early, and later rul
 Constructors may only appear:
 
 - directly inside a `when` body, as a statement, and
-- in the kind's [`default`](#the-default-decision) declaration.
+- in the kind's [`default`](#the-default-decision) and [`conflict`](#the-conflict-outcome) declarations.
 
 | Rule                                                                         | Otherwise                           |
 | ---------------------------------------------------------------------------- | ----------------------------------- |
@@ -99,3 +99,11 @@ default deny(no_rule_matched)
 ```
 
 The kind's `default` is a constructor with the same reason and payload rules, except that every payload value must be a constant; the declaration is on [Kind files](/reference/kind-files/#default).
+
+## The conflict outcome
+
+```sigil
+conflict deny(conflicting_rules)
+```
+
+A `collect one` kind may also declare the result of a [conflict](/reference/evaluation/#resolution). It's a constructor with the same rules as the default; the declaration is on [Kind files](/reference/kind-files/#conflict).

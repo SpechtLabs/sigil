@@ -217,16 +217,17 @@ Every way an evaluation can fail returns an error together with a result the hos
 | ------------------------------------ | ----------------- | ---------------------- | ---------------------- | ---------------- |
 | An input assert                      | `*AssertionError` | the kind's default     | empty                  | empty            |
 | A runtime error in the rules         | `*RuntimeError`   | the kind's default     | empty                  | empty            |
-| Resolution                           | `*ConflictError`  | the kind's default     | empty                  | every candidate  |
+| Resolution                           | `*ConflictError`  | the kind's `conflict` outcome, or its default | empty           | every candidate  |
 | An outcome assert                    | `*AssertionError` | the kind's default     | empty                  | every candidate  |
 | The context was done                 | `ctx.Err()`       | the kind's default     | empty                  | empty            |
 
 - The two assert rows return the same error type. The error's `Phase` field, `InputAsserts` or `OutcomeAsserts`, tells them apart: the first rejects the input, the second is a defect in the policy.
 - An outcome assert that fails when no rule fired leaves the trace empty, like a failed input assert.
+- A `collect one` kind returns its [`conflict`](/reference/kind-files/#conflict) outcome only after a conflict, and only when it declares one; every other failure returns the default.
 - The `collect all` outcome is empty even when the kind declares a default.
 - After a conflict, a runtime error or a failed input assert, outcome asserts don't run.
 
-Why every failure returns the default: [Strict schema, forgiving data](/understanding/strictness/). To act on failures in a host, see [Handle failed evaluations](/guides/handle-errors/).
+Why every failure falls back to the default, and when a kind names its conflicts: [Strict schema, forgiving data](/understanding/strictness/#every-failure-fails-closed). To act on failures in a host, see [Handle failed evaluations](/guides/handle-errors/).
 
 ### Context checks
 

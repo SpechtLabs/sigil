@@ -135,7 +135,7 @@ A test file whose policy doesn't load fails its subtest, and each case that does
 
 ## Test a conflict
 
-A `*_test.yaml` case can't expect a conflict today, so a conflict the kind is meant to catch gets its test in Go, next to the host's [`policytest`](/reference/go-api/#package-policytest) run. The [example service](/guides/example-service/)'s `AccessGrant` kind declares `exclusive admin, release_manager`, and `access.main` grants both to a break-glass member who is also in `platform`. `Eval` then returns a `*policy.ConflictError`: find it with `errors.As`, and check its `Candidates`, which hold every candidate of the exclusive set's members and nothing else. The result that comes with the error holds the kind's default, which for a collecting kind without one, like `AccessGrant`, is an empty outcome. Both tests load the bundle the way the service does:
+A `*_test.yaml` case can't expect a conflict today, so a conflict the kind is meant to catch gets its test in Go, next to the host's [`policytest`](/reference/go-api/#package-policytest) run. The [example service](/guides/example-service/)'s `AccessGrant` kind declares `exclusive admin, release_manager`, and `access.main` grants both to a break-glass member who is also in `platform`. `Eval` then returns a `*policy.ConflictError`: find it with `errors.As`, and check its `Candidates`, which hold every candidate of the exclusive set's members and nothing else. The result that comes with the error has an empty outcome, as every failed evaluation of a collecting kind like `AccessGrant` does. Both tests load the bundle the way the service does:
 
 ::: tabs
 
@@ -188,8 +188,8 @@ func TestConflicts(t *testing.T) {
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("conflicting candidates = %v, want %v", got, tt.want)
 			}
-			// The result holds the kind's default. AccessGrant collects
-			// and declares none, so the outcome is empty.
+			// AccessGrant collects, and a collecting kind's failed
+			// evaluation has an empty outcome.
 			if len(res.Outcome) != 0 {
 				t.Errorf("outcome = %v, want it empty", res.Outcome)
 			}
@@ -224,8 +224,8 @@ var _ = Describe("access.main", func() {
 			And(HaveField("Decision", "admin"), HaveField("Reason", "break_glass")),
 			And(HaveField("Decision", "release_manager"), HaveField("Reason", "platform_member")),
 		))
-		// The result holds the kind's default. AccessGrant collects and
-		// declares none, so the outcome is empty.
+		// AccessGrant collects, and a collecting kind's failed
+		// evaluation has an empty outcome.
 		Expect(res.Outcome).To(BeEmpty())
 	})
 })
@@ -233,7 +233,7 @@ var _ = Describe("access.main", func() {
 
 :::
 
-`ConsistOf` matches in any order, as the sorted slice does in the table test. A `collect one` kind's conflict has the same shape, with the candidates tied at the top rank; there the result holds the kind's `default` decision instead of an empty outcome. [Resolution](/reference/evaluation/#resolution) says when candidates conflict.
+`ConsistOf` matches in any order, as the sorted slice does in the table test. A `collect one` kind's conflict has the same shape, with the candidates tied at the top rank; there the result holds the kind's [`conflict`](/reference/kind-files/#conflict) outcome, or its `default` decision when it declares none, instead of an empty outcome. [Resolution](/reference/evaluation/#resolution) says when candidates conflict.
 
 ## Further reading
 

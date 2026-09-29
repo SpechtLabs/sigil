@@ -267,10 +267,10 @@ A failed assert fails the evaluation. The host gets an assertion error naming `n
 
 A policy fails closed when the absence of information leads to a deny. The pieces:
 
-- Make the kind's `default` a deny. Anything no rule covers gets refused.
+- Make the kind's `default` a deny, and its `conflict` outcome too when it declares one. Anything no rule covers gets refused, and so does anything rules contradict each other on.
 - Write explicit denies for things that must never be approved, in a policy the host requires with `policy.Require`. In `DeployApproval`, deny outranks every other decision, no composed policy can remove a deny, and a required policy can't be gated behind a `when`.
 - Write grants as positive matches. A grant that fires on `!=` or `not` fires on missing data too (see the missing-keys warning above).
-- Let failures fall back. When a host function fails, an index is out of range, an `assert` fails or two `exclusive` outcomes conflict, `Eval` returns the error together with the kind's default decision, so a host that just uses the result stays closed. [Handle failed evaluations](/guides/handle-errors/#fail-closed) shows the host's side.
+- Let failures fall back. When a host function fails, an index is out of range, an `assert` fails or two `exclusive` outcomes conflict, `Eval` returns the error together with the kind's default decision, or its `conflict` outcome after a conflict when it declares one, so a host that just uses the result stays closed. [Handle failed evaluations](/guides/handle-errors/#fail-closed) shows the host's side.
 
 The eligibility check in `deploy.guardrails` shows the shape:
 

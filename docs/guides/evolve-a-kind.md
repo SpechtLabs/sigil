@@ -84,10 +84,10 @@ Sometimes that's what you want, because every policy author should make a consci
 
 ## Watch for changes that compile but change results
 
-Reordering `precedence` and changing `default` pass the type checker and still change decisions. Swapping `review` and `approve` makes the tour's service-owner deploy skip review ([the example](/understanding/kinds/#why-raise-accepts-for-a-change-that-still-compiles)), and a `default` changed from `deny(no_rule_matched)` to a review sends every deploy no rule covered to a human's queue. For either change:
+Reordering `precedence`, changing `default`, and adding, removing or changing a `conflict` outcome pass the type checker and still change decisions. Swapping `review` and `approve` makes the tour's service-owner deploy skip review ([the example](/understanding/kinds/#why-raise-accepts-for-a-change-that-still-compiles)), and a `default` changed from `deny(no_rule_matched)` to a review sends every deploy no rule covered to a human's queue. A `conflict` outcome only touches evaluations that already fail with a conflict, but the host still acts on what they return: adding `conflict deny(conflicting_rules)` turns their `deny(no_rule_matched)` into `deny(conflicting_rules)`, which a host checking `NoRuleMatched.Is` no longer sees, and a `conflict` that constructs an approval would turn a defect in a policy into a grant. For any of these changes:
 
 1. Treat it as breaking and raise `accepts`, so every policy written against the old behavior stops loading until its team has looked at the new one.
-2. Keep test cases that pin decisions and reasons. They catch these changes where the type checker can't, because they pin decisions rather than types.
+2. Keep test cases that pin decisions and reasons. They catch a reordered `precedence` or a changed `default` where the type checker can't, because they pin decisions rather than types. A test case can't expect a conflict, so a changed `conflict` outcome only shows in the kind file diff, and in a Go test that checks the outcome of a conflict, as [Test a conflict](/guides/test-policies/#test-a-conflict) does.
 
 ## Check for breaking changes in CI
 
@@ -95,7 +95,7 @@ Three checks run today, split between the two repositories:
 
 - In the host repo, `policytest.Schema` in `go test`, or `sigil export --check --out ../policies/deploy_approval.sigil` from a host binary, fails when the Go kind changed and the kind file wasn't regenerated. Every contract change then reaches review as a diff to `deploy_approval.sigil`.
 - In the policy repo, `sigil check` against the new kind file fails on every use of a removed or renamed name, on every payload that misses a new required field, and on every pin below `accepts`.
-- `sigil test`, also in the policy repo, fails when a test case's decision changes, which is the only automated catch for a reordered `precedence` or a new `default`.
+- `sigil test`, also in the policy repo, fails when a test case's decision changes, which is the only automated catch for a reordered `precedence` or a new `default`. It can't catch a changed `conflict` outcome.
 
 None of them checks the header. Whether `version` moved, and whether `accepts` should have, is a question for the reviewer of the kind file diff.
 
