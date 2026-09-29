@@ -96,6 +96,11 @@ func FuzzGoKindRoundTrip(f *testing.F) {
 			Decisions: []gokind.Decision{{Name: "allow", Payload: payload, Reasons: []string{"ok"}}},
 			Default:   &gokind.Default{Decision: "allow", Reason: "ok"},
 		}
+		if !all {
+			// Only a `collect one` kind may declare a conflict outcome.
+			opts.Decisions = append(opts.Decisions, gokind.Decision{Name: "deny", Payload: reflect.TypeFor[struct{}](), Reasons: []string{"conflicting_rules"}})
+			opts.Conflict = &gokind.Default{Decision: "deny", Reason: "conflicting_rules"}
+		}
 		k, _, errs := gokind.Build(opts)
 		if errs != nil {
 			t.Fatal(errs)

@@ -58,7 +58,7 @@ These words are reserved and can't be used as identifiers.
 | Group          | Keywords                                                                          |
 | -------------- | --------------------------------------------------------------------------------- |
 | Policy files   | `policy`, `module`, `use`, `as`, `param`, `let`, `pub`, `when`, `assert`          |
-| Kind files     | `kind`, `version`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default` |
+| Kind files     | `kind`, `version`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default`, `conflict` |
 | Operators      | `and`, `or`, `xor`, `not`, `in`, `all`, `any`, `filter`, `one`, `exclusive`, `has`, `like`, `matches`, `present` |
 | Values         | `true`, `false`, `outcome`                                                        |
 
@@ -69,6 +69,7 @@ Words that aren't keywords:
 | `bool`, `int`, `float`, `string`, `duration`, `timestamp`, `list`, `map` | Built-in type names. They only mean a type in type position, so `duration: duration` is a field named `duration` of type `duration`. A kind can't declare a struct type with one of these names |
 | Decision names, such as `deny` or `approve` | Each kind declares its own. They're identifiers in the policy's namespace like inputs and lets; see [Identifiers](/reference/policy-files/#identifiers) |
 | `ordered` | Not reserved |
+| `accepts` | Means something only after the `,` of a kind header, as in `kind DeployApproval version 3, accepts: 2`; a name everywhere else |
 
 ::: warning Planned
 [Host-ordered types](/project/planned/#host-ordered-types) would use `ordered` in `type Version ordered`.

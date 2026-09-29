@@ -49,6 +49,16 @@ func TestSource(t *testing.T) {
 			want: "policy a: K@1\n\nwhen x {\n  deny(r)\n}\n",
 		},
 		{
+			name: "the conflict outcome goes right under the default",
+			src:  "kind K version 1\ndecision d { x y }\ncollect one\nprecedence d\ndefault d(x)\n\n\nconflict d(y)\n",
+			want: "kind K version 1\n\ndecision d {\n  x\n  y\n}\n\ncollect one\nprecedence d\n\ndefault d(x)\nconflict d(y)\n",
+		},
+		{
+			name: "a conflict outcome away from the default stands apart",
+			src:  "kind K version 1\nconflict d(y)\ndecision d { x y }\ncollect one\nprecedence d\ndefault d(x)\n",
+			want: "kind K version 1\n\nconflict d(y)\n\ndecision d {\n  x\n  y\n}\n\ncollect one\nprecedence d\n\ndefault d(x)\n",
+		},
+		{
 			name: "separators: one between documents, none around them",
 			src:  "---\npolicy a: K@1\n---\n---\nmodule b: K@1\n---\n",
 			want: "policy a: K@1\n\n---\n\nmodule b: K@1\n",
@@ -357,6 +367,8 @@ func exprsOf(d ast.Doc) []ast.Expr {
 				}
 			case *ast.DefaultDecl:
 				call(decl.Call)
+			case *ast.ConflictDecl:
+				call(decl.Call)
 			}
 		}
 	}
@@ -406,6 +418,7 @@ func builtKind(t *testing.T) *kind.Kind {
 		Exclusive: [][]kind.Outcome{{{Decision: "approve", Reason: "lgtm"}, {Decision: "approve", Reason: "release_manager"}}},
 		Funcs:     []gokind.Func{{Name: "split", Fn: strings.Split}, {Name: "parse", Fn: time.ParseDuration}},
 		Default:   &gokind.Default{Decision: "deny", Reason: "no_rule_matched"},
+		Conflict:  &gokind.Default{Decision: "deny", Reason: "stale"},
 	})
 	if errs != nil {
 		t.Fatalf("building the kind: %v", errs)

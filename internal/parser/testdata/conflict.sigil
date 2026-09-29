@@ -1,0 +1,38 @@
+// `conflict` is a keyword, like `default`. A type field may still be
+// spelled like it, as fields may be spelled like any keyword.
+kind Gate version 1
+
+type Merge {
+  conflict: bool
+}
+
+input merge: Merge
+
+decision deny {
+  conflicting_rules
+  no_rule_matched
+}
+
+decision allow(ttl: duration = 1h) {
+  owner
+}
+
+collect one
+precedence deny > allow
+
+default deny(no_rule_matched)
+conflict deny(conflicting_rules)
+
+---
+
+// Joined onto one line, as a templater might, it still ends the line
+// before it and starts its own declaration.
+kind Joined version 1 decision allow(ttl: duration = 1h) { owner } collect one precedence allow default allow(owner) conflict allow(owner, ttl: 0s)
+
+---
+
+policy gate.main: Gate@1
+
+when merge.conflict {
+  deny(conflicting_rules)
+}

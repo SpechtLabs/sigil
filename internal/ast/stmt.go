@@ -278,8 +278,17 @@ type CollectDecl struct {
 	Span
 }
 
-// DefaultDecl is `default deny("reason")`.
+// DefaultDecl is `default deny(no_rule_matched)`.
 type DefaultDecl struct {
+	Call *CallStmt
+	Span
+}
+
+// ConflictDecl is `conflict deny(conflicting_rules)`, the outcome a
+// `collect one` kind returns when resolution ends in a conflict. `conflict`
+// isn't a keyword: the parser reads the identifier as this declaration
+// only where a kind declaration can start, and the span starts at it.
+type ConflictDecl struct {
 	Call *CallStmt
 	Span
 }
@@ -320,3 +329,4 @@ func (*PrecedenceDecl) declNode() {}
 func (*ExclusiveDecl) declNode()  {}
 func (*CollectDecl) declNode()    {}
 func (*DefaultDecl) declNode()    {}
+func (*ConflictDecl) declNode()   {}

@@ -10,7 +10,8 @@ import (
 // Position is a place in a bundle: the file, the line and column in it,
 // and the name of the document at that place. Line and Column are 1-based
 // and Column counts characters, not bytes. A Position with Line 0 is
-// unknown, as for the kind's default decision, which has no source.
+// unknown, as for the kind's default decision and its conflict outcome,
+// which have no source.
 type Position struct {
 	File     string // the path in the fs.FS given to Load; empty for a source given to Compile
 	Document string // the name in the header of the document at this place, such as "payments.production"

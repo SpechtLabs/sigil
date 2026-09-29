@@ -22,14 +22,15 @@ import (
 // A Policy is immutable once compiled and safe for concurrent use; every
 // evaluation gets its own frames.
 type Policy struct {
-	kind    *kind.Kind
-	root    *instance
-	def     *Candidate // the kind's default, nil for a collecting kind without one
-	ranks   map[string]int
-	Name    string // the root document's name
-	File    string // the file the root document is in
-	nframes int    // frame slots assigned to instances at compile time
-	static  bool
+	kind     *kind.Kind
+	root     *instance
+	def      *Candidate // the kind's default, nil for a collecting kind without one
+	conflict *Candidate // the kind's conflict outcome, nil when it declares none
+	ranks    map[string]int
+	Name     string // the root document's name
+	File     string // the file the root document is in
+	nframes  int    // frame slots assigned to instances at compile time
+	static   bool
 }
 
 // Outcome is the result of one evaluation. Candidates is every
@@ -85,6 +86,12 @@ type run struct {
 // Default returns the kind's default as a candidate without a position,
 // or nil for a collecting kind that declares none.
 func (p *Policy) Default() *Candidate { return p.def }
+
+// ConflictOutcome returns the kind's conflict outcome as a candidate
+// without a position: what a `collect one` kind returns instead of its
+// default when resolution ends in a [Conflict]. It's nil when the kind
+// declares none, and then a conflict returns the default.
+func (p *Policy) ConflictOutcome() *Candidate { return p.conflict }
 
 // Collect reports whether the policy's kind collects every candidate.
 func (p *Policy) Collect() bool { return p.kind.Collect == kind.CollectAll }

@@ -1,0 +1,71 @@
+== compile p ==
+ok
+
+== compartment a ==
+decision  grant_a
+reason    member
+policy    p
+payload   (none)
+
+candidates
+  grant_a  member             9:3 (p)
+           "a" in actor.teams
+
+== both compartments conflict ==
+decision  deny
+reason    conflicting_grants
+policy    p
+payload   (none)
+error     conflict: exclusive grant_a, grant_b: more than one fired
+            grant_a member at 9:3 (p)
+            grant_b member at 13:3 (p)
+
+candidates
+  grant_a  member             9:3 (p)
+  grant_b  member             13:3 (p)
+
+== a deny doesn't hide the conflict ==
+decision  deny
+reason    conflicting_grants
+policy    p
+payload   (none)
+error     conflict: exclusive grant_a, grant_b: more than one fired
+            grant_a member at 9:3 (p)
+            grant_b member at 13:3 (p)
+
+candidates
+  deny     suspended          17:3 (p)
+  grant_a  member             9:3 (p)
+  grant_b  member             13:3 (p)
+
+== two unranked deny reasons conflict ==
+decision  deny
+reason    conflicting_grants
+policy    p
+payload   (none)
+error     conflict: collect one: 2 candidates at the top rank
+            deny suspended at 17:3 (p)
+            deny expired at 21:3 (p)
+
+candidates
+  deny     suspended          17:3 (p)
+  deny     expired            21:3 (p)
+
+== nobody gets the default ==
+decision  deny
+reason    none
+policy    p
+payload   (none)
+
+candidates
+  (none)
+
+== a failed assert gets the default ==
+decision  deny
+reason    none
+policy    p
+payload   (none)
+error     assertion "someone" failed at 24:1 (p)
+
+candidates
+  (none)

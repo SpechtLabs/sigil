@@ -10,7 +10,9 @@ import (
 //
 // For a [WithDecisions] kind (`collect one`), Decision, Reason and Payload
 // describe the winner, or the kind's default when nothing fired, and
-// Outcome holds that one entry.
+// Outcome holds that one entry. After a failed evaluation they describe
+// the fallback: the default, or the kind's [WithConflict] outcome after
+// a conflict.
 //
 // For a [WithCollect] kind (`collect all`) those fields are empty and
 // Outcome holds every candidate, or with [WithPrecedence] every candidate
@@ -35,11 +37,11 @@ type Result struct {
 // Entry is one decision in a [Result]'s outcome.
 type Entry struct {
 	Decision string         // the decision's name, such as "approve"
-	Reason   string         // the reason the policy gave, or the default's
-	Policy   string         // the policy whose rule produced it; empty for the kind's default
+	Reason   string         // the reason the policy gave, or the default's or conflict outcome's
+	Policy   string         // the policy whose rule produced it; empty for the kind's default and conflict outcome
 	Payload  map[string]any //nolint:emptyinterface // the untyped payload, by field name, defaults filled in
 	typed    any            // the payload struct, for Match
-	Position Position       // of the constructor; unknown for the kind's default
+	Position Position       // of the constructor; unknown for the kind's default and conflict outcome
 }
 
 // Trace explains a [Result]: every decision constructor evaluation

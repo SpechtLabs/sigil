@@ -86,6 +86,7 @@ default deny(no_rule_matched)
 | `precedence` | `precedence deny > review > approve`                         | Ranks decisions, or the reasons of one decision                        |
 | `exclusive`  | `exclusive grant_a, grant_b`                                 | Outcomes that can't fire together                                      |
 | `default`    | `default deny(no_rule_matched)`                              | Result when nothing fires; optional with `collect all`                 |
+| `conflict`   | `conflict deny(conflicting_rules)`                           | Result of a conflict; optional, and only with `collect one`            |
 
 ### `kind`
 
@@ -302,7 +303,36 @@ The result when no rule fires.
 - Every payload value must be a constant. Fields with a default may be left out.
 - A `collect one` kind must declare a default.
 - A collecting kind may leave it out. Then an evaluation where nothing fires returns no decisions at all.
+- A `collect one` kind also returns it from a [failed evaluation](/reference/evaluation/#failed-evaluations), except after a conflict when it declares a [`conflict`](#conflict) outcome.
 - In Go, `policy.WithDefault(Deny.Reason("no_rule_matched"))` takes a [reason handle](/reference/go-api/#decisions-and-reasons) and no payload. Every field takes its default, so every payload field of the default decision needs a `default=` tag.
+
+### `conflict`
+
+```sigil
+decision deny {
+  not_eligible
+  soak_too_short
+  no_rule_matched
+  conflicting_rules
+}
+
+default deny(no_rule_matched)
+conflict deny(conflicting_rules)
+```
+
+The result when [resolution](/reference/evaluation/#resolution) ends in a conflict: two members of an `exclusive` set fired, or several candidates share the top rank. `Eval` still returns the `*ConflictError`, and the trace still lists every candidate; only the outcome that comes with the error changes. Without it, a conflict returns the default. Why a kind would name its own: [Every failure fails closed](/understanding/strictness/#every-failure-fails-closed).
+
+- It's optional, and declared at most once.
+- It's written like the default: a decision constructor with one of the decision's declared reasons, where every payload value is a constant and fields with a default may be left out.
+- Only conflicts return it. After a runtime error, a failed assert or a done context, the result still holds the default.
+- Give it a reason no rule constructs, so a result carrying it can only mean a conflict, and a decision that fails closed, since the host acts on it.
+- Only a `collect one` kind may declare one. A collecting kind returns an empty outcome on every failed evaluation, a conflict included, because granting anything on a defect in the policy would fail open.
+- `conflict` is a [keyword](/reference/lexical/#keywords), like `default`, so no input, param, let or reason can be called `conflict`. A field or payload field still can.
+- In Go, `policy.WithConflict(Deny.Reason("conflicting_rules"))`. Like `WithDefault`, it takes a reason handle and no payload, so every payload field of its decision needs a `default=` tag.
+
+```text
+access_grant.sigil:14:1: kind AccessGrant collects all decisions and can't declare a conflict outcome
+```
 
 ## Validity rules
 
@@ -319,6 +349,7 @@ The rules in each declaration's section above apply. These hold across the whole
 | `precedence`       | A scoped `precedence` names a declared decision                                              |
 | `exclusive`        | Each entry is a declared decision or one of its declared reasons                             |
 | `default`          | Declared at most once. Constructs a declared decision, passing a constant of the right type for every field without a default |
+| `conflict`         | Declared at most once, and only with `collect one`. Follows the rules of `default`          |
 
 | Checked by                                  | Reports                                                   |
 | ------------------------------------------- | --------------------------------------------------------- |
@@ -334,9 +365,11 @@ The rules in each declaration's section above apply. These hold across the whole
 3. the inputs, in field order, then the host functions, in `WithFunc` order,
 4. the decisions, in `WithDecisions` or `WithCollect` order,
 5. `collect`, the decision `precedence`, each scoped `precedence` and each `exclusive` set,
-6. the `default`.
+6. the `default`,
+7. the `conflict` outcome.
 
 - Blank lines separate the header, each type, the inputs, the functions, each decision, the resolution lines and the default, as `sigil fmt` lays them out.
+- The `conflict` outcome goes on the line right after the default, with no blank line between them, so the two read as a pair.
 - `sigil fmt` doesn't reorder declarations in a hand-written kind file. The order above is only what an export produces.
 - Loading an exported file gives back the kind it came from. Fuzz tests check that round trip.
 - [`sigil export --check`](/reference/cli/#sigil-export) compares a checked-in file with the host's `Schema()`. To run it in CI, see [Check policies in CI](/guides/ci/).
@@ -374,7 +407,7 @@ The rules for changing the numbers, set with `policy.WithVersion` and `policy.Wi
 | Remove or rename anything                      | Breaking                                                       |
 | Change a type                                  | Breaking                                                       |
 | Add a payload field without a default          | Breaking                                                       |
-| Reorder `precedence`, add or reorder a scoped `precedence`, add an `exclusive` set, or change `default` | Breaking in behavior, even though every policy still compiles |
+| Reorder `precedence`, add or reorder a scoped `precedence`, add an `exclusive` set, change `default`, or add, remove or change `conflict` | Breaking in behavior, even though every policy still compiles |
 | Switch between `collect one` and `collect all` | Breaking                                                       |
 
 ::: warning Planned

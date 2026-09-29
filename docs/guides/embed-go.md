@@ -112,7 +112,7 @@ var Deploy = policy.NewKind[Input]("DeployApproval",
 
 - `WithDecisions` takes the decisions highest precedence first, so a deny beats a review beats an approval.
 - `WithReasonPrecedence` ranks one decision's reasons, so two denies, or two approvals, never conflict.
-- `WithDefault` is the result when no rule fires.
+- `WithDefault` is the result when no rule fires, and also what a failed evaluation returns. To return a reason of its own after a conflict, add `WithConflict`, as [Name conflicts in the result](/guides/handle-errors/#name-conflicts-in-the-result) shows.
 - `WithFunc` binds a host function a policy can call, under the name you give it. The function must be pure, terminate and not panic. To keep a panicking function from taking the service down, see [Recover host panics](/guides/handle-errors/#recover-host-panics).
 
 For a kind where every decision that fires applies, such as the example service's `AccessGrant`, pass `policy.WithCollect` instead of `policy.WithDecisions`; it may leave out the default. Every option, with its kind file equivalent, is in [Kind options](/reference/go-api/#kind-options).

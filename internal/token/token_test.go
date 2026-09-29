@@ -25,6 +25,7 @@ func TestLookup(t *testing.T) {
 		{"precedence", KwPrecedence},
 		{"collect", KwCollect},
 		{"default", KwDefault},
+		{"conflict", KwConflict},
 		{"and", KwAnd},
 		{"or", KwOr},
 		{"xor", KwXor},
@@ -53,6 +54,9 @@ func TestLookup(t *testing.T) {
 		{"map", Ident},
 		{"deny", Ident},
 		{"approve", Ident},
+		// A word the header gives a meaning in one position, which the
+		// parser recognizes by spelling so it stays usable as a name.
+		{"accepts", Ident},
 		// Symbols other languages use aren't words.
 		{"", Ident},
 		{"&&", Ident},

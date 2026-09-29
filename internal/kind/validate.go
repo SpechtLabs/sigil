@@ -34,6 +34,7 @@ var identRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 //	exclusive N / exclusive N.M   the Nth exclusive set, from 1 / its Mth outcome
 //	collect
 //	default / default.reason / default.arg F
+//	conflict / conflict.reason / conflict.arg F
 //
 // A Locator that doesn't know a key returns false, and the diagnostic is
 // left without a position.
@@ -352,7 +353,8 @@ func (v *validator) exclusive() {
 	}
 }
 
-// resolution checks precedence, collect and the default decision.
+// resolution checks precedence, collect, the default decision and the
+// conflict outcome.
 func (v *validator) resolution() {
 	k := v.kind
 	switch {
@@ -367,13 +369,25 @@ func (v *validator) resolution() {
 	}
 	v.exclusive()
 
-	if k.Default == nil {
-		if k.Collect != CollectAll {
-			v.errorf("kind", "declare `default <decision>(<reason>)` for the case where no rule fires", "kind %s has no default decision", k.Name)
-		}
+	switch {
+	case k.Default != nil:
+		v.constructor("default", k.Default)
+	case k.Collect != CollectAll:
+		v.errorf("kind", "declare `default <decision>(<reason>)` for the case where no rule fires", "kind %s has no default decision", k.Name)
+	}
+
+	if k.Conflict == nil {
 		return
 	}
-	v.defaultCall()
+	if k.Collect == CollectAll {
+		// Every failed evaluation of a collecting kind returns an empty
+		// outcome, since granting something on an error fails open, and a
+		// conflict is a failed evaluation.
+		v.errorf("conflict", "a collecting kind returns an empty outcome on a conflict, because granting anything on a defect in the policy would fail open; remove `conflict`",
+			"kind %s collects all decisions and can't declare a conflict outcome", k.Name)
+		return
+	}
+	v.constructor("conflict", k.Conflict)
 }
 
 func (v *validator) precedence() {
@@ -395,29 +409,37 @@ func (v *validator) precedence() {
 	}
 }
 
-func (v *validator) defaultCall() {
-	def := v.kind.Default
-	d := v.kind.Decision(def.Decision)
+// constructor checks the declaration decl, `default` or `conflict`: a
+// declared decision and reason, and a constant of the right type for
+// every payload field that has no default of its own. The two follow one
+// set of rules because both build an outcome with no rule behind it, so
+// there's no rule context to evaluate a payload expression in.
+func (v *validator) constructor(decl string, c *Default) {
+	what := "the default"
+	if decl == "conflict" {
+		what = "the conflict outcome"
+	}
+	d := v.kind.Decision(c.Decision)
 	if d == nil {
-		v.errorf("default", "the default constructs one of the kind's decisions", "default names undeclared decision %q", def.Decision)
+		v.errorf(decl, what+" constructs one of the kind's decisions", "%s names undeclared decision %q", decl, c.Decision)
 		return
 	}
-	if !d.HasReason(def.Reason) {
-		v.errorf("default.reason", d.Name+" declares: "+strings.Join(d.Reasons, ", "), "default: decision %s has no reason %q", d.Name, def.Reason)
+	if !d.HasReason(c.Reason) {
+		v.errorf(decl+".reason", d.Name+" declares: "+strings.Join(d.Reasons, ", "), "%s: decision %s has no reason %q", decl, d.Name, c.Reason)
 	}
-	for name, val := range def.Args {
+	for name, val := range c.Args {
 		f := d.Field(name)
 		if f == nil {
-			v.errorf("default.arg "+name, d.Name+" is declared as: "+d.Signature(), "default: decision %s has no payload field %q", d.Name, name)
+			v.errorf(decl+".arg "+name, d.Name+" is declared as: "+d.Signature(), "%s: decision %s has no payload field %q", decl, d.Name, name)
 			continue
 		}
 		if !constant.Conforms(val, f.Type) {
-			v.errorf("default.arg "+name, "a default is a constant of the field's type", "default: field %q value %s is not a %s", name, constant.Format(val), f.Type)
+			v.errorf(decl+".arg "+name, what+" passes constants of the fields' types", "%s: field %q value %s is not a %s", decl, name, constant.Format(val), f.Type)
 		}
 	}
 	for _, f := range d.Fields {
-		if _, given := def.Args[f.Name]; !given && !f.HasDefault {
-			v.errorf("default", d.Name+" is declared as: "+d.Signature(), "default: field %q is required and has no value", f.Name)
+		if _, given := c.Args[f.Name]; !given && !f.HasDefault {
+			v.errorf(decl, d.Name+" is declared as: "+d.Signature(), "%s: field %q is required and has no value", decl, f.Name)
 		}
 	}
 }

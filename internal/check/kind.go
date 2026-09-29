@@ -52,13 +52,14 @@ func (c *Checker) KindFile(f *ast.File) *kind.Kind {
 
 // Kind builds the kind a kind document declares. It resolves type names,
 // evaluates the constant defaults and checks the rules only source can
-// break: `precedence`, `collect` and `default` declared at most once, a
-// scoped `precedence` that names a declared decision and is its only one,
-// and a default whose reason is a bare name and whose arguments each name
-// a payload field once. Everything else is [kind.Kind.Validate]'s job; the checker records
-// where each declaration is so those diagnostics point at the right line,
-// and drops one at a place it has already reported. The kind is nil when
-// anything is wrong, and [Checker.Errors] says what.
+// break: `precedence`, `collect`, `default` and `conflict` declared at most
+// once, a scoped `precedence` that names a declared decision and is its
+// only one, and a default or conflict outcome whose reason is a bare name
+// and whose arguments each name a payload field once. Everything else is
+// [kind.Kind.Validate]'s job; the checker records where each declaration
+// is so those diagnostics point at the right line, and drops one at a
+// place it has already reported. The kind is nil when anything is wrong,
+// and [Checker.Errors] says what.
 func (c *Checker) Kind(doc *ast.KindDoc) *kind.Kind {
 	if doc == nil {
 		return nil
@@ -96,8 +97,9 @@ func (c *Checker) Kind(doc *ast.KindDoc) *kind.Kind {
 			l.decision(d)
 		}
 	}
-	// The default names a decision and its fields, so it comes after
-	// every decision is known, wherever it sits in the file.
+	// The default and the conflict outcome name a decision and its fields,
+	// so they come after every decision is known, wherever they sit in the
+	// file.
 	for _, d := range doc.Decls {
 		switch d := d.(type) {
 		case *ast.PrecedenceDecl:
@@ -108,6 +110,8 @@ func (c *Checker) Kind(doc *ast.KindDoc) *kind.Kind {
 			l.collect(d)
 		case *ast.DefaultDecl:
 			l.defaultDecl(d)
+		case *ast.ConflictDecl:
+			l.conflictDecl(d)
 		}
 	}
 

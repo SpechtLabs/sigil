@@ -149,7 +149,11 @@
 //     through it.
 //   - [*ConflictError]: two members of an exclusive set fired, or a
 //     `collect one` kind has several candidates at its top rank. This is a
-//     defect in the policy rather than in the input.
+//     defect in the policy rather than in the input. A kind declared with
+//     [WithConflict] holds its conflict outcome here instead of the
+//     default, such as deny(conflicting_rules), so a log line or a metric
+//     labeled from the result names the conflict instead of claiming no
+//     rule matched.
 //   - [*AssertionError]: one or more of the policy's asserts didn't hold.
 //     Its Phase says whether they were input asserts, which reject the
 //     input, or outcome asserts, which reject the policy's own outcome.

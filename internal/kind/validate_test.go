@@ -238,6 +238,40 @@ func TestValidate(t *testing.T) {
 		{name: "default relying on a field default is fine", mutate: func(k *kind.Kind) {
 			k.Default = &kind.Default{Decision: "approve", Reason: "open"}
 		}},
+
+		// The conflict outcome follows the default's rules, and only a
+		// `collect one` kind may declare one.
+		{name: "conflict outcome", mutate: func(k *kind.Kind) {
+			k.Conflict = &kind.Default{Decision: "deny", Reason: "not_eligible"}
+		}},
+		{name: "conflict outcome with every field", mutate: func(k *kind.Kind) {
+			k.Conflict = &kind.Default{Decision: "review", Reason: "everyone", Args: map[string]any{"approvers": []any{"leads"}}}
+		}},
+		{name: "conflict outcome on a collecting kind", base: access, mutate: func(k *kind.Kind) {
+			k.Conflict = &kind.Default{Decision: "read", Reason: "member"}
+		}, want: []string{"kind AccessGrant collects all decisions and can't declare a conflict outcome"},
+			help: "a collecting kind returns an empty outcome on a conflict, because granting anything on a defect in the policy would fail open; remove `conflict`"},
+		{name: "conflict outcome on a collecting kind isn't checked further", base: access, mutate: func(k *kind.Kind) {
+			k.Conflict = &kind.Default{Decision: "escalate", Reason: "x"}
+		}, want: []string{"kind AccessGrant collects all decisions and can't declare a conflict outcome"}},
+		{name: "conflict names an unknown decision", mutate: func(k *kind.Kind) {
+			k.Conflict = &kind.Default{Decision: "escalate", Reason: "x"}
+		}, want: []string{`conflict names undeclared decision "escalate"`}, help: "the conflict outcome constructs one of the kind's decisions"},
+		{name: "conflict with an undeclared reason", mutate: func(k *kind.Kind) {
+			k.Conflict = &kind.Default{Decision: "deny", Reason: "conflicting_rules"}
+		}, want: []string{`conflict: decision deny has no reason "conflicting_rules"`}, help: "deny declares: not_eligible, soak_too_short, no_rule_matched"},
+		{name: "conflict with an unknown field", mutate: func(k *kind.Kind) {
+			k.Conflict = &kind.Default{Decision: "approve", Reason: "open", Args: map[string]any{"bak": 15 * time.Minute}}
+		}, want: []string{`conflict: decision approve has no payload field "bak"`}},
+		{name: "conflict with a wrong value", mutate: func(k *kind.Kind) {
+			k.Conflict = &kind.Default{Decision: "approve", Reason: "open", Args: map[string]any{"bake": "15m"}}
+		}, want: []string{`conflict: field "bake" value "15m" is not a duration`}, help: "the conflict outcome passes constants of the fields' types"},
+		{name: "conflict misses a required field", mutate: func(k *kind.Kind) {
+			k.Conflict = &kind.Default{Decision: "review", Reason: "everyone"}
+		}, want: []string{`conflict: field "approvers" is required and has no value`}, help: "review is declared as: decision review(approvers: list<string>) { service_owner, everyone }"},
+		{name: "default with a wrong value says what to pass", mutate: func(k *kind.Kind) {
+			k.Default = &kind.Default{Decision: "approve", Reason: "open", Args: map[string]any{"bake": int64(1)}}
+		}, want: []string{`default: field "bake" value 1 is not a duration`}, help: "the default passes constants of the fields' types"},
 	}
 
 	for _, tt := range tests {

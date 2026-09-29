@@ -48,6 +48,15 @@ var (
 		policy.WithExclusive(GrantA, GrantB),
 		policy.WithDefault(Suspend.Reason("none")))
 
+	// The compartment kind with a conflict outcome, and two deny reasons
+	// it doesn't rank, so a tie at the top rank is a conflict too.
+	Hold                   = policy.NewDecision[policy.None]("deny", "suspended", "expired", "none", "conflicting_grants")
+	CompartmentsOnConflict = policy.NewKind[AccessInput]("Compartments", policy.WithVersion(1),
+		policy.WithDecisions(Hold, GrantA, GrantB),
+		policy.WithExclusive(GrantA, GrantB),
+		policy.WithDefault(Hold.Reason("none")),
+		policy.WithConflict(Hold.Reason("conflicting_grants")))
+
 	// A collect all kind with precedence: every review reaches the host
 	// unless a deny fired.
 	ReviewAny = policy.NewDecision[ReviewData]("review", "security", "owner")
@@ -154,6 +163,14 @@ var goldenCases = map[string]func(t *testing.T, src, dir string) string{
 		{"both compartments conflict", AccessInput{Actor: Actor{Name: "alice", Teams: []string{"a", "b"}}}},
 		{"a deny doesn't hide the conflict", AccessInput{Actor: Actor{Name: "alice", Teams: []string{"a", "b"}, Roles: []string{"suspended"}}}},
 		{"nobody", AccessInput{Actor: Actor{Name: "alice"}}},
+	}),
+	"conflict_outcome": run(CompartmentsOnConflict, "p", nil, []scenario[AccessInput]{
+		{"compartment a", AccessInput{Actor: Actor{Name: "alice", Teams: []string{"a"}}}},
+		{"both compartments conflict", AccessInput{Actor: Actor{Name: "alice", Teams: []string{"a", "b"}}}},
+		{"a deny doesn't hide the conflict", AccessInput{Actor: Actor{Name: "alice", Teams: []string{"a", "b"}, Roles: []string{"suspended"}}}},
+		{"two unranked deny reasons conflict", AccessInput{Actor: Actor{Name: "alice", Roles: []string{"suspended", "expired"}}}},
+		{"nobody gets the default", AccessInput{Actor: Actor{Name: "alice"}}},
+		{"a failed assert gets the default", AccessInput{Actor: Actor{Teams: []string{"a", "b"}}}},
 	}),
 	"collect_top": run(Reviews, "p", nil, []scenario[Input]{
 		{"every review at the top rank", with(func(in *Input) { in.Release.Hotfix = true })},

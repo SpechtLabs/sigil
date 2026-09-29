@@ -26,12 +26,19 @@ var (
 	deny  = policy.NewDecision[policy.None]("deny", "no_rule_matched")
 	gate  = policy.NewKind[input]("Gate", policy.WithVersion(1), policy.WithDecisions(deny), policy.WithDefault(deny.Reason("no_rule_matched")))
 	teams = policy.NewKind[other]("Teams", policy.WithVersion(3), policy.WithDecisions(deny), policy.WithDefault(deny.Reason("no_rule_matched")))
+
+	// Gate with a conflict outcome, whose kind file ends in a `conflict` line.
+	guardDeny = policy.NewDecision[policy.None]("deny", "no_rule_matched", "conflicting_rules")
+	guarded   = policy.NewKind[input]("Gate", policy.WithVersion(1), policy.WithDecisions(guardDeny),
+		policy.WithDefault(guardDeny.Reason("no_rule_matched")), policy.WithConflict(guardDeny.Reason("conflicting_rules")))
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files under testdata")
 
 // TestExport covers printing, writing and checking the kind file.
 func TestExport(t *testing.T) {
+	// The export from before the host declared its conflict outcome.
+	withoutConflict := strings.TrimSuffix(guarded.Schema(), "conflict deny(conflicting_rules)\n")
 	one := []project.Linked{link(gate)}
 	both := []project.Linked{link(gate), link(teams)}
 	tests := []struct {
@@ -49,6 +56,8 @@ func TestExport(t *testing.T) {
 		{name: "rewrite a stale file", kinds: one, file: "kind Gate version 0\n", want: gate.Schema()},
 		{name: "check a current file", kinds: one, file: gate.Schema(), check: true, want: gate.Schema()},
 		{name: "check a stale file", kinds: one, file: "stale\n", check: true, want: "stale\n", wantErr: "is stale"},
+		{name: "check a current file with a conflict outcome", kinds: []project.Linked{link(guarded)}, file: guarded.Schema(), check: true, want: guarded.Schema()},
+		{name: "check a file that misses the conflict outcome", kinds: []project.Linked{link(guarded)}, file: withoutConflict, check: true, want: withoutConflict, wantErr: "is stale"},
 		{name: "check without a file", kinds: one, file: "-", check: true, wantErr: "--check needs the file to compare"},
 		{name: "no kind linked", file: "-", wantErr: "no kind is linked into this binary"},
 		{name: "several kinds need a name", kinds: both, file: "-", wantErr: "this binary links several kinds"},

@@ -98,6 +98,7 @@ const (
 	KwPrecedence
 	KwCollect
 	KwDefault
+	KwConflict
 
 	// Operators.
 	KwAnd
@@ -180,6 +181,7 @@ var names = [...]string{
 	KwPrecedence: "precedence",
 	KwCollect:    "collect",
 	KwDefault:    "default",
+	KwConflict:   "conflict",
 	KwAnd:        "and",
 	KwOr:         "or",
 	KwXor:        "xor",

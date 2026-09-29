@@ -145,7 +145,8 @@ The canonical style:
 | Line ends | No trailing whitespace; one newline at the end of the file |
 | Document header | Followed by a blank line |
 | Top-level statement groups | A blank line between groups: `use`s, `param`s, `let`s and `assert`s in policies and modules; `input`s, `fn`s, and the `collect`, `precedence` and `exclusive` lines in kinds |
-| `when` block, invocation, `type`, `decision`, `default` | Stands alone, with a blank line around it |
+| `when` block, invocation, `type`, `decision` | Stands alone, with a blank line around it |
+| `default` and `conflict` in a kind | Together, with a blank line around them and none between them |
 | Blank lines inside a `when` body | Only the author's, never more than one in a row |
 | Several documents in one file | One `---` line between each pair, with a blank line on each side; none before the first or after the last |
 | Line breaks | Follow the author, the way `gofmt` does |
@@ -329,7 +330,7 @@ What you can do
 
 ### Failed evaluations
 
-When the evaluation fails, with a runtime error, a conflict or a failing assert, `eval` prints the fallback the host would act on, the kind's default, then why it failed, with a `= help:` line on what to do about it.
+When the evaluation fails, with a runtime error, a conflict or a failing assert, `eval` prints the fallback the host would act on, then why it failed, with a `= help:` line on what to do about it. The fallback is the kind's default, or no decisions for a collecting kind. After a conflict, a kind that declares a [`conflict`](/reference/kind-files/#conflict) outcome falls back to that instead, and the first line names it as the kind's conflict outcome.
 
 - Most runtime errors get "fix the expression the runtime error points at, or the input it read".
 - A host function that isn't linked in gets the advice shown below.
@@ -384,8 +385,8 @@ Each `outcome` and `trace` entry:
 | Field | Holds |
 | --- | --- |
 | `decision`, `reason`, `payload` | The candidate |
-| `policy` | The policy whose rule produced it; left out for the default |
-| `position` | Of the rule; left out for the default |
+| `policy` | The policy whose rule produced it; left out for the default and the conflict outcome |
+| `position` | Of the rule; left out for the default and the conflict outcome |
 | `chain` | The invocations it was reached through, outermost first |
 | `conditions` | The `when` conditions that held, for a candidate of a winning decision |
 | `outcome` | `true` when it's in the outcome the host acts on |

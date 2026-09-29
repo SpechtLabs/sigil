@@ -69,9 +69,12 @@ type HostPanicError struct {
 // without a [WithReasonPrecedence], or one reason with different payloads.
 // It names only the candidates that conflict: the top-rank tie, or the
 // members of the exclusive set that fired; the result's trace has every
-// candidate. The result that comes with it holds the kind's default. A
-// conflict is a defect in the policy rather than in the input; count it
-// apart from assert failures.
+// candidate. The result that comes with it holds the kind's
+// [WithConflict] outcome when it declares one, and its default otherwise,
+// or an empty outcome for a collecting kind. A conflict is a defect in
+// the policy rather than in the input; count it apart from assert
+// failures, by the error, since without WithConflict the result's reason
+// is the default's.
 type ConflictError struct {
 	Message    string      // what conflicts
 	Policy     string      // the policy being evaluated

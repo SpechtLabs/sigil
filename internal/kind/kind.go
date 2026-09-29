@@ -17,7 +17,10 @@
 // returns every candidate that fired, or with a precedence every candidate
 // at the top rank. A decision may rank its own reasons in
 // [Decision.Ranked], [Kind.Exclusive] names outcomes that can't fire
-// together, and [Kind.Default] applies when no rule fires.
+// together, and [Kind.Default] applies when no rule fires. A `collect
+// one` kind may also declare [Kind.Conflict], the outcome it returns when
+// resolution ends in a conflict, so a failed evaluation doesn't report
+// the default's reason for a result several rules produced.
 package kind
 
 import "github.com/spechtlabs/sigil/internal/types"
@@ -38,6 +41,7 @@ type Collect int
 // break any of the rules it checks.
 type Kind struct {
 	Default    *Default // nil only for a `collect all` kind without one
+	Conflict   *Default // the outcome of a conflict under `collect one`; nil falls back to Default
 	Name       string
 	Types      []*types.Struct // struct types, in declaration order
 	Inputs     []*Input

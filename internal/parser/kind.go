@@ -65,8 +65,10 @@ func (p *parser) parseDecl() ast.Decl {
 		return p.parseCollect()
 	case token.KwDefault:
 		return p.parseDefault()
+	case token.KwConflict:
+		return p.parseConflict()
 	}
-	p.unexpected("a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect` or `default`)", "")
+	p.unexpected("a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect`, `default` or `conflict`)", "")
 	return nil
 }
 
@@ -101,7 +103,7 @@ func (p *parser) parseTypeDecl() *ast.TypeDecl {
 // isDeclKeyword reports whether k starts a kind declaration.
 func isDeclKeyword(k token.Kind) bool {
 	switch k {
-	case token.KwType, token.KwInput, token.KwFn, token.KwDecision, token.KwPrecedence, token.KwCollect, token.KwDefault:
+	case token.KwType, token.KwInput, token.KwFn, token.KwDecision, token.KwPrecedence, token.KwCollect, token.KwDefault, token.KwConflict:
 		return true
 	}
 	return false
@@ -267,6 +269,18 @@ func (p *parser) parseDefault() *ast.DefaultDecl {
 		p.unexpected("a decision constructor", "the default is written `default deny(no_rule_matched)`")
 	}
 	d := &ast.DefaultDecl{Call: p.parseCall()}
+	d.Span = ast.Span{From: kw.Pos, To: d.Call.End()}
+	return d
+}
+
+// parseConflict parses `conflict deny(conflicting_rules, field: value)`.
+func (p *parser) parseConflict() *ast.ConflictDecl {
+	kw := p.tok
+	p.next()
+	if p.tok.Kind != token.Ident || p.peek().Kind != token.LParen {
+		p.unexpected("a decision constructor", "the conflict outcome is written `conflict deny(conflicting_rules)`")
+	}
+	d := &ast.ConflictDecl{Call: p.parseCall()}
 	d.Span = ast.Span{From: kw.Pos, To: d.Call.End()}
 	return d
 }

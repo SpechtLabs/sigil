@@ -1,0 +1,24 @@
+// The Compartments kind, declared with a conflict outcome: a conflict,
+// from the exclusive grants or from two deny reasons the kind doesn't
+// rank, returns deny(conflicting_grants) instead of the default. Every
+// other failure, and a result where nothing fires, still gets the
+// default, deny(none).
+policy p: Compartments@1
+
+when "a" in actor.teams {
+  grant_a(member)
+}
+
+when "b" in actor.teams {
+  grant_b(member)
+}
+
+when "suspended" in actor.roles {
+  deny(suspended)
+}
+
+when "expired" in actor.roles {
+  deny(expired)
+}
+
+assert("someone", actor.name != "")

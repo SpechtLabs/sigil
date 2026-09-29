@@ -89,6 +89,7 @@ func WithPrecedence(ds ...DecisionRef) Option
 func WithReasonPrecedence(reasons ...Outcome) Option
 func WithExclusive(outcomes ...OutcomeRef) Option
 func WithDefault(reason Outcome) Option
+func WithConflict(reason Outcome) Option
 func WithFunc(name string, fn any) Option
 func WithRecoverHostPanics() Option
 ```
@@ -105,6 +106,7 @@ Each option corresponds to a declaration of a [kind file](/reference/kind-files/
 | `WithReasonPrecedence(reasons...)` | `precedence approve: release_manager > payments_sre` | Ranks one decision's reasons, highest first, given as [reason handles](#decisions-and-reasons). Must list every reason of that decision and no other decision's, once per decision                                                       |
 | `WithExclusive(outcomes...)`       | `exclusive grant_a, grant_b`                         | Outcomes that can't fire together, each a decision handle or one reason, `GrantA.Reason("x")`. One set per call, of at least two outcomes. Two of them firing in one evaluation is a `*ConflictError`, under both collect modes          |
 | `WithDefault(reason)`              | `default deny(no_rule_matched)`                      | Result when no rule fires, given as a reason handle. Its payload fields take their defaults, so every payload field of its decision needs a `default=`. Required with `WithDecisions`, optional with `WithCollect`                       |
+| `WithConflict(reason)`             | `conflict deny(conflicting_rules)`                   | Result of a [conflict](/reference/evaluation/#resolution) instead of the default, given as a reason handle. Its payload fields take their defaults, as with `WithDefault`. Optional, and only with `WithDecisions`: `NewKind` panics on a `WithCollect` kind that sets it |
 | `WithFunc(name, fn)`               | `fn split(string, string) -> list<string>`           | One call per function. The Sigil signature is derived from `fn`'s type, which returns `T` or `(T, error)`; the name is always written out. Host functions must be pure, must terminate and must not panic; see [Evaluating](#evaluating) |
 | `WithRecoverHostPanics()`          | none; it's host behavior, not contract               | A panic in a host function becomes a `*RuntimeError` instead of unwinding out of `Eval`. Off by default                                                                                                                                  |
 
@@ -173,7 +175,7 @@ type OutcomeRef interface{ /* unexported methods */ }
 
 - `T`'s tagged fields are the decision's payload fields, mapped as in [Go type mapping](#go-type-mapping). The reason is implicit on every decision and never appears in `T`.
 - Reasons are plain strings, as `Result.Reason` is.
-- An `Outcome` is how Go code names a reason: to rank it with `WithReasonPrecedence`, make it the default with `WithDefault`, declare it exclusive with `WithExclusive`, and compare a result against it with `Is`.
+- An `Outcome` is how Go code names a reason: to rank it with `WithReasonPrecedence`, make it the default with `WithDefault` or the conflict outcome with `WithConflict`, declare it exclusive with `WithExclusive`, and compare a result against it with `Is`.
 - The zero `Outcome` names no reason, and `NewKind` rejects it.
 
 ```go
@@ -410,7 +412,7 @@ func (p *Policy[In]) Eval(ctx context.Context, input In) (*Result, error)
 | `input`   | One value of the kind's input struct |
 
 - Returns the [result](#result) with its trace, and an [error](#errors) when the evaluation failed.
-- Never returns a nil result. With an error, the result holds the kind's default decision, or an empty outcome for a collecting kind; see [Failed evaluations](/reference/evaluation/#failed-evaluations).
+- Never returns a nil result. With an error, the result holds the kind's default decision, its conflict outcome after a conflict when it declares one, or an empty outcome for a collecting kind; see [Failed evaluations](/reference/evaluation/#failed-evaluations).
 - Safe to call from any goroutine. A compiled policy is immutable and safe for concurrent use: concurrent evaluations share no mutable state and take no locks.
 - Replacing a compiled policy at run time is a pointer swap, for example through a `sync/atomic.Pointer`. An evaluation in flight keeps the policy it started with. To reload policies, see [Reload without an outage](/guides/configmaps/#reload-without-an-outage).
 - Checks `ctx` while it runs, and returns its error once it's done; when it checks and what the result then holds are in [Context checks](/reference/evaluation/#context-checks).
@@ -420,7 +422,7 @@ func (p *Policy[In]) Eval(ctx context.Context, input In) (*Result, error)
 ```go
 res, err := p.Eval(ctx, input)
 if err != nil {
-	// res still holds the kind's default decision
+	// res still holds the kind's default decision, or its conflict outcome
 }
 ```
 
@@ -491,6 +493,7 @@ func (e *ConflictError) Error() string
 
 - `Candidates` holds only the candidates that conflict: the top-rank tie, or the members of the exclusive set that fired. The result's trace has every candidate.
 - `Error()` returns the message followed by one line per candidate, as [`Candidate.String()`](#result) renders it, so it reads like the trace: which rules, at which positions, claimed what.
+- The result that comes with it holds the kind's [`conflict`](/reference/kind-files/#conflict) outcome when the kind declares one, and its default otherwise; see [Failed evaluations](/reference/evaluation/#failed-evaluations).
 
 #### `AssertionError`
 
@@ -547,9 +550,9 @@ type Result struct {
 type Entry struct {
 	Decision string
 	Reason   string
-	Policy   string         // the policy whose rule produced it; empty for the kind's default
+	Policy   string         // the policy whose rule produced it; empty for the kind's default and conflict outcome
 	Payload  map[string]any // defaults filled in
-	Position Position       // of the constructor; unknown for the default
+	Position Position       // of the constructor; unknown for the default and the conflict outcome
 	// unexported fields
 }
 
@@ -603,8 +606,8 @@ func (o Outcome) Is(res *Result) bool
 type Matched[T any] struct {
 	Payload  T        // the payload struct, defaults filled in
 	Reason   string   // the reason the policy gave
-	Policy   string   // the policy whose rule produced it; empty for the kind's default
-	Position Position // of the constructor; unknown for the kind's default
+	Policy   string   // the policy whose rule produced it; empty for the kind's default and conflict outcome
+	Position Position // of the constructor; unknown for the kind's default and conflict outcome
 }
 ```
 
@@ -616,7 +619,7 @@ type Matched[T any] struct {
 
 - `Match` returns the zero `T` and `false` for a nil result or another decision; `Is` returns `false`; `MatchAll` returns nil for a nil result.
 - `MatchAll` returns entries in outcome order, each a `Matched[T]` whose fields other than `Payload` are those of the `Entry` it came from.
-- The result that comes with an error holds the kind's default, so matching the default decision or reason on it succeeds. Check `err` before matching.
+- The result that comes with an error holds the kind's default, or its conflict outcome after a conflict, so matching that decision or reason on it succeeds. Check `err` before matching.
 - Comparing `res.Reason` with a string compiles with a typo in it and never matches; `Is` compares through a handle that was checked when it was declared.
 
 ```go
@@ -649,7 +652,7 @@ func (p Position) String() string
 
 - Every compile error and every trace entry carries a `Position`.
 - `Line` and `Column` are 1-based, and `Column` counts characters, not bytes.
-- A position with line 0 is unknown, as for the kind's default decision, which has no source. `IsValid()` reports false for it.
+- A position with line 0 is unknown, as for the kind's default decision and conflict outcome, which have no source. `IsValid()` reports false for it.
 
 | Position                           | `String()`                                  |
 | ---------------------------------- | ------------------------------------------- |
@@ -727,7 +730,7 @@ Every exported identifier of package `policy`:
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | [`NewKind[In](name, opts...) *Kind[In]`](#newkind)                                                                                                                                                     | Builds a kind from the input struct `In`; panics on an invalid kind                                                  |
 | [`Kind[In].Name`, `.Schema`, `.Load`, `.Compile`, `.Contract`](#kind-methods)                                                                                                                          | The kind's name, its kind file, loading and compiling policies, and the tooling hook                                 |
-| [`Option`, `WithVersion`, `WithAccepts`, `WithDecisions`, `WithCollect`, `WithPrecedence`, `WithReasonPrecedence`, `WithExclusive`, `WithDefault`, `WithFunc`, `WithRecoverHostPanics`](#kind-options) | Options for `NewKind`                                                                                                |
+| [`Option`, `WithVersion`, `WithAccepts`, `WithDecisions`, `WithCollect`, `WithPrecedence`, `WithReasonPrecedence`, `WithExclusive`, `WithDefault`, `WithConflict`, `WithFunc`, `WithRecoverHostPanics`](#kind-options) | Options for `NewKind`                                                                                                |
 | [`NewDecision[T](name, reasons...) Decision[T]`](#decisions-and-reasons)                                                                                                                               | Declares a decision with payload struct `T`                                                                          |
 | [`Decision[T].Name`, `.Reasons`, `.Reason`, `.Match`, `.MatchAll`](#decisions-and-reasons)                                                                                                             | The decision's name and reasons, one reason as an `Outcome` handle (panics on an undeclared one), and typed matching |
 | [`Outcome.Decision`, `.Name`, `.Is`](#decisions-and-reasons)                                                                                                                                           | A reason handle's decision and reason names, and whether a result is exactly that reason                             |

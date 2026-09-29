@@ -11,6 +11,7 @@ import (
 type Options struct {
 	Input     reflect.Type // the input struct
 	Default   *Default     // nil for none
+	Conflict  *Default     // the outcome of a conflict under `collect one`; nil for none
 	Accepts   *int         // the oldest version a document may pin; nil accepts every version
 	Name      string       // the kind's name, an identifier
 	Decisions []Decision   // precedence order, or declaration order when Collect is set
@@ -56,9 +57,9 @@ type Func struct {
 	Name string
 }
 
-// Default is the default decision and its reason. Its payload comes from
-// the payload fields' defaults, so every payload field of the decision
-// needs one.
+// Default is a decision and reason with no rule behind it: the default
+// decision, or the conflict outcome. Its payload comes from the payload
+// fields' defaults, so every payload field of the decision needs one.
 type Default struct {
 	Decision string
 	Reason   string

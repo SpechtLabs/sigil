@@ -91,7 +91,7 @@
         },
         {
           "name": "keyword.other.sigil",
-          "match": "\\b(policy|module|use|as|param|let|pub|kind|version|type|input|fn|decision|precedence|collect|default)\\b"
+          "match": "\\b(policy|module|use|as|param|let|pub|kind|version|type|input|fn|decision|precedence|collect|default|conflict)\\b"
         }
       ]
     },

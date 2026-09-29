@@ -1,0 +1,34 @@
+kind Access version 1
+
+type User {
+  name: string
+  teams: list<string>
+  admin: bool
+  expires: ?timestamp
+}
+
+input user: User
+input resource: string
+input age: duration
+input labels: map<string, int>
+
+fn owner(string) -> string
+
+decision deny {
+  banned
+  too_old
+  no_rule_matched
+  conflicting_rules
+}
+
+decision allow(ttl: duration = 1h, scopes: list<string> = []) {
+  admin
+  team_member
+}
+
+collect one
+precedence deny > allow
+precedence allow: admin > team_member
+
+default deny(no_rule_matched)
+conflict deny(conflicting_rules)

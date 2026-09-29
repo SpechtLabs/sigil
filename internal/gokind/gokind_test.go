@@ -334,6 +334,19 @@ func TestBuild(t *testing.T) {
 		{name: "default names an unknown decision", mutate: func(o *gokind.Options) {
 			o.Default = &gokind.Default{Decision: "escalate", Reason: "x"}
 		}, errs: []string{`default names undeclared decision "escalate"`}},
+		{name: "conflict outcome", mutate: func(o *gokind.Options) {
+			o.Conflict = &gokind.Default{Decision: "approve", Reason: "payments_sre"}
+		}, want: "default deny(no_rule_matched)\nconflict approve(payments_sre)\n"},
+		{name: "conflict outcome needs every payload field", mutate: func(o *gokind.Options) {
+			o.Conflict = &gokind.Default{Decision: "review", Reason: "everyone"}
+		}, errs: []string{`conflict: field "approvers" is required and has no value`}, help: "review is declared as: decision review(approvers: list<string>) { service_owner, everyone }"},
+		{name: "conflict outcome with an undeclared reason", mutate: func(o *gokind.Options) {
+			o.Conflict = &gokind.Default{Decision: "deny", Reason: "conflicting_rules"}
+		}, errs: []string{`conflict: decision deny has no reason "conflicting_rules"`}},
+		{name: "conflict outcome on a collecting kind", mutate: func(o *gokind.Options) {
+			o.Collect = true
+			o.Conflict = &gokind.Default{Decision: "deny", Reason: "no_rule_matched"}
+		}, errs: []string{"kind DeployApproval collects all decisions and can't declare a conflict outcome"}},
 		{name: "no decisions", mutate: func(o *gokind.Options) {
 			o.Decisions = nil
 			o.Default = nil

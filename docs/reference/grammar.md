@@ -36,7 +36,7 @@ Ident       ::= [A-Za-z_] [A-Za-z0-9_]* - Keyword
 Keyword     ::= "policy" | "module" | "use" | "as" | "param" | "let" | "pub"
               | "when" | "assert"
               | "kind" | "version" | "type" | "input" | "fn" | "decision"
-              | "precedence" | "collect" | "default"
+              | "precedence" | "collect" | "default" | "conflict"
               | "and" | "or" | "xor" | "not" | "in" | "all" | "any" | "filter"
               | "one" | "exclusive" | "has" | "like" | "matches" | "present"
               | "true" | "false" | "outcome"
@@ -172,6 +172,7 @@ KindHeader   ::= "kind" Ident "version" Int ( "," "accepts" ":" Int )?   /* "acc
 
 KindStmt     ::= TypeDecl | InputDecl | FnDecl | DecisionDecl
                | PrecedenceDecl | ExclusiveDecl | CollectDecl | DefaultDecl
+               | ConflictDecl
 
 TypeDecl     ::= "type" Ident "{" FieldDecl* "}"
 FieldDecl    ::= Name ":" Type
@@ -184,13 +185,14 @@ ExclusiveDecl ::= "exclusive" Outcome ( "," Outcome )+
 Outcome      ::= Ident ( "." Ident )?                 /* a decision, or one of its reasons */
 CollectDecl  ::= "collect" ( "one" | "all" )
 DefaultDecl  ::= "default" Call
+ConflictDecl ::= "conflict" Call
 ```
 
 ::: warning Planned
 `type Version ordered`, for [host-ordered types](/project/planned/#host-ordered-types), doesn't parse yet.
 :::
 
-That a kind declares `collect` once, that `collect one` comes with a `precedence` over decisions, that `precedence` names every decision (or every reason of its decision) once, that an `ExclusiveDecl` names declared outcomes, and that defaults are constants are semantic rules, checked after parsing. See [Kind files](/reference/kind-files/).
+That a kind declares `collect` once, that `collect one` comes with a `precedence` over decisions, that `precedence` names every decision (or every reason of its decision) once, that an `ExclusiveDecl` names declared outcomes, that defaults, and the payloads of `default` and `conflict`, are constants, and that only a `collect one` kind declares a `conflict`, at most once, are semantic rules, checked after parsing. See [Kind files](/reference/kind-files/).
 
 ## Types
 
@@ -316,7 +318,7 @@ Newlines never end anything. Every top-level statement starts with one of these:
 | --- | --- |
 | Policy | `policy`, `use`, `param`, `let`, `pub`, `when`, `assert`, or an identifier followed by `(` (a decision constructor or policy invocation) |
 | Module | `module`, `use`, `let`, `pub` |
-| Kind | `kind`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default` |
+| Kind | `kind`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default`, `conflict` |
 
 - None of those keywords can continue an expression, and an expression never continues with a bare identifier. When the parser is inside a `let` expression and meets `let`, `when` or `guardrails(`, the expression is over.
 - A header keyword or a `---` ends the whole document the same way.
