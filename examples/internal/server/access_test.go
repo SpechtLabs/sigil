@@ -37,13 +37,13 @@ func TestGrants(t *testing.T) {
 			},
 		},
 		{
-			name: "break glass and platform conflict", body: accessRequest("bea", "", "payments", "production", "platform", "break-glass"), wantStatus: http.StatusConflict, wantGrants: []string{},
+			name: "break glass and platform conflict", body: accessRequest("bea", "", "payments", "production", "platform", "break-glass"), wantStatus: http.StatusInternalServerError, wantGrants: []string{},
 			check: func(t *testing.T, resp server.AccessResponse) {
 				assertConflict(t, resp.Conflict, resp.Error)
 			},
 		},
 		{
-			name: "separation of duties", body: accessRequest("cai", "", "payments", "production", "payments", "compliance"), wantStatus: http.StatusUnprocessableEntity, wantGrants: []string{},
+			name: "separation of duties", body: accessRequest("cai", "", "payments", "production", "payments", "compliance"), wantStatus: http.StatusInternalServerError, wantGrants: []string{},
 			check: func(t *testing.T, resp server.AccessResponse) {
 				if len(resp.Asserts) != 1 || resp.Asserts[0].Reason != "sod_auditor_deployer" || !strings.Contains(resp.Asserts[0].Location, "access/guardrails.sigil") {
 					t.Errorf("asserts = %+v, want sod_auditor_deployer in access/guardrails.sigil", resp.Asserts)

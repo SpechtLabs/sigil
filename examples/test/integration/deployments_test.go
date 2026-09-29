@@ -53,23 +53,23 @@ var _ = Describe("Evaluating a deployment", func() {
 			Expect(out.Access.Grants).To(BeEmpty())
 		}
 
-		It("answers 422 for an actor without a name", func() {
+		It("answers 422 for an actor without a name, a failed input assert the caller can fix", func() {
 			resp, out := shared.client.Deploy(Default, fixture.TeamCheckout, fixture.OwnerRequest(fixture.ActorName("")))
 
-			fixture.ExpectAsserts(Default, resp, out.Asserts, out.Error,
+			fixture.ExpectAsserts(Default, resp, http.StatusUnprocessableEntity, out.Asserts, out.Error,
 				fixture.AssertEntry{Reason: "named_actor", Policy: "access.guardrails"})
 			expectFallback(out, fixture.TeamCheckout)
 		})
 
-		It("answers 422 for an actor who would audit their own deploys", func() {
+		It("answers 500 for an actor who would audit their own deploys, a failed outcome assert", func() {
 			resp, out := shared.client.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(fixture.ComplianceMember...)))
 
-			fixture.ExpectAsserts(Default, resp, out.Asserts, out.Error,
+			fixture.ExpectAsserts(Default, resp, http.StatusInternalServerError, out.Asserts, out.Error,
 				fixture.AssertEntry{Reason: "sod_auditor_deployer", Policy: "access.guardrails"})
 			expectFallback(out, fixture.TeamPayments)
 		})
 
-		It("answers 409 naming both sides when admin and release manager collide", func() {
+		It("answers 500 naming both sides when admin and release manager collide", func() {
 			resp, out := shared.client.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(fixture.BreakGlassPlatform...)))
 
 			fixture.ExpectBreakGlassConflict(Default, resp, out.Conflict, out.Error)
@@ -138,7 +138,7 @@ var _ = Describe("Asking for access", func() {
 		Expect(out.Trace[1].Payload).To(MatchJSON(`{"ttl": "8h"}`))
 	})
 
-	It("answers 409 naming both sides when admin and release manager collide", func() {
+	It("answers 500 naming both sides when admin and release manager collide", func() {
 		resp, out := shared.client.Access(Default, fixture.AccessFor(fixture.BreakGlassPlatform...))
 
 		fixture.ExpectBreakGlassConflict(Default, resp, out.Conflict, out.Error)
@@ -146,10 +146,10 @@ var _ = Describe("Asking for access", func() {
 		Expect(out.Error.Advice).To(ContainElement(ContainSubstring("no role is granted")))
 	})
 
-	It("answers 422 when separation of duties fails, and shows the roles that would have come together", func() {
+	It("answers 500 when separation of duties fails, and shows the roles that would have come together", func() {
 		resp, out := shared.client.Access(Default, fixture.AccessFor(fixture.ComplianceMember...))
 
-		fixture.ExpectAsserts(Default, resp, out.Asserts, out.Error,
+		fixture.ExpectAsserts(Default, resp, http.StatusInternalServerError, out.Asserts, out.Error,
 			fixture.AssertEntry{Reason: "sod_auditor_deployer", Policy: "access.guardrails"})
 		Expect(out.Grants).To(BeEmpty())
 		Expect(out.Trace).To(ContainElements(
@@ -161,7 +161,7 @@ var _ = Describe("Asking for access", func() {
 	It("answers 422 for an actor without a name", func() {
 		resp, out := shared.client.Access(Default, fixture.AccessFor(fixture.TeamPayments).Named(""))
 
-		fixture.ExpectAsserts(Default, resp, out.Asserts, out.Error,
+		fixture.ExpectAsserts(Default, resp, http.StatusUnprocessableEntity, out.Asserts, out.Error,
 			fixture.AssertEntry{Reason: "named_actor", Policy: "access.guardrails"})
 		// An input assert runs before any rule, so no candidate exists.
 		Expect(out.Trace).To(BeEmpty())
@@ -198,8 +198,8 @@ var _ = Describe("The README's example requests", func() {
 		Entry("the unnamed actor's failed assert", "unnamed-actor.json", fixture.DeploymentsPath(fixture.TeamCheckout), http.StatusUnprocessableEntity),
 		Entry("a member's grants", "access-member.json", fixture.PathAccessGrants, http.StatusOK),
 		Entry("an outsider's empty outcome", "access-outsider.json", fixture.PathAccessGrants, http.StatusForbidden),
-		Entry("the break-glass conflict", "access-break-glass-platform.json", fixture.PathAccessGrants, http.StatusConflict),
-		Entry("the compliance member's failed assert", "access-compliance-member.json", fixture.PathAccessGrants, http.StatusUnprocessableEntity),
+		Entry("the break-glass conflict", "access-break-glass-platform.json", fixture.PathAccessGrants, http.StatusInternalServerError),
+		Entry("the compliance member's failed assert", "access-compliance-member.json", fixture.PathAccessGrants, http.StatusInternalServerError),
 	)
 })
 

@@ -30,9 +30,11 @@ type accessStage struct {
 
 // grants handles POST /api/v1/access/grants: it evaluates the access policy
 // on its own and answers with the roles it grants. The status says whether
-// anything was granted: 200 when at least one role was, 403 when none was,
-// 409 when two grants the kind declares exclusive fired, 422 when an assert
-// failed.
+// anything was granted: 200 when at least one role was, 403 when none was.
+// A failed evaluation grants nothing and answers with the status classify
+// picks: 422 for a failed input assert, the caller's to fix, and 500 for a
+// conflict, a failed outcome assert or a runtime error, which are the
+// policy's.
 func (s *Server) grants(c *gin.Context) {
 	snap, ok := s.access.Snapshot()
 	if !ok {
@@ -67,14 +69,22 @@ func (s *Server) grants(c *gin.Context) {
 	}
 
 	if st.err != nil {
-		f := classify(st.policy, st.err, "no role is granted; act as if grants were empty")
+		f := classify(st.policy, st.err, len(st.trace) > 0, "no role is granted; act as if grants were empty")
 		if f.kind == "" {
-			writeError(c, http.StatusInternalServerError, f.herr)
+			writeError(c, f.status, f.herr)
 			return
 		}
 		s.metrics.ObserveEvaluationError(telemetry.StageAccess, req.Team, f.kind)
+		ctx := c.Request.Context()
+		telemetry.FromContext(ctx).LogContext(ctx, f.logLevel(), "access evaluation failed, granting nothing",
+			zap.String("team", req.Team),
+			zap.String("policy", st.policy),
+			zap.String("error_kind", f.kind),
+			zap.Int("status", f.status),
+			zap.Error(f.herr),
+		)
 		resp.Error, resp.Asserts, resp.Conflict = NewErrorResponse(f.herr), f.asserts, f.conflict
-		c.JSON(accessFailureStatus(f.kind), resp)
+		c.JSON(f.status, resp)
 		return
 	}
 
@@ -142,16 +152,6 @@ func (s *Server) runAccess(ctx context.Context, p *policy.Policy[access.Input], 
 		zap.Duration("took", took),
 	)
 	return st
-}
-
-// accessFailureStatus maps a failed access evaluation to its status: 409 for
-// a conflict, which is a defect in the policy the requestor can't fix, and
-// 422 for a failed assert or a runtime error.
-func accessFailureStatus(kind string) int {
-	if kind == telemetry.ErrorKindConflict {
-		return http.StatusConflict
-	}
-	return http.StatusUnprocessableEntity
 }
 
 // grantedRoles lists the roles of grants, for a log line.

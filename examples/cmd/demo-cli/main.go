@@ -21,8 +21,9 @@
 // and source location.
 //
 // Every response is printed before the exit status is decided. A 2xx status
-// exits 0. A refusal, 403, 409 or 422, exits 2, so a script can tell a policy
-// saying no from a failure, which exits 1.
+// exits 0. A refusal exits 2, so a script can tell a policy saying no from a
+// failure, which exits 1. A refusal is a 403, a 422, or a 500 whose body
+// carries a failed evaluation's fallback; a 500 without one exits 1.
 package main
 
 import (

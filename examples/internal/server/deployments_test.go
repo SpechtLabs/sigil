@@ -1,7 +1,10 @@
 package server_test
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -26,6 +29,31 @@ guardrails()
 
 production(approvers: ["checkout-leads"], tiers: ["standard"])
 `
+
+// checkoutWith is checkout's policy with extra appended, so a test can make
+// the deploy stage fail in a way the shipped policies never do.
+func checkoutWith(extra string) map[string]string {
+	return map[string]string{"checkout/production.sigil": `policy checkout.production: DeployApproval@1
+
+use deploy.guardrails
+use deploy.production
+
+assert("named_actor", actor.name != "")
+
+guardrails()
+
+production(approvers: ["checkout-leads"], tiers: ["standard"])
+
+` + extra}
+}
+
+// checkoutOwner edits the default request into checkout's owner shipping a
+// release that soaked for a day, which checkout's policy sends to review.
+func checkoutOwner(r, actor map[string]any) {
+	actor["groups"] = []string{"checkout"}
+	r["service"].(map[string]any)["owners"] = []string{"checkout"}
+	r["release"] = map[string]any{"soak": "24h", "hotfix": false}
+}
 
 func TestDeployments(t *testing.T) {
 	tests := []struct {
@@ -144,7 +172,7 @@ func TestDeployments(t *testing.T) {
 			edit: func(_, actor map[string]any) {
 				actor["groups"] = []string{"payments", "compliance"}
 			},
-			wantStatus: http.StatusUnprocessableEntity,
+			wantStatus: http.StatusInternalServerError,
 			wantDec:    "deny",
 			wantReason: "no_rule_matched",
 			wantRoles:  []string{},
@@ -160,7 +188,7 @@ func TestDeployments(t *testing.T) {
 			edit: func(_, actor map[string]any) {
 				actor["groups"] = []string{"platform", "break-glass"}
 			},
-			wantStatus: http.StatusConflict,
+			wantStatus: http.StatusInternalServerError,
 			wantDec:    "deny",
 			wantReason: "no_rule_matched",
 			wantRoles:  []string{},
@@ -213,6 +241,134 @@ func TestDeployments(t *testing.T) {
 				t.Errorf("grants = %v, want %v", got, tt.wantRoles)
 			}
 			tt.check(t, resp)
+		})
+	}
+}
+
+// TestDeployStageFailures breaks checkout's policy in each way a deploy
+// evaluation can fail after the access stage passed. A failed input assert
+// is the caller's and answers 422; everything else is the policy's and
+// answers 500. Every answer carries the fallback and the grants.
+func TestDeployStageFailures(t *testing.T) {
+	tests := []struct {
+		name        string
+		extra       string // appended to checkout's policy
+		wantStatus  int
+		wantKind    string
+		wantMessage string
+		wantAssert  string
+		wantTrace   bool // whether the trace holds the candidates the failure saw
+		wantSides   int  // candidates in the conflict block
+	}{
+		{
+			name:        "a failed input assert is the caller's",
+			extra:       `assert("no_hotfix", not release.hotfix)`,
+			wantStatus:  http.StatusUnprocessableEntity,
+			wantKind:    "assertion",
+			wantMessage: "the request fails checkout.production's asserts: no_hotfix",
+			wantAssert:  "no_hotfix",
+		},
+		{
+			name:        "a failed outcome assert is the policy's",
+			extra:       `assert("no_reviews", review not in outcome)`,
+			wantStatus:  http.StatusInternalServerError,
+			wantKind:    "assertion",
+			wantMessage: "the outcome of checkout.production fails its asserts: no_reviews",
+			wantAssert:  "no_reviews",
+			wantTrace:   true,
+		},
+		{
+			name:        "a runtime error is the policy's",
+			extra:       "when actor.regions[9] == \"eu\" {\n  deny(not_eligible)\n}",
+			wantStatus:  http.StatusInternalServerError,
+			wantKind:    "runtime",
+			wantMessage: "checkout.production can't be evaluated against this request",
+		},
+		{
+			name:        "two reviews with different approvers are the policy's conflict",
+			extra:       "when true {\n  review(service_owner, approvers: [\"security-leads\"])\n}",
+			wantStatus:  http.StatusInternalServerError,
+			wantKind:    "conflict",
+			wantMessage: "checkout.production produced decisions that can't stand together",
+			wantTrace:   true,
+			wantSides:   2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newEnv(t, envOptions{deployLoaded: true, accessLoaded: true, teamOverrides: checkoutWith(tt.extra + "\n")})
+			h := env.srv.Handler()
+			rec := do(h, http.MethodPost, "/api/v1/teams/checkout/deployments", deployRequest(func(r, actor map[string]any) {
+				checkoutOwner(r, actor)
+				r["release"].(map[string]any)["hotfix"] = true
+			}))
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d; body %s", rec.Code, tt.wantStatus, rec.Body)
+			}
+			var resp server.DecisionResponse
+			decode(t, rec, &resp)
+
+			if resp.Decision != "deny" || resp.Reason != "no_rule_matched" {
+				t.Errorf("decision = %s(%s), want the fallback deny(no_rule_matched)", resp.Decision, resp.Reason)
+			}
+			if got := grantStrings(resp.Access.Grants); !slices.Equal(got, []string{"reader team_member", "deployer team_member 8h"}) {
+				t.Errorf("grants = %v, want the team member's", got)
+			}
+			if resp.Error == nil || !strings.Contains(resp.Error.Message, tt.wantMessage) {
+				t.Errorf("error = %+v, want a message containing %q", resp.Error, tt.wantMessage)
+			}
+			if tt.wantAssert != "" && (len(resp.Asserts) != 1 || resp.Asserts[0].Reason != tt.wantAssert) {
+				t.Errorf("asserts = %+v, want %s", resp.Asserts, tt.wantAssert)
+			}
+			if (len(resp.Trace) > 0) != tt.wantTrace {
+				t.Errorf("trace = %+v, want candidates %v", resp.Trace, tt.wantTrace)
+			}
+			if resp.Conflict != nil && len(resp.Conflict.Candidates) != tt.wantSides || resp.Conflict == nil && tt.wantSides > 0 {
+				t.Errorf("conflict = %+v, want %d sides", resp.Conflict, tt.wantSides)
+			}
+
+			body := do(h, http.MethodGet, "/metrics", "").Body.String()
+			if want := `deploygate_evaluation_errors_total{kind="` + tt.wantKind + `",stage="deploy",team="checkout"} 1`; !strings.Contains(body, want) {
+				t.Errorf("/metrics doesn't contain %s", want)
+			}
+		})
+	}
+}
+
+// TestCanceledRequest sends requests whose context is already canceled, so
+// Eval fails without a policy failure to classify. That's no one's decision:
+// it answers 500 with the error model and no fallback, and counts no
+// evaluation error.
+func TestCanceledRequest(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		body string
+	}{
+		{name: "deployment", path: "/api/v1/teams/payments/deployments", body: deployRequest(nil)},
+		{name: "access grants", path: "/api/v1/access/grants", body: accessRequest("ada", "", "payments", "production", "payments")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newEnv(t, loaded).srv.Handler()
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want 500; body %s", rec.Code, rec.Body)
+			}
+			var body map[string]json.RawMessage
+			decode(t, rec, &body)
+			if _, ok := body["error"]; !ok || len(body) != 1 {
+				t.Errorf("body %s, want only the error model, no fallback", rec.Body)
+			}
+			if metrics := do(h, http.MethodGet, "/metrics", "").Body.String(); strings.Contains(metrics, "deploygate_evaluation_errors_total{") {
+				t.Error("a canceled request counted as an evaluation error")
+			}
 		})
 	}
 }
@@ -293,7 +449,7 @@ func TestDeploymentMetrics(t *testing.T) {
 		`deploygate_policy_last_reload_successful{kind="DeployApproval"} 1`,
 		`deploygate_policy_last_reload_successful{kind="AccessGrant"} 1`,
 		`deploygate_requests_total{code="202",method="POST",url="/api/v1/teams/:team/deployments"} 1`,
-		`deploygate_requests_total{code="409",method="POST",url="/api/v1/teams/:team/deployments"} 1`,
+		`deploygate_requests_total{code="500",method="POST",url="/api/v1/teams/:team/deployments"} 1`,
 		`go_goroutines`,
 		`process_cpu_seconds_total`,
 	} {
@@ -348,11 +504,16 @@ func TestDeploymentSpans(t *testing.T) {
 		wantRoles  []string
 		wantDeploy bool
 		wantError  bool
+		// wantServerError is whether the HTTP server span is an error,
+		// which otelgin sets for a 5xx only: a policy's failure is one, the
+		// caller's failed input assert isn't.
+		wantServerError bool
 	}{
 		{name: "team member", wantGrants: 2, wantRoles: []string{"deployer"}, wantDeploy: true},
 		{name: "admin", edit: func(_, actor map[string]any) { actor["clearance"] = "admin" }, wantGrants: 3, wantRoles: []string{"deployer", "release_manager"}, wantDeploy: true},
 		{name: "outsider", edit: func(_, actor map[string]any) { actor["groups"] = []string{"marketing"} }, wantRoles: []string{}, wantDeploy: true},
-		{name: "conflict", edit: func(_, actor map[string]any) { actor["groups"] = []string{"platform", "break-glass"} }, wantError: true},
+		{name: "conflict", edit: func(_, actor map[string]any) { actor["groups"] = []string{"platform", "break-glass"} }, wantError: true, wantServerError: true},
+		{name: "unnamed actor", edit: func(_, actor map[string]any) { actor["name"] = "" }, wantError: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -384,6 +545,13 @@ func TestDeploymentSpans(t *testing.T) {
 			}
 			if (accessSpan.Status.Code.String() == "Error") != tt.wantError {
 				t.Errorf("access span status = %v, want error %v", accessSpan.Status, tt.wantError)
+			}
+			serverSpan, ok := findSpan(spans, "POST /api/v1/teams/:team/deployments")
+			if !ok {
+				t.Fatalf("no HTTP server span among %d spans", len(spans))
+			}
+			if (serverSpan.Status.Code.String() == "Error") != tt.wantServerError {
+				t.Errorf("server span status = %v, want error %v", serverSpan.Status, tt.wantServerError)
 			}
 
 			evalSpan, ok := findSpan(spans, "deploygate.evaluate")
@@ -422,7 +590,7 @@ func grantStrings(grants []server.GrantResult) []string {
 	return out
 }
 
-// assertConflict checks a 409's conflict names both sides.
+// assertConflict checks a conflict's answer names both sides.
 func assertConflict(t *testing.T, conflict *server.ConflictResult, herr *server.ErrorResponse) {
 	t.Helper()
 	if conflict == nil || len(conflict.Candidates) != 2 {

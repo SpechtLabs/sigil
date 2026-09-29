@@ -108,7 +108,7 @@ mise run demo access --file requests/access-member.json
 
 Add `--json` for the full API response, including error responses, on stdout. The detailed examples below use it to show the wire format; omit it for the readable summary. No JSON formatting tool is needed.
 
-The binary exits `0` for approvals, review requests, access grants and successful operations; `2` for denials, empty grants, conflicts and failed evaluations; and `1` for usage, connection and other HTTP errors. A review still requires approval from the named approvers. For scripts that need those exact exit codes, build with `mise run build` and use `./bin/demo-cli`. The `mise run demo` task uses `go run`, which reports any nonzero child exit as its own exit code `1`.
+The binary exits `0` for approvals, review requests, access grants and successful operations; `2` for denials, empty grants and failed evaluations, conflicts included, whether they answer `422` or `500`; and `1` for usage, connection and other HTTP errors, a `500` without a decision among them. A review still requires approval from the named approvers. For scripts that need those exact exit codes, build with `mise run build` and use `./bin/demo-cli`. The `mise run demo` task uses `go run`, which reports any nonzero child exit as its own exit code `1`.
 
 The integration suite checks the request files against the service, and the CLI tests run every scenario through the real server in process.
 
@@ -163,11 +163,13 @@ The HTTP status encodes the decision, so a client can act on the status alone:
 | `200 OK` | `approve`, with the `bake` time in the payload |
 | `202 Accepted` | `review`, with the `approvers` in the payload |
 | `403 Forbidden` | `deny` |
-| `409 Conflict` | The access policy granted roles the kind declares exclusive. No role is granted, the deploy policy doesn't run, the decision fields hold the fallback `deny` / `no_rule_matched`, and `conflict` names both sides |
-| `422 Unprocessable Entity` | An evaluation failed, usually on an assert. The decision fields hold the kind's default, `deny` / `no_rule_matched`, `asserts` lists what failed and `error` says what went wrong |
+| `422 Unprocessable Entity` | The request failed an input assert, in either stage: the policy declared it invalid before any rule ran, and the caller has to fix it. The decision fields hold the kind's default, `deny` / `no_rule_matched`, `asserts` lists what failed and `error` says what went wrong |
+| `500 Internal Server Error` | The policy failed on a valid request, in either stage: a conflict, such as the access policy granting two roles the kind declares exclusive, a failed outcome assert, or a runtime error. The body is the same as for `422`, with `conflict` naming both sides of a conflict; the policy's owners have to fix it, not the caller |
 | `400 Bad Request` | The body isn't valid JSON, has an unknown field such as `roles`, or has a duration that doesn't parse, is too long for a Go duration or, for `release.soak`, is negative |
 | `404 Not Found` | deploygate doesn't serve that team |
 | `503 Service Unavailable` | The two bundles aren't both loaded yet |
+
+A failed evaluation is `422` or `500` by whose fault it is, not by which stage it happened in. A `4xx` tells the client to change its request, and most SLOs leave `4xx` out of the error budget, so a conflict in the policy answered with a `4xx` would fail every affected request without ever showing up as deploygate's error. When a `500` comes from a failed evaluation, its body carries the fallback decision and the details; a `500` without a `policy` field in the body, such as a failed reload, isn't an evaluation.
 
 ### A deny
 
@@ -326,7 +328,7 @@ The same body with an empty `grants` list comes back as `403 Forbidden` when not
 {"policy": "access.main", "team": "payments", "environment": "production", "grants": [], "trace": []}
 ```
 
-A break-glass member who is also in `platform` trips the kind's `exclusive` line, and the answer is `409 Conflict` naming both sides:
+A break-glass member who is also in `platform` trips the kind's `exclusive` line, and the answer is `500 Internal Server Error` naming both sides:
 
 ```bash
 mise run demo access break-glass-platform --json
@@ -344,7 +346,7 @@ Excerpt from the response:
 }
 ```
 
-No role is granted, and the error's advice says so: act as if `grants` were empty, and tell the policy's owners, because a conflict is a defect in the policy rather than the request. A payments engineer who is also in `compliance` fails the separation-of-duties assert instead, with `422 Unprocessable Entity`:
+No role is granted, and the error's advice says so: act as if `grants` were empty, and tell the policy's owners, because a conflict is a defect in the policy rather than the request. That's also why it's a `500`: the request was fine. A payments engineer who is also in `compliance` fails the separation-of-duties assert instead. It's an outcome assert, which judges the roles the policy granted rather than the request, so it's a `500` too:
 
 ```bash
 mise run demo access compliance-member --json
@@ -362,7 +364,7 @@ Excerpt from the response:
 }
 ```
 
-The trace still shows the three roles that fired, so it's clear which two couldn't stand together. Both failures end a deployment the same way, before the deploy policy runs: the deployments endpoint answers `409` or `422` with the fallback `deny` and an empty `access.grants`.
+The trace still shows the three roles that fired, so it's clear which two couldn't stand together. Both failures end a deployment the same way, before the deploy policy runs: the deployments endpoint answers `500` with the fallback `deny` and an empty `access.grants`. An actor without a name fails the access guardrails' input assert instead, and that's the caller's to fix, so both endpoints answer it with `422`.
 
 ## Watch it reload
 
@@ -439,7 +441,7 @@ DURATION=15m RATE=100 mise run loadtest
 RATE=200 mise run loadtest-stress
 ```
 
-The smoke test sends each of eight request cases once. The default load test schedules 100 requests per second for two minutes. Stress mode ramps from `RATE` to twice that rate, then five times it, and back over three minutes. Requests rotate evenly through deployment approval, review, denial and a failed input assert, then access grants, no grants, an exclusive-role conflict and a separation-of-duties assert. Each iteration checks both the HTTP status and the policy result. Expected `403`, `409` and `422` responses count as successful test cases.
+The smoke test sends each of eight request cases once. The default load test schedules 100 requests per second for two minutes. Stress mode ramps from `RATE` to twice that rate, then five times it, and back over three minutes. Requests rotate evenly through deployment approval, review, denial and a failed input assert, then access grants, no grants, an exclusive-role conflict and a separation-of-duties assert. Each iteration checks both the HTTP status and the policy result. Expected `403`, `422` and `500` responses count as successful test cases. The conflict and the separation-of-duties case are policy failures on purpose, so a quarter of every run answers `500`; a real service would alert on that rate, and in this example it only shows that the service classifies them.
 
 The tasks start the stack, run the pinned k6 image, send metrics to Mimir and save a JSON report under `results/<run-id>.json`. Reports include the scenario, revision, working-tree status, Docker resource allocation and threshold results; `results/` is ignored by Git. Set a unique `RUN_ID` to make a run easy to select in Grafana. A finished run remains visible in its time range, although its live series become stale.
 
@@ -607,8 +609,8 @@ The flags are described in the [CLI reference](../docs/reference/cli.md).
 There are four layers, from fastest to slowest. `mise run test` runs the first three with `go test -race ./...`, and vets the fourth; none of them needs Docker.
 
 - **Unit tests** are table-driven `testing` tests next to the code in `internal/` and `cmd/demo-cli`. One more sits next to the Grafana dashboard and checks that its JSON parses and that no two panels overlap.
-- **Policy tests** run the same `*_test.yaml` files `sigilc test` runs, from `go test`, with `policytest.Run` and the real kinds. `internal/deploy/kind_test.go` and `internal/access/kind_test.go` load them the way the service does, with the guardrails required from `policies/platform/deploy` and `policies/platform/access`, and `policytest.Schema` fails when an exported kind file is stale. A test file can't expect a conflict, so the break-glass conflict is covered by the integration suite's `409`; [Testing a conflict](../docs/reference/cli.md#testing-a-conflict) shows how to test it against `Eval` directly, with plain `testing` and with Ginkgo.
-- **Integration tests** in `test/integration` are a Ginkgo suite that wires the real store and server the way `cmd/deploygate` does and serves them with `httptest`. Spans go to an in-memory exporter and metrics to a fresh registry per spec, so the specs assert exact values: every span attribute, candidate and grant event, each counter after a known set of requests. It covers every grant of the access endpoint, the `403` of an empty outcome, the `409` conflict with both candidates named and the `422` separation-of-duties assert, on both endpoints. Fake clocks pin `loaded_at` and fire polls by hand, so the reload specs cover polling, `SIGHUP` and last-known-good for both bundles without waiting, on private copies of `policies/teams` and `policies/access`. The suite also checks that the embedded bundles decide every case the same way as the directories they were built from, and it posts every file under `requests/` and checks that each answers with the status this walkthrough shows.
+- **Policy tests** run the same `*_test.yaml` files `sigilc test` runs, from `go test`, with `policytest.Run` and the real kinds. `internal/deploy/kind_test.go` and `internal/access/kind_test.go` load them the way the service does, with the guardrails required from `policies/platform/deploy` and `policies/platform/access`, and `policytest.Schema` fails when an exported kind file is stale. A test file can't expect a conflict, so the break-glass conflict is covered by the integration suite's `500`; [Testing a conflict](../docs/reference/cli.md#testing-a-conflict) shows how to test it against `Eval` directly, with plain `testing` and with Ginkgo.
+- **Integration tests** in `test/integration` are a Ginkgo suite that wires the real store and server the way `cmd/deploygate` does and serves them with `httptest`. Spans go to an in-memory exporter and metrics to a fresh registry per spec, so the specs assert exact values: every span attribute, candidate and grant event, each counter after a known set of requests. It covers every grant of the access endpoint, the `403` of an empty outcome, the conflict with both candidates named and the separation-of-duties assert, each a `500`, and the unnamed actor's `422`, on both endpoints. Fake clocks pin `loaded_at` and fire polls by hand, so the reload specs cover polling, `SIGHUP` and last-known-good for both bundles without waiting, on private copies of `policies/teams` and `policies/access`. The suite also checks that the embedded bundles decide every case the same way as the directories they were built from, and it posts every file under `requests/` and checks that each answers with the status this walkthrough shows.
 - **End-to-end tests** in `test/e2e` are a Ginkgo suite behind the `e2e` build tag that talks to the compose stack over HTTP only, and checks Mimir metrics, Tempo spans, Loki logs with resolvable trace IDs, Pyroscope profiles and all four Grafana datasources.
 
 Both suites run the same table of requests and expected decisions from `test/internal/fixture`, so the in-process server and the container can't drift apart. Run the end-to-end suite with:

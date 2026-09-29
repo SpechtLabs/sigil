@@ -72,8 +72,8 @@ var _ = Describe("Metrics", func() {
 			// fallback's deny(no_rule_matched) included.
 			Expect(after.Sum(fixture.MetricDecisions, nil)).To(Equal(before.Sum(fixture.MetricDecisions, nil)))
 		},
-		Entry("a failed separation-of-duties assert", "assertion", fixture.ComplianceMember, http.StatusUnprocessableEntity),
-		Entry("admin and release manager in one outcome", "conflict", fixture.BreakGlassPlatform, http.StatusConflict),
+		Entry("a failed separation-of-duties assert", "assertion", fixture.ComplianceMember, http.StatusInternalServerError),
+		Entry("admin and release manager in one outcome", "conflict", fixture.BreakGlassPlatform, http.StatusInternalServerError),
 	)
 
 	It("counts successful reloads and stamps each kind's time and health", func() {

@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	humane "github.com/sierrasoftworks/humane-errors-go"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/spechtlabs/sigil/pkg/policy"
 
@@ -19,12 +20,14 @@ import (
 )
 
 // failure is a failed policy evaluation, classified: the kind of error for
-// the metrics, the error with advice for the response, and the asserts or
-// conflicting candidates that explain it. kind is empty for an error that
-// isn't the policy's, such as a canceled request, which answers 500.
+// the metrics, the HTTP status that says whose fault it is, the error with
+// advice for the response, and the asserts or conflicting candidates that
+// explain it. kind is empty for an error that isn't the policy's, such as a
+// canceled request, which answers 500 without a decision.
 type failure struct {
 	herr     humane.Error
 	kind     string
+	status   int
 	asserts  []AssertResult
 	conflict *ConflictResult
 }
@@ -85,10 +88,28 @@ func (s *Server) readyz(c *gin.Context) {
 	c.JSON(http.StatusOK, StatusResponse{Status: "ready", LoadedAt: &loadedAt})
 }
 
-// classify names the kind of evaluation error for the metrics and wraps it
-// with advice; fallback says what the response means for the client, which
-// differs between the stages and endpoints.
-func classify(policyName string, err error, fallback string) failure {
+// classify names the kind of evaluation error for the metrics, picks the
+// status that says whose fault it is, and wraps the error with advice.
+// Both stages and both endpoints answer through it, so a failure has the
+// same status wherever it happens:
+//
+//   - A failed input assert is the caller's: the policy declared the input
+//     invalid before any rule ran. 422.
+//   - A failed outcome assert, a conflict and a runtime error are the
+//     policy's or the host's: the input was acceptable, and what the policy
+//     made of it wasn't. 500, so the failure counts against deploygate's
+//     error budget instead of reading as a client mistake.
+//   - Anything else, such as a canceled request, isn't the policy's at all.
+//     500, and kind is empty, so no decision is rendered.
+//
+// fired says whether any rule produced a candidate before the evaluation
+// failed. The library doesn't say which assert phase failed, but no rule
+// runs once an input assert fails, so a failed assert with candidates can
+// only be an outcome assert. An outcome assert that fails with nothing
+// fired can't be told apart from an input assert, and answers 422 too.
+// fallback says what the response means for the client, which differs
+// between the stages and endpoints.
+func classify(policyName string, err error, fired bool, fallback string) failure {
 	var (
 		assertErr   *policy.AssertionError
 		runtimeErr  *policy.RuntimeError
@@ -96,23 +117,11 @@ func classify(policyName string, err error, fallback string) failure {
 	)
 	switch {
 	case errors.As(err, &assertErr):
-		asserts := assertResults(assertErr)
-		reasons := make([]string, 0, len(asserts))
-		for _, a := range asserts {
-			reasons = append(reasons, a.Reason)
-		}
-		return failure{
-			kind: telemetry.ErrorKindAssertion,
-			herr: humane.Wrap(err,
-				fmt.Sprintf("the request fails %s's asserts: %s", policyName, strings.Join(reasons, ", ")),
-				fallback,
-				"fix the request so the asserts listed in asserts hold, then ask again",
-			),
-			asserts: asserts,
-		}
+		return assertFailure(policyName, err, assertErr, fired, fallback)
 	case errors.As(err, &runtimeErr):
 		return failure{
-			kind: telemetry.ErrorKindRuntime,
+			kind:   telemetry.ErrorKindRuntime,
+			status: http.StatusInternalServerError,
 			herr: humane.Wrap(err,
 				fmt.Sprintf("%s can't be evaluated against this request: %s at %s", policyName, runtimeErr.Message, runtimeErr.Position),
 				fallback,
@@ -121,7 +130,8 @@ func classify(policyName string, err error, fallback string) failure {
 		}
 	case errors.As(err, &conflictErr):
 		return failure{
-			kind: telemetry.ErrorKindConflict,
+			kind:   telemetry.ErrorKindConflict,
+			status: http.StatusInternalServerError,
 			herr: humane.Wrap(err,
 				fmt.Sprintf("%s produced decisions that can't stand together: %s", policyName, conflictErr.Message),
 				fallback,
@@ -130,8 +140,42 @@ func classify(policyName string, err error, fallback string) failure {
 			conflict: conflictResult(conflictErr),
 		}
 	default:
-		return failure{herr: humane.Wrap(err, "evaluating "+policyName+" failed",
+		return failure{status: http.StatusInternalServerError, herr: humane.Wrap(err, "evaluating "+policyName+" failed",
 			"retry the request; if it keeps failing, check the deploygate logs")}
+	}
+}
+
+// assertFailure classifies a failed assert: the caller's input when no rule
+// had fired, 422, and the policy's outcome when one had, 500. See classify.
+func assertFailure(policyName string, err error, assertErr *policy.AssertionError, fired bool, fallback string) failure {
+	asserts := assertResults(assertErr)
+	reasons := make([]string, 0, len(asserts))
+	for _, a := range asserts {
+		reasons = append(reasons, a.Reason)
+	}
+	list := strings.Join(reasons, ", ")
+
+	if !fired {
+		return failure{
+			kind:   telemetry.ErrorKindAssertion,
+			status: http.StatusUnprocessableEntity,
+			herr: humane.Wrap(err,
+				fmt.Sprintf("the request fails %s's asserts: %s", policyName, list),
+				fallback,
+				"fix the request so the asserts listed in asserts hold, then ask again",
+			),
+			asserts: asserts,
+		}
+	}
+	return failure{
+		kind:   telemetry.ErrorKindAssertion,
+		status: http.StatusInternalServerError,
+		herr: humane.Wrap(err,
+			fmt.Sprintf("the outcome of %s fails its asserts: %s", policyName, list),
+			fallback,
+			"an outcome assert checks what the policy decided, which the request can't change; tell the policy's owners",
+		),
+		asserts: asserts,
 	}
 }
 
@@ -196,6 +240,16 @@ func errNotLoaded() humane.Error {
 	return humane.New("no policy bundle is loaded yet",
 		"wait until GET /readyz reports ready",
 		"if it never does, the deploygate logs name the policy that fails to compile")
+}
+
+// logLevel is the level a classified evaluation failure is logged at: a
+// warning when it's the caller's, a 4xx, and an error when it's the
+// policy's, a 5xx, the same line writeError draws.
+func (f failure) logLevel() zapcore.Level {
+	if f.status >= http.StatusInternalServerError {
+		return zapcore.ErrorLevel
+	}
+	return zapcore.WarnLevel
 }
 
 // writeError answers with a humane error as JSON. Server-side failures are

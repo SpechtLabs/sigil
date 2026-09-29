@@ -196,7 +196,7 @@ func Print(out io.Writer, status int, data []byte, view string, asJSON, explain 
 		return herr
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		err := &ResponseError{status: status}
+		err := &ResponseError{status: status, refused: refused(status, data)}
 		return humane.Wrap(err, err.Error(), "read the response for the decision or diagnostics")
 	}
 	return nil
@@ -205,7 +205,8 @@ func Print(out io.Writer, status int, data []byte, view string, asJSON, explain 
 // ResponseError follows a response already printed to stdout, including
 // policy refusals. These must remain nonzero in scripts even with --json.
 type ResponseError struct {
-	status int
+	status  int
+	refused bool
 }
 
 // Error implements the error interface. It names the HTTP status.
@@ -213,14 +214,32 @@ func (e *ResponseError) Error() string {
 	return fmt.Sprintf("deploygate answered HTTP %d %s", e.status, http.StatusText(e.status))
 }
 
-// ExitCode returns 2 for policy refusals, 403, 409 and 422, and 1 for other
-// HTTP failures.
+// ExitCode returns 2 for policy refusals and 1 for other HTTP failures. A
+// refusal is a deny or an empty grant, 403, or a failed evaluation, which
+// answers with the fallback: 422 when the request failed an input assert,
+// 500 when the policy failed. See [refused].
 func (e *ResponseError) ExitCode() int {
-	switch e.status {
-	case http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity:
+	if e.refused {
 		return 2
+	}
+	return 1
+}
+
+// refused reports whether a response refuses the request on the policy's
+// behalf. 403 and 422 always do. A 500 does when its body names the policy
+// that failed, which a failed evaluation's body does and an error without a
+// decision, such as a failed reload, doesn't.
+func refused(status int, data []byte) bool {
+	switch status {
+	case http.StatusForbidden, http.StatusUnprocessableEntity:
+		return true
+	case http.StatusInternalServerError:
+		var body struct {
+			Policy string `json:"policy"`
+		}
+		return json.Unmarshal(data, &body) == nil && body.Policy != ""
 	default:
-		return 1
+		return false
 	}
 }
 

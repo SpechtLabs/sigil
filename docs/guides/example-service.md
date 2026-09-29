@@ -64,14 +64,14 @@ The request describes the actor by their groups, `"groups": ["payments"]`, not b
 
 The README's [walkthrough](https://github.com/SpechtLabs/sigil/tree/main/examples#a-review) shows the full body, including the conditions each trace entry held under.
 
-The status encodes the decision: `200` for approve, `202` for review, `403` for deny, and `422` when an evaluation failed, for example on a failed assert. A `409` means the access policy granted two roles the kind declares exclusive. A request deploygate won't evaluate, such as one with an unknown field like `roles`, or a negative soak, gets `400` before any policy runs. A client can act on the status alone and read the body for the details.
+The status encodes the decision: `200` for approve, `202` for review and `403` for deny. A failed evaluation answers by whose fault it is. A failed input assert is the caller's, so it's a `422`. A conflict, a failed outcome assert or a runtime error means the policy failed on a valid request, so it's a `500`, which counts against deploygate's error budget instead of reading as a client mistake. Either way the body holds the kind's default decision and says what failed. A request deploygate won't evaluate, such as one with an unknown field like `roles`, or a negative soak, gets `400` before any policy runs. A client can act on the status alone and read the body for the details.
 
 ## An authorization layer with collect all
 
 Roles combine instead of competing: a payments engineer on the platform team is a reader, a deployer and a release manager at once. So `AccessGrant` declares `collect all`, and every role whose rule fires is part of the outcome, in declaration order. A collecting kind has no deny that outranks the rest, so the example guards the combinations that must never happen in the two places the docs describe:
 
-- The host's kind declares `exclusive admin, release_manager`. An evaluation that grants both fails with a conflict, which the API answers with `409` and both candidates named.
-- The platform's `access.guardrails`, which the host requires, asserts `[auditor, deployer] exclusive in outcome`, so a compliance member who is also in the team can't audit their own deploys. That's a `422`.
+- The host's kind declares `exclusive admin, release_manager`. An evaluation that grants both fails with a conflict, which the API answers with `500` and both candidates named.
+- The platform's `access.guardrails`, which the host requires, asserts `[auditor, deployer] exclusive in outcome`, so a compliance member who is also in the team can't audit their own deploys. It's an outcome assert, so that's a `500` too.
 
 The first rule belongs to the host and changes with a release; the second is platform policy that reloads like any other document. `POST /api/v1/access/grants` runs the access stage on its own:
 
