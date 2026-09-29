@@ -1,7 +1,7 @@
 // Package benchtest supplies the deterministic workloads the engine's
 // benchmarks share: the Bench@1 kind, an input every rule matches, and
-// policies that grow by rule count or compose through imports and
-// invocations.
+// policies that grow by rule count, with every rule or only one matching,
+// or compose through imports and invocations.
 //
 // `mise run bench -- --baseline <rev>`, which the CI benchmark job runs,
 // copies this package and the current *_bench_test.go files onto the
@@ -86,6 +86,24 @@ func Policy(rules int) string {
 	s.WriteString("policy main: Bench@1\nassert(\"named\", actor != \"\")\n")
 	for i := range rules {
 		fmt.Fprintf(&s, "when %s { allow(member, ttl: %dm) }\n", Expression, i+1)
+	}
+	return s.String()
+}
+
+// OneMatching returns the source of a policy like [Policy] where only the
+// last rule matches [Value]. The others evaluate the whole [Expression]
+// too and then require a role Value doesn't have, so every rule costs the
+// same to evaluate and only the candidates differ. A collecting kind and a
+// `collect one` kind both return the one candidate.
+func OneMatching(rules int) string {
+	var s strings.Builder
+	s.WriteString("policy main: Bench@1\nassert(\"named\", actor != \"\")\n")
+	for i := range rules {
+		cond := Expression
+		if i < rules-1 {
+			cond += ` and "auditor" in roles`
+		}
+		fmt.Fprintf(&s, "when %s { allow(member, ttl: %dm) }\n", cond, i+1)
 	}
 	return s.String()
 }

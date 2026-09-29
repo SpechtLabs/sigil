@@ -256,22 +256,6 @@ func fireIn(r *Rule, f *Frame) *Candidate {
 	return c
 }
 
-// fold drops every candidate equal to an earlier one in decision, reason
-// and payload: they're one outcome, from several branches.
-func fold(cands []*Candidate) []*Candidate {
-	var out []*Candidate
-next:
-	for _, c := range cands {
-		for _, kept := range out {
-			if kept.Decision == c.Decision && kept.Reason == c.Reason && reflect.DeepEqual(kept.Payload, c.Payload) {
-				continue next
-			}
-		}
-		out = append(out, c)
-	}
-	return out
-}
-
 // exclusive returns the first exclusive set with candidates from two of
 // its members, as a conflict.
 func (p *Policy) exclusive(cands []*Candidate) *Conflict {

@@ -11,7 +11,7 @@ A host compiles a policy once and evaluates it for every request. Evaluating a r
 ## What to expect
 
 - **Compile once, evaluate often.** Compiling a one-rule policy costs about 7 µs, and evaluating it under 1 µs. A service compiles when it loads or reloads policies, never per request.
-- **Evaluation cost follows the rules that match.** The cost grows with the rules whose conditions hold and the candidates they produce. The 64-rule workload below, where every rule matches, is the worst case of its size; most real policies decide with a handful of matching rules.
+- **Evaluation cost follows the rules that match.** Every rule's condition is evaluated, and each rule that matches also builds a candidate that's folded, ranked and traced. In the synthetic 64-rule policy below, a rule costs about 140 ns when it doesn't match and 370 ns when it does, so the policy takes 8.9 µs when one rule matches and 24 µs when all of them do. Most real policies decide with a handful of matching rules.
 - **Compiled policies are safe to share.** A compiled policy is immutable. Concurrent evaluations share no mutable state and take no locks, so any number of goroutines can evaluate the same policy.
 - **Allocation is predictable.** An evaluation allocates the same number of objects every time for the same input and outcome; no evaluation benchmark's count varied between samples. Most of it is the result and the trace a host receives.
 - **Every evaluation halts.** Sigil has no loops or recursion; quantifiers and filters range over finite lists, so an evaluation ends as long as its host functions do. Its cost still grows with the input's lists and there's no cost budget yet, so bound input sizes and evaluate under a context with a deadline, which `Eval` checks while it runs. See [Halting by construction](/understanding/halting/).
@@ -22,8 +22,8 @@ The policies of the [example service](/guides/example-service/), evaluated throu
 
 | Case | Serial | Parallel | Allocated | Allocations |
 | --- | ---: | ---: | ---: | ---: |
-| `AccessGrant`, a member granted two roles | 1.73 µs | 1.43 µs | 3.9 KiB | 51 |
-| `AccessGrant`, two exclusive grants that conflict | 1.76 µs | 1.51 µs | 4.6 KiB | 59 |
+| `AccessGrant`, a member granted two roles | 1.73 µs | 1.43 µs | 3.9 KiB | 50 |
+| `AccessGrant`, two exclusive grants that conflict | 1.76 µs | 1.51 µs | 4.6 KiB | 58 |
 | `DeployApproval`, the service's owner deploys | 1.81 µs | 1.45 µs | 3.9 KiB | 56 |
 | `AccessGrant`, an input that fails an assertion | 372 ns | 371 ns | 1.5 KiB | 17 |
 
@@ -31,14 +31,25 @@ The engine's own benchmarks evaluate a synthetic policy for each kind of outcome
 
 | Case | Time | Allocated | Allocations |
 | --- | ---: | ---: | ---: |
-| One ranked decision | 749 ns | 1.9 KiB | 30 |
-| Collected outcomes from an import and two invocations | 1.37 µs | 4.0 KiB | 53 |
-| The same, two goroutines on two CPUs | 1.07 µs | 4.0 KiB | 53 |
-| Two exclusive decisions that conflict | 1.54 µs | 5.1 KiB | 64 |
-| A failed assertion | 339 ns | 1.5 KiB | 18 |
-| No rule matches; the fallback decides | 271 ns | 1.0 KiB | 14 |
+| One ranked decision | 783 ns | 1.9 KiB | 30 |
+| Collected outcomes from an import and two invocations | 1.35 µs | 4.0 KiB | 49 |
+| The same, two goroutines on two CPUs | 1.08 µs | 4.0 KiB | 49 |
+| Two exclusive decisions that conflict | 1.49 µs | 5.1 KiB | 60 |
+| A failed assertion | 348 ns | 1.5 KiB | 18 |
+| No rule matches; the fallback decides | 294 ns | 1.0 KiB | 15 |
 
-Below the public API, the evaluator alone takes 467 ns for one matching rule, 814 ns for a policy composed from an import and two invocations, and 264 µs for 64 rules that all match.
+Below the public API, the evaluator alone takes 490 ns for one matching rule and 788 ns for a policy composed from an import and two invocations. Its cost grows in proportion to the rules. The synthetic policy repeats one rule shape: in the first column every copy matches, and in the second only the last one does, so the rules cost the same to evaluate and only the candidates differ.
+
+| Rules | Every rule matches | Allocations | One rule matches | Allocations |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 490 ns | 18 | 490 ns | 18 |
+| 8 | 3.02 µs | 64 | 1.42 µs | 25 |
+| 16 | 5.78 µs | 113 | 2.46 µs | 33 |
+| 32 | 11.7 µs | 210 | 4.57 µs | 49 |
+| 64 | 23.9 µs | 403 | 8.89 µs | 81 |
+| 128 | 50.6 µs | 788 | 17.9 µs | 145 |
+
+A `collect one` kind with a precedence costs the same when one rule matches: 8.87 µs at 64 rules. Through the public API, with the result and its trace, the 64-rule policy takes 35.3 µs, 77 KiB and 666 allocations when every rule matches, and 9.13 µs, 5.8 KiB and 92 allocations when one does. Building the result and the trace, which lists every candidate, accounts for 11 µs of the first.
 
 ## Compiling and checking
 
@@ -67,9 +78,20 @@ Medians of ten samples each; see [how they were measured](#how-these-numbers-wer
 | internal/constant | ConstantEval | 132 ns | 384 B | 5 |
 | internal/diag | DiagnosticRender | 605 ns | 1.08 KiB | 15 |
 | internal/eval | CompileExpression | 475 ns | 1.31 KiB | 34 |
-| internal/eval | EvalPolicy/composed | 814 ns | 2.03 KiB | 34 |
-| internal/eval | EvalPolicy/rules=1 | 467 ns | 952 B | 18 |
-| internal/eval | EvalPolicy/rules=64 | 264 µs | 124 KiB | 6.46k |
+| internal/eval | EvalPolicy/composed | 788 ns | 2.05 KiB | 30 |
+| internal/eval | EvalPolicy/one-matching/rules=8 | 1.42 µs | 1.34 KiB | 25 |
+| internal/eval | EvalPolicy/one-matching/rules=16 | 2.46 µs | 1.78 KiB | 33 |
+| internal/eval | EvalPolicy/one-matching/rules=32 | 4.57 µs | 2.78 KiB | 49 |
+| internal/eval | EvalPolicy/one-matching/rules=64 | 8.89 µs | 4.78 KiB | 81 |
+| internal/eval | EvalPolicy/one-matching/rules=128 | 17.9 µs | 8.28 KiB | 145 |
+| internal/eval | EvalPolicy/ranked/rules=64 | 8.87 µs | 4.79 KiB | 82 |
+| internal/eval | EvalPolicy/ranked/rules=128 | 17.7 µs | 8.29 KiB | 146 |
+| internal/eval | EvalPolicy/rules=1 | 490 ns | 984 B | 18 |
+| internal/eval | EvalPolicy/rules=8 | 3.02 µs | 4.3 KiB | 64 |
+| internal/eval | EvalPolicy/rules=16 | 5.78 µs | 8.12 KiB | 113 |
+| internal/eval | EvalPolicy/rules=32 | 11.7 µs | 15.9 KiB | 210 |
+| internal/eval | EvalPolicy/rules=64 | 23.9 µs | 31.4 KiB | 403 |
+| internal/eval | EvalPolicy/rules=128 | 50.6 µs | 62.1 KiB | 788 |
 | internal/format | Format/rules=1 | 5.05 µs | 7 KiB | 183 |
 | internal/format | Format/rules=64 | 227 µs | 317 KiB | 7.83k |
 | internal/gokind | DecodeInput | 692 ns | 800 B | 22 |
@@ -82,18 +104,21 @@ Medians of ten samples each; see [how they were measured](#how-these-numbers-wer
 | internal/parser | ParseExpression | 1.23 µs | 2.02 KiB | 49 |
 | internal/parser | ParseFile/rules=1 | 2.79 µs | 4.36 KiB | 110 |
 | internal/parser | ParseFile/rules=64 | 127 µs | 197 KiB | 4.9k |
-| internal/result | Result/assertion | 168 ns | 832 B | 10 |
-| internal/result | Result/success | 1.12 µs | 3.01 KiB | 45 |
+| internal/result | Result/assertion | 180 ns | 864 B | 10 |
+| internal/result | Result/success | 1.09 µs | 3.03 KiB | 41 |
 | internal/testsuite | TestSuiteParse | 240 µs | 245 KiB | 4.7k |
 | pkg/policy | CandidateLocation | 97.9 ns | 144 B | 5 |
 | pkg/policy | PolicyCompile/rules=1 | 6.7 µs | 14.1 KiB | 228 |
 | pkg/policy | PolicyCompile/rules=64 | 287 µs | 554 KiB | 8.27k |
-| pkg/policy | PolicyEval/assertion | 339 ns | 1.52 KiB | 18 |
-| pkg/policy | PolicyEval/collect | 1.37 µs | 4.02 KiB | 53 |
-| pkg/policy | PolicyEval/conflict | 1.54 µs | 5.05 KiB | 64 |
-| pkg/policy | PolicyEval/fallback | 271 ns | 1.01 KiB | 14 |
-| pkg/policy | PolicyEval/parallel | 1.07 µs | 4.02 KiB | 53 |
-| pkg/policy | PolicyEval/ranked | 749 ns | 1.92 KiB | 30 |
+| pkg/policy | PolicyEval/assertion | 348 ns | 1.55 KiB | 18 |
+| pkg/policy | PolicyEval/collect | 1.35 µs | 4.05 KiB | 49 |
+| pkg/policy | PolicyEval/conflict | 1.49 µs | 5.08 KiB | 60 |
+| pkg/policy | PolicyEval/fallback | 294 ns | 1.05 KiB | 15 |
+| pkg/policy | PolicyEval/parallel | 1.08 µs | 4.05 KiB | 49 |
+| pkg/policy | PolicyEval/ranked | 783 ns | 1.95 KiB | 30 |
+| pkg/policy | PolicyEvalRules/all-matching/rules=64 | 35.3 µs | 77.3 KiB | 666 |
+| pkg/policy | PolicyEvalRules/one-matching/rules=64 | 9.13 µs | 5.77 KiB | 92 |
+| pkg/policy | PolicyEvalRules/ranked/rules=64 | 9.28 µs | 5.77 KiB | 93 |
 
 :::
 
@@ -113,11 +138,11 @@ A decision request evaluates two policies, access then deploy. Those evaluations
 
 ## How these numbers were measured
 
-Every number on this page was measured on 28 September 2026 on an Apple M5 Pro with 18 CPUs, running macOS and Go 1.27.1 for darwin/arm64:
+Every number on this page was measured on 28 September 2026, and the engine's evaluation benchmarks again on 29 September, on an Apple M5 Pro with 18 CPUs, running macOS and Go 1.27.1 for darwin/arm64:
 
 - Each benchmark ran ten samples of 200 ms each with `GOMAXPROCS=2`, and the tables show the median sample. The parallel cases use `b.RunParallel` with two goroutines.
 - Compilation happens before the timer starts in every evaluation benchmark. Evaluation benchmarks include building the public result and its trace, because a host always gets them.
-- The synthetic policies come from `internal/benchtest`. `rules=N` repeats one rule shape N times, and every copy matches.
+- The synthetic policies come from `internal/benchtest`. `rules=N` repeats one rule shape N times, and every copy matches, except in the `one-matching` and `ranked` cases, where only the last one does.
 - Time per operation depends on the machine. Allocated bytes and allocation counts change little between machines with the same Go version and architecture, so they're the numbers to compare across machines. Allocated bytes aren't retained heap.
 
 ## Measure it yourself

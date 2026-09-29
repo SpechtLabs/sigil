@@ -98,6 +98,34 @@ func BenchmarkPolicyEval(b *testing.B) {
 	}
 }
 
+// BenchmarkPolicyEvalRules measures a 64-rule policy through the public
+// API, trace included: every rule matching on a collecting kind, and one
+// matching on a collecting and on a ranked kind.
+func BenchmarkPolicyEvalRules(b *testing.B) {
+	const n = 64
+	for _, name := range []string{"all-matching", "one-matching", "ranked"} {
+		b.Run(fmt.Sprintf("%s/rules=%d", name, n), func(b *testing.B) {
+			src, want := benchtest.OneMatching(n), 1
+			if name == "all-matching" {
+				src, want = benchtest.Policy(n), n
+			}
+			p, err := benchmarkKind(name != "ranked").Compile(src, "main")
+			if err != nil {
+				b.Fatal(err)
+			}
+			in := benchtest.Value()
+			ctx := context.Background()
+			b.ReportAllocs()
+			for b.Loop() {
+				res, err := p.Eval(ctx, in)
+				if err != nil || len(res.Outcome) != want || len(res.Trace.Candidates) != want {
+					b.Fatalf("evaluation: %v, %v", res, err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkCandidateLocation(b *testing.B) {
 	c := policy.Candidate{Position: policy.Position{File: "grant.sigil", Document: "grant", Line: 12, Column: 3}, CallChain: []policy.Position{{File: "main.sigil", Document: "main", Line: 7, Column: 1}}}
 	b.ReportAllocs()
