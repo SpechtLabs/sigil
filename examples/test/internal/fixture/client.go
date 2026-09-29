@@ -94,7 +94,8 @@ func (c *Client) ListPolicies(g gomega.Gomega) PoliciesResponse {
 	return Decode[PoliciesResponse](g, body)
 }
 
-// Reload asks the server to reload its team policies now.
+// Reload asks the server to reload both policy bundles now, and returns the
+// response with its body.
 func (c *Client) Reload(g gomega.Gomega) (*http.Response, []byte) {
 	return c.Send(g, http.MethodPost, PathReload, "", nil)
 }

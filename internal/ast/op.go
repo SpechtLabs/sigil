@@ -7,9 +7,13 @@ import "strconv"
 // to spell any of them.
 type Op uint8
 
-// The operators, in the order of the precedence table in
-// docs/reference/expressions.md.
+// The operators, in the order of the precedence table at
+// https://sigil.specht-labs.de/reference/expressions/, lowest first.
+// The quantifiers, which the table leaves out, come last. [Op.String] gives each one's spelling; the
+// two-word forms such as OpNotIn are one operator. Operators without a
+// comment are infix.
 const (
+	// OpInvalid is the zero Op and names no operator.
 	OpInvalid Op = iota
 
 	OpOr
@@ -73,7 +77,8 @@ var opNames = [...]string{
 	OpAll:         "all",
 }
 
-// String returns the operator as written in source.
+// String returns the operator as written in source, or "op(N)" for a value
+// outside the declared operators.
 func (op Op) String() string {
 	if int(op) < len(opNames) && opNames[op] != "" {
 		return opNames[op]

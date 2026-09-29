@@ -26,7 +26,10 @@ import (
 // duration is a string in Sigil's syntax, `"1h30m"`, and a timestamp an
 // RFC 3339 string. null is allowed for optionals, lists and maps only.
 // The error names the path to the value that doesn't fit, like
-// `release.soak`, with the fix as its advice.
+// `release.soak`, with the fix as its advice. Keys are visited in sorted
+// order and decoding stops at the first misfit, so the error is
+// deterministic; the value returned with it is partly filled. k must be
+// the kind b was built for.
 func (b *Binding) DecodeInput(k *kind.Kind, raw any) (reflect.Value, humane.Error) { //nolint:emptyinterface // raw is a decoded JSON or YAML document
 	v := reflect.New(b.Input).Elem()
 	obj, ok := object(raw)
@@ -45,8 +48,11 @@ func (b *Binding) DecodeInput(k *kind.Kind, raw any) (reflect.Value, humane.Erro
 	return v, nil
 }
 
-// Decode sets v, a Go value of Sigil type t under the binding, from raw.
-// path names the value in errors.
+// Decode sets v, a Go value of Sigil type t under the binding, from raw,
+// by the rules of [Binding.DecodeInput]. v must be settable and of the Go
+// type the binding uses for t. Map keys, strings in the document, are
+// parsed as the key type's values are written. path names the value in
+// errors.
 func (b *Binding) Decode(t types.Type, raw any, v reflect.Value, path string) humane.Error { //nolint:emptyinterface // raw is a decoded JSON or YAML value
 	if raw == nil {
 		switch t.(type) {
@@ -88,11 +94,12 @@ func (b *Binding) Decode(t types.Type, raw any, v reflect.Value, path string) hu
 }
 
 // Canonical returns v, a Go value of Sigil type t, in the representation
-// constants use (see constant.Format): int64, float64, string, bool,
-// time.Duration, time.Time in UTC, []any, map[any]any, nil for an absent
-// optional, and a struct as a map[any]any by field name. Two values of
-// one Sigil type are equal when their canonical forms are deeply equal,
-// whatever Go types they came from.
+// constants use (see constant.Conforms): int64, float64, string, bool,
+// [time.Duration], [time.Time] in UTC without its monotonic reading, []any,
+// map[any]any, nil for an absent optional, and a struct as a map[any]any
+// by field name. Interfaces are unwrapped first, and an invalid v is nil.
+// Two values of one Sigil type are equal when their canonical forms are
+// deeply equal, whatever Go types they came from.
 func (b *Binding) Canonical(t types.Type, v reflect.Value) any { //nolint:emptyinterface // canonical values are dynamically typed, like constants
 	for v.IsValid() && v.Kind() == reflect.Interface {
 		v = v.Elem()

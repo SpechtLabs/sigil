@@ -2,6 +2,14 @@
 // key/value blocks, errors, and (through fang) help and usage. All output goes
 // through a colorprofile writer, so colors degrade to what the terminal
 // supports, honor NO_COLOR, and disappear entirely when output is piped.
+//
+// A command creates a [Printer] per run with [New], prints status lines and
+// diagnostics with it, and lays out larger reports with its [Theme]. A
+// command that found problems and already reported them returns a [Failed]
+// error, made by [Fail]. One that needs a bundle that checks, and got one
+// that doesn't, returns a [Diagnostics] error, made by [Diagnose].
+// [ErrorHandler] and [ColorScheme] give fang the same error rendering and
+// palette, so help, usage and errors match the rest of the output.
 package pretty
 
 import (
@@ -49,7 +57,7 @@ func newPalette(c lipgloss.LightDarkFunc) palette {
 	}
 }
 
-// ColorScheme is a fang.ColorSchemeFunc that styles help and usage output
+// ColorScheme is a [fang.ColorSchemeFunc] that styles help and usage output
 // with sigil's palette, so it matches everything else the CLI prints.
 func ColorScheme(c lipgloss.LightDarkFunc) fang.ColorScheme {
 	p := newPalette(c)

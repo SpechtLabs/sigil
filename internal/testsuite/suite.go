@@ -1,27 +1,3 @@
-// Package testsuite reads the test files `sigil test` and package
-// policytest run, and checks an evaluation against what a test case
-// expects.
-//
-// A test file is YAML, named `*_test.yaml`, and holds the cases for one
-// policy:
-//
-//	policy: payments.production
-//	cases:
-//	  - name: pci deploy needs a review
-//	    input_file: testdata/pci.json
-//	    expect:
-//	      decision: review
-//	      reason: service_owner
-//	      payload:
-//	        approvers: [payments-leads, security-leads]
-//	  - name: an unnamed actor fails the assert
-//	    input: {actor: {name: ""}}
-//	    expect:
-//	      asserts: [named_actor]
-//
-// A case expects one decision and reason, with any payload fields it
-// lists; or, for a `collect all` kind, the whole outcome; or the reasons
-// of the asserts that fail.
 package testsuite
 
 import (
@@ -40,13 +16,13 @@ import (
 	"github.com/spechtlabs/sigil/internal/kind"
 )
 
-// Suffixes of test files.
+// Suffixes are the name endings that make a file a test file.
 var Suffixes = []string{"_test.yaml", "_test.yml"}
 
 // Suite is one test file.
 type Suite struct {
-	File   string  `yaml:"-"`
-	Policy string  `yaml:"policy"`
+	File   string  `yaml:"-"`      // the file's path, which input files are read relative to
+	Policy string  `yaml:"policy"` // the root policy the cases evaluate
 	Cases  []*Case `yaml:"cases"`
 }
 
@@ -54,9 +30,9 @@ type Suite struct {
 type Case struct {
 	Input     any    `yaml:"input"` //nolint:emptyinterface // the input document, as YAML decoded it
 	Name      string `yaml:"name"`
-	InputFile string `yaml:"input_file"`
+	InputFile string `yaml:"input_file"` // a JSON or YAML input file, relative to the test file
 	Expect    Expect `yaml:"expect"`
-	Line      int    `yaml:"-"`
+	Line      int    `yaml:"-"` // the case's line in the test file, 0 when unknown
 }
 
 // Expect is what a case expects. Exactly one of the three forms is set:
@@ -66,7 +42,7 @@ type Expect struct {
 	Outcome  *[]Entry       `yaml:"outcome"` // a pointer, so `outcome: []` expects an empty outcome
 	Decision string         `yaml:"decision"`
 	Reason   string         `yaml:"reason"`
-	Asserts  []string       `yaml:"asserts"`
+	Asserts  []string       `yaml:"asserts"` // the reasons of the asserts that must fail, in any order
 }
 
 // Entry is one expected outcome entry of a collecting kind.
@@ -87,7 +63,10 @@ func IsTestFile(name string) bool {
 }
 
 // Parse reads a test file. Keys the format doesn't define are errors,
-// so a misspelled `expect` doesn't silently expect nothing.
+// so a misspelled `expect` doesn't silently expect nothing. A null case
+// or a missing `policy:` is an error too. The error is always an *[Error].
+// Parse checks only the file's shape; [Suite.Validate] checks it against
+// the kind.
 func Parse(file string, src []byte) (*Suite, humane.Error) {
 	dec := yaml.NewDecoder(bytes.NewReader(src))
 	dec.KnownFields(true)
@@ -112,7 +91,8 @@ func Parse(file string, src []byte) (*Suite, humane.Error) {
 
 // Validate checks the suite's expectations against the kind: declared
 // decisions, reasons and payload fields, the form the kind's collect mode
-// calls for, and exactly one input per case.
+// calls for, and exactly one input per case, with a unique name. It
+// returns every problem found, or nil.
 func (s *Suite) Validate(k *kind.Kind) []*Error {
 	var errs []*Error
 	names := map[string]int{}
@@ -137,7 +117,9 @@ func (s *Suite) Validate(k *kind.Kind) []*Error {
 }
 
 // ReadInput returns the case's input document: inline, or from its
-// input_file, read relative to the test file from fsys.
+// input_file, read relative to the test file from fsys. A file whose name
+// ends in .yaml or .yml is decoded as YAML, any other as JSON with its
+// numbers kept as [encoding/json.Number].
 func (s *Suite) ReadInput(fsys fs.FS, c *Case) (any, *Error) { //nolint:emptyinterface // the input document, decoded
 	if c.InputFile == "" {
 		return c.Input, nil

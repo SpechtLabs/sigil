@@ -1,4 +1,7 @@
-// Package lsp implements the `sigil lsp` command.
+// Package lsp implements the `sigil lsp` command, which will run the Sigil
+// language server over stdin and stdout. It isn't implemented yet.
+// [NewCommand] registers the command with its help and flags, and running
+// it reports a not-implemented error.
 package lsp
 
 import (

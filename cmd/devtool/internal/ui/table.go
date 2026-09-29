@@ -11,7 +11,7 @@ import (
 // Cell is one table cell. Style colors it; nil leaves it plain.
 type Cell struct {
 	Text  string
-	Style func(string) string
+	Style func(string) string // e.g. a pretty.Theme method such as Theme.Ok
 }
 
 // Column is a table column: its heading, and whether its cells are

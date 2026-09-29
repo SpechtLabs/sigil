@@ -22,8 +22,12 @@ type compiler struct {
 	scope *Scope
 }
 
-// Compile turns x, checked into info, into an Expr. It fails only when
-// info doesn't cover x, which means x wasn't checked or didn't check.
+// Compile turns x, checked into info, into an [Expr] that reads names
+// through scope. It fails when info doesn't cover x, which means x wasn't
+// checked or didn't check, and when scope can't supply what x reads, such
+// as a name that is no param, let, slot or input, or a field or host
+// function the binding lacks. Compiling adds the slots x's quantifiers
+// and filters need to scope, so make frames with [NewFrame] after it.
 func Compile(x ast.Expr, info *check.Info, scope *Scope) (Expr, *diag.Error) {
 	c := &compiler{info: info, scope: scope}
 	var e Expr

@@ -23,13 +23,15 @@ type Result struct {
 
 // Failure says why the command did nothing.
 type Failure struct {
-	Kind    string `json:"kind" yaml:"kind"`
-	Message string `json:"message" yaml:"message"`
-	Help    string `json:"help" yaml:"help"` // what to do about it
+	Kind    string `json:"kind" yaml:"kind"`       // always not_implemented
+	Message string `json:"message" yaml:"message"` // names the command
+	Help    string `json:"help" yaml:"help"`       // what to do about it
 }
 
 // NotImplemented reports that cmd isn't implemented yet: as the error in
-// text, and as a Result on cmd's output in JSON and YAML.
+// text, and as a [Result] on cmd's output in JSON and YAML. In JSON and
+// YAML it returns a [pretty.Failed] error, so the error handler prints
+// nothing more. Either way the command exits with status 1.
 func NotImplemented(cmd *cobra.Command, f output.Format) humane.Error {
 	msg := fmt.Sprintf("%q is not implemented yet", cmd.CommandPath())
 	help := "the command is planned for a later milestone; track progress at https://github.com/SpechtLabs/sigil/blob/main/roadmap.yml"

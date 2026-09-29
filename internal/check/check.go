@@ -10,7 +10,8 @@ import (
 )
 
 // Checker checks expressions and statements of one file and collects
-// what it finds.
+// what it finds: types in its [Info], diagnostics in [Checker.Errors]. It
+// keeps state between calls and isn't safe for concurrent use.
 type Checker struct {
 	// Resolver finds the documents `use` names. Without one every
 	// import is an unknown document.
@@ -24,7 +25,8 @@ type Checker struct {
 	older     bool // the document pins an older, still accepted kind version
 }
 
-// New returns a checker for the named file.
+// New returns a checker for the named file. The name goes into every
+// diagnostic; the checker never opens the file.
 func New(file string) *Checker {
 	return &Checker{file: file, info: &Info{
 		Types:        map[ast.Expr]types.Type{},
@@ -35,14 +37,16 @@ func New(file string) *Checker {
 	}}
 }
 
-// Info returns the types recorded so far.
+// Info returns what the checker has recorded so far, across every
+// document it checked. It's never nil.
 func (c *Checker) Info() *Info { return c.info }
 
 // Exported returns what other documents may import from the document
 // checked last, or nil before a document was checked.
 func (c *Checker) Exported() *Exported { return c.exported }
 
-// Errors returns every diagnostic so far, in source order.
+// Errors returns every diagnostic so far, in source order, or nil when
+// there are none. It sorts the checker's own list in place and returns it.
 func (c *Checker) Errors() diag.ErrorList {
 	if len(c.errs) == 0 {
 		return nil
@@ -51,9 +55,10 @@ func (c *Checker) Errors() diag.ErrorList {
 	return c.errs
 }
 
-// Expr checks x in env and returns its type, or types.Invalid after
-// reporting what's wrong. An empty list or map literal has no type of its
-// own; where the context knows the type, use ExprAs.
+// Expr checks x in env and returns its type, or [types.Invalid] after
+// reporting what's wrong. It records the type of every node of x in
+// [Info.Types]. An empty list or map literal has no type of its own and
+// is an error here; where the context knows the type, use [Checker.ExprAs].
 func (c *Checker) Expr(x ast.Expr, env *Env) types.Type {
 	t := c.expr(x, env, nil)
 	if untyped(t) {
@@ -64,7 +69,10 @@ func (c *Checker) Expr(x ast.Expr, env *Env) types.Type {
 }
 
 // ExprAs checks x where a value of type want is expected. An empty list
-// or map literal takes its type from want; anything else must match it.
+// or map literal takes its type from want; anything else must be
+// [types.Identical] to it, or ExprAs reports the mismatch. It returns the
+// type of x, or [types.Invalid] after an error. When want is Invalid it
+// checks x but reports no mismatch, since want's own error is already out.
 func (c *Checker) ExprAs(x ast.Expr, env *Env, want types.Type) types.Type {
 	t := c.expr(x, env, want)
 	switch {

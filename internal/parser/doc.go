@@ -8,9 +8,11 @@ import (
 	"github.com/spechtlabs/sigil/internal/token"
 )
 
-// ParseFile parses every document in src. The file is returned even when
-// there are errors, holding whatever parsed, so tools can keep working on
-// a broken bundle; the list is nil only when the file is clean.
+// ParseFile parses every document in src. The name becomes the
+// [ast.File]'s Name and the File of every diagnostic. The file is returned
+// even when there are errors, holding whatever parsed, so tools can keep
+// working on a broken bundle; the list is nil only when the file is clean.
+// The tree copies the text it keeps, so it doesn't retain src.
 //
 // Errors recover at the statement level: a broken statement is skipped up
 // to the next one, so one typo reports one error and the rest of the

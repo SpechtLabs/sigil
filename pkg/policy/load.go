@@ -11,15 +11,24 @@ import (
 
 // Load reads every `.sigil` file in fsys into one bundle, indexes the
 // documents by the names in their headers, and compiles the policy
-// called name as the root. Files are containers: one document per file,
-// one per team or everything in one file all resolve the same way, and
-// embed.FS, os.DirFS and a mounted ConfigMap all work. Entries whose
-// names start with `.` are skipped, and what's a file is decided with
-// fs.Stat, so a ConfigMap's symlinked keys load. Every document is
-// checked, so a broken one fails the load even when the root never uses
-// it, and a kind document with the kind's name must match Schema().
+// called name as the root. A file may hold several documents separated
+// by `---`.
 //
-// The error is a *CompileError with every problem, its position and a
+// Files are containers: one document per file, one per team or everything
+// in one file all resolve the same way, and [embed.FS], [os.DirFS], [MapFS]
+// and a mounted Kubernetes ConfigMap all work. Load reads every directory
+// of fsys, in lexical order. It skips entries whose names start with `.`, and decides what's a
+// file with [io/fs.Stat], which follows symbolic links, so a ConfigMap's
+// symlinked keys load once each and kubelet's `..data` directory is
+// skipped.
+//
+// Every document is checked, so a broken one fails the load even when the
+// root never uses it. A name defined twice is an error, and so is a
+// document for another kind. A kind document with the kind's name must
+// match [Kind.Schema]; kind documents for other kinds are ignored. The root
+// must be a policy, not a module.
+//
+// The error is a [*CompileError] with every problem, its position and a
 // fix hint, or an error from reading fsys.
 func (k *Kind[In]) Load(fsys fs.FS, name string, opts ...LoadOption) (*Policy[In], error) {
 	o := &loadOptions{params: Params{}}
@@ -37,11 +46,15 @@ func (k *Kind[In]) Load(fsys fs.FS, name string, opts ...LoadOption) (*Policy[In
 }
 
 // Compile compiles the policy called name from src, a one-file bundle
-// that may hold several documents. Every document is checked against the
-// kind, so a broken document fails the compile even when the root never
-// uses it, and a kind document with the kind's name must match Schema().
-// The error is a *CompileError listing every problem with a position and
-// a fix hint.
+// that may hold several documents separated by `---`. It is [Kind.Load]
+// for a single source string, and suits tests and policies stored in a
+// database. Every document is checked against the kind, so a broken
+// document fails the compile even when the root never uses it, and a kind
+// document with the kind's name must match [Kind.Schema].
+//
+// The error is a [*CompileError] listing every problem with a position and
+// a fix hint. The source has no file name, so positions in it carry only
+// the line, the column and the document's name.
 func (k *Kind[In]) Compile(src, name string, opts ...LoadOption) (*Policy[In], error) {
 	o := &loadOptions{params: Params{}}
 	for _, opt := range opts {
@@ -93,9 +106,11 @@ func sameSource(a, b fs.FS) bool {
 	return x.Kind() == reflect.Map && x.Pointer() == y.Pointer()
 }
 
-// MapFS turns a map of file names to contents, such as a ConfigMap's
-// data, into an fs.FS that Load reads. Keys need the `.sigil` extension
-// to be loaded, like any other file.
+// MapFS turns a map of file names to contents, such as the data of a
+// Kubernetes ConfigMap read through the API, into an [io/fs.FS] that
+// [Kind.Load] reads. Keys need the `.sigil` extension to be loaded, like
+// any other file. MapFS copies the contents, so later changes to files
+// don't affect the result.
 func MapFS(files map[string]string) fs.FS {
 	m := fstest.MapFS{}
 	for name, src := range files {

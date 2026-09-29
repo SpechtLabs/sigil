@@ -20,6 +20,8 @@ const HealthcheckTimeout = 2 * time.Second
 // ReadyzURL is the readiness endpoint of a deploygate listening on addr,
 // reached over the loopback interface: an address without a host, or with a
 // wildcard one, listens there too, and the probe runs next to the server.
+// An address with a specific host keeps it. It returns an error when addr
+// has no port.
 func ReadyzURL(addr string) (string, humane.Error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -34,6 +36,8 @@ func ReadyzURL(addr string) (string, humane.Error) {
 }
 
 // Probe asks url for readiness and returns nil on 200 OK, within timeout.
+// Any other status, a server that doesn't answer and a timeout are errors
+// with advice.
 func Probe(ctx context.Context, url string, timeout time.Duration) humane.Error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

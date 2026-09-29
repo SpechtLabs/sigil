@@ -1,5 +1,13 @@
-// Package output defines the output formats accepted by the --output flag,
-// and the records every command's JSON and YAML output shares.
+// Package output defines the values of the --output and --color flags the
+// sigil and devtool commands take, and the records the commands' JSON and
+// YAML output shares.
+//
+// [Format] and [Color] are flag values that reject anything but their
+// listed modes while cobra parses the flags. [Encode] writes any record as
+// JSON or YAML, and [Diagnostic] is the record of one compiler error or
+// lint finding. [ColorFromArgs] and [Color.Apply] let --color take effect
+// before the real parse, so even the help cobra prints on a parse error
+// honors it.
 package output
 
 import (
@@ -15,15 +23,16 @@ import (
 	"github.com/spechtlabs/sigil/internal/diag"
 )
 
-// Format is an output format. It implements pflag.Value, so an unknown value
-// is rejected while cobra parses the flags.
+// Format is an output format, the value of --output. *Format implements
+// [github.com/spf13/pflag.Value], so an unknown value is rejected while
+// cobra parses the flags.
 type Format string
 
 // Supported output formats.
 const (
-	Text Format = "text"
-	JSON Format = "json"
-	YAML Format = "yaml"
+	Text Format = "text" // for a person; each command lays out its own
+	JSON Format = "json" // the command's records, indented by two spaces
+	YAML Format = "yaml" // the same records as YAML
 )
 
 // Formats lists every supported format, for validation and flag completion.
@@ -31,20 +40,22 @@ var Formats = []string{string(Text), string(JSON), string(YAML)}
 
 // Diagnostic is one error or lint finding, as JSON and YAML print it.
 type Diagnostic struct {
-	Severity string `json:"severity" yaml:"severity"` // error or warning
-	Lint     string `json:"lint,omitempty" yaml:"lint,omitempty"`
+	Severity string `json:"severity" yaml:"severity"`             // error or warning
+	Lint     string `json:"lint,omitempty" yaml:"lint,omitempty"` // the lint's name, for a lint finding
 	File     string `json:"file,omitempty" yaml:"file,omitempty"`
-	Document string `json:"document,omitempty" yaml:"document,omitempty"`
+	Document string `json:"document,omitempty" yaml:"document,omitempty"` // the document it's in, when that's known
 	Message  string `json:"message" yaml:"message"`
-	Help     string `json:"help,omitempty" yaml:"help,omitempty"`
-	Line     int    `json:"line,omitempty" yaml:"line,omitempty"`
-	Column   int    `json:"column,omitempty" yaml:"column,omitempty"`
+	Help     string `json:"help,omitempty" yaml:"help,omitempty"`     // how to fix it
+	Line     int    `json:"line,omitempty" yaml:"line,omitempty"`     // from 1; zero, and left out, when the diagnostic has no position
+	Column   int    `json:"column,omitempty" yaml:"column,omitempty"` // in characters, from 1
 }
 
-// String implements pflag.Value.
+// String implements [github.com/spf13/pflag.Value]. It returns the
+// format's name.
 func (f *Format) String() string { return string(*f) }
 
-// Set implements pflag.Value.
+// Set implements [github.com/spf13/pflag.Value]. It returns an error for
+// anything but one of [Formats].
 func (f *Format) Set(s string) error {
 	if !slices.Contains(Formats, s) {
 		return humane.New(
@@ -56,7 +67,8 @@ func (f *Format) Set(s string) error {
 	return nil
 }
 
-// Type implements pflag.Value.
+// Type implements [github.com/spf13/pflag.Value]. It returns "format",
+// the name help shows for the flag's value.
 func (f *Format) Type() string { return "format" }
 
 // Encode writes v to w as JSON or YAML, indented by two spaces. It's for

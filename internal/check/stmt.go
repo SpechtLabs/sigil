@@ -14,7 +14,13 @@ import (
 // evaluator needs: every expression's type, the lets in an order that
 // respects their dependencies, the decision each constructor builds and
 // the policy each invocation instantiates. Imports resolve through the
-// checker's Resolver.
+// checker's [Resolver], and afterwards [Checker.Exported] holds the
+// policy's pub lets and params.
+//
+// A document written for another kind is reported and not checked
+// further; a nil doc or k checks nothing. A missing pin, or one k no longer
+// accepts or doesn't reach yet, is reported, and the rest of the document
+// is still checked against k.
 func (c *Checker) Policy(doc *ast.PolicyDoc, k *kind.Kind) {
 	if doc == nil || !c.checkKind(doc.Kind, doc.Pin, k) {
 		return
@@ -40,7 +46,9 @@ func (c *Checker) Policy(doc *ast.PolicyDoc, k *kind.Kind) {
 	}
 }
 
-// Module checks a module document against k. A module holds only lets.
+// Module checks a module document against k, as [Checker.Policy] does a
+// policy. A module holds only imports and lets, and [Checker.Exported]
+// afterwards holds its pub lets.
 func (c *Checker) Module(doc *ast.ModuleDoc, k *kind.Kind) {
 	if doc == nil || !c.checkKind(doc.Kind, doc.Pin, k) {
 		return

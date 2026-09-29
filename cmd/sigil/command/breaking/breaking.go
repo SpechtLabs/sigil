@@ -1,4 +1,8 @@
-// Package breaking implements the `sigil breaking` command.
+// Package breaking implements the `sigil breaking` command, which will
+// compare two versions of a kind file and flag the changes that break
+// existing policies. It isn't implemented yet. [NewCommand] registers the
+// command with its help and argument checks, and running it reports a
+// not-implemented error, as text or as a JSON or YAML error record.
 package breaking
 
 import (

@@ -30,9 +30,13 @@ type GrantRef struct {
 // them. The integration and end-to-end suites run the same cases, so the
 // in-process server and the container can't disagree.
 type DecisionCase struct {
-	Request  DeployRequest
-	Name     string
-	Team     string
+	Request DeployRequest
+	// Name is the spec's description.
+	Name string
+	// Team is the team the request is sent for, which picks the policy
+	// <team>.production.
+	Team string
+	// Decision and Reason are the outcome the deploy policy must reach.
 	Decision string
 	Reason   string
 	// Payload is the exact payload JSON, durations as strings.
@@ -40,7 +44,8 @@ type DecisionCase struct {
 	// Grants is the access stage's outcome, in outcome order.
 	Grants []GrantRef
 	// Roles is what the grants became: the deploy policy's actor.roles.
-	Roles  []string
+	Roles []string
+	// Status is the HTTP status the decision maps to.
 	Status int
 }
 
@@ -48,14 +53,19 @@ type DecisionCase struct {
 // grant, in outcome order. An empty outcome is a 403.
 type AccessCase struct {
 	Request AccessRequest
-	Name    string
-	Grants  []GrantRef
-	Status  int
+	// Name is the spec's description.
+	Name string
+	// Grants are the roles the access policy must grant, in outcome order.
+	Grants []GrantRef
+	// Status is 200 when anything is granted and 403 when nothing is.
+	Status int
 }
 
 // BadRequestCase is a body the service must refuse with 400.
 type BadRequestCase struct {
+	// Name is the spec's description.
 	Name string
+	// Body is the raw request body, sent byte for byte.
 	Body string
 }
 

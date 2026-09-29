@@ -1,4 +1,8 @@
-// Package explain implements the `sigil explain` command.
+// Package explain implements the `sigil explain` command. It compiles each
+// selected policy of a bundle without an input and flattens it into every
+// rule and assert it can reach, each with the `when` conditions and the
+// chain of invocations that lead to it. [Explanation] and [Entry] are the
+// records it prints as JSON and YAML.
 package explain
 
 import (
@@ -20,7 +24,9 @@ import (
 	"github.com/spechtlabs/sigil/internal/eval"
 )
 
-// NewCommand returns the explain command.
+// NewCommand returns the explain command, configured by opts. Without
+// [WithOutput] it prints text, and without [WithKinds] every run needs
+// --kind.
 func NewCommand(opts ...Option) *cobra.Command {
 	format := output.Text
 	o := &options{output: &format}
@@ -82,19 +88,19 @@ type Explanation struct {
 	Policy   string  `json:"policy" yaml:"policy"`
 	Policies int     `json:"policies" yaml:"policies"`
 	Modules  int     `json:"modules" yaml:"modules"`
-	Rules    []Entry `json:"rules" yaml:"rules"`
+	Rules    []Entry `json:"rules" yaml:"rules"` // every rule, then every assert
 }
 
 // Entry is one rule or assert of an explanation.
 type Entry struct {
-	Kind       string   `json:"kind" yaml:"kind"` // "decision" or "assert"
-	Decision   string   `json:"decision,omitempty" yaml:"decision,omitempty"`
-	Reason     string   `json:"reason" yaml:"reason"`
-	Phase      string   `json:"phase,omitempty" yaml:"phase,omitempty"` // input or outcome, for an assert
-	Chain      []string `json:"chain" yaml:"chain"`                     // policy:line, outermost call first, the rule last
-	Conditions []string `json:"conditions" yaml:"conditions"`           // every `when` on the way, outermost first
-	Check      string   `json:"check,omitempty" yaml:"check,omitempty"` // an assert's own condition
-	Payload    []string `json:"payload,omitempty" yaml:"payload,omitempty"`
+	Kind       string   `json:"kind" yaml:"kind"`                             // "decision" or "assert"
+	Decision   string   `json:"decision,omitempty" yaml:"decision,omitempty"` // the decision a rule returns; empty for an assert
+	Reason     string   `json:"reason" yaml:"reason"`                         // a rule's reason, or an assert's name
+	Phase      string   `json:"phase,omitempty" yaml:"phase,omitempty"`       // input or outcome, for an assert
+	Chain      []string `json:"chain" yaml:"chain"`                           // policy:line, outermost call first, the rule last
+	Conditions []string `json:"conditions" yaml:"conditions"`                 // every `when` on the way, outermost first
+	Check      string   `json:"check,omitempty" yaml:"check,omitempty"`       // an assert's own condition
+	Payload    []string `json:"payload,omitempty" yaml:"payload,omitempty"`   // a rule's payload arguments, as `name = expression`
 }
 
 func run(out io.Writer, o *options, kindFile, pattern string, src project.Sources) humane.Error {

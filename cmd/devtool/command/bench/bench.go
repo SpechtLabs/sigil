@@ -1,6 +1,15 @@
 // Package bench implements `devtool bench`: running the Go benchmarks,
 // alone or against a base revision with a regression gate, and listing
 // them.
+//
+// `bench run` builds every package's test binary on each revision before
+// any sample runs, then samples the benchmarks in rounds, alternating
+// which revision goes first. With --baseline, the base revision is
+// extracted with git archive and the checkout's *_bench_test.go files and
+// shared fixtures are copied onto it, so both revisions run identical
+// workloads. benchstat then compares the samples, and a significant
+// increase above 10% in time, bytes or allocations per operation fails the
+// run. `bench list` shows what `bench run` would measure.
 package bench
 
 import (

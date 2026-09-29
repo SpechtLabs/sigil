@@ -1,4 +1,7 @@
-// Package scenario supplies the walkthrough's embedded request metadata.
+// Package scenario supplies the walkthrough's embedded request metadata:
+// which request file each named deploy and access scenario sends, and to
+// which team. The request bodies themselves are embedded by package
+// github.com/spechtlabs/sigil/examples/requests.
 package scenario
 
 import (
@@ -14,7 +17,7 @@ import (
 	request "github.com/spechtlabs/sigil/examples/requests"
 )
 
-// Actions with built-in scenarios.
+// Actions with built-in scenarios, the commands that take a scenario name.
 const (
 	Deploy       = "deploy"
 	Access       = "access"
@@ -23,6 +26,10 @@ const (
 
 // Scenario supplies the metadata for one walkthrough request.
 type Scenario struct {
+	// Command is the action the scenario belongs to, Deploy or Access.
+	// Name is what the user passes on the command line, Team the team the
+	// request targets, Description one line for the listing, and File the
+	// embedded request body.
 	Command, Name, Team, Description, File string
 }
 
@@ -51,7 +58,12 @@ func Names(action string) []string {
 	return names
 }
 
-// Read chooses a scenario or a file and resolves the deployment team.
+// Read chooses a scenario or a file and resolves the deployment team. With
+// file set, it reads that file, or stdin for "-", up to 1 MiB, and returns
+// team as given; a deploy needs team then, and args must be empty.
+// Otherwise it returns the body of the scenario named by args[0], or by
+// fallback when args is empty, and team, or the scenario's team when team
+// is empty. An unknown scenario is an error.
 func Read(stdin io.Reader, action, fallback string, args []string, file, team string) ([]byte, string, humane.Error) {
 	if file != "" {
 		if len(args) != 0 {

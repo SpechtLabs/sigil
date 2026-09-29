@@ -2,7 +2,23 @@
 // their headers, checks them against a kind in import order and compiles
 // a root policy with everything it invokes and imports linked. The Go
 // API and the CLI both load through it, so a bundle resolves the same
-// way whether it comes from an fs.FS or from command-line paths.
+// way whether it comes from an [io/fs.FS] or from command-line paths.
+//
+// A [Bundle] drives the front of the pipeline for many files at once: it
+// parses each file as it's added, runs the checker over each document
+// with the bundle as its resolver, and hands a clean root to
+// [github.com/spechtlabs/sigil/internal/eval.CompilePolicy], linking the
+// documents it invokes and imports by name. File paths never matter to
+// resolution; a name has one definition in the bundle.
+//
+// A host's required policies can come from a trusted source, a second
+// Bundle passed to [Bundle.Trust]. A trusted document resolves before the
+// bundle's own, and a bundle document that claims its name is an error.
+//
+// Diagnostics accumulate in the bundle rather than stopping it, so one
+// run reports every error. [Bundle.Errors] returns them, and
+// [Bundle.Compile] returns them with the root's own. A Bundle isn't safe
+// for concurrent use.
 package bundle
 
 import (
@@ -20,7 +36,7 @@ import (
 	"github.com/spechtlabs/sigil/internal/token"
 )
 
-// Bundle is a set of documents against one kind.
+// Bundle is a set of documents against one kind, indexed by name.
 type Bundle struct {
 	kind    *kind.Kind
 	Sources map[string][]byte // file name to source
@@ -35,12 +51,12 @@ type Bundle struct {
 // what the checker learned about it.
 type Document struct {
 	Node     ast.Doc
-	Info     *check.Info
-	Exported *check.Exported
-	Name     string
+	Info     *check.Info     // what the checker recorded; nil until checked
+	Exported *check.Exported // what a `use` of the document sees; nil until checked
+	Name     string          // the name in the document's header
 	File     string
 	Kind     bool // a kind document, indexed only so `use` of its name is an error
-	Trusted  bool
+	Trusted  bool // the document comes from the trusted bundle
 	failed   bool // checked with errors, or in an import cycle
 }
 
@@ -60,7 +76,10 @@ func New(k *kind.Kind) *Bundle {
 }
 
 // Trust adds a trusted bundle: required policies resolve there first,
-// and a document here that takes a trusted name is an error.
+// and a document here that takes a trusted name is an error. Call it
+// before adding this bundle's own files, since the name check runs as
+// each document is indexed. t's diagnostics join this bundle's on
+// [Bundle.Check].
 func (b *Bundle) Trust(t *Bundle) {
 	b.trusted = t
 	for _, d := range t.docs {
@@ -68,8 +87,10 @@ func (b *Bundle) Trust(t *Bundle) {
 	}
 }
 
-// Add parses src as file and indexes its documents. A file that fails
-// to parse still contributes every document that parsed.
+// Add parses src as file and indexes its documents by name. A file that
+// fails to parse still contributes every document that parsed. Parse
+// errors and names defined twice are recorded in the bundle, for
+// [Bundle.Errors]. Add keeps src; the caller must not modify it after.
 func (b *Bundle) Add(file string, src []byte) {
 	b.Sources[file] = src
 	f, errs := parser.ParseFile(file, src)
@@ -139,7 +160,8 @@ func (b *Bundle) lookup(name string) *Document {
 	return nil
 }
 
-// Document returns the document called name, or nil.
+// Document returns the document called name, looking in the trusted
+// bundle first, or nil.
 func (b *Bundle) Document(name string) *Document { return b.lookup(name) }
 
 // Documents lists the bundle's own policies and modules, in the order
@@ -326,16 +348,19 @@ func (b *Bundle) resolve(name string) (*check.Exported, bool) {
 
 // Options configures Compile.
 type Options struct {
-	Params  map[string]eval.Value
-	Binding *gokind.Binding
-	Require []string // policies the root must invoke unconditionally
-	Static  bool
+	Params  map[string]eval.Value // the root's params bound by the host
+	Binding *gokind.Binding       // the kind's Go types and host functions; can be nil when Static is set
+	Require []string              // policies the root must invoke unconditionally
+	// Static compiles the structure only, for explain, as
+	// eval.Options.Static does.
+	Static bool
 }
 
 // Compile checks the bundle and compiles the policy called root. The
-// errors are the bundle's own and this root's; compiling one root never
-// leaves errors behind for the next, so a tool can compile every policy
-// of a bundle in turn.
+// errors are the bundle's own and this root's, sorted by file and
+// position; compiling one root never leaves errors behind for the next,
+// so a tool can compile every policy of a bundle in turn. Any error in
+// the bundle, even in a document root doesn't use, fails the compile.
 func (b *Bundle) Compile(root string, o Options) (*eval.Policy, diag.ErrorList) {
 	b.Check()
 	fail := func(errs ...*diag.Error) diag.ErrorList {

@@ -1,4 +1,11 @@
 // Package output renders API responses and preserves policy refusals as errors.
+//
+// [Print] writes a response in one of the views, a summary of the decision,
+// grants, policies or status, or as indented JSON with --json, and only then
+// returns an error for a status outside 2xx. The error wraps a
+// [ResponseError], whose exit code tells a script that the policy refused
+// from any other failure. The views decode the response into the server's
+// own types, so the CLI and the service can't disagree on the wire format.
 package output
 
 import (
@@ -166,7 +173,8 @@ func payloadValue(value any) string {
 	return string(data)
 }
 
-// Response views used by the command packages.
+// Response views used by the command packages, one per kind of response.
+// Metrics prints a successful body as it is.
 const (
 	Deploy   = "deploy"
 	Access   = "access"
@@ -176,7 +184,9 @@ const (
 )
 
 // Print renders the full response before returning an error for a refusal
-// or HTTP failure. JSON output stays machine-readable on every status.
+// or HTTP failure. JSON output stays machine-readable on every status. view
+// is one of the view constants, and explain adds the trace to the Deploy and
+// Access views. The error for a status outside 2xx wraps a [*ResponseError].
 func Print(out io.Writer, status int, data []byte, view string, asJSON, explain bool) humane.Error {
 	rendered, herr := format(status, data, view, asJSON, explain)
 	if herr != nil {
@@ -198,11 +208,13 @@ type ResponseError struct {
 	status int
 }
 
+// Error implements the error interface. It names the HTTP status.
 func (e *ResponseError) Error() string {
 	return fmt.Sprintf("deploygate answered HTTP %d %s", e.status, http.StatusText(e.status))
 }
 
-// ExitCode returns 2 for policy refusals and 1 for other HTTP failures.
+// ExitCode returns 2 for policy refusals, 403, 409 and 422, and 1 for other
+// HTTP failures.
 func (e *ResponseError) ExitCode() int {
 	switch e.status {
 	case http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity:
@@ -227,7 +239,8 @@ func format(status int, data []byte, view string, asJSON, explain bool) ([]byte,
 	}
 }
 
-// Write writes output and reports destination errors.
+// Write writes data to out and returns an error with advice when the write
+// fails.
 func Write(out io.Writer, data []byte) humane.Error {
 	if _, err := out.Write(data); err != nil {
 		return humane.Wrap(err, "cannot write the response", "check the output destination")

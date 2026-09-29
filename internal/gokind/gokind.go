@@ -1,11 +1,3 @@
-// Package gokind builds a kind from Go types by reflection: the input
-// struct becomes the inputs and struct types, payload structs become
-// decision fields, and Go functions become host function signatures. It
-// is the machinery behind policy.NewKind and produces the same kind.Kind
-// a kind file loads into, so both pass the same validation.
-//
-// Reflection happens here once; the Binding it returns is what the
-// evaluator will use to read inputs without touching reflect at run time.
 package gokind
 
 import (
@@ -25,7 +17,13 @@ var (
 
 // Build reflects over o and returns the kind with its binding, or the
 // problems found. Every problem is reported, not just the first, so a
-// host fixes its types in one round.
+// host fixes its types in one round. On error the kind and binding are
+// nil. The diagnostics carry no position, since there's no source to
+// point into; policy.NewKind panics with their messages.
+//
+// Build reports what only the Go side can get wrong, such as a field type
+// policies can't read, a malformed tag, or mixing WithDecisions and
+// WithCollect, and leaves every rule of the model to [kind.Kind.Validate].
 func Build(o Options) (*kind.Kind, *Binding, diag.ErrorList) {
 	b := &builder{
 		kind: &kind.Kind{Name: o.Name, Version: o.Version, Accepts: accepts(o), Collect: collect(o)},

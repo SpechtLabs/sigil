@@ -9,13 +9,23 @@ import (
 // Eval evaluates the policy against one input and returns the result
 // with its trace. It's safe to call from any goroutine.
 //
-// On a runtime error, the error is a *RuntimeError and the result holds
-// the kind's default (an empty outcome for a collecting kind), so a host
-// that fails closed can use the result directly. On a failed assert the
-// error is an *AssertionError, the result holds the default the same way,
-// and its trace lists every candidate the rules produced: none when an
-// input assert failed, since no rule ran. A context that's already done
-// returns its error with the default result, without evaluating.
+// Eval never returns a nil [*Result]. On an error, the result holds the
+// kind's default, or an empty outcome for a collecting kind, so a host
+// that fails closed can use it directly. The error is one of:
+//
+//   - [*RuntimeError], when an expression failed, such as a list index out
+//     of range, or a host function returned an error.
+//   - [*ConflictError], when two candidates can't both stand; its
+//     Candidates field names them.
+//   - [*AssertionError], when an assert failed. The result's trace lists
+//     every candidate the rules produced: none when an input assert
+//     failed, since no rule ran.
+//   - ctx.Err(), unwrapped, when ctx is already done. Eval then returns
+//     the default result without evaluating.
+//
+// The context is checked once, before evaluation starts, and a running
+// evaluation isn't interrupted. Host functions run on the calling
+// goroutine, and a panic in one propagates out of Eval.
 func (p *Policy[In]) Eval(ctx context.Context, input In) (*Result, error) {
 	if err := ctx.Err(); err != nil {
 		res, _ := convert(result.Fallback(p.prog, nil))

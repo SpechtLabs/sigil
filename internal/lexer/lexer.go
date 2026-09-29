@@ -1,23 +1,3 @@
-// Package lexer turns Sigil source text into tokens.
-//
-// The lexer is context-free: it never looks at what came before to decide
-// what a token is, and it takes the longest match at every position, as
-// docs/reference/lexical.md specifies. Everything that needs context, such as
-// reading `deploy.common` as one policy name or splitting `>=` after a type
-// argument, is the parser's job.
-//
-// Lexical errors don't stop the lexer. It records a diag.Error, emits an Illegal
-// token covering the bad text, and carries on, so one typo produces one
-// diagnostic instead of hiding everything after it.
-//
-// Each kind of token has its own file, holding the scanner method and, for
-// literals, the decoder. The literal decoders (ParseInt, ParseFloat,
-// ParseDuration and Unquote) serve two callers. The lexer runs them to
-// validate a literal's text as soon as it's scanned, so a lexical error is
-// reported where the literal is. The parser runs them again to get the value
-// for the AST, and can rely on them succeeding for any token the lexer
-// accepted. Keeping one implementation means the two can't disagree about
-// what a literal is worth.
 package lexer
 
 import (
@@ -27,7 +7,9 @@ import (
 	"github.com/spechtlabs/sigil/internal/token"
 )
 
-// Lexer produces tokens from a source buffer on demand.
+// Lexer produces tokens from a source buffer on demand. Create one with
+// [New]; the zero Lexer reports invalid positions. A Lexer is not safe for
+// concurrent use.
 type Lexer struct {
 	src  []byte
 	errs []*diag.Error
@@ -42,13 +24,17 @@ func New(src []byte) *Lexer {
 	return &Lexer{src: src, line: 1, col: 1}
 }
 
-// Errors returns every lexical error found so far, in source order.
+// Errors returns every lexical error found so far, in source order. The
+// errors have no File set. The slice and the errors in it are the lexer's
+// own, not copies, and later calls to [Lexer.Next] may append to the slice.
 func (l *Lexer) Errors() []*diag.Error {
 	return l.errs
 }
 
-// Next returns the next token. After the source is exhausted it returns EOF
-// forever.
+// Next skips whitespace and returns the next token, which may be a
+// [token.Comment]. Text the lexer can't read comes back as a
+// [token.Illegal] token, with an error recorded for [Lexer.Errors]. After
+// the source is exhausted Next returns [token.EOF] forever.
 func (l *Lexer) Next() token.Token {
 	l.skipWhitespace()
 	start := l.pos()

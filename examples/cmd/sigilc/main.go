@@ -3,6 +3,12 @@
 // types and calls the real host functions, so `sigilc eval` and
 // `sigilc test` run the same code the service runs, and `sigilc export`
 // writes the kind files the policy repository checks in, one per kind.
+//
+// The whole program is one call to [cli.Main] with a [cli.WithKind] for
+// DeployApproval and one for AccessGrant, which is all a host needs to ship
+// the sigil command line with its own kinds. `go generate ./cmd/sigilc`
+// rewrites policies/deploy_approval.sigil and policies/access_grant.sigil
+// from the Go definitions.
 package main
 
 import (

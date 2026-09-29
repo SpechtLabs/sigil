@@ -13,8 +13,8 @@ import (
 // first; they're declared names, not strings.
 type Decision struct {
 	Name    string
-	Fields  []*Field
-	Reasons []string
+	Fields  []*Field // the payload fields, in declaration order
+	Reasons []string // the declared reasons; a set, so their order means nothing
 	// Ranked holds the reasons in precedence order when the kind ranks
 	// them with a scoped `precedence`; nil when it doesn't.
 	Ranked []string
@@ -23,9 +23,10 @@ type Decision struct {
 // HasReason reports whether the decision declares the reason.
 func (d *Decision) HasReason(name string) bool { return slices.Contains(d.Reasons, name) }
 
-// ReasonRank returns the reason's position in the decision's ranking, or
-// 0 when the kind doesn't rank this decision's reasons, so every reason
-// ties.
+// ReasonRank returns the reason's position in the decision's ranking,
+// from 0 for the highest, or 0 when the kind doesn't rank this decision's
+// reasons, so every reason ties. A reason the ranking doesn't name also
+// gets 0.
 func (d *Decision) ReasonRank(name string) int {
 	for i, r := range d.Ranked {
 		if r == name {
@@ -41,7 +42,8 @@ type Outcome struct {
 	Reason   string // empty for the whole decision
 }
 
-// String renders the outcome as a kind file writes it.
+// String implements [fmt.Stringer]. It renders the outcome as a kind file
+// writes it: `approve` or `approve.release_manager`.
 func (o Outcome) String() string {
 	if o.Reason == "" {
 		return o.Decision
@@ -56,7 +58,7 @@ func (o Outcome) Matches(decision, reason string) bool {
 }
 
 // Field is a payload field. Default holds a constant in the evaluator's
-// representation (see constant.Conforms) when HasDefault is set; a field
+// representation (see [constant.Conforms]) when HasDefault is set; a field
 // without a default is required at every call site. A nil Default with
 // HasDefault set means the kind's source couldn't produce the value and
 // has reported why, so Validate doesn't report it again.
@@ -85,7 +87,7 @@ func (d *Decision) Signature() string {
 }
 
 // Source renders the declaration as a kind file writes it, one reason
-// per line.
+// per line, ending in a newline.
 func (d *Decision) Source() string {
 	var b strings.Builder
 	b.WriteString(d.head() + " {\n")

@@ -1,15 +1,3 @@
-// Package eval evaluates checked expressions against a Go host's input.
-//
-// Compile turns an expression into a tree of closures once, using the
-// types the checker recorded to pick each operator's implementation up
-// front, so evaluation does no type dispatch. Values are reflect.Values
-// over the host's own Go data: an input's field is read through the
-// index path NewKind recorded, a list is indexed in place, a map is
-// looked up in place. Nothing is converted or copied on the way in.
-//
-// Runtime errors (an index out of range, integer overflow, a host
-// function returning an error) unwind through a recovered panic and come
-// back from Run as a *diag.Error pointing at the expression that failed.
 package eval
 
 import (
@@ -24,21 +12,27 @@ import (
 
 var timeType = reflect.TypeFor[time.Time]()
 
-// Value is a runtime value: a reflect.Value over the host's data, or over
-// a constant. An absent optional is the invalid Value.
+// Value is a runtime value: a [reflect.Value] over the host's data, or
+// over a constant. An absent optional is the invalid Value, and a present
+// one is a pointer to its value.
 type Value = reflect.Value
 
-// Expr is a compiled expression.
+// Expr is a compiled expression. Calling it evaluates the expression in f
+// and panics with a *[diag.Error] on a runtime error; [Run] turns that
+// panic into a returned error.
 type Expr func(f *Frame) Value
 
-// Run evaluates e in f, turning a runtime error into a returned one.
+// Run evaluates e in f and returns its value, or the runtime error it
+// raised. A panic that isn't a runtime error, such as one inside a host
+// function, is re-raised unchanged.
 func Run(e Expr, f *Frame) (v Value, err *diag.Error) {
 	err = catch(func() { v = e(f) })
 	return v, err
 }
 
-// Bool is a convenience for tests and the policy evaluator: the bool a
-// condition evaluated to.
+// Bool returns the bool a condition evaluated to, unwrapping an
+// interface value first. It's a convenience for tests and the policy
+// evaluator, and panics when v doesn't hold a bool.
 func Bool(v Value) bool { return norm(v).Bool() }
 
 // catch runs fn and returns the runtime error it threw, if any.

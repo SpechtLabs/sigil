@@ -1,5 +1,9 @@
 // Package golang implements the `sigil gen go` command. It isn't named go
 // because that is a keyword.
+//
+// The command will generate typed Go code from a kind file. It isn't
+// implemented yet. [NewCommand] registers the command with its help, flags
+// and argument checks, and running it reports a not-implemented error.
 package golang
 
 import (

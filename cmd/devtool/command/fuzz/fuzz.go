@@ -1,5 +1,12 @@
 // Package fuzz implements `devtool fuzz`: fuzzing every Go fuzz target one
 // at a time, listing them, and reporting a failed extended campaign.
+//
+// `fuzz run` runs go test -fuzz on each target for --time, one after the
+// other, and stops at the first failure; go test saves the failing input
+// under the package's testdata/fuzz directory. `fuzz list` shows what
+// `fuzz run` would fuzz, and with --packages -o json feeds CI's matrix.
+// `fuzz report` opens or comments on the GitHub issue for a failed
+// scheduled or manually dispatched campaign on main.
 package fuzz
 
 import (

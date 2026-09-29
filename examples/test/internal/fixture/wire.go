@@ -5,6 +5,13 @@
 // It is an ordinary package rather than a _test.go file because test files
 // can't be imported across packages, and the two suites live in two. It sits
 // under test/internal so nothing outside the tests can depend on it.
+//
+// [OwnerRequest] builds deployment requests, adjusted by [Mutator] values
+// such as [Soak], and [AccessFor] builds access requests. [DecisionCases],
+// [AccessCases] and the bad-request tables say what the service must answer,
+// and the Expect helpers, such as [ExpectDecision], check an answer against
+// them. [Families] reads metrics from a registry's Gather or from the text
+// /metrics serves, so both suites assert on the same series.
 package fixture
 
 import (

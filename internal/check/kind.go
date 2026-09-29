@@ -12,8 +12,9 @@ import (
 )
 
 // LoadKind parses src as a kind file, which holds exactly one kind
-// document, and returns the kind. On any error the kind is nil and the
-// list holds every diagnostic.
+// document, and returns the kind. file names the source in diagnostics.
+// On any error the kind is nil and the list holds every diagnostic; a
+// parse error stops before the kind is checked.
 func LoadKind(file string, src []byte) (*kind.Kind, diag.ErrorList) {
 	f, errs := parser.ParseFile(file, src)
 	if errs != nil {
@@ -24,8 +25,9 @@ func LoadKind(file string, src []byte) (*kind.Kind, diag.ErrorList) {
 	return k, c.Errors()
 }
 
-// KindFile builds the kind from an already parsed kind file. The kind is
-// nil when anything is wrong, and Errors says what.
+// KindFile builds the kind from an already parsed kind file, which must
+// hold exactly one document, a kind. The kind is nil when anything is
+// wrong, and [Checker.Errors] says what.
 func (c *Checker) KindFile(f *ast.File) *kind.Kind {
 	if f == nil {
 		return nil
@@ -49,11 +51,14 @@ func (c *Checker) KindFile(f *ast.File) *kind.Kind {
 }
 
 // Kind builds the kind a kind document declares. It resolves type names,
-// evaluates the constant defaults and checks the one rule that only
-// source has, that `reason: string` comes first in every decision.
-// Everything else is kind.Validate's job; the checker records where each
-// declaration is so those diagnostics point at the right line. The kind
-// is nil when anything is wrong, and Errors says what.
+// evaluates the constant defaults and checks the rules only source can
+// break: `precedence`, `collect` and `default` declared at most once, a
+// scoped `precedence` that names a declared decision and is its only one,
+// and a default whose reason is a bare name and whose arguments each name
+// a payload field once. Everything else is [kind.Kind.Validate]'s job; the checker records
+// where each declaration is so those diagnostics point at the right line,
+// and drops one at a place it has already reported. The kind is nil when
+// anything is wrong, and [Checker.Errors] says what.
 func (c *Checker) Kind(doc *ast.KindDoc) *kind.Kind {
 	if doc == nil {
 		return nil
@@ -114,7 +119,9 @@ func (c *Checker) Kind(doc *ast.KindDoc) *kind.Kind {
 }
 
 // KindMismatch reports a kind document that doesn't match the host's
-// contract for the kind called name: a stale export.
+// contract for the kind called name: a stale export. It only records the
+// diagnostic, at the document's name; the caller decides that the two
+// differ, as the bundle does by comparing their [kind.Kind.Source].
 func (c *Checker) KindMismatch(doc *ast.KindDoc, name string) {
 	c.errorf(doc.Name, "the host's Go definition is the contract; regenerate this file from Schema()",
 		"kind document %s doesn't match the host's kind", name)

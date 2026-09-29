@@ -43,6 +43,7 @@ type Duration time.Duration
 // unit as a leading component: "2d", "1d12h" and "90m" all parse. A leading
 // minus makes it negative. A duration longer than time.Duration holds, about
 // 292 years, is an error rather than a value that silently wrapped around.
+// Surrounding whitespace is ignored, and empty text is an error too.
 func ParseDuration(text string) (time.Duration, humane.Error) {
 	s := strings.TrimSpace(text)
 	if s == "" {
@@ -110,18 +111,21 @@ func FormatDuration(d time.Duration) string {
 	return b.String()
 }
 
-// String renders the duration like FormatDuration.
+// String implements [fmt.Stringer]. It renders the duration like
+// [FormatDuration].
 func (d Duration) String() string {
 	return FormatDuration(time.Duration(d))
 }
 
-// MarshalJSON writes the duration as a string in Sigil's syntax.
+// MarshalJSON implements [json.Marshaler]. It writes the duration as a string
+// in Sigil's syntax.
 func (d Duration) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.String())
 }
 
-// UnmarshalJSON reads a duration string. A number is rejected with advice
-// rather than guessed at.
+// UnmarshalJSON implements [json.Unmarshaler]. It reads a duration string
+// with [ParseDuration]. A number is rejected with advice rather than guessed
+// at, and so is text that isn't a duration; the error is a humane error.
 func (d *Duration) UnmarshalJSON(data []byte) error {
 	var text string
 	if err := json.Unmarshal(data, &text); err != nil {

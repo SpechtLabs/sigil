@@ -1,4 +1,5 @@
-// Package status implements the demo-cli status command.
+// Package status implements `demo-cli status`, which asks deploygate's
+// /readyz whether both policy bundles are loaded.
 package status
 
 import (
@@ -9,7 +10,8 @@ import (
 	"github.com/spechtlabs/sigil/examples/cmd/demo-cli/internal/output"
 )
 
-// NewCommand returns the status command.
+// NewCommand returns the status command. A service that isn't ready
+// answers 503, and the command exits 1.
 func NewCommand(opts ...Option) *cobra.Command {
 	o := defaultOptions()
 	for _, opt := range opts {

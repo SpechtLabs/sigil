@@ -15,7 +15,7 @@ import (
 // Policy is a compiled policy: the root document's statements as a tree
 // of closures over a Frame, with every invoked policy instantiated
 // inside it, and what's needed to resolve the candidates they produce
-// into an outcome by the rules in docs/reference/evaluation.md.
+// into an outcome by the rules at https://sigil.specht-labs.de/reference/evaluation/.
 //
 // A Policy is immutable once compiled and safe for concurrent use; every
 // evaluation gets its own frames.
@@ -25,8 +25,8 @@ type Policy struct {
 	def     *Candidate // the kind's default, nil for a collecting kind without one
 	ranks   map[string]int
 	Name    string // the root document's name
-	File    string
-	nframes int // frame slots assigned to instances at compile time
+	File    string // the file the root document is in
+	nframes int    // frame slots assigned to instances at compile time
 	static  bool
 }
 
@@ -48,17 +48,18 @@ type Outcome struct {
 // members of an exclusive set, or several candidates at the top rank of
 // a `collect one` kind.
 type Conflict struct {
-	Msg        string
-	Candidates []*Candidate
+	Msg        string       // what conflicts, for the error message
+	Candidates []*Candidate // every candidate of the exclusive set's members, or every one at the top rank
 }
 
 // Requirement is how the root reaches a policy: through top-level
-// invocations only, which is what policy.Require asks for, or only
+// invocations only, which is what
+// [github.com/spechtlabs/sigil/pkg/policy.Require] asks for, or only
 // through gated ones, or not at all.
 type Requirement struct {
 	Gated         []Site // invocations under a `when`, when none is unconditional
-	Invoked       bool
-	Unconditional bool
+	Invoked       bool   // some invocation reaches the policy
+	Unconditional bool   // some chain of invocations with no `when` on it reaches the policy
 }
 
 // run is the mutable state of one evaluation: the frames of every
@@ -86,9 +87,15 @@ func (p *Policy) Ranked() bool { return len(p.kind.Precedence) > 0 }
 // Eval evaluates the policy against input, a struct value of the kind's
 // input type or a pointer to one, in three phases: input asserts, rules,
 // outcome asserts. A failing phase, or a conflict, ends the evaluation
-// with the failure in the outcome. A runtime error in a rule comes back
-// as the error, with no outcome; one in an assert is that assert's
-// failure.
+// with the failure in the outcome: failed input asserts leave only
+// Failed set, and a conflict leaves Candidates and Conflict with no
+// outcome assert checked. A runtime error in a rule comes back as the
+// error, with no outcome; one in an assert is that assert's failure.
+//
+// Eval doesn't check input's Go type, which must be the binding's input
+// struct. A policy compiled with [Options.Static] returns an error. A
+// panic in a host function isn't recovered. Eval is safe to call from
+// several goroutines at once.
 func (p *Policy) Eval(input any) (*Outcome, *diag.Error) {
 	if p.static {
 		return nil, &diag.Error{File: p.File, Msg: "policy was compiled for explanation only and can't be evaluated"}

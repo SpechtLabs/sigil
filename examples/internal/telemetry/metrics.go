@@ -50,7 +50,7 @@ var evaluationBuckets = []float64{.00005, .0001, .00025, .0005, .001, .0025, .00
 // Metrics holds the service's Prometheus collectors on a registry the service
 // owns, so tests can build as many as they like without colliding in the
 // global default registry, and /metrics exposes exactly what is registered
-// here.
+// here. Its methods are safe for concurrent use.
 type Metrics struct {
 	registry *prometheus.Registry
 
@@ -235,6 +235,8 @@ func (m *Metrics) ObserveReloadSuccess(kind string, at time.Time, source string,
 // LoadedPolicy is one policy a bundle serves, for the loaded-policy gauge.
 // Team is empty for a policy that isn't a team's, such as access.main.
 type LoadedPolicy struct {
-	Team   string
+	// Team is the team the policy serves, the gauge's team label.
+	Team string
+	// Policy is the policy's name, the gauge's policy label.
 	Policy string
 }

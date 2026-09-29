@@ -2,6 +2,12 @@
 // flags, and the DEPLOYGATE_* environment variables viper binds to them. It
 // builds everything in constructors instead of init functions, so a test can
 // create as many independent command trees as it needs.
+//
+// [NewRootCommand] builds the tree: `deploygate serve`, which resolves a
+// [Config] with [Load] and hands it to a [RunFunc], `deploygate healthcheck`,
+// which calls [Probe] on the address [ReadyzURL] derives from --addr, and
+// `deploygate version`. The service itself stays out of this package, so its
+// tests check flag and environment handling without starting a server.
 package config
 
 import (
@@ -44,7 +50,8 @@ var (
 	DefaultTeams = []string{"payments", "checkout"}
 )
 
-// The defaults that are single values.
+// The defaults that are single values, one per serve flag: --addr,
+// --reload-interval, --shutdown-timeout and --log-format.
 const (
 	DefaultAddr            = ":8080"
 	DefaultReloadInterval  = 30 * time.Second
@@ -66,7 +73,7 @@ type Config struct {
 	AccessPoliciesDir string
 	// Teams are the teams served; team t evaluates policy t.production.
 	Teams []string
-	// ReloadInterval is how often the policies directory is polled for
+	// ReloadInterval is how often both policies directories are polled for
 	// changes. Zero disables polling; SIGHUP and the reload endpoint still
 	// work.
 	ReloadInterval time.Duration
@@ -83,9 +90,10 @@ type Config struct {
 type RunFunc func(ctx context.Context, cfg Config) error
 
 // NewRootCommand builds the deploygate command tree: `serve`, which resolves
-// the configuration and hands it to run, and `version`, which prints version.
-// Keeping run a parameter keeps this package free of the service's
-// dependencies and lets tests check flag handling without starting anything.
+// the configuration and hands it to run, `healthcheck`, which probes the
+// local server's readiness, and `version`, which prints version. Keeping run
+// a parameter keeps this package free of the service's dependencies and lets
+// tests check flag handling without starting anything.
 func NewRootCommand(version string, run RunFunc) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "deploygate",
@@ -103,7 +111,10 @@ reloaded in place when it changes, keeping the last bundle that loaded.`,
 }
 
 // Load resolves the configuration from v, flags over environment over
-// defaults, and checks it.
+// defaults, and checks it with [Config.Validate]. The team list is split on
+// commas and deduplicated, so DEPLOYGATE_TEAMS=payments,checkout and two
+// --team flags give the same teams. It returns the zero Config with the
+// error when a setting can't work.
 func Load(v *viper.Viper) (Config, humane.Error) {
 	cfg := Config{
 		Addr:              v.GetString(keyAddr),

@@ -1,6 +1,11 @@
 // Package usage turns the ways a command line can be wrong into errors
 // that say what was expected: which arguments a command takes, which
 // flag is missing or misspelled, and how to see its help.
+//
+// [None], [Exactly], [AtLeast] and [AtMost] are the argument validators
+// commands set as their Args. [Humanize] rewrites the usage errors cobra
+// and pflag return; the Execute functions of sigil and devtool pass every
+// error through it before printing.
 package usage
 
 import (
@@ -60,7 +65,9 @@ func AtMost(n int, what string) cobra.PositionalArgs {
 // Humanize translates the usage errors cobra and pflag produce into ones
 // that name the command and say how to fix the call. args are the
 // command-line arguments the run was given, which select the command the
-// error is about. Any other error is returned as it is.
+// error is about. Any other [humane.Error] is returned as it is, and any
+// other error is wrapped with the command's usage and how to see its
+// help. A nil err returns nil.
 func Humanize(root *cobra.Command, args []string, err error) humane.Error {
 	if err == nil {
 		return nil

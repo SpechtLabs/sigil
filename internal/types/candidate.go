@@ -8,19 +8,21 @@ import "strings"
 // the order of candidates isn't part of the outcome; the checker only
 // lets a policy range over one and read the fields of its elements.
 type Candidate struct {
-	Decision string
+	Decision string   // the decision's name
 	Fields   []*Field // the payload fields in declaration order, then `reason`
 }
 
 // NewCandidate returns the candidate type of a decision with the given
 // payload fields. It adds `reason`, a decision value, which a kind can't
-// declare as a payload field.
+// declare as a payload field. The payload slice is copied; the fields
+// themselves are shared.
 func NewCandidate(decision string, payload []*Field) *Candidate {
 	fields := append(append([]*Field{}, payload...), &Field{Name: "reason", Type: Decision})
 	return &Candidate{Decision: decision, Fields: fields}
 }
 
-// String returns `review candidate` for a candidate of `review`.
+// String implements [Type]. It returns `review candidate` for a candidate
+// of `review`, the name type errors use.
 func (c *Candidate) String() string { return c.Decision + " candidate" }
 
 // Field returns the field called name, or nil.
@@ -33,7 +35,8 @@ func (c *Candidate) Field(name string) *Field {
 	return nil
 }
 
-// FieldNames returns the field names in declaration order, for messages
+// FieldNames returns the field names in declaration order, joined with
+// commas, for messages
 // like "a review candidate has: approvers, reason".
 func (c *Candidate) FieldNames() string {
 	names := make([]string, len(c.Fields))

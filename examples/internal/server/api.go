@@ -19,6 +19,8 @@ type DeploymentRequest struct {
 
 // ReleaseRequest is the release being shipped, as the API receives it.
 type ReleaseRequest struct {
+	// Soak is how long the release has soaked, a duration string. The
+	// handler refuses a negative one with 400.
 	Soak   Duration `json:"soak"`
 	Hotfix bool     `json:"hotfix"`
 }
@@ -35,7 +37,7 @@ type ActorRequest struct {
 }
 
 // AccessRequest is the body of POST /api/v1/access/grants: the access
-// policy's input as it is.
+// policy's input as it is. Team must not be empty.
 type AccessRequest struct {
 	Actor       access.Actor `json:"actor"`
 	Team        string       `json:"team"`
@@ -44,19 +46,30 @@ type AccessRequest struct {
 
 // DecisionResponse is what a deployment request returns: the decision the
 // host acts on, the trace that explains it, and the roles the access stage
-// granted. When an evaluation fails (HTTP 409 or 422) the decision fields hold
-// the fallback, deny, and Error says what went wrong.
+// granted. When an evaluation fails, with HTTP 409 or 422, the decision
+// fields hold the fallback, deny, and Error says what went wrong.
 type DecisionResponse struct {
-	Team     string            `json:"team"`
-	Policy   string            `json:"policy"`
-	Decision string            `json:"decision"`
-	Reason   string            `json:"reason"`
-	Payload  Payload           `json:"payload"`
-	Trace    []CandidateResult `json:"trace"`
-	Access   *AccessBlock      `json:"access,omitempty"`
-	Error    *ErrorResponse    `json:"error,omitempty"`
-	Asserts  []AssertResult    `json:"asserts,omitempty"`
-	Conflict *ConflictResult   `json:"conflict,omitempty"`
+	// Team is the team from the path.
+	Team string `json:"team"`
+	// Policy is the team's root policy, <team>.production.
+	Policy string `json:"policy"`
+	// Decision and Reason are the outcome: approve, review or deny, and why.
+	Decision string `json:"decision"`
+	Reason   string `json:"reason"`
+	// Payload is the winning decision's payload: bake for an approval,
+	// approvers for a review, empty for a deny.
+	Payload Payload `json:"payload"`
+	// Trace lists every candidate the deploy policy produced, the winner
+	// marked. It is empty when no rule fired, so the kind's default decided,
+	// and when the deploy policy didn't run.
+	Trace []CandidateResult `json:"trace"`
+	// Access is the access stage that ran before the deploy policy.
+	Access *AccessBlock `json:"access,omitempty"`
+	// Error is set when an evaluation failed, and Asserts or Conflict
+	// explain the failure when it was a failed assert or a conflict.
+	Error    *ErrorResponse  `json:"error,omitempty"`
+	Asserts  []AssertResult  `json:"asserts,omitempty"`
+	Conflict *ConflictResult `json:"conflict,omitempty"`
 }
 
 // AccessBlock is the access stage of a deployment request: the policy that
@@ -70,24 +83,30 @@ type AccessBlock struct {
 // least one role is granted, 403 when none is, and 409 or 422 with Error when
 // the evaluation failed, in which case Grants is empty.
 type AccessResponse struct {
-	Policy      string            `json:"policy"`
-	Team        string            `json:"team"`
-	Environment string            `json:"environment"`
-	Grants      []GrantResult     `json:"grants"`
-	Trace       []CandidateResult `json:"trace"`
-	Error       *ErrorResponse    `json:"error,omitempty"`
-	Asserts     []AssertResult    `json:"asserts,omitempty"`
-	Conflict    *ConflictResult   `json:"conflict,omitempty"`
+	Policy      string `json:"policy"`
+	Team        string `json:"team"`
+	Environment string `json:"environment"`
+	// Grants are the roles granted, in outcome order, never null.
+	Grants []GrantResult `json:"grants"`
+	// Trace lists every candidate the access policy produced.
+	Trace []CandidateResult `json:"trace"`
+	// Error, Asserts and Conflict are set as in [DecisionResponse].
+	Error    *ErrorResponse  `json:"error,omitempty"`
+	Asserts  []AssertResult  `json:"asserts,omitempty"`
+	Conflict *ConflictResult `json:"conflict,omitempty"`
 }
 
 // GrantResult is one role the access policy granted. TTL is set for the
 // roles that expire.
 type GrantResult struct {
-	Role     string    `json:"role"`
-	Reason   string    `json:"reason"`
-	TTL      *Duration `json:"ttl,omitempty"`
-	Policy   string    `json:"policy"`
-	Location string    `json:"location"`
+	Role   string    `json:"role"`
+	Reason string    `json:"reason"`
+	TTL    *Duration `json:"ttl,omitempty"`
+	// Policy is the policy whose rule granted the role.
+	Policy string `json:"policy"`
+	// Location is where the grant was made, with the call chain that led
+	// there when the trace has it.
+	Location string `json:"location"`
 }
 
 // ConflictResult names the candidates that can't fire together, such as an
@@ -105,13 +124,20 @@ type Payload map[string]any
 // CandidateResult is one decision constructor that fired, as the trace
 // reports it.
 type CandidateResult struct {
-	Decision   string   `json:"decision"`
-	Reason     string   `json:"reason"`
-	Policy     string   `json:"policy"`
-	Location   string   `json:"location"`
+	Decision string `json:"decision"`
+	Reason   string `json:"reason"`
+	// Policy is the policy the constructor is written in.
+	Policy string `json:"policy"`
+	// Location is the constructor's position with the call chain that
+	// reached it, such as `payments/production.sigil:10:3 →
+	// deploy/production.sigil:16:5`.
+	Location string `json:"location"`
+	// Conditions are the source text of the conditions that held on the
+	// way to the constructor, outermost first.
 	Conditions []string `json:"conditions,omitempty"`
 	Payload    Payload  `json:"payload"`
-	Winner     bool     `json:"winner"`
+	// Winner marks a candidate that made the outcome.
+	Winner bool `json:"winner"`
 }
 
 // AssertResult is one assert that didn't hold.
@@ -132,9 +158,11 @@ type PoliciesResponse struct {
 
 // KindPolicies is one kind's loaded bundle.
 type KindPolicies struct {
-	Kind     string           `json:"kind"`
-	Version  int              `json:"version"`
-	LoadedAt time.Time        `json:"loaded_at"`
+	Kind string `json:"kind"`
+	// Version is the kind's contract version.
+	Version  int       `json:"version"`
+	LoadedAt time.Time `json:"loaded_at"`
+	// Source is the directory the bundle was read from, or embedded.
 	Source   string           `json:"source"`
 	Policies []PolicyResponse `json:"policies"`
 }
@@ -147,7 +175,10 @@ type PolicyResponse struct {
 
 // StatusResponse is the body of the health endpoints.
 type StatusResponse struct {
-	Status   string     `json:"status"`
+	// Status is ok for /healthz, and ready or not ready for /readyz.
+	Status string `json:"status"`
+	// LoadedAt is the latest successful load of either bundle, set once
+	// /readyz reports ready.
 	LoadedAt *time.Time `json:"loaded_at,omitempty"`
 }
 

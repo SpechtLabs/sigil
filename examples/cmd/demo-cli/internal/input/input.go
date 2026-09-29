@@ -1,4 +1,5 @@
-// Package input reads bounded request files and HTTP bodies.
+// Package input reads bounded request files and HTTP bodies, so a stray
+// file or a wrong --url can't make demo-cli buffer without limit.
 package input
 
 import (
@@ -8,7 +9,8 @@ import (
 	humane "github.com/sierrasoftworks/humane-errors-go"
 )
 
-// ReadLimited reads at most limit bytes and rejects larger bodies.
+// ReadLimited reads r to the end and returns what it read, or an error when
+// r holds more than limit bytes or fails.
 func ReadLimited(r io.Reader, limit int64) ([]byte, humane.Error) {
 	body, err := io.ReadAll(io.LimitReader(r, limit+1))
 	if err != nil {

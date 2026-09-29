@@ -1,12 +1,15 @@
 package types
 
-// Map is `map<K, V>`.
+// Map is `map<K, V>`. K must be a scalar; see [IsKey]. As with [List], the
+// checker types an empty `{}` with nil parameters until the context
+// supplies them.
 type Map struct {
-	Key   Type
-	Value Type
+	Key   Type // K
+	Value Type // V
 }
 
-// String returns `map<K, V>`.
+// String implements [Type]. It returns `map<K, V>` with K and V spelled
+// out.
 func (m *Map) String() string { return "map<" + m.Key.String() + ", " + m.Value.String() + ">" }
 
 func (*Map) isType() {}

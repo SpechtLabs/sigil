@@ -36,6 +36,8 @@ bun = "1.4.2"
 markdownlint-cli2 = "0.23.3"
 # Renders roadmap.yml into docs/project/roadmap.md (see the docs-roadmap task).
 "github:SierraSoftworks/roadmap" = "1.4.2"
+# Serves the Go API documentation as pkg.go.dev renders it (see the docs-godoc task).
+"go:golang.org/x/pkgsite/cmd/pkgsite" = "0.5.0"
 
 [tasks.build]
 description = "Build the sigil binary into bin/"
@@ -203,6 +205,14 @@ run = [
 description = "Serve the documentation website locally with hot reload"
 depends = ["docs-roadmap"]
 run = "cd docs && bun install && bun run dev"
+
+# pkgsite renders the working tree, both modules, with pkg.go.dev's templates:
+# doc links, headings, runnable examples and the command pages. It reads the
+# sources once at startup, so restart it to pick up a change. Dependencies
+# resolve from the local module cache, so their links work offline.
+[tasks.docs-godoc]
+description = "Serve the Go API documentation locally, as pkg.go.dev renders it, on localhost:6060"
+run = "pkgsite -open -cache -http localhost:6060 . ./examples"
 
 [tasks.docs-build]
 description = "Build the documentation website (the docs workflow's second job)"

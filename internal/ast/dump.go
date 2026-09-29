@@ -9,6 +9,8 @@ import (
 // expressions fully parenthesized as Sprint prints them and the span of
 // every document, statement and declaration in brackets. Golden tests
 // compare it, so a change to what the parser builds shows up as a diff.
+// Documents are separated by a `---` line. A nil file renders as the
+// empty string.
 func Dump(f *File) string {
 	if f == nil {
 		return ""
@@ -238,7 +240,8 @@ func fieldsString(fields []*Field) string {
 	return strings.Join(parts, ", ")
 }
 
-// TypeString renders a type as written in source.
+// TypeString renders a type as written in source, with canonical spacing:
+// `map<string, ?int>`. A nil type renders as `<nil>`.
 func TypeString(t Type) string {
 	switch t := t.(type) {
 	case *NamedType:

@@ -1,4 +1,8 @@
-// Package export implements the `sigil export` command.
+// Package export implements the `sigil export` command. It writes the kind
+// file of a kind linked into a host binary: to stdout, or to the --out
+// file, which --check only compares. The stock sigil binary links no kind,
+// so there the command always fails. [Export] is the record it prints as
+// JSON and YAML.
 package export
 
 import (
@@ -25,14 +29,16 @@ const (
 
 // Export is what export printed or did, as JSON and YAML print it.
 type Export struct {
-	Kind    string `json:"kind" yaml:"kind"`
-	Version int    `json:"version" yaml:"version"`
+	Kind    string `json:"kind" yaml:"kind"`                         // the kind's name
+	Version int    `json:"version" yaml:"version"`                   // the kind's version
 	File    string `json:"file,omitempty" yaml:"file,omitempty"`     // the --out file
 	Status  string `json:"status,omitempty" yaml:"status,omitempty"` // with --out: current, written or stale
 	Source  string `json:"source" yaml:"source"`                     // the kind file, as the binary exports it
 }
 
-// NewCommand returns the export command.
+// NewCommand returns the export command, configured by opts. Without
+// [WithOutput] it prints text, and without [WithKinds] every run fails,
+// since there is no kind to export.
 func NewCommand(opts ...Option) *cobra.Command {
 	format := output.Text
 	o := &options{output: &format}

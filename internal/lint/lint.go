@@ -1,7 +1,28 @@
 // Package lint finds the patterns `sigil check` warns about: code that
 // compiles and does what it says, but probably not what its author meant.
 // Each lint has a name, a default level, and a place in the CLI reference
-// (docs/reference/cli.md), which describes when it fires.
+// https://sigil.specht-labs.de/reference/cli/, which describes when it fires.
+//
+// [Run] lints only the documents that checked cleanly, because the lints
+// read what the checker recorded about each one in its check.Info. The
+// lints are:
+//
+//   - unused-import: a `use` binds a name nothing reads or invokes.
+//   - shadowed-kind-name: a document keeps a name the kind has since given
+//     to an input, host function or decision.
+//   - unused-let: a private let is never read.
+//   - gated-assert: a policy holding asserts, directly or through its own
+//     invocations, is invoked under `when` and the host doesn't require it.
+//   - gated-deny: the same for a policy holding constructors of the
+//     decision a `collect one` kind ranks highest.
+//   - duplicate-invocation: a policy is invoked twice with the same
+//     arguments, in any order.
+//   - qualified-imports: a selective import is used. Off by default.
+//   - path-matches-name: a document's name doesn't match its file's path.
+//     Off by default.
+//
+// A repository sets each lint's [Level] in sigil.yaml, which the CLI reads
+// into [Options.Levels].
 package lint
 
 import (
@@ -18,12 +39,12 @@ import (
 
 // Levels a lint can be set to.
 const (
-	Off Level = iota
-	Warn
-	Error
+	Off   Level = iota // not reported
+	Warn               // reported as a warning, which doesn't fail the check
+	Error              // reported as an error, which fails the check
 )
 
-// Lint names.
+// Lint names, as findings, `sigil check` output and sigil.yaml spell them.
 const (
 	UnusedImport        = "unused-import"
 	ShadowedKindName    = "shadowed-kind-name"
@@ -36,7 +57,7 @@ const (
 )
 
 // All lists every lint with its default level, in the order the CLI
-// reference documents them.
+// reference documents them. Callers must not modify it.
 var All = []Lint{
 	{Name: UnusedImport, Default: Warn},
 	{Name: ShadowedKindName, Default: Warn},
@@ -58,17 +79,20 @@ type Lint struct {
 	Default Level
 }
 
-// Finding is one lint report.
+// Finding is one lint report. The embedded diagnostic carries the
+// position, message and help; its Code is the lint's name and its
+// Severity follows Level.
 type Finding struct {
 	*diag.Error
-	Lint  string
-	Level Level
+	Lint  string // the lint's name
+	Level Level  // Warn or Error, never Off
 }
 
-// Options configures Run.
+// Options configures [Run].
 type Options struct {
-	Kind *kind.Kind
-	// Levels overrides the default level of the lints it names.
+	Kind *kind.Kind // the kind the bundle was checked against; required
+	// Levels overrides the default level of the lints it names. An unknown
+	// name has no effect here; loading sigil.yaml rejects one.
 	Levels map[string]Level
 	// Required names the policies the host requires, which may be gated
 	// without gated-assert or gated-deny firing: a host rejects a gated
@@ -76,7 +100,7 @@ type Options struct {
 	Required []string
 }
 
-// Names lists every lint's name.
+// Names lists every lint's name, in the order of [All].
 func Names() []string {
 	names := make([]string, len(All))
 	for i, l := range All {
@@ -85,7 +109,8 @@ func Names() []string {
 	return names
 }
 
-// ParseLevel reads a level as a configuration spells it.
+// ParseLevel reads a level as a configuration spells it: `off`, `warn` or
+// `error`. It reports false for anything else, such as `Warn`.
 func ParseLevel(s string) (Level, bool) {
 	switch s {
 	case "off":
@@ -100,6 +125,7 @@ func ParseLevel(s string) (Level, bool) {
 
 // Run lints the bundle's own documents that checked cleanly, and returns
 // the findings of every lint that isn't off, sorted by file and position.
+// It doesn't modify the bundle.
 func Run(b *bundle.Bundle, o Options) []Finding {
 	l := &linter{b: b, o: o, contains: map[string]*contents{}}
 	for _, d := range b.Documents() {
@@ -118,6 +144,8 @@ func Run(b *bundle.Bundle, o Options) []Finding {
 	return l.out
 }
 
+// String implements [fmt.Stringer]. It returns the level as a
+// configuration spells it, and "off" for an unknown level.
 func (lv Level) String() string {
 	switch lv {
 	case Warn:

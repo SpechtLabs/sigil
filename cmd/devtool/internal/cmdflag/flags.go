@@ -12,21 +12,22 @@ import (
 	"github.com/spechtlabs/sigil/cmd/internal/output"
 )
 
-// Run holds the flags every run command takes.
+// Run holds the flags every run command takes. Its values before
+// [Run.Register] are the flags' defaults.
 type Run struct {
-	Filter  string
-	Time    string
-	CPU     int
-	Timeout time.Duration
-	Verbose bool
-	Results string
+	Filter  string        // --filter: a regular expression selecting targets by name
+	Time    string        // --time: go test's time or iteration count, e.g. 1s or 100x
+	CPU     int           // --cpu
+	Timeout time.Duration // --timeout for each go test process
+	Verbose bool          // --verbose: stream go test's output instead of a status line
+	Results string        // --results: the results directory
 }
 
 // List holds the flags every list command takes.
 type List struct {
-	Filter   string
-	Packages bool
-	Format   output.Format
+	Filter   string        // --filter: a regular expression selecting targets by name
+	Packages bool          // --packages: list each package once
+	Format   output.Format // --output
 }
 
 // Names says what a command's flags apply to, for their help.

@@ -17,17 +17,19 @@ import (
 	"github.com/spechtlabs/sigil/internal/kind"
 )
 
-// Error is a problem with a test file or one of its cases.
+// Error is a problem with a test file or one of its cases. It implements
+// [humane.Error], with Help as its advice.
 type Error struct {
 	File string
 	Case string // empty for the file as a whole
 	Msg  string
-	Help string
-	Line int // 0 when unknown
+	Help string // how to fix it; empty when there's no advice
+	Line int    // 0 when unknown
 }
 
 // Eval evaluates the suite's policy against one input, a value of the
-// binding's input struct.
+// binding's input struct, and reduces the result to an [Outcome]. The
+// caller of [Runner.RunCase] supplies it.
 type Eval func(ctx context.Context, input reflect.Value) *Outcome
 
 // Outcome is what an evaluation produced, in a form both the CLI and
@@ -44,7 +46,7 @@ type Got struct {
 	Payload  map[string]any //nolint:emptyinterface // payload values, as the host's Go values
 	Decision string
 	Reason   string
-	Position string
+	Position string // where the constructor is, as a failure reports it
 }
 
 // Result is one case run.
@@ -68,7 +70,7 @@ type Failure struct {
 	Want string
 }
 
-// String returns the sentence.
+// String implements [fmt.Stringer]. It returns Text.
 func (f Failure) String() string { return f.Text }
 
 // diff is a failure between what the evaluation produced and what the
@@ -80,14 +82,18 @@ func diff(got, want string) Failure {
 // Runner runs cases against one kind.
 type Runner struct {
 	Kind    *kind.Kind
-	Binding *gokind.Binding
-	FS      fs.FS // what input files are read from
+	Binding *gokind.Binding // decodes inputs and expected payloads into the host's Go types
+	FS      fs.FS           // what input files are read from
 }
 
 // Passed reports whether the case ran and got what it expected.
 func (r *Result) Passed() bool { return r.Err == nil && len(r.Failures) == 0 }
 
-// RunCase runs one case with eval.
+// RunCase runs one case of s with eval: it reads the case's input,
+// decodes it into the binding's input struct, evaluates it and compares
+// the outcome with what the case expects. An input that can't be read or
+// decoded sets the Result's Err, and eval isn't called. The suite should
+// have passed [Suite.Validate] first.
 func (r *Runner) RunCase(ctx context.Context, s *Suite, c *Case, eval Eval) *Result {
 	res := &Result{Case: c}
 	raw, err := s.ReadInput(r.FS, c)
@@ -104,7 +110,8 @@ func (r *Runner) RunCase(ctx context.Context, s *Suite, c *Case, eval Eval) *Res
 	return res
 }
 
-// Display renders the error with its advice.
+// Display implements humane.Error. It returns the error's text followed
+// by its advice in parentheses, when it has any.
 func (e *Error) Display() string {
 	if e.Help == "" {
 		return e.Error()
@@ -112,7 +119,8 @@ func (e *Error) Display() string {
 	return e.Error() + " (" + e.Help + ")"
 }
 
-// Advice returns how to fix it.
+// Advice implements humane.Error. It returns Help as the one piece of
+// advice, or nil without it.
 func (e *Error) Advice() []string {
 	if e.Help == "" {
 		return nil
@@ -120,9 +128,13 @@ func (e *Error) Advice() []string {
 	return []string{e.Help}
 }
 
-// Cause returns nil: a test file error is where the problem starts.
+// Cause implements humane.Error. It returns nil: a test file error is
+// where the problem starts.
 func (e *Error) Cause() error { return nil } //nolint:humaneerror // humane.Error fixes the signature
 
+// Error implements the error interface. It returns the file, line and
+// case followed by the message, `a_test.yaml:12: case "denied": ...`,
+// leaving out the line and case when unknown.
 func (e *Error) Error() string {
 	var b strings.Builder
 	b.WriteString(e.File)

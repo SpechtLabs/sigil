@@ -1,28 +1,17 @@
-// Package policy is Sigil's Go API: define a kind from Go types, compile
-// policies against it, and evaluate them.
-//
-// It mirrors regexp: a kind is defined once at package level with NewKind,
-// which panics on a contract that can't be exported, the way
-// regexp.MustCompile panics on a pattern that can't be compiled.
-//
-//	var Deploy = policy.NewKind[Input]("DeployApproval",
-//		policy.WithVersion(1),
-//		policy.WithDecisions(Deny, Review, Approve),
-//		policy.WithDefault(Deny, "no_rule_matched"),
-//		policy.WithFunc("split", strings.Split),
-//	)
 package policy
 
 import "github.com/spechtlabs/sigil/internal/eval"
 
-// Policy is a compiled policy: immutable, and safe to evaluate from any
-// number of goroutines at once. Replacing one at run time is a pointer
-// swap.
+// Policy is a compiled policy of the kind with input type In, from
+// [Kind.Load] or [Kind.Compile]. It is immutable and safe to evaluate from
+// any number of goroutines at once, so replacing one at run time is a
+// pointer swap, for example through a [sync/atomic.Pointer].
 type Policy[In any] struct {
 	kind *Kind[In]
 	prog *eval.Policy
 	name string
 }
 
-// Name returns the policy's name, as its header declares it.
+// Name returns the name of the root policy, as its header declares it,
+// for example "payments.production".
 func (p *Policy[In]) Name() string { return p.name }

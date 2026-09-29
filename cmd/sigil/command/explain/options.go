@@ -24,7 +24,8 @@ func WithOutput(format *output.Format) Option {
 	}
 }
 
-// WithKinds sets the kinds linked into the binary.
+// WithKinds sets the kinds linked into the binary. The command uses a
+// linked kind without --kind, and with its Go types and host functions.
 func WithKinds(kinds []project.Linked) Option {
 	return func(o *options) { o.kinds = kinds }
 }

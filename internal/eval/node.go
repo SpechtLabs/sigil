@@ -90,9 +90,9 @@ func (s summary) wants(ph phase) bool {
 // Site is one call on a candidate's chain: the invocation statement in
 // the policy that made it.
 type Site struct {
-	Policy string // the document the invocation is in
-	File   string
-	Pos    token.Pos
+	Policy string    // the document the invocation is in
+	File   string    // the file that document is in
+	Pos    token.Pos // of the invocation statement
 	End    token.Pos
 }
 

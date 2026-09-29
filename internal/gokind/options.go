@@ -6,21 +6,22 @@ import (
 	"github.com/spechtlabs/sigil/internal/kind"
 )
 
-// Options describes the kind to build.
+// Options describes the kind to build, as package policy collects it from
+// the type parameter and options of NewKind.
 type Options struct {
 	Input     reflect.Type // the input struct
 	Default   *Default     // nil for none
 	Accepts   *int         // the oldest version a document may pin; nil accepts every version
-	Name      string
-	Decisions []Decision // precedence order, or declaration order when Collect is set
-	Rankings  []Ranking  // reason rankings, one per decision at most
+	Name      string       // the kind's name, an identifier
+	Decisions []Decision   // precedence order, or declaration order when Collect is set
+	Rankings  []Ranking    // reason rankings, one per decision at most
 	// Precedence ranks the decisions of a Collect kind by name, which
 	// returns every candidate at the top rank; without it a ranked kind's
 	// precedence is the order of Decisions.
 	Precedence []string
-	Exclusive  [][]kind.Outcome
+	Exclusive  [][]kind.Outcome // sets of outcomes that can't fire together
 	Funcs      []Func
-	Version    int
+	Version    int // the contract's version, from 1
 	// Ranked and Collect record which of WithDecisions and WithCollect
 	// added the decisions; both is an error.
 	Ranked  bool
@@ -30,7 +31,7 @@ type Options struct {
 // Decision is one decision, its payload struct and its reasons. None is
 // spelled as an empty struct.
 type Decision struct {
-	Payload reflect.Type
+	Payload reflect.Type // a struct type whose tagged fields are the payload
 	Name    string
 	Reasons []string
 }
@@ -41,14 +42,16 @@ type Ranking struct {
 	Reasons  []string
 }
 
-// Func is a host function: its name and the Go function.
+// Func is a host function: its name and the Go function. Fn must be a
+// non-variadic func that returns one value, or a value and an error.
 type Func struct {
 	Fn   any
 	Name string
 }
 
 // Default is the default decision and its reason. Its payload comes from
-// the payload fields' defaults.
+// the payload fields' defaults, so every payload field of the decision
+// needs one.
 type Default struct {
 	Decision string
 	Reason   string

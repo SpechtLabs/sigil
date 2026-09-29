@@ -10,7 +10,9 @@ import (
 
 // Source renders the kind as a kind file in canonical form: what a host
 // exports with Schema(), and what a loaded kind file prints back as. The
-// round trip is the property the exporter is tested by. The layout is
+// round trip is the property the exporter is tested by, and two kinds
+// with the same Source are the same contract, which is how a stale
+// exported kind file is detected. The layout is
 // the one `sigil fmt` writes: a blank line after the header, around every
 // type and decision and before the default, and inputs, functions and
 // the collect, precedence and exclusive lines each grouped together.
@@ -82,8 +84,11 @@ func (k *Kind) Source() string {
 	return b.String()
 }
 
-// Source renders the default declaration. The decision, when known,
-// orders the arguments as its fields are declared.
+// Source renders the default declaration, like
+// `default deny(no_rule_matched)`, without a newline. decl is the decision
+// it constructs, or nil. When given, it orders the arguments as its fields
+// are declared; arguments it doesn't declare, and all of them without it,
+// follow sorted by name.
 func (d *Default) Source(decl *Decision) string {
 	names := make([]string, 0, len(d.Args))
 	if decl != nil {

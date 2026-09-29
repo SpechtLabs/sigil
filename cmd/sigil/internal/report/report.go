@@ -1,6 +1,10 @@
-// Package report turns an evaluation's result.Result into what eval
-// prints: a text summary with the full
-// trace, or the same content as JSON or YAML.
+// Package report turns an evaluation's result.Result into what `sigil eval`
+// prints: a text summary with the full trace, or the same content as JSON
+// or YAML.
+//
+// [New] builds a [Report] from the result. The Report is the JSON and YAML
+// record, with every payload value in the form [Plain] gives it, and
+// [Report.Text] renders it as text.
 package report
 
 import (
@@ -16,23 +20,25 @@ import (
 	"github.com/spechtlabs/sigil/internal/result"
 )
 
-// Failure kinds.
+// Failure kinds, the values of [Failure.Kind].
 const (
-	FailAssertion = "assertion"
-	FailConflict  = "conflict"
-	FailRuntime   = "runtime"
+	FailAssertion = "assertion" // one or more asserts failed
+	FailConflict  = "conflict"  // the winning candidates conflict
+	FailRuntime   = "runtime"   // a runtime error stopped the evaluation
 )
 
-// Report is one evaluation.
+// Report is one evaluation. For a kind that returns one decision,
+// Decision, Reason and Payload repeat the outcome's single entry, which is
+// the kind's default when no rule fired or the evaluation failed.
 type Report struct {
 	Payload  map[string]any `json:"payload,omitempty" yaml:"payload,omitempty"` //nolint:emptyinterface // payload values are the host's, of any Sigil type
-	Error    *Failure       `json:"error,omitempty" yaml:"error,omitempty"`
-	Policy   string         `json:"policy" yaml:"policy"`
+	Error    *Failure       `json:"error,omitempty" yaml:"error,omitempty"`     // why the evaluation failed; nil when it didn't
+	Policy   string         `json:"policy" yaml:"policy"`                       // the root policy
 	Decision string         `json:"decision,omitempty" yaml:"decision,omitempty"`
 	Reason   string         `json:"reason,omitempty" yaml:"reason,omitempty"`
-	Outcome  []Entry        `json:"outcome" yaml:"outcome"`
-	Trace    []Entry        `json:"trace" yaml:"trace"`
-	Collect  bool           `json:"collect,omitempty" yaml:"collect,omitempty"`
+	Outcome  []Entry        `json:"outcome" yaml:"outcome"`                     // what the host acts on; never nil
+	Trace    []Entry        `json:"trace" yaml:"trace"`                         // every candidate the rules produced, winners first; never nil
+	Collect  bool           `json:"collect,omitempty" yaml:"collect,omitempty"` // the kind collects every candidate
 }
 
 // Entry is one candidate or outcome entry.
@@ -40,11 +46,11 @@ type Entry struct {
 	Payload    map[string]any `json:"payload,omitempty" yaml:"payload,omitempty"` //nolint:emptyinterface // payload values are the host's, of any Sigil type
 	Decision   string         `json:"decision" yaml:"decision"`
 	Reason     string         `json:"reason" yaml:"reason"`
-	Policy     string         `json:"policy,omitempty" yaml:"policy,omitempty"`
-	Position   string         `json:"position,omitempty" yaml:"position,omitempty"`
-	Chain      []string       `json:"chain,omitempty" yaml:"chain,omitempty"` // the invocations it was reached through, outermost first
-	Conditions []string       `json:"conditions,omitempty" yaml:"conditions,omitempty"`
-	Outcome    bool           `json:"outcome,omitempty" yaml:"outcome,omitempty"` // in the outcome the host acts on
+	Policy     string         `json:"policy,omitempty" yaml:"policy,omitempty"`         // the policy whose rule produced it; empty for the default
+	Position   string         `json:"position,omitempty" yaml:"position,omitempty"`     // of the rule; empty for the default
+	Chain      []string       `json:"chain,omitempty" yaml:"chain,omitempty"`           // the invocations it was reached through, outermost first
+	Conditions []string       `json:"conditions,omitempty" yaml:"conditions,omitempty"` // the `when` conditions that held, for a candidate of a winning decision
+	Outcome    bool           `json:"outcome,omitempty" yaml:"outcome,omitempty"`       // in the outcome the host acts on
 	values     []field        // the payload in declaration order, for text
 }
 
@@ -56,17 +62,17 @@ type field struct {
 
 // Failure is why an evaluation didn't produce an outcome.
 type Failure struct {
-	Kind       string   `json:"kind" yaml:"kind"`
+	Kind       string   `json:"kind" yaml:"kind"` // FailAssertion, FailConflict or FailRuntime
 	Message    string   `json:"message" yaml:"message"`
-	Help       string   `json:"help" yaml:"help"` // what to do about it
-	Asserts    []Assert `json:"asserts,omitempty" yaml:"asserts,omitempty"`
-	Candidates []Entry  `json:"candidates,omitempty" yaml:"candidates,omitempty"`
+	Help       string   `json:"help" yaml:"help"`                                 // what to do about it
+	Asserts    []Assert `json:"asserts,omitempty" yaml:"asserts,omitempty"`       // the failing asserts, for FailAssertion
+	Candidates []Entry  `json:"candidates,omitempty" yaml:"candidates,omitempty"` // the conflicting candidates, for FailConflict
 }
 
 // Assert is one failing assert.
 type Assert struct {
-	Reason   string  `json:"reason" yaml:"reason"`
-	Position string  `json:"position" yaml:"position"`
+	Reason   string  `json:"reason" yaml:"reason"`                       // the assert's name
+	Position string  `json:"position" yaml:"position"`                   // its position, after the invocations that reached it
 	Cause    string  `json:"cause,omitempty" yaml:"cause,omitempty"`     // the runtime error its condition raised
 	Help     string  `json:"help,omitempty" yaml:"help,omitempty"`       // what to do about the cause, when it knows better than the failure's help
 	Outcome  []Entry `json:"outcome,omitempty" yaml:"outcome,omitempty"` // for an outcome assert, the candidates that formed the outcome it read
@@ -345,7 +351,10 @@ func payload(k *project.Kind, decision string, p map[string]any) (map[string]any
 }
 
 // Plain turns a canonical value (see gokind.Binding.Canonical) into one
-// encoding/json and YAML print the way a policy author writes it.
+// encoding/json and YAML print the way a policy author writes it. A
+// duration becomes a string in Sigil's syntax, `1h30m`, and a time an
+// RFC 3339 string. Lists and maps are converted element by element, with
+// map keys turned into strings. Any other value is returned as it is.
 func Plain(v any) any { //nolint:emptyinterface // canonical values are dynamically typed
 	switch v := v.(type) {
 	case time.Duration:

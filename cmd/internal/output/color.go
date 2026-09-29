@@ -11,7 +11,9 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// Color is the value of the --color flag: when output is styled.
+// Color is the value of the --color flag: when output is styled. *Color
+// implements [pflag.Value], so an unknown mode is rejected while cobra
+// parses the flags.
 type Color string
 
 // The color modes.
@@ -24,10 +26,11 @@ const (
 // Colors lists every color mode, for validation and flag completion.
 var Colors = []string{string(ColorAuto), string(ColorAlways), string(ColorNever)}
 
-// String implements pflag.Value.
+// String implements [pflag.Value]. It returns the mode's name.
 func (c *Color) String() string { return string(*c) }
 
-// Set implements pflag.Value.
+// Set implements [pflag.Value]. It returns an error for anything but one
+// of [Colors].
 func (c *Color) Set(s string) error {
 	if !slices.Contains(Colors, s) {
 		return humane.New(
@@ -39,7 +42,8 @@ func (c *Color) Set(s string) error {
 	return nil
 }
 
-// Type implements pflag.Value.
+// Type implements [pflag.Value]. It returns "mode", the name help shows
+// for the flag's value.
 func (c *Color) Type() string { return "mode" }
 
 // Apply makes the process's environment say what the mode says, in the

@@ -22,6 +22,10 @@ type Printer struct {
 
 // New returns a Printer that writes to w. Colors are downsampled to what w
 // supports; when w isn't a terminal, output is plain text with no borders.
+// A w that is already a colorprofile writer, as fang's are, is used as it
+// is. On a terminal, the light or dark palette follows the terminal's
+// background color, asked for once per process, unless
+// [WithDarkBackground] picks one.
 func New(w io.Writer, opts ...Option) *Printer {
 	o := defaultOptions()
 	for _, opt := range opts {
@@ -44,14 +48,14 @@ func New(w io.Writer, opts ...Option) *Printer {
 	}
 }
 
-// KV is one row of a KeyValues block.
+// KV is one row of a [Printer.KeyValues] block.
 type KV struct {
 	Key   string
 	Value string
 }
 
 // Print writes s as it is. Reports build their text with the printer's
-// Theme and hand it here.
+// [Printer.Theme] and hand it here.
 func (p *Printer) Print(s string) humane.Error {
 	return p.write(s)
 }
@@ -71,8 +75,8 @@ func (p *Printer) Warning(msg string, details ...string) humane.Error {
 	return p.status(p.styles.warn, "!", msg, details)
 }
 
-// Fail prints a failure line, followed by indented details. Use Err to render
-// an error value.
+// Fail prints a failure line, followed by indented details. Use
+// [Printer.Err] to render an error value.
 func (p *Printer) Fail(msg string, details ...string) humane.Error {
 	return p.status(p.styles.fail, "✗", msg, details)
 }

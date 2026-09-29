@@ -20,17 +20,19 @@ import (
 // instantiate for an invocation, or read pub lets from.
 type Source struct {
 	Doc  ast.Doc
-	Info *check.Info
+	Info *check.Info // what the checker recorded for Doc
 	File string
-	Src  []byte
+	Src  []byte // the whole file's source, for the text of conditions and arguments
 }
 
 // Linker finds the documents a policy imports or invokes, by name.
 type Linker interface {
+	// Source returns the checked document called name, or false when
+	// there is none to link.
 	Source(name string) (*Source, bool)
 }
 
-// Options configures Compile.
+// Options configures [CompilePolicy].
 type Options struct {
 	Params map[string]Value // the root's params bound by the host
 	// Static compiles the structure only: rules, conditions and chains
@@ -67,8 +69,10 @@ type policyCompiler struct {
 
 // CompilePolicy compiles root against k over the binding b, instantiating
 // every policy it invokes and linking every document it imports through
-// link. A problem the checker couldn't see, such as an invocation cycle
-// or a param out of its bounds, comes back as the error.
+// link. Every document must have checked cleanly against k. b can be nil
+// for a static compile. A problem the checker couldn't see, such as an
+// invocation cycle, a required param left unbound or a param out of its
+// bounds, comes back as the error.
 func CompilePolicy(root *Source, k *kind.Kind, b *gokind.Binding, link Linker, o Options) (*Policy, *diag.Error) {
 	doc, ok := root.Doc.(*ast.PolicyDoc)
 	if !ok {

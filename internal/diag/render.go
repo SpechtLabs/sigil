@@ -8,9 +8,10 @@ import (
 )
 
 // Theme styles the parts of a rendered diagnostic. Each function receives
-// one part and returns it styled; Plain returns every part unchanged. The
+// one part and returns it styled; [Plain] returns every part unchanged. The
 // CLI builds a Theme from its terminal palette, so the diagnostic keeps
-// one layout whether it's colored or piped.
+// one layout whether it's colored or piped. The renderer calls every
+// field without checking for nil, so a Theme must set them all.
 type Theme struct {
 	Location func(s string) string               // `file:line:col`
 	Doc      func(s string) string               // ` (document)` after the position
@@ -24,7 +25,8 @@ type Theme struct {
 	HelpText func(s string) string               // the fix
 }
 
-// Plain renders every part as it is.
+// Plain renders every part as it is. [Render] uses it, and [RenderWith]
+// falls back to it for a nil theme. Callers must not modify it.
 var Plain = &Theme{
 	Location: identity,
 	Doc:      identity,
@@ -52,14 +54,16 @@ type Sources func(file string) []byte
 //	  = help: `let` is only allowed at the top level
 //
 // A span that runs past the end of its first line is underlined to the end
-// of that line. This is the plain form that tests and non-terminal output
-// share; RenderWith styles the same layout for a terminal.
+// of that line. When src is nil or has no line at e's position, the source
+// block is left out and only the header and help are rendered. The result
+// ends with a newline. This is the plain form that tests and non-terminal
+// output share; [RenderWith] styles the same layout for a terminal.
 func Render(e *Error, src []byte) string {
 	return RenderWith(e, src, Plain)
 }
 
-// RenderWith renders e the way Render does, styled by t. A nil theme
-// renders plain.
+// RenderWith renders e the way [Render] does, styled by t. A nil theme
+// renders plain, and a nil e renders as the empty string.
 func RenderWith(e *Error, src []byte, t *Theme) string {
 	if e == nil {
 		return ""
@@ -92,7 +96,9 @@ func RenderWith(e *Error, src []byte, t *Theme) string {
 }
 
 // RenderAll renders every diagnostic, one after another with a blank line
-// between them, each quoting the line src finds for its file.
+// between them, each quoting the line src finds for its file. A nil src
+// quotes no lines and a nil t renders plain. Unlike [RenderWith], the
+// result has no trailing newline.
 func RenderAll(errs ErrorList, src Sources, t *Theme) string {
 	parts := make([]string, len(errs))
 	for i, e := range errs {

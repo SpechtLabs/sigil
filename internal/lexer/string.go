@@ -11,7 +11,9 @@ import (
 
 // Unquote decodes a String literal, quotes included, using Go's escape
 // sequences for interpreted string literals. An invalid escape is reported at
-// its position inside the literal.
+// its position inside the literal; any other failure carries no position.
+// A raw string needs no decoding: its value is the text between the
+// backticks.
 func Unquote(lit string) (string, *diag.Error) {
 	if len(lit) < 2 || lit[0] != '"' || lit[len(lit)-1] != '"' {
 		return "", &diag.Error{Msg: "invalid string literal"}

@@ -1,4 +1,7 @@
-// Package reload implements the demo-cli reload command.
+// Package reload implements `demo-cli policies reload`, which makes
+// deploygate reload both policy bundles now through POST
+// /api/v1/policies/reload and prints what serves afterwards, or why a
+// bundle didn't load.
 package reload
 
 import (

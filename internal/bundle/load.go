@@ -16,6 +16,10 @@ import (
 // directory, skipping entries whose names start with `.`. What's a file
 // is decided with fs.Stat, which follows symbolic links, so the keys of
 // a mounted ConfigMap, each a link into `..data`, load once.
+//
+// Files are added in sorted path order, named by their path in fsys. The
+// error reports only an entry that can't be read; parse errors stay in
+// the bundle, as [Bundle.Add] leaves them.
 func (b *Bundle) Load(fsys fs.FS) humane.Error {
 	files, err := walkFS(fsys, ".")
 	if err != nil {
@@ -65,7 +69,9 @@ func walkFS(fsys fs.FS, dir string) ([]string, humane.Error) {
 // LoadPaths reads the command line's inputs: each path is a file, a
 // directory, whose `.sigil` files are read (every one below it with
 // recursive), or "-" for stdin. Entries whose names start with `.` are
-// skipped, as Load does.
+// skipped, as Load does. Files are named by their slash-separated path,
+// and stdin as `<stdin>`. The error reports only a path that can't be
+// read; parse errors stay in the bundle.
 func (b *Bundle) LoadPaths(paths []string, recursive bool, stdin io.Reader) humane.Error {
 	for _, p := range paths {
 		if p == "-" {

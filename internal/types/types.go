@@ -1,15 +1,24 @@
-// Package types defines Sigil's types, as docs/reference/types.md
-// specifies them: the scalars, `list<T>`, `map<K, V>`, `?T`, the struct
-// types a kind declares, and `decision`.
+// Package types defines Sigil's types: the scalars, `list<T>`,
+// `map<K, V>`, `?T`, the struct types a kind declares, `decision`, and the
+// candidates an assert reads through `outcome.<decision>`. The language
+// reference specifies them at https://sigil.specht-labs.de/reference/types/.
 //
 // Types are values, not names. A kind file or a Go struct is turned into
-// these once, and the checker compares them with Identical. Structs are
+// these once, and the checker compares them with [Identical]. Structs are
 // nominal, so two struct types with the same fields are still different.
+//
+// The predicates [IsKey], [IsOrdered], [IsEquatable], [IsComparable] and
+// [IsCandidates] hold the type rules the operators share, so the checker
+// and the kind validator agree on them.
+//
+// [Invalid] stands for a type that couldn't be worked out. Whoever
+// produces it has already reported why, and code that meets it reports
+// nothing more, so one mistake is reported once.
 package types
 
-// Type is a Sigil type. The implementations are Basic, *List, *Map,
-// *Optional, *Struct and *Candidate; nothing outside this package can add
-// one.
+// Type is a Sigil type. The implementations are [Basic], [*List], [*Map],
+// [*Optional], [*Struct] and [*Candidate]; nothing outside this package
+// can add one.
 type Type interface {
 	// String returns the type as written in a kind file.
 	String() string
@@ -18,7 +27,8 @@ type Type interface {
 
 // Identical reports whether a and b are the same type. Lists, maps and
 // optionals compare by their parameters; structs compare by name, since
-// a kind declares each name once.
+// a kind declares each name once, and candidates by their decision. A nil
+// type is identical to nothing, itself included.
 func Identical(a, b Type) bool {
 	if a == nil || b == nil {
 		return false
@@ -48,7 +58,7 @@ func Identical(a, b Type) bool {
 
 // IsKey reports whether t can be a map key. Go's rule applies: the
 // comparable types, which in Sigil are the scalars. Structs have no
-// equality, and decision can't be data at all.
+// equality, and decision can't be data at all, so neither is a key.
 func IsKey(t Type) bool {
 	switch t {
 	case Bool, Int, Float, String, Duration, Timestamp:
@@ -66,8 +76,8 @@ func IsOrdered(t Type) bool {
 	return false
 }
 
-// IsEquatable reports whether t supports `==` and `!=`: the scalars.
-// Lists, maps and structs don't, because a policy rarely means "these are
+// IsEquatable reports whether t supports `==` and `!=`: the scalars and
+// decision. Lists, maps and structs don't, because a policy rarely means "these are
 // identical", and one operator would hide a walk over a nested value.
 func IsEquatable(t Type) bool {
 	b, ok := t.(Basic)
@@ -75,8 +85,8 @@ func IsEquatable(t Type) bool {
 }
 
 // IsComparable reports whether values of t can be compared as elements by
-// `in`, the list operators and `has`: the scalars, and lists, maps and
-// optionals built from them, which compare structurally. A struct, or
+// `in`, the list operators and `has`: the scalars and decision, and lists,
+// maps and optionals built from them, which compare structurally. A struct, or
 // anything holding one, can't, because structs have no equality.
 func IsComparable(t Type) bool {
 	switch t := t.(type) {

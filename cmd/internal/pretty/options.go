@@ -18,7 +18,7 @@ func defaultOptions() *options {
 }
 
 // WithEnviron sets the environment used to detect color support, such as
-// NO_COLOR, CLICOLOR_FORCE and TERM. It defaults to os.Environ().
+// NO_COLOR, CLICOLOR_FORCE and TERM. It defaults to [os.Environ].
 func WithEnviron(environ []string) Option {
 	return func(o *options) { o.environ = environ }
 }

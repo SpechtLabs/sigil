@@ -15,12 +15,16 @@ import (
 // Fingerprint hashes the names and contents of every `.sigil` file in fsys,
 // the files the loader reads, walking fsys the way the loader does: entries
 // whose names start with `.` are skipped, and what is a directory is decided
-// with fs.Stat, so symbolic links to directories are followed. That matters
+// with [fs.Stat], so symbolic links to directories are followed. That matters
 // for a mounted ConfigMap, whose keys and projected directories are links
 // into kubelet's ..data directory: the hash follows the ..data swap even
 // though the links themselves never change. Hashing contents rather than
 // modification times also ignores a touch or a checkout that rewrote files
 // with the same bytes.
+//
+// The result is a hex-encoded SHA-256. Fingerprint returns an error when a
+// directory can't be listed or an entry can't be read, such as a dangling
+// link.
 func Fingerprint(fsys fs.FS) (string, humane.Error) {
 	h := sha256.New()
 	if herr := hashDir(h, fsys, "."); herr != nil {

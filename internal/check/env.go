@@ -1,12 +1,3 @@
-// Package check is the type checker. It turns a kind document into a
-// kind.Kind, resolves every name in a policy against the kind and the
-// policy's own declarations, gives every expression a type by the rules
-// in docs/reference/expressions.md and docs/reference/types.md, and
-// reports what doesn't fit with a hint.
-//
-// The checker records the type of every expression node in an Info, which
-// is what the evaluator compiles from: by the time evaluation starts,
-// every operator already knows the types of its operands.
 package check
 
 import (
@@ -22,16 +13,16 @@ type Entity uint8
 
 // The entities a name can refer to.
 const (
-	Unknown Entity = iota
-	Input
-	Function
-	DecisionName
-	Param
-	Let
-	QuantVar
-	FilterVar
-	Module    // a whole import of a module: a qualifier for its pub lets
-	Invocable // a whole import of a policy: a name to invoke
+	Unknown      Entity = iota
+	Input               // an input the kind declares
+	Function            // a host function the kind declares
+	DecisionName        // a decision the kind declares, as a value or a constructor
+	Param               // a policy param
+	Let                 // a let, the document's own or selectively imported
+	QuantVar            // the variable of a quantifier such as `any` or `all`
+	FilterVar           // the variable of a `filter`
+	Module              // a whole import of a module: a qualifier for its pub lets
+	Invocable           // a whole import of a policy: a name to invoke
 )
 
 var entityNames = [...]string{
@@ -47,6 +38,8 @@ var entityNames = [...]string{
 	Invocable:    "imported policy",
 }
 
+// String implements [fmt.Stringer]. It returns the entity as a message
+// names it, like "host function".
 func (e Entity) String() string {
 	if int(e) < len(entityNames) {
 		return entityNames[e]
@@ -99,7 +92,8 @@ func NewEnv(k *kind.Kind) *Env {
 // Kind returns the kind the scope was built for.
 func (e *Env) Kind() *kind.Kind { return e.kind }
 
-// Lookup resolves name through the scope chain.
+// Lookup resolves name through the scope chain, innermost scope first,
+// and reports whether any scope binds it.
 func (e *Env) Lookup(name string) (Binding, bool) {
 	for s := e; s != nil; s = s.parent {
 		if b, ok := s.names[name]; ok {
@@ -133,7 +127,8 @@ func (e *Env) Child() *Env {
 	return &Env{kind: e.kind, parent: e, names: map[string]Binding{}, InAssert: e.InAssert}
 }
 
-// Names returns every name in scope, sorted, for suggestions.
+// Names returns every name in scope, sorted, for suggestions. A name bound
+// in more than one scope of the chain appears once per scope.
 func (e *Env) Names() []string {
 	var out []string
 	for s := e; s != nil; s = s.parent {
@@ -145,7 +140,8 @@ func (e *Env) Names() []string {
 	return out
 }
 
-// Closest returns the name in scope most like name, if one is close.
+// Closest returns the name in scope most like name, if one is close
+// enough to be a typo of it, by the rule [Nearest] applies.
 func (e *Env) Closest(name string) (string, bool) {
 	return nearest(name, e.Names())
 }

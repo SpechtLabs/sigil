@@ -11,8 +11,11 @@ import (
 // directly), the lets evaluated so far and the `when` conditions
 // evaluated so far. Every instance a policy invokes gets a frame of its
 // own, sharing the input and the outcome through the run.
+//
+// A Frame is mutated as expressions evaluate in it, so it isn't safe for
+// concurrent use.
 type Frame struct {
-	Input   Value
+	Input   Value // the input struct, never a pointer to it
 	Outcome Value // list<decision> for assert conditions; set by the policy evaluator
 	// Candidates is what `outcome.<decision>` reads: the candidates the host
 	// gets back, or the default when nothing fired. The policy evaluator
@@ -36,7 +39,11 @@ type condMemo struct {
 }
 
 // NewFrame returns a frame over input, a struct value or a pointer to
-// one, with room for the scope's slots, lets and conditions.
+// one, with room for the scope's slots, lets and conditions. Make it after
+// compiling every expression it evaluates, since compiling adds slots to
+// the scope. The frame belongs to no policy evaluation, so reading an
+// imported let in it is a runtime error. A nil scope gives a frame with
+// no slots.
 func NewFrame(input any, scope *Scope) *Frame {
 	v := reflect.ValueOf(input)
 	if v.Kind() == reflect.Pointer {
@@ -53,7 +60,8 @@ func newFrame(input Value, scope *Scope) *Frame {
 	return &Frame{Input: input, slots: make([]Value, nslots), lets: make([]Value, nlets), done: make([]bool, nlets), conds: make([]condMemo, nconds)}
 }
 
-// Set binds the value of a slot.
+// Set binds slot, as [Scope.Declare] returned it, to v. It panics when
+// the slot is outside the scope the frame was made for.
 func (f *Frame) Set(slot int, v Value) { f.slots[slot] = v }
 
 // cond evaluates a block's condition once per frame and returns whether

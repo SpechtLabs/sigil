@@ -53,7 +53,8 @@ func WithAddr(addr string) Option {
 }
 
 // WithShutdownTimeout bounds how long Serve waits for in-flight requests
-// when its context ends. The default is 15 seconds.
+// when its context ends. The default is 15 seconds, and a duration that
+// isn't positive keeps it.
 func WithShutdownTimeout(d time.Duration) Option {
 	return func(s *Server) {
 		if d > 0 {
