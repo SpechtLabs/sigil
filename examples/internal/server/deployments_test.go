@@ -288,7 +288,10 @@ func TestDeploymentMetrics(t *testing.T) {
 		`deploygate_policy_reloads_total{kind="AccessGrant",result="failure"} 0`,
 		`deploygate_policy_loaded_info{kind="DeployApproval",policy="payments.production",source="embedded",team="payments"} 1`,
 		`deploygate_policy_loaded_info{kind="AccessGrant",policy="access.main",source="embedded",team=""} 1`,
-		`deploygate_policy_last_reload_timestamp_seconds `,
+		`deploygate_policy_last_reload_timestamp_seconds{kind="DeployApproval"} `,
+		`deploygate_policy_last_reload_timestamp_seconds{kind="AccessGrant"} `,
+		`deploygate_policy_last_reload_successful{kind="DeployApproval"} 1`,
+		`deploygate_policy_last_reload_successful{kind="AccessGrant"} 1`,
 		`deploygate_requests_total{code="202",method="POST",url="/api/v1/teams/:team/deployments"} 1`,
 		`deploygate_requests_total{code="409",method="POST",url="/api/v1/teams/:team/deployments"} 1`,
 		`go_goroutines`,
@@ -302,6 +305,35 @@ func TestDeploymentMetrics(t *testing.T) {
 	// decided nothing.
 	if strings.Contains(body, `deploygate_decisions_total{decision="deny"`) {
 		t.Error("a failed access stage counted a deploy decision")
+	}
+}
+
+// TestFailedDeployEvaluationMetrics checks that a deploy evaluation that
+// fails counts as an evaluation error of the deploy stage and not as the
+// fallback decision it answers with, so a real deny(no_rule_matched) and a
+// failure stay apart.
+func TestFailedDeployEvaluationMetrics(t *testing.T) {
+	env := newEnv(t, envOptions{deployLoaded: true, accessLoaded: true, teamOverrides: map[string]string{"checkout/production.sigil": assertedCheckout}})
+	h := env.srv.Handler()
+	failing := deployRequest(func(r, actor map[string]any) {
+		actor["groups"] = []string{"checkout"}
+		r["service"].(map[string]any)["name"] = ""
+	})
+	if rec := do(h, http.MethodPost, "/api/v1/teams/checkout/deployments", failing); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body %s", rec.Code, rec.Body)
+	}
+
+	body := do(h, http.MethodGet, "/metrics", "").Body.String()
+	for _, want := range []string{
+		`deploygate_evaluation_errors_total{kind="assertion",stage="deploy",team="checkout"} 1`,
+		`deploygate_evaluation_duration_seconds_count{team="checkout"} 1`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("/metrics doesn't contain %s", want)
+		}
+	}
+	if strings.Contains(body, "deploygate_decisions_total{") {
+		t.Error("a failed deploy evaluation counted its fallback as a decision")
 	}
 }
 

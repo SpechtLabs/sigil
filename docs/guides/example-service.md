@@ -99,7 +99,9 @@ The compose stack mounts `examples/policies/teams` and `examples/policies/access
 mise run demo policies reload
 ```
 
-The next request sees the change. Break a file instead, and the reload answers `500` with the compiler's diagnostics while deploygate keeps serving the bundle it loaded last. The `deploygate_policy_reloads_total{result="failure"}` counter goes up for that kind, and that's the one to alert on. deploygate also reloads on `SIGHUP`, and whenever a poll finds a directory's content changed: every 5 seconds in the compose stack, every 30 by default.
+The next request sees the change. Break a file instead, and the reload answers `500` with the compiler's diagnostics while deploygate keeps serving the bundle it loaded last. deploygate also reloads on `SIGHUP`, and whenever a poll finds a directory's content changed: every 5 seconds in the compose stack, every 30 by default.
+
+Each bundle reports its own reload health: `deploygate_policy_last_reload_successful{kind}` is `1` when that bundle's latest load attempt succeeded and `0` when it failed, and `deploygate_policy_last_reload_timestamp_seconds{kind}` holds the time of its last successful load. Alert on `deploygate_policy_last_reload_successful == 0` for five minutes. The `deploygate_policy_reloads_total{result="failure"}` counter can't do that job: a poll reports a broken bundle once rather than at every poll, so an alert on its rate resolves while the stale bundle keeps serving. The timestamp can't do it alone either, since a bundle only reloads when something changes, and an idle week and a week of rejected edits both leave it a week old.
 
 Startup is the exception. With no bundle loaded yet there's nothing to fall back to, so a policy that doesn't compile stops deploygate with the diagnostics instead, and on Kubernetes the rollout stays on the old pods.
 

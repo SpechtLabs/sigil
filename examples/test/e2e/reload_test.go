@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -73,6 +74,8 @@ var _ = Describe("Hot reload", Serial, func() {
 			DeferCleanup(func() {
 				Expect(os.Remove(path)).To(Succeed(), "removing %s", path)
 				expectReloadOK()
+				Expect(scrapeMetrics(Default).Value(fixture.MetricReloadOK, fixture.Labels{"kind": "DeployApproval"})).
+					To(BeNumerically("==", 1), "the team bundle loaded again, so its latest load succeeded")
 			})
 
 			Expect(os.WriteFile(path, []byte(brokenDocument), 0o644)).To(Succeed())
@@ -92,9 +95,17 @@ var _ = Describe("Hot reload", Serial, func() {
 			now, _ := deploygate.ListPolicies(Default).Kind("DeployApproval")
 			Expect(now.LoadedAt).To(BeTemporally("==", good.LoadedAt))
 
-			By("counting the failed reload")
-			Expect(scrapeMetrics(Default).Value(fixture.MetricReloads, failure) - failuresBefore).
+			By("counting the failed reload and marking only the team bundle as failing")
+			families := scrapeMetrics(Default)
+			Expect(families.Value(fixture.MetricReloads, failure) - failuresBefore).
 				To(BeNumerically(">=", 1))
+			Expect(families.Value(fixture.MetricReloadOK, fixture.Labels{"kind": "DeployApproval"})).To(BeNumerically("==", 0))
+			// The time is that of the bundle that still serves, to the
+			// nanosecond the listing reports.
+			Expect(families.Value(fixture.MetricLastReload, fixture.Labels{"kind": "DeployApproval"})).
+				To(BeNumerically("~", float64(good.LoadedAt.UnixNano())/float64(time.Second), 1e-3))
+			// The same POST reloaded the access bundle, which is fine.
+			Expect(families.Value(fixture.MetricReloadOK, fixture.Labels{"kind": "AccessGrant"})).To(BeNumerically("==", 1))
 		})
 	})
 })

@@ -130,6 +130,20 @@ var _ = Describe("Hot reload", func() {
 				By("counting the failure against its kind and marking the reload span")
 				families := e.families()
 				Expect(families.Value(fixture.MetricReloads, fixture.Labels{"kind": kind, "result": "failure"})).To(BeNumerically("==", 1))
+
+				By("marking only that kind's latest load as failed, and keeping the time of the load that serves")
+				other := kindDeploy
+				if kind == kindDeploy {
+					other = kindAccess
+				}
+				Expect(families.Value(fixture.MetricReloadOK, fixture.Labels{"kind": kind})).To(BeNumerically("==", 0))
+				Expect(families.Value(fixture.MetricLastReload, fixture.Labels{"kind": kind})).
+					To(BeNumerically("~", float64(good.Unix()), 1e-3))
+				// The same POST reloaded the other bundle, which loaded fine.
+				Expect(families.Value(fixture.MetricReloadOK, fixture.Labels{"kind": other})).To(BeNumerically("==", 1))
+				Expect(families.Value(fixture.MetricLastReload, fixture.Labels{"kind": other})).
+					To(BeNumerically(">", float64(good.Unix())))
+
 				span := e.reloadSpan(kind)
 				Expect(span.Status.Code).To(Equal(codes.Error))
 				Expect(span.Events).To(ContainElement(HaveField("Name", "exception")))
@@ -146,12 +160,19 @@ var _ = Describe("Hot reload", func() {
 			resp, _ := e.client.Reload(Default)
 			Expect(resp).To(HaveHTTPStatus(http.StatusInternalServerError))
 
+			Expect(e.families().Value(fixture.MetricReloadOK, fixture.Labels{"kind": kindDeploy})).To(BeNumerically("==", 0))
+
 			Expect(os.Remove(filepath.Join(e.dir, "broken.sigil"))).To(Succeed())
-			resp, _ = e.client.Reload(Default)
+			resp, body := e.client.Reload(Default)
 			Expect(resp).To(HaveHTTPStatus(http.StatusOK))
 
-			Expect(e.families().Value(fixture.MetricReloads, fixture.Labels{"kind": kindDeploy, "result": "success"})).
+			families := e.families()
+			Expect(families.Value(fixture.MetricReloads, fixture.Labels{"kind": kindDeploy, "result": "success"})).
 				To(BeNumerically("==", 2))
+			Expect(families.Value(fixture.MetricReloadOK, fixture.Labels{"kind": kindDeploy})).To(BeNumerically("==", 1))
+			reloaded, _ := fixture.Decode[fixture.PoliciesResponse](Default, body).Kind(kindDeploy)
+			Expect(families.Value(fixture.MetricLastReload, fixture.Labels{"kind": kindDeploy})).
+				To(BeNumerically("~", float64(reloaded.LoadedAt.Unix()), 1e-3))
 		})
 	})
 
@@ -188,14 +209,20 @@ var _ = Describe("Hot reload", func() {
 			Expect(e.spansNamed(spanReload)).To(BeEmpty())
 		})
 
-		It("reports a broken bundle once, not at every poll", func() {
+		It("reports a broken bundle once, not at every poll, while the health gauge stays down", func() {
 			e.writeTeamFile("broken.sigil", brokenDocument)
 			e.clock.tick()
 			e.clock.tick()
 			e.clock.tick()
 
-			Expect(e.families().Value(fixture.MetricReloads, fixture.Labels{"kind": kindDeploy, "result": "failure"})).
+			// The counter moved once and stays put, so an alert on its rate
+			// would resolve while the stale bundle keeps serving; the gauge
+			// stays 0 until a load succeeds.
+			families := e.families()
+			Expect(families.Value(fixture.MetricReloads, fixture.Labels{"kind": kindDeploy, "result": "failure"})).
 				To(BeNumerically("==", 1))
+			Expect(families.Value(fixture.MetricReloadOK, fixture.Labels{"kind": kindDeploy})).To(BeNumerically("==", 0))
+			Expect(families.Value(fixture.MetricReloadOK, fixture.Labels{"kind": kindAccess})).To(BeNumerically("==", 1))
 		})
 
 		It("reloads on SIGHUP whether or not anything changed", func() {

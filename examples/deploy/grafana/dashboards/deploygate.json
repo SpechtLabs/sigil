@@ -141,7 +141,7 @@
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 6,
+        "w": 4,
         "h": 4
       },
       "fieldConfig": {
@@ -217,15 +217,15 @@
       "id": 12,
       "type": "stat",
       "title": "Deploy decisions",
-      "description": "Deployment decisions in the selected time range and team. Requests rejected during access evaluation are counted in evaluation errors.",
+      "description": "Decisions the deploy policies made in the selected time range and team. A failed evaluation, in the access or the deploy stage, made no decision and counts under Evaluation errors instead.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"
       },
       "gridPos": {
-        "x": 6,
+        "x": 4,
         "y": 0,
-        "w": 6,
+        "w": 5,
         "h": 4
       },
       "fieldConfig": {
@@ -282,15 +282,15 @@
       "id": 2,
       "type": "stat",
       "title": "Failed reloads",
-      "description": "Bundles rejected in the selected range. Each one kept the previous bundle serving; the service log and POST /api/v1/policies/reload show the compile error.",
+      "description": "Load attempts rejected in the selected range, both bundles together. Each one kept the previous bundle serving; the service log and POST /api/v1/policies/reload show the compile error. A poll reports a broken bundle once, not at every poll, so zero here doesn't mean the bundles are fine now: Reload health says that.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"
       },
       "gridPos": {
-        "x": 12,
+        "x": 9,
         "y": 0,
-        "w": 6,
+        "w": 5,
         "h": 4
       },
       "fieldConfig": {
@@ -348,18 +348,102 @@
       ]
     },
     {
-      "id": 1,
+      "id": 34,
       "type": "stat",
-      "title": "Last successful reload",
-      "description": "Seconds since the older of the team and access bundles last loaded, so a stuck bundle can't hide behind a fresh one. With polling on, it resets every time a policies directory changes; a failed reload leaves it growing while the previous bundle keeps serving.",
+      "title": "Reload health",
+      "description": "Whether each bundle's latest load attempt succeeded, from deploygate_policy_last_reload_successful. FAILING means the latest attempt was rejected and the previous bundle keeps serving, on any replica: the stat takes the lowest value per bundle; it stays FAILING until a load of that bundle succeeds, however long nobody touches it. Alert on this: deploygate_policy_last_reload_successful == 0 for 5m.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"
       },
       "gridPos": {
-        "x": 18,
+        "x": 14,
         "y": 0,
-        "w": 6,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "FAILING",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "OK",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "expr": "min by (kind) (deploygate_policy_last_reload_successful{job=\"deploygate\"})",
+          "legendFormat": "{{kind}}",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "format": "time_series"
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Last successful reload",
+      "description": "Seconds since each bundle last loaded successfully, on the replica that loaded it longest ago. Reloads only happen when a policies directory changes, on SIGHUP or on request, so a large value is normal for a bundle nobody edits: an idle week and a week of rejected edits look the same here. Read it next to Reload health, which tells the two apart.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 19,
+        "y": 0,
+        "w": 5,
         "h": 4
       },
       "fieldConfig": {
@@ -391,7 +475,7 @@
         },
         "colorMode": "value",
         "graphMode": "none",
-        "textMode": "value",
+        "textMode": "value_and_name",
         "justifyMode": "auto",
         "orientation": "auto",
         "wideLayout": true,
@@ -403,8 +487,8 @@
             "type": "prometheus",
             "uid": "mimir"
           },
-          "expr": "time() - min(deploygate_policy_last_reload_timestamp_seconds)",
-          "legendFormat": "age",
+          "expr": "time() - min by (kind) (deploygate_policy_last_reload_timestamp_seconds{job=\"deploygate\"})",
+          "legendFormat": "{{kind}}",
           "refId": "A",
           "range": false,
           "instant": true,
@@ -1520,7 +1604,7 @@
       "id": 5,
       "type": "timeseries",
       "title": "Decisions by outcome",
-      "description": "Deploy decisions per second, stacked by decision and reason. Failed deploy evaluations count here with the fallback the host acts on (deny no_rule_matched) and also under Evaluation errors; a request that fails in the access stage never reaches the deploy policy.",
+      "description": "Deploy decisions per second, stacked by decision and reason. Only decisions a deploy policy made count here, so deny no_rule_matched is a request no rule matched. A failed evaluation answers with that fallback too, but it made no decision: it counts under Evaluation errors only, whether it failed in the access stage or the deploy stage.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"
@@ -1656,7 +1740,7 @@
       "id": 9,
       "type": "timeseries",
       "title": "HTTP requests by status",
-      "description": "Requests per second by status code, from the gin middleware. Deployments: 200 approve, 202 review, 403 deny, 409 access conflict, 422 failed evaluation. Access grants: 200 granted, 403 nothing granted, 409 conflict, 422 failed assert.",
+      "description": "API requests per second by status code, from the gin middleware. Only routes under /api/v1 count: the compose healthcheck polls /readyz every 5 seconds, and neither probes nor paths without a route say anything about the API. Deployments: 200 approve, 202 review, 403 deny, 409 access conflict, 422 failed evaluation. Access grants: 200 granted, 403 nothing granted, 409 conflict, 422 failed assert.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"
@@ -1711,7 +1795,7 @@
             "type": "prometheus",
             "uid": "mimir"
           },
-          "expr": "sum by (code) (rate(deploygate_requests_total[$__rate_interval]))",
+          "expr": "sum by (code) (rate(deploygate_requests_total{url=~\"/api/v1/.+\"}[$__rate_interval]))",
           "legendFormat": "{{code}}",
           "refId": "A",
           "range": true,

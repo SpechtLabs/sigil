@@ -169,17 +169,29 @@ func TestLoadEmbeddedByDefault(t *testing.T) {
 }
 
 // TestReloadKeepsLastKnownGood breaks the bundle after a good load and checks
-// that the old snapshot keeps serving and the error carries the diagnostics.
+// that the old snapshot keeps serving, the error carries the diagnostics, and
+// the reload gauges report the broken bundle without touching the access
+// store's, which shares the metrics as it does in deploygate.
 func TestReloadKeepsLastKnownGood(t *testing.T) {
 	dir := teamsDir(t, nil)
 	m := telemetry.NewMetrics()
-	st := store.NewDeploy(store.WithTeams("payments", "checkout"), store.WithBundleDir(dir), store.WithMetrics(m))
+	clock := &fakeClock{now: time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)}
+	goodAt := float64(clock.now.Unix())
+	st := store.NewDeploy(store.WithTeams("payments", "checkout"), store.WithBundleDir(dir), store.WithMetrics(m), store.WithClock(clock))
+	acc := store.NewAccess(store.WithMetrics(m), store.WithClock(clock))
 
 	if err := st.Load(context.Background()); err != nil {
 		t.Fatalf("first Load: %v", err)
 	}
+	if err := acc.Load(context.Background()); err != nil {
+		t.Fatalf("access Load: %v", err)
+	}
 	good, _ := st.Snapshot()
+	if at, ok := reloadHealth(t, m, deployKind); at != goodAt || ok != 1 {
+		t.Errorf("after a good load: last reload %v, successful %v, want %v and 1", at, ok, goodAt)
+	}
 
+	clock.now = clock.now.Add(time.Hour)
 	writeFile(t, dir, "payments/production.sigil", brokenPolicy)
 	err := st.Load(context.Background())
 	if err == nil {
@@ -202,6 +214,14 @@ func TestReloadKeepsLastKnownGood(t *testing.T) {
 	if got := reloads(t, m, deployKind, "failure"); got != 1 {
 		t.Errorf("failure reloads = %v, want 1", got)
 	}
+	// The failure marks the bundle unhealthy and leaves the time of the
+	// load that still serves.
+	if at, ok := reloadHealth(t, m, deployKind); at != goodAt || ok != 0 {
+		t.Errorf("after a failed load: last reload %v, successful %v, want %v and 0", at, ok, goodAt)
+	}
+	if at, ok := reloadHealth(t, m, accessKind); at != goodAt || ok != 1 {
+		t.Errorf("access after the team bundle failed: last reload %v, successful %v, want %v and 1", at, ok, goodAt)
+	}
 
 	// Fixing the file makes the next load succeed with a new snapshot.
 	writeFile(t, dir, "payments/production.sigil", readEmbedded(t, "payments/production.sigil"))
@@ -210,6 +230,9 @@ func TestReloadKeepsLastKnownGood(t *testing.T) {
 	}
 	if now, _ := st.Snapshot(); now == good {
 		t.Error("a successful reload kept the old snapshot")
+	}
+	if at, ok := reloadHealth(t, m, deployKind); at != float64(clock.now.Unix()) || ok != 1 {
+		t.Errorf("after the fix: last reload %v, successful %v, want %v and 1", at, ok, clock.now.Unix())
 	}
 }
 
@@ -478,15 +501,41 @@ func (c *fakeClock) Tick(time.Duration) (<-chan time.Time, func()) {
 // tick blocks until Watch takes the tick.
 func (c *fakeClock) tick() { c.ticks <- c.now }
 
-// reloads returns deploygate_policy_reloads_total for kind and result.
+// reloads returns deploygate_policy_reloads_total for kind and result, zero
+// when the series doesn't exist.
 func reloads(t *testing.T, m *telemetry.Metrics, kind, result string) float64 {
+	t.Helper()
+	v, _ := metricValue(t, m, "deploygate_policy_reloads_total", map[string]string{"kind": kind, "result": result})
+	return v
+}
+
+// reloadHealth returns kind's two reload gauges: the Unix time of its last
+// successful load, and whether its latest load succeeded. Both series must
+// exist, so a missing one never passes for a zero.
+func reloadHealth(t *testing.T, m *telemetry.Metrics, kind string) (at, successful float64) {
+	t.Helper()
+	labels := map[string]string{"kind": kind}
+	at, ok := metricValue(t, m, "deploygate_policy_last_reload_timestamp_seconds", labels)
+	if !ok {
+		t.Fatalf("no last reload time for %s", kind)
+	}
+	successful, ok = metricValue(t, m, "deploygate_policy_last_reload_successful", labels)
+	if !ok {
+		t.Fatalf("no reload health for %s", kind)
+	}
+	return at, successful
+}
+
+// metricValue returns the value of the counter or gauge series called name
+// with exactly want as its labels, and false when there is no such series.
+func metricValue(t *testing.T, m *telemetry.Metrics, name string, want map[string]string) (float64, bool) {
 	t.Helper()
 	families, err := m.Registry().Gather()
 	if err != nil {
 		t.Fatalf("Gather: %v", err)
 	}
 	for _, f := range families {
-		if f.GetName() != "deploygate_policy_reloads_total" {
+		if f.GetName() != name {
 			continue
 		}
 		for _, metric := range f.GetMetric() {
@@ -494,12 +543,16 @@ func reloads(t *testing.T, m *telemetry.Metrics, kind, result string) float64 {
 			for _, l := range metric.GetLabel() {
 				labels[l.GetName()] = l.GetValue()
 			}
-			if labels["result"] == result && labels["kind"] == kind {
-				return metric.GetCounter().GetValue()
+			if !maps.Equal(labels, want) {
+				continue
 			}
+			if metric.GetGauge() != nil {
+				return metric.GetGauge().GetValue(), true
+			}
+			return metric.GetCounter().GetValue(), true
 		}
 	}
-	return 0
+	return 0, false
 }
 
 // teamsDir copies the embedded team policies into a temporary directory and

@@ -64,9 +64,10 @@ type Metrics struct {
 	accessEvaluationDuration *prometheus.HistogramVec
 
 	// The policy bundles.
-	reloads    *prometheus.CounterVec
-	lastReload prometheus.Gauge
-	loadedInfo *prometheus.GaugeVec
+	reloads          *prometheus.CounterVec
+	lastReload       *prometheus.GaugeVec
+	reloadSuccessful *prometheus.GaugeVec
+	loadedInfo       *prometheus.GaugeVec
 
 	// HTTP requests.
 	requests        *prometheus.CounterVec
@@ -81,7 +82,7 @@ func NewMetrics() *Metrics {
 		decisions: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: Namespace,
 			Name:      "decisions_total",
-			Help:      "Deploy decisions returned, by team, evaluated policy, decision and reason. Failed evaluations count with their fallback decision.",
+			Help:      "Deploy decisions the team's policy made, by team, evaluated policy, decision and reason. A failed evaluation made no decision and counts only in deploygate_evaluation_errors_total.",
 		}, []string{labelTeam, labelPolicy, "decision", labelReason}),
 		evaluationDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: Namespace,
@@ -110,11 +111,16 @@ func NewMetrics() *Metrics {
 			Name:      "policy_reloads_total",
 			Help:      "Attempts to load a policy bundle, by the kind it implements and result. A failure keeps the previous bundle serving.",
 		}, []string{labelKind, "result"}),
-		lastReload: prometheus.NewGauge(prometheus.GaugeOpts{
+		lastReload: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: Namespace,
 			Name:      "policy_last_reload_timestamp_seconds",
-			Help:      "Unix time of the last successful load of any policy bundle.",
-		}),
+			Help:      "Unix time of the last successful load of a policy bundle, by the kind it implements; 0 before the first one.",
+		}, []string{labelKind}),
+		reloadSuccessful: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: Namespace,
+			Name:      "policy_last_reload_successful",
+			Help:      "Whether the latest attempt to load a policy bundle succeeded (1) or failed (0), by the kind it implements. A failed bundle stays 0 until a load succeeds, while the previous bundle keeps serving.",
+		}, []string{labelKind}),
 		loadedInfo: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: Namespace,
 			Name:      "policy_loaded_info",
@@ -132,21 +138,7 @@ func NewMetrics() *Metrics {
 			Buckets:   prometheus.DefBuckets,
 		}, []string{"code", "method", "url"}),
 	}
-
-	m.registry.MustRegister(
-		collectors.NewGoCollector(),
-		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-		m.decisions,
-		m.evaluationDuration,
-		m.evaluationErrors,
-		m.grants,
-		m.accessEvaluationDuration,
-		m.reloads,
-		m.lastReload,
-		m.loadedInfo,
-		m.requests,
-		m.requestDuration,
-	)
+	m.register()
 
 	return m
 }
@@ -206,25 +198,35 @@ func (m *Metrics) ObserveEvaluationError(stage, team, kind string) {
 	m.evaluationErrors.WithLabelValues(team, kind, stage).Inc()
 }
 
-// PrepareReloads creates both reload results for a policy kind, so a
-// failure-rate alert has a series to divide by before the first failure.
+// PrepareReloads creates a policy kind's reload series: both results of the
+// counter, so a failure-rate alert has a series to divide by before the
+// first failure, and the kind's two gauges, so each kind shows up on its own
+// even before its first load finishes. Series that exist already keep their
+// values.
 func (m *Metrics) PrepareReloads(kind string) {
 	m.reloads.WithLabelValues(kind, reloadSuccess)
 	m.reloads.WithLabelValues(kind, reloadFailure)
+	m.lastReload.WithLabelValues(kind)
+	m.reloadSuccessful.WithLabelValues(kind)
 }
 
-// ObserveReloadFailure counts a load of kind's bundle that was rejected.
+// ObserveReloadFailure counts a load of kind's bundle that was rejected and
+// marks the kind's latest load as failed. The kind's last-reload time stays
+// where the last good load left it, and the other kind's series don't move.
 func (m *Metrics) ObserveReloadFailure(kind string) {
 	m.reloads.WithLabelValues(kind, reloadFailure).Inc()
+	m.reloadSuccessful.WithLabelValues(kind).Set(0)
 }
 
 // ObserveReloadSuccess counts a successful load of kind's bundle at the given
-// time and replaces that kind's loaded-policy series with the policies that
-// now serve, so a team that was dropped from the configuration disappears
-// from the gauge while the other kind's series stay.
+// time, marks the kind's latest load as successful, and replaces that kind's
+// loaded-policy series with the policies that now serve, so a team that was
+// dropped from the configuration disappears from the gauge while the other
+// kind's series stay.
 func (m *Metrics) ObserveReloadSuccess(kind string, at time.Time, source string, loaded []LoadedPolicy) {
 	m.reloads.WithLabelValues(kind, reloadSuccess).Inc()
-	m.lastReload.Set(float64(at.UnixNano()) / float64(time.Second))
+	m.lastReload.WithLabelValues(kind).Set(float64(at.UnixNano()) / float64(time.Second))
+	m.reloadSuccessful.WithLabelValues(kind).Set(1)
 
 	m.loadedInfo.DeletePartialMatch(prometheus.Labels{labelKind: kind})
 	for _, p := range loaded {
@@ -239,4 +241,24 @@ type LoadedPolicy struct {
 	Team string
 	// Policy is the policy's name, the gauge's policy label.
 	Policy string
+}
+
+// register puts every collector on the service's registry, the Go runtime
+// and process collectors among them.
+func (m *Metrics) register() {
+	m.registry.MustRegister(
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+		m.decisions,
+		m.evaluationDuration,
+		m.evaluationErrors,
+		m.grants,
+		m.accessEvaluationDuration,
+		m.reloads,
+		m.lastReload,
+		m.reloadSuccessful,
+		m.loadedInfo,
+		m.requests,
+		m.requestDuration,
+	)
 }
