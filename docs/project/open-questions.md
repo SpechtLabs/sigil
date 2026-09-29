@@ -40,7 +40,7 @@ Params with an order, such as durations and numbers, are covered by [bounds](/re
 
 ## String literals for host-ordered types
 
-**Blocks:** nothing until [host-ordered types](/reference/types/#host-ordered-types) exist; they're planned, not implemented.
+**Blocks:** nothing until [host-ordered types](/project/planned/#host-ordered-types) exist; they're planned, not implemented.
 
 Host-ordered types are designed to decode from JSON through `encoding.TextUnmarshaler` when the Go type implements it. Should a string literal in a policy be parsed into the type the same way, at load time? That would allow `param min_version: Version = "1.4.0"`.
 
@@ -65,7 +65,7 @@ Whatever the answer, it has to cover `exclusive in` and `one in` too, which foll
 
 **Blocks:** the static cost analysis deliverable on the [roadmap](/project/roadmap/).
 
-A single quantifier costs time linear in its list, but a quantifier nested in another's body costs the product of both list sizes, so `all a in xs: any b in ys: a == b` is quadratic. A static estimate has to account for these products, list membership, repeated invocations and host-function costs. How a kind declares collection sizes, how a host function declares its cost, and what the budget API looks like are all undecided. Neither the compiler nor `sigil check` computes or enforces a cost today. [Halting by construction](/understanding/halting/) has the background.
+A single quantifier costs time linear in its list, but a quantifier nested in another's body costs the product of both list sizes, so `all a in xs: any b in ys: a == b` is quadratic. A static estimate has to account for these products, list membership, repeated invocations and host-function costs. How a kind declares collection sizes, how a host function declares its cost, and what the budget API looks like are all undecided. Neither the compiler nor `sigil check` computes or enforces a cost today. The proposed analyzer is in [Planned designs](/project/planned/#static-cost-analysis), and [Halting by construction](/understanding/halting/) has the background.
 
 ## Reasons declared in the kind
 
@@ -80,7 +80,7 @@ Reasons are declared per decision in the kind, and constructors name one of them
 
 **Blocks:** a lint for it.
 
-A policy may invoke the same policy more than once with different arguments, for example `deploy.regional` once for `eu-1` and once for `us-1`. Each call is a separate instantiation, and each candidate records its call chain, so the trace tells the instances apart. The `duplicate-invocation` lint catches two calls with identical arguments.
+A policy may invoke the same policy more than once with different arguments, for example `deploy.regional` once for `eu-1` and once for `us-1`. Each call is a separate instantiation, and each candidate records its call chain, so the trace tells the instances apart. The [`duplicate-invocation`](/reference/lints/) lint catches two calls with identical arguments.
 
 One problem remains, because composition is a union: any rule the invoked policy doesn't scope to its params fires for every call. If `deploy.regional` had `when not in_scope { deny(out_of_region) }`, the `eu-1` call would deny every deploy the `us-1` call was meant to review. Policies meant to be invoked more than once have to scope every rule to their own params, or callers have to gate each call, and nothing enforces either. A lint for unscoped denies in a policy that's invoked twice could.
 
@@ -88,7 +88,7 @@ One problem remains, because composition is a union: any rule the invoked policy
 
 **Blocks:** nothing.
 
-A host could layer a required policy itself, with something like `policy.Base("deploy.guardrails", params)`, so team files never mention it. `policy.From` already gives the host a trusted source for required policies; a base would add the invocation too. That suits platforms where teams shouldn't see or bind the guardrails' params, and it sidesteps pinned params entirely. It's deferred rather than rejected, because the team file then no longer shows the whole picture, and `sigil explain` would need the host's configuration to print it. When is it worth adding?
+A host could layer a required policy itself, with something like `policy.Base("deploy.guardrails", params)`, so team files never mention it. [`policy.From`](/reference/bundles/#trusted-sources) already gives the host a trusted source for required policies; a base would add the invocation too. That suits platforms where teams shouldn't see or bind the guardrails' params, and it sidesteps pinned params entirely. It's deferred rather than rejected, because the team file then no longer shows the whole picture, and `sigil explain` would need the host's configuration to print it. When is it worth adding?
 
 ## Non-Go evaluators
 
@@ -100,4 +100,4 @@ A WASM build of the evaluator would let other languages evaluate policies, not j
 
 **Blocks:** nothing.
 
-A `*_test.yaml` case expects a decision, an outcome or failing asserts, and a conflict fails all three, so a conflict the kind is meant to catch can only be tested from Go, with `Eval` and `errors.As` on a `*policy.ConflictError` (see [Testing a conflict](/reference/cli/#testing-a-conflict)). A fourth form listing the conflicting candidates would let a policy repository test it without a Go test. What's open is who should own that test: the policy repository, or the host, which declares the `exclusive` sets and decides what a conflict means to its callers.
+A `*_test.yaml` case expects a decision, an outcome or failing asserts, and a conflict fails all three, so a conflict the kind is meant to catch can only be tested from Go, with `Eval` and `errors.As` on a `*policy.ConflictError` (see [Test a conflict](/guides/test-policies/#test-a-conflict)). A fourth form listing the conflicting candidates would let a policy repository test it without a Go test. What's open is who should own that test: the policy repository, or the host, which declares the `exclusive` sets and decides what a conflict means to its callers.

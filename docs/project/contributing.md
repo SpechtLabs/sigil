@@ -1,14 +1,14 @@
 ---
-title: Testing, fuzzing and benchmarking Sigil
+title: "Contributing: test, fuzz and benchmark Sigil"
 icon: mdi:test-tube
 createTime: 2026/09/28 20:00:00
-permalink: /guides/testing/
+permalink: /project/contributing/
 ---
 
 This page is for contributors changing Sigil itself: the lexer, parser, checker, evaluator, CLI and Go API. It covers the repository's test suite, its benchmarks, its fuzz targets and the CI workflows that run them.
 
 ::: tip Testing your own policies
-To test policies you wrote, you don't need any of this. Write `*_test.yaml` cases and run them with [`sigil test`](/reference/cli/#sigil-test), or from `go test` in the host with [`policytest.Run`](/reference/go-api/#testing-policies). [Your first policy](/getting-started/first-policy/) walks through a test file.
+To test policies you wrote, you don't need any of this. Write `*_test.yaml` cases and run them with [`sigil test`](/reference/cli/#sigil-test), or from `go test` in the host with [`policytest.Run`](/reference/go-api/#package-policytest). [Test your policies](/guides/test-policies/) shows both, and [Your first policy](/getting-started/first-policy/) walks through a test file.
 :::
 
 Run the commands below from the repository root. The tools come from `.mise.toml`, so `mise install` sets up the Go toolchain that `go.mod` pins.
@@ -79,7 +79,23 @@ The runner records `ns/op` (elapsed time per operation), `B/op` (allocated bytes
 | Results and public API | Result conversion, compilation, ranked and collecting evaluation, a 64-rule policy with every rule or only one matching, conflicts, assertions, fallback and concurrent evaluation |
 | Tooling | Diagnostic rendering, CLI configuration and YAML test-suite parsing |
 
-Compilation and evaluation are measured separately. Evaluation benchmarks prepare policies and inputs before the timer starts. Serial benchmarks use `b.Loop()`; the concurrent public API workload uses `b.RunParallel()` against a shared compiled policy. The default runner uses two Go execution threads (`GOMAXPROCS=2` and `-cpu=2`). This does not reserve two physical cores.
+Compilation and evaluation are measured separately. Evaluation benchmarks prepare policies and inputs before the timer starts. Serial benchmarks use `b.Loop()`; the concurrent public API workload uses `b.RunParallel()` against a shared compiled policy. The default runner uses two Go execution threads (`GOMAXPROCS=2` and `-cpu=2`). This does not reserve two physical cores. A full `mise run bench` takes a few minutes, prints each workload's medians and writes the raw samples to `benchmark-results/`.
+
+### Measure the example service
+
+The example service's policies have a benchmark of their own, with the same settings. Run it from `examples/`:
+
+```sh
+go test ./internal/store -run '^$' -bench BenchmarkPolicies -benchmem -count 10 -cpu 2 -benchtime 200ms
+```
+
+For the service measurement in [Performance](/reference/performance/), start the example's stack as [The example service](/guides/example-service/#run-it) shows, then run the load test from `examples/` at the same rate:
+
+```sh
+RATE=1000 DURATION=2m mise run loadtest
+```
+
+k6 writes its report under `examples/results/`, and the deploygate dashboard in Grafana shows the run's throughput and latency next to the service's profiles.
 
 ### CI regression gate
 
