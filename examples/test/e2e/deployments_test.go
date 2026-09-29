@@ -24,30 +24,20 @@ var _ = Describe("Evaluating a deployment", func() {
 			resp, out := deploygate.Deploy(Default, c.Team, c.Request)
 			fixture.ExpectDecision(Default, c, resp, out)
 		},
-		decisionEntries(),
+		fixture.Entries(fixture.DecisionCases()),
 	)
 
-	Context("when the access stage fails", func() {
-		// An access failure ends the request before the deploy policy
-		// runs, so no deploy decision is made on roles nobody granted.
-
-		It("answers 422 for an actor without a name, a failed input assert the caller can fix", func() {
-			resp, out := deploygate.Deploy(Default, fixture.TeamCheckout, fixture.OwnerRequest(fixture.ActorName("")))
-			fixture.ExpectAsserts(Default, resp, http.StatusUnprocessableEntity, out.Asserts, out.Error,
-				fixture.AssertEntry{Reason: "named_actor", Policy: "access.guardrails"})
-		})
-
-		It("answers 500 for an actor who would audit their own deploys, a failed outcome assert", func() {
-			resp, out := deploygate.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(fixture.ComplianceMember...)))
-			fixture.ExpectAsserts(Default, resp, http.StatusInternalServerError, out.Asserts, out.Error,
-				fixture.AssertEntry{Reason: "sod_auditor_deployer", Policy: "access.guardrails"})
-		})
-
-		It("answers 500 naming both sides when admin and release manager collide", func() {
-			resp, out := deploygate.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(fixture.BreakGlassPlatform...)))
-			fixture.ExpectBreakGlassConflict(Default, resp, out.Conflict, out.Error)
-		})
-	})
+	// An access failure ends the request before the deploy policy runs, so
+	// no deploy decision is made on roles nobody granted. The observability
+	// suite checks the same in Tempo: the trace has no deploygate.evaluate
+	// span.
+	DescribeTable("when the access stage fails, never runs the deploy policy",
+		func(c fixture.AccessFailureCase) {
+			resp, out := deploygate.Deploy(Default, c.Team, c.Request)
+			fixture.ExpectAccessFailure(Default, c, resp, out)
+		},
+		fixture.Entries(fixture.AccessFailureCases()),
+	)
 
 	Context("when the request can't be evaluated", func() {
 		It("answers 404 for a team it doesn't serve", func() {
@@ -58,13 +48,13 @@ var _ = Describe("Evaluating a deployment", func() {
 		})
 
 		DescribeTable("answers 400 for a body it won't evaluate",
-			func(body string) {
-				resp, raw := deploygate.PostRaw(Default, fixture.DeploymentsPath(fixture.TeamPayments), body)
+			func(c fixture.BadRequestCase) {
+				resp, raw := deploygate.PostRaw(Default, fixture.DeploymentsPath(fixture.TeamPayments), c.Body)
 
 				Expect(resp).To(HaveHTTPStatus(http.StatusBadRequest))
 				Expect(fixture.Decode[fixture.ErrorResponse](Default, raw).Error).NotTo(BeNil())
 			},
-			badRequestEntries(),
+			fixture.Entries(fixture.BadRequestCases()),
 		)
 	})
 })
@@ -75,7 +65,7 @@ var _ = Describe("Asking for access", func() {
 			resp, out := deploygate.Access(Default, c.Request)
 			fixture.ExpectAccess(Default, c, resp, out)
 		},
-		accessEntries(),
+		fixture.Entries(fixture.AccessCases()),
 	)
 
 	It("answers 500 naming both sides when admin and release manager collide", func() {
@@ -96,54 +86,12 @@ var _ = Describe("Asking for access", func() {
 	})
 
 	DescribeTable("answers 400 for a body it won't evaluate",
-		func(body string) {
-			resp, raw := deploygate.PostRaw(Default, fixture.PathAccessGrants, body)
+		func(c fixture.BadRequestCase) {
+			resp, raw := deploygate.PostRaw(Default, fixture.PathAccessGrants, c.Body)
 
 			Expect(resp).To(HaveHTTPStatus(http.StatusBadRequest))
 			Expect(fixture.Decode[fixture.ErrorResponse](Default, raw).Error).NotTo(BeNil())
 		},
-		accessBadRequestEntries(),
+		fixture.Entries(fixture.AccessBadRequestCases()),
 	)
 })
-
-// decisionEntries turns the shared decision cases into table entries, so
-// this suite and the integration suite run the same table.
-func decisionEntries() []TableEntry {
-	cases := fixture.DecisionCases()
-	entries := make([]TableEntry, 0, len(cases))
-	for _, c := range cases {
-		entries = append(entries, Entry(c.Name, c))
-	}
-
-	return entries
-}
-
-func accessEntries() []TableEntry {
-	cases := fixture.AccessCases()
-	entries := make([]TableEntry, 0, len(cases))
-	for _, c := range cases {
-		entries = append(entries, Entry(c.Name, c))
-	}
-
-	return entries
-}
-
-func accessBadRequestEntries() []TableEntry {
-	cases := fixture.AccessBadRequestCases()
-	entries := make([]TableEntry, 0, len(cases))
-	for _, c := range cases {
-		entries = append(entries, Entry(c.Name, c.Body))
-	}
-
-	return entries
-}
-
-func badRequestEntries() []TableEntry {
-	cases := fixture.BadRequestCases()
-	entries := make([]TableEntry, 0, len(cases))
-	for _, c := range cases {
-		entries = append(entries, Entry(c.Name, c.Body))
-	}
-
-	return entries
-}

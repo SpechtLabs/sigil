@@ -133,6 +133,40 @@ func ExpectAsserts(g gomega.Gomega, resp *http.Response, status int, asserts []A
 	}
 }
 
+// ExpectAccessFailure asserts that resp and out answer c: the status and the
+// failed asserts or the conflict that explain the failure, and, through
+// [ExpectNoDeployDecision], that the deploy policy never ran.
+func ExpectAccessFailure(g gomega.Gomega, c AccessFailureCase, resp *http.Response, out DecisionResponse) {
+	if c.Conflict {
+		ExpectBreakGlassConflict(g, resp, out.Conflict, out.Error)
+	} else {
+		ExpectAsserts(g, resp, c.Status, out.Asserts, out.Error, c.Asserts...)
+	}
+	ExpectNoDeployDecision(g, out, c.Team)
+}
+
+// ExpectNoDeployDecision asserts that a deployment ended in the access stage,
+// before the deploy policy ran, so no deploy decision was made on roles
+// nobody granted. The decision fields hold the deploy kind's default, the
+// fallback a host that fails closed acts on, with no payload; the trace is
+// empty, because the deploy policy produced no candidate; and the access
+// block shows that nothing was granted.
+func ExpectNoDeployDecision(g gomega.Gomega, out DecisionResponse, team string) {
+	g.Expect(out.Team).To(gomega.Equal(team))
+	g.Expect(out.Policy).To(gomega.Equal(team + ".production"))
+	g.Expect(out.Decision).To(gomega.Equal(DecisionDeny))
+	g.Expect(out.Reason).To(gomega.Equal("no_rule_matched"))
+	g.Expect(out.Payload).To(gomega.MatchJSON(noPayload))
+	g.Expect(out.Trace).NotTo(gomega.BeNil(), "trace must be [], not null")
+	g.Expect(out.Trace).To(gomega.BeEmpty())
+	g.Expect(out.Access).NotTo(gomega.BeNil(), "the response has no access block")
+	if out.Access == nil {
+		return
+	}
+	g.Expect(out.Access.Policy).To(gomega.Equal(AccessPolicy))
+	ExpectGrants(g, []GrantRef{}, out.Access.Grants)
+}
+
 // ExpectBreakGlassConflict asserts the 500 for a break-glass platform
 // member: the kind declares admin and release_manager exclusive, both
 // fired, which is a defect in the policy and not in the request, and the
