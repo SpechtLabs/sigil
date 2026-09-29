@@ -77,8 +77,7 @@ A missing map key yields the zero value of the map's value type. `service.labels
 This is the choice with the sharpest edge in the design. A zero value can still flow somewhere surprising. The `deploy.production` policy splits a label into a list:
 
 ```sigil
-let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
+let cleared = split(service.labels["regions"], ",") all in actor.regions
 ```
 
 If the `regions` label is missing, the label value is `""`, and Go's `strings.Split("", ",")` returns `[""]`, not an empty list. `[""] all in actor.regions` is false, so the policy fails closed. That's the right outcome here, but it's right by accident of how `split` behaves. The interaction with vacuous `all in` is an [open question](/project/open-questions/#vacuous-all-in).
