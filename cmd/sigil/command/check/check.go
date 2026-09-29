@@ -7,6 +7,7 @@
 package check
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -124,6 +125,9 @@ func run(out io.Writer, o *options, configFile, kindFile string, src project.Sou
 		return err
 	}
 	k, err := project.LoadKind(kindFile, o.kinds)
+	if d, ok := errors.AsType[*pretty.Diagnostics](err); ok {
+		return reportKind(out, d, *o.output)
+	}
 	if err != nil {
 		return err
 	}
@@ -270,10 +274,10 @@ func reportText(out io.Writer, b *bundle.Bundle, diags diag.ErrorList, failed in
 }
 
 // problems spells `1 error`, `2 warnings` or `1 error and 2 warnings`.
-func problems(errors, warnings int) string {
+func problems(errs, warnings int) string {
 	var parts []string
-	if errors > 0 {
-		parts = append(parts, fmt.Sprintf("%d %s", errors, plural(errors, "error", "errors")))
+	if errs > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s", errs, plural(errs, "error", "errors")))
 	}
 	if warnings > 0 {
 		parts = append(parts, fmt.Sprintf("%d %s", warnings, plural(warnings, "warning", "warnings")))
@@ -286,4 +290,30 @@ func plural(n int, one, many string) string {
 		return one
 	}
 	return many
+}
+
+// reportKind reports a kind file that doesn't load the way report does a
+// bundle's diagnostics: rendered with their source lines and help, or as
+// records, and a failure.
+func reportKind(out io.Writer, d *pretty.Diagnostics, format output.Format) humane.Error {
+	n := len(d.Errs)
+	failed := pretty.Fail(fmt.Sprintf("the kind file has %s", problems(n, 0)), "fix the kind file, or regenerate it from the host's Schema(); `sigil fmt --write` rewrites the old decision syntax")
+	if format != output.Text {
+		records := make([]output.Diagnostic, 0, n)
+		for _, e := range d.Errs {
+			records = append(records, output.NewDiagnostic(e))
+		}
+		if err := output.Encode(out, format, records); err != nil {
+			return err
+		}
+		return failed
+	}
+	p := pretty.New(out)
+	if err := p.Diagnostics(d.Errs, d.Src); err != nil {
+		return err
+	}
+	if err := p.Fail("the kind file doesn't load, so nothing was checked"); err != nil {
+		return err
+	}
+	return failed
 }

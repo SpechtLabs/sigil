@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/kind"
 	"github.com/spechtlabs/sigil/internal/types"
 )
@@ -82,7 +83,7 @@ func TestValidate(t *testing.T) {
 		}},
 		{name: "field with list map key", mutate: func(k *kind.Kind) {
 			k.Types[0].Fields[0].Type = &types.Map{Key: strList, Value: types.String}
-		}, want: []string{`type Release, field "soak": map key type can't be list<string>`}, help: "map keys are scalars, as in Go: bool, int, float, string, duration or timestamp"},
+		}, want: []string{`type Release, field "soak": map key type can't be list<string>`}, help: "map keys are scalars or enums, as in Go: bool, int, float, string, duration, timestamp or an enum"},
 		{name: "field with struct map key", mutate: func(k *kind.Kind) {
 			k.Types[0].Fields[0].Type = &types.Map{Key: k.Types[1], Value: types.String}
 		}, want: []string{`type Release, field "soak": map key type can't be Service`}},
@@ -113,13 +114,90 @@ func TestValidate(t *testing.T) {
 			k.Types[0].Fields = append(k.Types[0].Fields, &types.Field{Name: "service", Type: k.Types[1]})
 		}},
 
+		// Enums.
+		{name: "enum as map key, list element and optional is fine", mutate: func(k *kind.Kind) {
+			tier := k.Enums[0]
+			k.Types[0].Fields = append(k.Types[0].Fields,
+				&types.Field{Name: "quota", Type: &types.Map{Key: tier, Value: &types.List{Elem: tier}}},
+				&types.Field{Name: "target", Type: &types.Optional{Elem: tier}},
+			)
+			k.Funcs = append(k.Funcs, &kind.Func{Name: "tier_of", Params: []types.Type{tier}, Result: tier})
+		}},
+		{name: "two enums share a value", mutate: func(k *kind.Kind) {
+			k.Enums = append(k.Enums, &types.Enum{Name: "Plan", Values: []string{"free", "standard"}})
+		}},
+		{name: "enum value named like a reason is fine", mutate: func(k *kind.Kind) {
+			k.Enums[0].Values = append(k.Enums[0].Values, "open", "everyone")
+		}},
+		{name: "enum name with a dash", mutate: func(k *kind.Kind) { k.Enums[0].Name = "service-tier"; k.Types[1].Fields[1].Type = k.Enums[0] },
+			want: []string{`invalid enum name "service-tier"`}, help: "an enum name is an identifier, like `Tier`"},
+		{name: "enum name is a keyword", mutate: func(k *kind.Kind) { k.Enums[0].Name = "enum"; k.Types[1].Fields[1].Type = k.Enums[0] },
+			want: []string{`invalid enum name "enum"`}},
+		{name: "enum shadows a built-in", mutate: func(k *kind.Kind) { k.Enums[0].Name = "string"; k.Types[1].Fields[1].Type = k.Enums[0] },
+			want: []string{`enum "string" shadows a built-in type`}, help: "the built-in type names are reserved; pick another name"},
+		{name: "enum declared twice", mutate: func(k *kind.Kind) {
+			k.Enums = append(k.Enums, &types.Enum{Name: "Tier", Values: []string{"gold"}})
+		}, want: []string{`type "Tier" is declared twice`}, help: "enums and struct types share one namespace; give each type one declaration"},
+		{name: "enum named like a struct type", mutate: func(k *kind.Kind) {
+			k.Enums = append(k.Enums, &types.Enum{Name: "Actor", Values: []string{"human", "bot"}})
+		}, want: []string{`type "Actor" is declared twice`}},
+		{name: "enum collides with an input", mutate: func(k *kind.Kind) {
+			k.Inputs = append(k.Inputs, &kind.Input{Name: "Tier", Type: types.String})
+		}, want: []string{`enum "Tier" collides with input "Tier"`},
+			help: "inputs, host functions, decisions, enums and their values share one namespace; rename one of them"},
+		{name: "enum collides with a function", mutate: func(k *kind.Kind) {
+			k.Funcs = append(k.Funcs, &kind.Func{Name: "Tier", Result: types.Bool})
+		}, want: []string{`enum "Tier" collides with function "Tier"`}},
+		{name: "enum collides with a decision", mutate: func(k *kind.Kind) {
+			k.Decisions = append(k.Decisions, &kind.Decision{Name: "Tier", Reasons: []string{"x"}})
+			k.Precedence = append(k.Precedence, "Tier")
+		}, want: []string{`enum "Tier" collides with decision "Tier"`}},
+		{name: "enum without values", mutate: func(k *kind.Kind) { k.Enums[0].Values = nil },
+			want: []string{"enum Tier declares no values"}, help: "list its values, like `enum Tier: critical | standard`"},
+		{name: "enum value is a keyword", mutate: func(k *kind.Kind) { k.Enums[0].Values[1] = "when" },
+			want: []string{`enum Tier: invalid value "when"`}, help: "a value is a plain identifier, not a keyword"},
+		{name: "enum value with a dash", mutate: func(k *kind.Kind) { k.Enums[0].Values[1] = "tier-1" },
+			want: []string{`enum Tier: invalid value "tier-1"`}},
+		{name: "enum value declared twice", mutate: func(k *kind.Kind) { k.Enums[0].Values = append(k.Enums[0].Values, "critical") },
+			want: []string{`enum Tier: value "critical" is declared twice`}, help: "declare each value once"},
+		{name: "enum value collides with an input", mutate: func(k *kind.Kind) { k.Enums[0].Values[2] = "environment" },
+			want: []string{`enum Tier: value "environment" collides with input "environment"`},
+			help: "inputs, host functions, decisions, enums and their values share one namespace; rename one of them"},
+		{name: "enum value collides with a function", mutate: func(k *kind.Kind) { k.Enums[0].Values[2] = "split" },
+			want: []string{`enum Tier: value "split" collides with function "split"`}},
+		{name: "enum value collides with a decision", mutate: func(k *kind.Kind) { k.Enums[0].Values[2] = "deny" },
+			want: []string{`enum Tier: value "deny" collides with decision "deny"`}},
+		{name: "enum value collides with a struct type", mutate: func(k *kind.Kind) { k.Enums[0].Values[2] = "Release" },
+			want: []string{`enum Tier: value "Release" collides with type "Release"`}},
+		{name: "enum value collides with an enum", mutate: func(k *kind.Kind) { k.Enums[0].Values[2] = "Tier" },
+			want: []string{`enum Tier: value "Tier" collides with type "Tier"`}},
+		{name: "field of undeclared enum", mutate: func(k *kind.Kind) {
+			k.Types[1].Fields[1].Type = &types.Enum{Name: "Plan", Values: []string{"free"}}
+		}, want: []string{`type Service, field "tier": undeclared type Plan`}, help: "declare it with `enum Plan: a | b`"},
+		{name: "enum map value", mutate: func(k *kind.Kind) {
+			k.Types[1].Fields[3].Type = &types.Map{Key: types.String, Value: k.Enums[0]}
+		}, want: []string{`type Service, field "labels": map value type can't be enum Tier`},
+			help: "a missing key would read as the zero value, and an enum has none; key the map by the enum instead, or use a list"},
+		{name: "enum map value of an input", mutate: func(k *kind.Kind) {
+			k.Inputs[3].Type = &types.Map{Key: k.Enums[0], Value: k.Enums[0]}
+		}, want: []string{`input "environment": map value type can't be enum Tier`}},
+		{name: "payload field of enum type with a default", mutate: func(k *kind.Kind) {
+			k.Decisions[2].Fields = append(k.Decisions[2].Fields, &kind.Field{Name: "tier", Type: k.Enums[0], HasDefault: true, Default: constant.EnumValue("standard")})
+		}},
+		{name: "payload default outside the enum", mutate: func(k *kind.Kind) {
+			k.Decisions[2].Fields = append(k.Decisions[2].Fields, &kind.Field{Name: "tier", Type: k.Enums[0], HasDefault: true, Default: constant.EnumValue("gold")})
+		}, want: []string{`decision approve, field "tier": default gold is not a Tier`}},
+		{name: "payload default of an enum as a string", mutate: func(k *kind.Kind) {
+			k.Decisions[2].Fields = append(k.Decisions[2].Fields, &kind.Field{Name: "tier", Type: k.Enums[0], HasDefault: true, Default: "standard"})
+		}, want: []string{`decision approve, field "tier": default "standard" is not a Tier`}},
+
 		// Inputs and functions.
 		{name: "input name is a keyword", mutate: func(k *kind.Kind) { k.Inputs[3].Name = "input" }, want: []string{`invalid input name "input"`}},
 		{name: "input declared twice", mutate: func(k *kind.Kind) {
 			k.Inputs = append(k.Inputs, &kind.Input{Name: "actor", Type: types.String})
 		}, want: []string{`input "actor" collides with input "actor"`}},
 		{name: "function collides with input", mutate: func(k *kind.Kind) { k.Funcs[0].Name = "environment" },
-			want: []string{`function "environment" collides with input "environment"`}, help: "inputs and host functions share one namespace"},
+			want: []string{`function "environment" collides with input "environment"`}, help: "inputs, host functions, decisions, enums and their values share one namespace; rename one of them"},
 		{name: "input of undeclared type", mutate: func(k *kind.Kind) {
 			k.Inputs[0].Type = &types.Struct{Name: "Deploy"}
 		}, want: []string{`input "release": undeclared type Deploy`}},
@@ -149,11 +227,27 @@ func TestValidate(t *testing.T) {
 		{name: "decision declared twice", mutate: func(k *kind.Kind) {
 			k.Decisions = append(k.Decisions, &kind.Decision{Name: "deny", Reasons: []string{"x"}})
 		}, want: []string{`decision "deny" is declared twice`}},
+		{name: "decision collides with an input", mutate: func(k *kind.Kind) {
+			k.Inputs = append(k.Inputs, &kind.Input{Name: "review", Type: types.String})
+		}, want: []string{`decision "review" collides with input "review"`},
+			help: "inputs, host functions, decisions, enums and their values share one namespace; rename one of them"},
+		{name: "decision collides with a function", mutate: func(k *kind.Kind) {
+			k.Funcs = append(k.Funcs, &kind.Func{Name: "approve", Result: types.Bool})
+		}, want: []string{`decision "approve" collides with function "approve"`}},
+		{name: "lone reason names an enum", mutate: func(k *kind.Kind) { k.Decisions[1].Reasons = []string{"Tier"} },
+			want: []string{"decision review: the reason can't name type Tier"}, help: "list the reasons inline, like `reason: critical | standard | internal`"},
+		{name: "lone reason names a struct type", mutate: func(k *kind.Kind) { k.Decisions[1].Reasons = []string{"Actor"} },
+			want: []string{"decision review: the reason can't name type Actor"}, help: "list the reasons inline, like `reason: a | b`"},
+		{name: "lone reason names a built-in type", mutate: func(k *kind.Kind) { k.Decisions[1].Reasons = []string{"string"} },
+			want: []string{"decision review: the reason can't name type string"}},
+		{name: "a type name among several reasons is a reason", mutate: func(k *kind.Kind) {
+			k.Decisions[1].Reasons = []string{"Tier", "string"}
+		}},
 		{name: "reason as a payload field", mutate: func(k *kind.Kind) {
 			k.Decisions[1].Fields = append(k.Decisions[1].Fields, &kind.Field{Name: "reason", Type: types.String})
 		}, want: []string{`decision review, field "reason": reason can't be a payload field`}},
 		{name: "decision without reasons", mutate: func(k *kind.Kind) { k.Decisions[0].Reasons = nil },
-			want: []string{"decision deny declares no reasons", `default: decision deny has no reason "no_rule_matched"`}, help: "declare at least one reason in the decision's block, like `decision deny { no_rule_matched }`"},
+			want: []string{"decision deny declares no reasons", `default: decision deny has no reason "no_rule_matched"`}, help: "declare at least one reason, like `decision deny { reason: no_rule_matched }`"},
 		{name: "reason declared twice", mutate: func(k *kind.Kind) { k.Decisions[0].Reasons = append(k.Decisions[0].Reasons, "not_eligible") },
 			want: []string{`decision deny: reason "not_eligible" is declared twice`}},
 		{name: "reason is a keyword", mutate: func(k *kind.Kind) { k.Decisions[0].Reasons = []string{"when", "no_rule_matched"} },
@@ -225,13 +319,13 @@ func TestValidate(t *testing.T) {
 			want: []string{`default: decision deny has no reason "nope"`}, help: "deny declares: not_eligible, soak_too_short, no_rule_matched"},
 		{name: "default with an unknown field", mutate: func(k *kind.Kind) {
 			k.Default = &kind.Default{Decision: "approve", Reason: "open", Args: map[string]any{"bak": 15 * time.Minute}}
-		}, want: []string{`default: decision approve has no payload field "bak"`}, help: "approve is declared as: decision approve(bake: duration = 1h) { release_manager, payments_sre, open }"},
+		}, want: []string{`default: decision approve has no payload field "bak"`}, help: "approve takes reason: release_manager | payments_sre | open, and bake: duration = 1h"},
 		{name: "default with a wrong value", mutate: func(k *kind.Kind) {
 			k.Default = &kind.Default{Decision: "approve", Reason: "open", Args: map[string]any{"bake": "15m"}}
 		}, want: []string{`default: field "bake" value "15m" is not a duration`}},
 		{name: "default misses a required field", mutate: func(k *kind.Kind) {
 			k.Default = &kind.Default{Decision: "review", Reason: "everyone"}
-		}, want: []string{`default: field "approvers" is required and has no value`}, help: "review is declared as: decision review(approvers: list<string>) { service_owner, everyone }"},
+		}, want: []string{`default: field "approvers" is required and has no value`}, help: "review takes reason: service_owner | everyone, and approvers: list<string>"},
 		{name: "default with every field is fine", mutate: func(k *kind.Kind) {
 			k.Default = &kind.Default{Decision: "review", Reason: "everyone", Args: map[string]any{"approvers": []any{"leads"}}}
 		}},
@@ -268,10 +362,18 @@ func TestValidate(t *testing.T) {
 		}, want: []string{`conflict: field "bake" value "15m" is not a duration`}, help: "the conflict outcome passes constants of the fields' types"},
 		{name: "conflict misses a required field", mutate: func(k *kind.Kind) {
 			k.Conflict = &kind.Default{Decision: "review", Reason: "everyone"}
-		}, want: []string{`conflict: field "approvers" is required and has no value`}, help: "review is declared as: decision review(approvers: list<string>) { service_owner, everyone }"},
+		}, want: []string{`conflict: field "approvers" is required and has no value`}, help: "review takes reason: service_owner | everyone, and approvers: list<string>"},
 		{name: "default with a wrong value says what to pass", mutate: func(k *kind.Kind) {
 			k.Default = &kind.Default{Decision: "approve", Reason: "open", Args: map[string]any{"bake": int64(1)}}
 		}, want: []string{`default: field "bake" value 1 is not a duration`}, help: "the default passes constants of the fields' types"},
+		{name: "default with an enum argument", mutate: func(k *kind.Kind) {
+			k.Decisions[0].Fields = []*kind.Field{{Name: "tier", Type: k.Enums[0]}}
+			k.Default.Args = map[string]any{"tier": constant.EnumValue("internal")}
+		}},
+		{name: "default with an enum argument outside the enum", mutate: func(k *kind.Kind) {
+			k.Decisions[0].Fields = []*kind.Field{{Name: "tier", Type: k.Enums[0]}}
+			k.Default.Args = map[string]any{"tier": constant.EnumValue("gold")}
+		}, want: []string{`default: field "tier" value gold is not a Tier`}},
 	}
 
 	for _, tt := range tests {

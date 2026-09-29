@@ -1,15 +1,15 @@
 policy grants: Grants@1
 
 when "eng" in teams {
-  read(member, scope: "eng")
+  read(reason: member, scope: "eng")
 }
 
 when "platform" in teams {
-  write(owner)
+  write(reason: owner)
 }
 
 when "oncall" in teams {
-  write(oncall)
+  write(reason: oncall)
 }
 
 // An outcome assert: whoever may write may read.

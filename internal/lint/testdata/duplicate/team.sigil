@@ -2,14 +2,14 @@ policy team.main: DeployApproval@1
 
 use deploy.production
 
-production(approvers: ["a"], tiers: ["x"])
+production(approvers: ["a"], tiers: [internal])
 
 // The same call with its arguments reordered.
-production(tiers: ["x"], approvers: ["a"])
+production(tiers: [internal], approvers: ["a"])
 
 when release.hotfix {
   // Different arguments: fine.
   production(approvers: ["b"])
   // Same as the first, gated.
-  production(approvers: ["a"], tiers: ["x"])
+  production(approvers: ["a"], tiers: [internal])
 }

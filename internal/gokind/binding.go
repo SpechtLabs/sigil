@@ -25,6 +25,9 @@ type Binding struct {
 	Payloads map[string]reflect.Type  // decision name to payload type
 	Funcs    map[string]reflect.Value // function name to implementation
 	Fields   map[string][]int         // field path, as above, to the Go field index path
+	// Enums maps the Go types registered as enums to their enums. A
+	// synthesized binding has none: it reads an enum into a string.
+	Enums map[reflect.Type]*types.Enum
 	// RecoverHostPanics makes a panic in a host function a runtime error,
 	// as [Options.RecoverHostPanics] asks.
 	RecoverHostPanics bool
@@ -33,12 +36,16 @@ type Binding struct {
 // TypeOf returns the Sigil type a Go type maps to under the binding,
 // which is how a value bound to a param from Go is checked against the
 // param's declaration. A struct type is the kind's struct it was built
-// from; any other struct, or a type policies can't read, reports false.
+// from, and a registered enum type its enum; any other struct, or a type
+// policies can't read, reports false.
 // The struct type it returns carries only the name, which is all
 // [types.Identical] compares.
 func (b *Binding) TypeOf(t reflect.Type) (types.Type, bool) { //nolint:returninterface // a type is any of five kinds
 	if t == nil {
 		return nil, false
+	}
+	if e, ok := b.Enums[t]; ok {
+		return e, true
 	}
 	if t == durationType {
 		return types.Duration, true

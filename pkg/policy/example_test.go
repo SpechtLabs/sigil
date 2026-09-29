@@ -40,15 +40,15 @@ func Example() {
 policy deploy.gate: Deploy@1
 
 when service.name in teams {
-  approve(owner)
+  approve(reason: owner)
 }
 
 when service.tier == "critical" {
-  approve(owner, bake: 4h)
+  approve(reason: owner, bake: 4h)
 }
 
 when service.name not in teams {
-  deny(not_owner)
+  deny(reason: not_owner)
 }
 `, "deploy.gate")
 	if err != nil {
@@ -120,20 +120,19 @@ func ExampleNewKind() {
 	// fn split(string, string) -> list<string>
 	//
 	// decision deny {
-	//   banned
-	//   no_rule_matched
+	//   reason: banned | no_rule_matched
 	// }
 	//
-	// decision allow(ttl: duration = 1h) {
-	//   admin
-	//   owner
+	// decision allow {
+	//   reason: admin | owner
+	//   ttl: duration = 1h
 	// }
 	//
 	// collect one
 	// precedence deny > allow
 	// precedence allow: admin > owner
 	//
-	// default deny(no_rule_matched)
+	// default deny(reason: no_rule_matched)
 }
 
 // Load reads every .sigil file of an fs.FS into one bundle. Documents
@@ -164,11 +163,11 @@ policy access.search: Access@1
 use access.common.{banned}
 
 when banned {
-  deny(banned)
+  deny(reason: banned)
 }
 
 when "search" in teams {
-  allow(member)
+  allow(reason: member)
 }
 `,
 	})
@@ -200,7 +199,7 @@ func ExampleCompileError() {
 	_, err := k.Compile(`policy gate: Gate@1
 
 when teir == "critical" {
-  deny(critical)
+  deny(reason: critical)
 }
 `, "gate")
 
@@ -239,11 +238,11 @@ func ExampleParams() {
 param min_soak: duration = 24h, min: 1h, max: 48h
 
 when soak >= min_soak {
-  allow(soaked)
+  allow(reason: soaked)
 }
 
 when soak < min_soak {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 `
 	p, err := k.Compile(src, "soak", policy.Params{"min_soak": 4 * time.Hour})
@@ -282,7 +281,7 @@ func ExampleRequire() {
 policy deploy.guardrails: Deploy@1
 
 when hotfix {
-  deny(hotfix_frozen)
+  deny(reason: hotfix_frozen)
 }
 `})
 
@@ -297,7 +296,7 @@ when false {
 }
 
 when true {
-  allow(team)
+  allow(reason: team)
 }
 `})
 
@@ -348,7 +347,7 @@ func ExamplePolicy_Eval() {
 	p, err := k.Compile(`policy roles: Roles@1
 
 when roles[1] == "admin" {
-  allow(second_role)
+  allow(reason: second_role)
 }
 `, "roles")
 	if err != nil {
@@ -384,7 +383,7 @@ func ExampleDecision_Match() {
 	p, err := k.Compile(`policy review: Review@1
 
 when team == "payments" {
-  review(service_owner, approvers: ["payments-leads", "security-leads"])
+  review(reason: service_owner, approvers: ["payments-leads", "security-leads"])
 }
 `, "review")
 	if err != nil {
@@ -431,11 +430,11 @@ func ExampleOutcome_Is() {
 	p, err := k.Compile(`policy freeze: Freeze@1
 
 when frozen {
-  deny(change_freeze)
+  deny(reason: change_freeze)
 }
 
 when not owner {
-  deny(not_owner)
+  deny(reason: not_owner)
 }
 `, "freeze")
 	if err != nil {
@@ -482,15 +481,15 @@ func ExampleDecision_MatchAll() {
 	p, err := k.Compile(`policy grants: Grants@1
 
 when "engineering" in teams {
-  read(member)
+  read(reason: member)
 }
 
 when "platform" in teams {
-  admin(platform, ttl: 1h)
+  admin(reason: platform, ttl: 1h)
 }
 
 when "oncall" in teams {
-  admin(oncall)
+  admin(reason: oncall)
 }
 `, "grants")
 	if err != nil {
@@ -532,7 +531,7 @@ func ExampleAssertionError() {
 assert("negative_soak", soak >= 0s)
 
 when soak > 1h {
-  allow(soaked)
+  allow(reason: soaked)
 }
 `, "soak")
 	if err != nil {
@@ -566,11 +565,11 @@ func ExampleWithExclusive() {
 	p, err := k.Compile(`policy grants: Grants@1
 
 when "support" in teams {
-  customer_data(support)
+  customer_data(reason: support)
 }
 
 when "engineering" in teams {
-  dev_env(engineering)
+  dev_env(reason: engineering)
 }
 `, "grants")
 	if err != nil {
@@ -606,11 +605,11 @@ func ExampleWithConflict() {
 	p, err := k.Compile(`policy deploy: Deploy@1
 
 when "release_manager" in roles {
-  approve(release_manager)
+  approve(reason: release_manager)
 }
 
 when "owner" in roles {
-  approve(service_owner)
+  approve(reason: service_owner)
 }
 `, "deploy")
 	if err != nil {
@@ -648,11 +647,11 @@ func ExampleWithFunc() {
 	p, err := k.Compile(`policy ports: Ports@1
 
 when port(listen) < 1024 {
-  deny(privileged)
+  deny(reason: privileged)
 }
 
 when port(listen) >= 1024 {
-  allow(unprivileged)
+  allow(reason: unprivileged)
 }
 `, "ports")
 	if err != nil {
@@ -691,10 +690,10 @@ func ExampleTrace() {
 	p, err := k.Compile(`policy deploy: Deploy@1
 
 when tier != "critical" {
-  approve(standard)
+  approve(reason: standard)
 
   when hotfix {
-    approve(hotfix, bake: 10m)
+    approve(reason: hotfix, bake: 10m)
   }
 }
 `, "deploy")
@@ -753,17 +752,17 @@ func Example_reload() {
 	}
 
 	reload(`policy users: Users@1
-when user in ["ada"] { allow(listed) }
+when user in ["ada"] { allow(reason: listed) }
 `)
 	decide("grace")
 
 	reload(`policy users: Users@1
-when user in ["ada", "grace"] { allow(listd) }
+when user in ["ada", "grace"] { allow(reason: listd) }
 `)
 	decide("grace")
 
 	reload(`policy users: Users@1
-when user in ["ada", "grace"] { allow(listed) }
+when user in ["ada", "grace"] { allow(reason: listed) }
 `)
 	decide("grace")
 	// Output:
@@ -792,7 +791,7 @@ func ExampleWithRecoverHostPanics() {
 		policy.WithRecoverHostPanics(),
 	)
 	p, err := k.Compile(`policy access: Access@1
-when owner(service) == "payments" { grant(owner) }
+when owner(service) == "payments" { grant(reason: owner) }
 `, "access")
 	if err != nil {
 		fmt.Println(err)
@@ -810,4 +809,59 @@ when owner(service) == "payments" { grant(owner) }
 	// Output:
 	// payments-api -> 1 grant
 	// search-api -> 2:6 (access): host function owner panicked: runtime error: invalid memory address or nil pointer dereference | stack captured: true
+}
+
+// An enum gives a named string type a fixed set of values. Policies
+// write the values bare, and a Go value outside the set fails the
+// evaluation closed when a rule reads it.
+func ExampleWithEnum() {
+	type Tier string
+	const (
+		Critical Tier = "critical"
+		Standard Tier = "standard"
+		Internal Tier = "internal"
+	)
+	type Input struct {
+		Tier Tier `policy:"tier"`
+	}
+	type ReviewData struct {
+		Tier Tier `policy:"tier"`
+	}
+	deny := policy.NewDecision[policy.None]("deny", "no_rule_matched")
+	review := policy.NewDecision[ReviewData]("review", "sensitive")
+	k := policy.NewKind[Input]("Deploy",
+		policy.WithVersion(1),
+		policy.WithEnum(Critical, Standard, Internal),
+		policy.WithDecisions(deny, review),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
+	)
+	fmt.Println(strings.Split(k.Schema(), "\n")[2])
+
+	p, err := k.Compile(`policy deploy: Deploy@1
+
+when tier in [critical, standard] {
+  review(reason: sensitive, tier: tier)
+}
+`, "deploy")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, tier := range []Tier{Critical, Internal, ""} {
+		res, err := p.Eval(context.Background(), Input{Tier: tier})
+		if err != nil {
+			fmt.Printf("%q -> %s(reason: %s): %v\n", tier, res.Decision, res.Reason, err)
+			continue
+		}
+		if r, ok := review.Match(res); ok {
+			fmt.Printf("%q -> review of a %s service\n", tier, r.Tier)
+			continue
+		}
+		fmt.Printf("%q -> %s\n", tier, res.Decision)
+	}
+	// Output:
+	// enum Tier: critical | standard | internal
+	// "critical" -> review of a critical service
+	// "internal" -> deny
+	// "" -> deny(reason: no_rule_matched): 3:6 (deploy): tier: "" is not a value of Tier
 }

@@ -3,17 +3,17 @@
 policy p: Reviews@1
 
 when service.tier == "critical" {
-  review(security, approvers: ["security-leads"])
+  review(reason: security, approvers: ["security-leads"])
 }
 
 when "payments" in service.owners {
-  review(owner, approvers: ["payments-leads"])
+  review(reason: owner, approvers: ["payments-leads"])
 }
 
 when release.hotfix {
-  approve(hotfix)
+  approve(reason: hotfix)
 }
 
 when release.soak < 1h {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }

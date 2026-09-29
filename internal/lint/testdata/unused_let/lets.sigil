@@ -7,16 +7,18 @@ let soak = release.soak
 let long_enough = soak >= min_soak
 // Only a field of the same name is read, after a dot.
 let tier = "critical"
+// Only a reason of the same name is named, which isn't a read.
+let service_owner = "leads"
 // Exported, so importers may read it.
 pub let exported = release.hotfix
 // Read in a payload argument.
 let approvers = service.owners
 
-when long_enough and service.tier == "standard" {
+when long_enough and service.tier == standard {
   // Scoped and never read.
   let unused_scoped = actor.name
   let used_scoped = actor.teams
   when "sre" in used_scoped {
-    review(service_owner, approvers: approvers)
+    review(reason: service_owner, approvers: approvers)
   }
 }

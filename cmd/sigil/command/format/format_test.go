@@ -13,7 +13,7 @@ import (
 
 const (
 	messy = "policy a: K@1\nwhen x==1{deny( r )}\n"
-	tidy  = "policy a: K@1\n\nwhen x == 1 { deny(r) }\n"
+	tidy  = "policy a: K@1\n\nwhen x == 1 { deny(reason: r) }\n"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files under testdata")

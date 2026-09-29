@@ -17,14 +17,14 @@ let cleared =
 
 when cleared { // after the brace
   // Above the rule.
-  deny(soak_too_short) // trailing the rule
+  deny(reason: soak_too_short) // trailing the rule
 
   // Before the closing brace.
 }
 
 when release.soak < 1h // a short soak
   and not release.hotfix {
-  review(service_owner, approvers: [
+  review(reason: service_owner, approvers: [
     "a", // first
     "b",
     // before the bracket

@@ -1,0 +1,35 @@
+payload:
+  also:
+    - internal
+  quota:
+    critical: 3
+  to: critical
+policy: tiers.main
+decision: move
+reason: promote
+outcome:
+  - payload:
+      also:
+        - internal
+      quota:
+        critical: 3
+      to: critical
+    decision: move
+    reason: promote
+    policy: tiers.main
+    position: testdata/tiers/main.sigil:4:3
+trace:
+  - payload:
+      also:
+        - internal
+      quota:
+        critical: 3
+      to: critical
+    decision: move
+    reason: promote
+    policy: tiers.main
+    position: testdata/tiers/main.sigil:4:3
+    conditions:
+      - service.tier == Tier.standard and internal in service.backups
+    outcome: true
+--- ok ---

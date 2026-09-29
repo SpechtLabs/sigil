@@ -9,19 +9,20 @@ type Actor {
 input actor: Actor
 
 decision read {
-  engineering_member
+  reason: engineering_member
 }
 decision write {
-  platform_member
+  reason: platform_member
 }
-decision admin(ttl: duration = 8h) {
-  oncall
+decision admin {
+  reason: oncall
+  ttl: duration = 8h
 }
 decision customer_data_writer {
-  data_engineer
+  reason: data_engineer
 }
 decision development_environment_writer {
-  platform_member
+  reason: platform_member
 }
 
 collect all
@@ -49,7 +50,7 @@ use access.guardrails
 guardrails()
 
 when "platform" in actor.groups {
-  write(platform_member)
-  development_environment_writer(platform_member)
+  write(reason: platform_member)
+  development_environment_writer(reason: platform_member)
   assert("actor_named", actor.name != "")
 }

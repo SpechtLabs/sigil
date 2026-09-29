@@ -121,19 +121,19 @@ func TestEvalContext(t *testing.T) {
 	}{
 		{
 			name: "done before it starts",
-			src:  "policy p: Test@1\nwhen true { deny(a) }",
+			src:  "policy p: Test@1\nwhen true { deny(reason: a) }",
 			ctx:  func() context.Context { return already },
 			err:  context.Canceled,
 		},
 		{
 			name: "done at the first rule",
-			src:  "policy p: Test@1\nwhen true { deny(a) }",
+			src:  "policy p: Test@1\nwhen true { deny(reason: a) }",
 			ctx:  func() context.Context { return newLateCtx() },
 			err:  context.Canceled,
 		},
 		{
 			name: "done at an input assert",
-			src:  "policy p: Test@1\nassert(\"named\", actor.name != \"\")\nwhen true { deny(a) }",
+			src:  "policy p: Test@1\nassert(\"named\", actor.name != \"\")\nwhen true { deny(reason: a) }",
 			ctx:  func() context.Context { return newLateCtx() },
 			err:  context.Canceled,
 		},
@@ -145,7 +145,7 @@ func TestEvalContext(t *testing.T) {
 		},
 		{
 			name: "live",
-			src:  "policy p: Test@1\nassert(\"named\", actor.name != \"\")\nwhen all r in actor.regions: r != \"\" { deny(a) }",
+			src:  "policy p: Test@1\nassert(\"named\", actor.name != \"\")\nwhen all r in actor.regions: r != \"\" { deny(reason: a) }",
 			ctx:  func() context.Context { return live },
 			want: "deny a 3:40 [all r in actor.regions: r != \"\"] *",
 		},
@@ -176,7 +176,7 @@ func TestEvalContext(t *testing.T) {
 // TestEvalStatic checks that a policy compiled for explanation only
 // refuses to run, through Eval and EvalContext alike.
 func TestEvalStatic(t *testing.T) {
-	src := "policy p: Test@1\nwhen true { deny(a) }"
+	src := "policy p: Test@1\nwhen true { deny(reason: a) }"
 	k := compileKind(t)
 	f, perrs := parser.ParseFile("p.sigil", []byte(src))
 	if perrs != nil {

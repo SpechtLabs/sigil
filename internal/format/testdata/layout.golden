@@ -32,10 +32,10 @@ let mixed = a or b
   or c
 
 when cleared {
-  when sre and release.hotfix { approve(sre_hotfix) }
+  when sre and release.hotfix { approve(reason: sre_hotfix) }
   when sre {
-    review(sre_change, approvers: approvers)
-    deny(x)
+    review(reason: sre_change, approvers: approvers)
+    deny(reason: x)
   }
   let scoped = 1
 }

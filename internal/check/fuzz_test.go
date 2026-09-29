@@ -11,11 +11,20 @@ import (
 )
 
 func FuzzLoadKind(f *testing.F) {
-	for _, src := range []string{deploy, "", "kind K version 1\ndecision allow { ok }\ncollect all", "kind K version 1\ntype A { a: A }", "kind K version 2, accepts: 1\ndecision d(n: int = 1 + 2) { r }\ncollect all"} {
+	for _, src := range []string{
+		deploy, "",
+		"kind K version 1\ndecision allow { reason: ok }\ncollect all",
+		"kind K version 1\ntype A { a: A }",
+		"kind K version 2, accepts: 1\ndecision d { reason: r  n: int = 1 + 2 }\ncollect all",
+		"kind K version 1\nenum Tier: a | b\nenum Plan: b\n  | c\ninput t: map<Tier, list<?Plan>>\ndecision d { reason: a | Tier  t: Tier = b }\ncollect all\ndefault d(t: a, reason: a)",
+		"kind K version 1\nenum Reason: a\ndecision d { reason: Reason }\ncollect all",
+		"kind K version 1\nenum Tier: a | b\ndecision d { reason: x  t: Tier = Tier.a }\ncollect all\ndefault d(reason: d.x, t: Tier.c)",
+		"kind K version 1\ndecision d(n: int = 1) { a b }\ncollect one\nprecedence d\ndefault d(a, n: 2)",
+	} {
 		f.Add(src)
 	}
-	f.Add("kind K version 1\ndecision d(f: float = " + strings.Repeat("9", 308) + ".0 + " + strings.Repeat("9", 308) + ".0) { r }\ncollect all")
-	f.Add("kind K version 1\ndecision conflict(n: int = 1) { conflict r }\ncollect one\nprecedence conflict\ndefault conflict(r)\nconflict conflict(conflict, n: 2)")
+	f.Add("kind K version 1\ndecision d { reason: r  f: float = " + strings.Repeat("9", 308) + ".0 + " + strings.Repeat("9", 308) + ".0 }\ncollect all")
+	f.Add("kind K version 1\ndecision conflict { reason: conflict | r  n: int = 1 }\ncollect one\nprecedence conflict\ndefault conflict(reason: r)\nconflict conflict(reason: conflict, n: 2)")
 	f.Fuzz(func(t *testing.T, src string) {
 		k, errs := check.LoadKind("fuzz.sigil", []byte(src))
 		if errs != nil {
@@ -40,7 +49,9 @@ func FuzzCheckExpr(f *testing.F) {
 	if errs != nil {
 		f.Fatal(errs)
 	}
-	for _, src := range []string{"true", "[]", "{}", "[[], [1]]", "service.labels[\"x\"]", "release.soak >= 1h", "all x in actor.roles: x != \"admin\"", "filter x in actor.roles: x != \"admin\"", "split(service.name, \"-\")", "present service", "unknown.field", "all r in outcome.review: r.reason == review.service_owner", "filter r in outcome.review: \"a\" in r.approvers", "outcome.review[0]"} {
+	for _, src := range []string{"true", "[]", "{}", "[[], [1]]", "service.labels[\"x\"]", "release.soak >= 1h", "all x in actor.roles: x != \"admin\"", "filter x in actor.roles: x != \"admin\"", "split(service.name, \"-\")", "present service", "unknown.field", "all r in outcome.review: r.reason == review.service_owner", "filter r in outcome.review: \"a\" in r.approvers", "outcome.review[0]",
+		"service.tier == critical", "standard in service.plans", "[standard, service.tier]", "service.by_tier has {critical: 1}", "service.backup ?? internal", "tier_of(\"x\") != standard", "{standard: [free]}", "service.tier in [\"critical\"]", "critcal == service.tier", "Tier.standard == service.tier", "[Plan.standard, free]", "Tier", "Tier.nope", "Tier?.critical", "Tier(1)", "service.plan == Tier.standard",
+	} {
 		f.Add(src)
 	}
 	f.Fuzz(func(t *testing.T, src string) {

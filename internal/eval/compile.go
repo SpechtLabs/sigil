@@ -99,7 +99,8 @@ func constExpr(v any) Expr {
 
 // ident compiles a name: a param's constant, a let evaluated on first
 // use, a slot the frame binds, or an input read through its field index.
-// Decision names are their own string.
+// Decision names are their own string, and an enum value is its
+// [constant.EnumValue].
 func (c *compiler) ident(x *ast.Ident) Expr {
 	if v, ok := c.scope.consts[x.Name]; ok {
 		return func(*Frame) Value { return v }
@@ -116,10 +117,15 @@ func (c *compiler) ident(x *ast.Ident) Expr {
 		return func(f *Frame) Value { return f.slots[slot] }
 	}
 	if idx, ok := c.fieldIndex("." + x.Name); ok {
-		return func(f *Frame) Value { return f.Input.FieldByIndex(idx) }
+		return hostExpr(x, c.typeOf(x), func(f *Frame) Value { return f.Input.FieldByIndex(idx) })
 	}
-	if c.typeOf(x) == types.Decision {
-		return constExpr(x.Name)
+	switch t := c.typeOf(x).(type) {
+	case *types.Enum:
+		return constExpr(constant.EnumValue(x.Name))
+	case types.Basic:
+		if t == types.Decision {
+			return constExpr(x.Name)
+		}
 	}
 	throwf(x, "`%s` has no slot and isn't an input", x.Name)
 	return nil
@@ -174,6 +180,9 @@ func iface(v Value) any {
 // came from.
 func canonical(t types.Type, v Value) any {
 	v = norm(v)
+	if _, ok := t.(*types.Enum); ok {
+		return constant.EnumValue(v.String())
+	}
 	switch t {
 	case types.Int:
 		return v.Int()
@@ -187,6 +196,27 @@ func canonical(t types.Type, v Value) any {
 		return v.Bool()
 	}
 	return iface(v)
+}
+
+// canonicalType is the Go type canonical gives a key of Sigil type t, or
+// nil when canonical keeps the value's own.
+func canonicalType(t types.Type) reflect.Type { //nolint:returninterface // reflect.Type is how reflect names a type
+	if _, ok := t.(*types.Enum); ok {
+		return enumValueType
+	}
+	switch t {
+	case types.Int:
+		return int64Type
+	case types.Duration:
+		return durationType
+	case types.Float:
+		return float64Type
+	case types.String, types.Decision:
+		return stringType
+	case types.Bool:
+		return boolType
+	}
+	return nil
 }
 
 func (c *compiler) unary(x *ast.UnaryExpr) Expr {
@@ -395,7 +425,7 @@ func (c *compiler) has(x *ast.BinaryExpr) Expr {
 	l, r := c.expr(x.X), c.expr(x.Y)
 	m := c.typeOf(x.X).(*types.Map)
 	if _, isMap := c.typeOf(x.Y).(*types.Map); !isMap {
-		return func(f *Frame) Value { return reflect.ValueOf(mapGet(l(f), r(f)).IsValid()) }
+		return func(f *Frame) Value { return reflect.ValueOf(mapGet(l(f), r(f), m.Key).IsValid()) }
 	}
 	return func(f *Frame) Value {
 		a, b := norm(l(f)), norm(r(f))
@@ -405,7 +435,7 @@ func (c *compiler) has(x *ast.BinaryExpr) Expr {
 		iter := b.MapRange()
 		for iter.Next() {
 			f.step(1)
-			av := mapGet(a, iter.Key())
+			av := mapGet(a, iter.Key(), m.Key)
 			if !av.IsValid() || !equal(m.Value, av, iter.Value()) {
 				return reflect.ValueOf(false)
 			}
@@ -502,15 +532,19 @@ func (c *compiler) arith(x *ast.BinaryExpr) Expr {
 	}
 }
 
-// selector compiles `x.name` or `x?.name`, the end of a chain, or a
+// selector compiles `x.name` or `x?.name`, the end of a chain, a
 // decision value with its reason, `approve.release_manager`, which is
-// its own string.
+// its own string, or a qualified enum value, `Tier.standard`, which is
+// its [constant.EnumValue].
 func (c *compiler) selector(x *ast.SelectorExpr) Expr {
 	if rd, ok := c.info.Reads[x]; ok {
 		return c.imported(x, rd)
 	}
 	if id, ok := x.X.(*ast.Ident); ok && c.info.TypeOf(id) == types.Decision {
 		return constExpr(id.Name + "." + x.Sel.Name)
+	}
+	if qualifiedEnum(x, c.info.TypeOf(x), c.info.TypeOf(x.X)) {
+		return constExpr(constant.EnumValue(x.Sel.Name))
 	}
 	return c.chain(x)
 }
@@ -592,22 +626,26 @@ func (c *compiler) link(x ast.Expr) func(*Frame) (Value, bool) {
 		if !ok {
 			throwf(x.Sel, "no binding for field %s.%s", s.Name, x.Sel.Name)
 		}
+		var ft types.Type
+		if fd := s.Field(x.Sel.Name); fd != nil {
+			ft = fd.Type
+		}
 		if x.Optional {
-			return func(f *Frame) (Value, bool) {
+			return hostRead(x, ft, func(f *Frame) (Value, bool) {
 				v, ok := base(f)
 				if v = norm(v); !ok || !v.IsValid() || v.IsNil() {
 					return Value{}, false
 				}
 				return v.Elem().FieldByIndex(idx), true
-			}
+			})
 		}
-		return func(f *Frame) (Value, bool) {
+		return hostRead(x, ft, func(f *Frame) (Value, bool) {
 			v, ok := base(f)
 			if !ok {
 				return Value{}, false
 			}
 			return norm(v).FieldByIndex(idx), true
-		}
+		})
 	case *ast.IndexExpr:
 		base, get := c.linkBase(x.X), c.indexer(x)
 		return func(f *Frame) (Value, bool) {
@@ -691,7 +729,7 @@ func (c *compiler) indexer(x *ast.IndexExpr) func(*Frame, Value) Value {
 		zero := c.zero(t.Value)
 		return func(f *Frame, base Value) Value {
 			m := norm(base)
-			if v := mapGet(m, key(f)); v.IsValid() {
+			if v := mapGet(m, key(f), t.Key); v.IsValid() {
 				return v
 			}
 			if m.IsValid() && m.Type().Elem().Kind() != reflect.Interface {
@@ -717,7 +755,8 @@ func (c *compiler) indexer(x *ast.IndexExpr) func(*Frame, Value) Value {
 // call compiles a host function call. Arguments are converted to the Go
 // parameter types when a literal's representation differs; an error
 // result becomes a runtime error caused by it, and the context is polled
-// once the function returns. A panic in the function becomes a runtime
+// once the function returns. An enum value in the result is checked like
+// one read from the input. A panic in the function becomes a runtime
 // error caused by a *HostPanic when the binding asks for that. Otherwise
 // it isn't recovered: it isn't a *diag.Error, so catch re-raises it to
 // the host.
@@ -740,7 +779,7 @@ func (c *compiler) call(x *ast.CallExpr) Expr {
 	if c.scope.binding.RecoverHostPanics {
 		invoke = func(in []Value) []Value { return callRecovered(fn, in, name, x) }
 	}
-	return func(f *Frame) Value {
+	return hostExpr(x, c.typeOf(x), func(f *Frame) Value {
 		in := make([]Value, len(args))
 		for i, a := range args {
 			in[i] = convert(a(f), ft.In(i))
@@ -752,15 +791,20 @@ func (c *compiler) call(x *ast.CallExpr) Expr {
 			f.run.poll()
 		}
 		if len(out) == 2 && !out[1].IsNil() {
-			err, _ := reflect.TypeAssert[error](out[1])
-			e := &diag.Error{Msg: fmt.Sprintf("host function %s failed: %v", name, err), Pos: x.Pos(), End: x.End(), Cause: err}
-			if _, ok := errors.AsType[*gokind.ErrUnbound](err); ok {
-				e.Help = "this sigil binary has only " + name + "'s signature from the kind file; evaluate with the host's own binary, built with sigil's pkg/cli, which links the real function in"
-			}
-			panic(e) //nolint:nopanic // runtime errors unwind to Run, which returns them
+			panic(hostError(x, name, out[1])) //nolint:nopanic // runtime errors unwind to Run, which returns them
 		}
 		return out[0]
+	})
+}
+
+// hostError is the runtime error for the error a host function returned.
+func hostError(x *ast.CallExpr, name string, result Value) *diag.Error {
+	err, _ := reflect.TypeAssert[error](result)
+	e := &diag.Error{Msg: fmt.Sprintf("host function %s failed: %v", name, err), Pos: x.Pos(), End: x.End(), Cause: err}
+	if _, ok := errors.AsType[*gokind.ErrUnbound](err); ok {
+		e.Help = "this sigil binary has only " + name + "'s signature from the kind file; evaluate with the host's own binary, built with sigil's pkg/cli, which links the real function in"
 	}
+	return e
 }
 
 // callRecovered calls a host function and turns a panic in it into a

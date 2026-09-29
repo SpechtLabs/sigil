@@ -68,3 +68,23 @@ func benchmarkEvalPolicy(b *testing.B, source string, collect bool, top int) {
 		}
 	}
 }
+
+// BenchmarkEvalEnum measures reading host enum values, which checks each
+// against its enum: a plain value, and every element of a list.
+func BenchmarkEvalEnum(b *testing.B) {
+	for _, bc := range []struct{ name, rule string }{
+		{name: "value", rule: "when account.tier == critical { move(reason: ok, to: critical) }"},
+		{name: "list", rule: "when standard in account.tiers { move(reason: ok, to: critical) }"},
+	} {
+		b.Run(bc.name, func(b *testing.B) {
+			p := compileEnums(b, bc.rule)
+			in := account()
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := p.Eval(&in); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}

@@ -1,0 +1,116 @@
+kind Broken version 1 [1:1-31:13]
+  input x: int [31:1-31:13]
+---
+policy p: Broken@1 [35:1-39:44]
+  when <error> { [39:1-39:44]
+  }
+
+== diagnostics ==
+
+errors_enum.sigil:3:11: error: expected `:`, found `critical`
+  |
+3 | enum Tier critical | standard
+  |           ^^^^^^^^
+  = help: an enum is written `enum Name: a | b | c`
+
+errors_enum.sigil:4:16: error: expected `|` between two values, found `,`
+  |
+4 | enum Plan: free, pro
+  |                ^
+  = help: an enum is written `enum Name: a | b | c`
+
+errors_enum.sigil:5:12: error: expected an enum value, found the keyword `one`
+  |
+5 | enum Mode: one | all
+  |            ^^^
+  = help: a keyword can't be a value; pick another name
+
+errors_enum.sigil:7:1: error: expected an enum value, found `enum`
+  |
+7 | enum Empty {}
+  | ^^^^
+  = help: an enum is written `enum Name: a | b | c`
+
+errors_enum.sigil:7:12: error: expected `:`, found `{`
+  |
+7 | enum Empty {}
+  |            ^
+  = help: an enum is written `enum Name: a | b | c`
+
+errors_enum.sigil:9:15: error: decision none declares no reason
+  |
+9 | decision none {}
+  |               ^
+  = help: list its reasons first, like `reason: not_eligible | soak_too_short`
+
+errors_enum.sigil:12:3: error: decision twice declares `reason` twice
+   |
+12 |   reason: b
+   |   ^^^^^^
+   = help: list every reason in one field, like `reason: not_eligible | soak_too_short`
+
+errors_enum.sigil:14:29: error: the reason can't name a type
+   |
+14 | decision optional { reason: ?string }
+   |                             ^
+   = help: the reasons are listed inline, like `reason: not_eligible | soak_too_short`
+
+errors_enum.sigil:15:27: error: the reason can't name a type
+   |
+15 | decision listed { reason: list<string> }
+   |                           ^^^^^
+   = help: the reasons are listed inline, like `reason: not_eligible | soak_too_short`
+
+errors_enum.sigil:16:32: error: the reason can't have a default
+   |
+16 | decision defaulted { reason: a = a }
+   |                                ^
+   = help: every constructor names its reason, like `deny(reason: soak_too_short)`
+
+errors_enum.sigil:17:28: error: expected `|` between two values, found `,`
+   |
+17 | decision commas { reason: a, b }
+   |                            ^
+   = help: the reasons are listed inline, like `reason: not_eligible | soak_too_short`
+
+errors_enum.sigil:19:3: error: the payload fields go inside the braces, next to `reason:`
+   |
+19 |   reason: a
+   |   ^^^^^^
+   = help: move them out of the parentheses: `decision approve { reason: release_manager  bake: duration = 1h }`
+
+errors_enum.sigil:23:8: error: expected `:`, found `duration`
+   |
+23 |   bake duration
+   |        ^^^^^^^^
+   = help: a payload field is written `name: type` or `name: type = default`
+
+errors_enum.sigil:25:14: error: the reason isn't a string parameter
+   |
+25 | decision old(reason: string) {
+   |              ^^^^^^
+   = help: list the reasons inside the braces: `decision deny { reason: not_eligible | soak_too_short }`
+
+errors_enum.sigil:31:1: error: expected `}`, found `input`
+   |
+31 | input x: int
+   | ^^^^^
+   = help: to close the `{` at 28:19
+
+errors_enum.sigil:37:1: error: an enum can only be declared in a kind
+   |
+37 | enum Tier: a | b
+   | ^^^^
+   = help: declare it in the kind file, like `enum Tier: critical | standard`; policies and modules use its values by name
+
+errors_enum.sigil:39:13: error: `|` can't join two conditions
+   |
+39 | when x == 1 | x == 2 { deny(reason: a, b) }
+   |             ^
+   = help: use `or`; `|` only separates enum values and reasons
+
+errors_enum.sigil:39:40: error: expected a named argument, found `b`
+   |
+39 | when x == 1 | x == 2 { deny(reason: a, b) }
+   |                                        ^
+   = help: every argument is written `name: value`, like `approvers: ["payments-leads"]`

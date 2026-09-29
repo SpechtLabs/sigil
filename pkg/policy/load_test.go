@@ -14,7 +14,7 @@ import (
 const gate = `policy deploy.gate: DeployApproval@1
 
 when release.hotfix {
-  approve(release_manager)
+  approve(reason: release_manager)
 }
 `
 

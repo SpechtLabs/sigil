@@ -1,8 +1,8 @@
 warn unused-import (team.main)
-team.sigil:8:26 (team.main): warning: critical is imported from deploy.common but never used [unused-import]
+team.sigil:8:26 (team.main): warning: is_critical is imported from deploy.common but never used [unused-import]
   |
-8 | use deploy.common.{owns, critical}
-  |                          ^^^^^^^^
+8 | use deploy.common.{owns, is_critical}
+  |                          ^^^^^^^^^^^
   = help: remove it from the import list
 
 warn unused-import (team.main)

@@ -17,6 +17,7 @@ var (
 	strMap  = &types.Map{Key: types.String, Value: types.String}
 	intMap  = &types.Map{Key: types.Int, Value: strList}
 	service = &types.Struct{Name: "Service"}
+	tier    = &types.Enum{Name: "Tier", Values: []string{"critical", "standard", "internal"}}
 )
 
 func TestEval(t *testing.T) {
@@ -67,6 +68,39 @@ func TestEval(t *testing.T) {
 		// Optionals take their element's constants.
 		{src: `"a"`, want: &types.Optional{Elem: types.String}, val: "a"},
 		{src: "[]", want: &types.Optional{Elem: strList}, val: []any{}},
+
+		// Enum values are bare names of the wanted enum.
+		{src: "critical", want: tier, val: constant.EnumValue("critical")},
+		{src: "(internal)", want: tier, val: constant.EnumValue("internal")},
+		{src: "standard", want: &types.Optional{Elem: tier}, val: constant.EnumValue("standard")},
+		{src: "[critical, standard]", want: &types.List{Elem: tier}, val: []any{constant.EnumValue("critical"), constant.EnumValue("standard")}},
+		{src: "{critical: 1h, internal: 2h}", want: &types.Map{Key: tier, Value: types.Duration},
+			val: map[any]any{constant.EnumValue("critical"): time.Hour, constant.EnumValue("internal"): 2 * time.Hour}},
+		{src: "critcal", want: tier, msg: "Tier has no value `critcal`", help: "did you mean `critical`? Tier declares: critical, standard, internal", span: "1:1-1:8"},
+		{src: "premium", want: tier, msg: "Tier has no value `premium`", help: "Tier declares: critical, standard, internal", span: "1:1-1:8"},
+		{src: "[critical, gold]", want: &types.List{Elem: tier}, msg: "Tier has no value `gold`", span: "1:12-1:16"},
+		{src: "{critical: 1h, critical: 2h}", want: &types.Map{Key: tier, Value: types.Duration}, msg: "duplicate key critical in map constant", span: "1:16-1:24"},
+		{src: `"critical"`, want: tier, msg: "expected Tier, found string", help: "an enum value is a bare name; write `critical`", span: "1:1-1:11"},
+		{src: `"gold"`, want: tier, msg: "expected Tier, found string", help: "Tier declares: critical, standard, internal", span: "1:1-1:7"},
+		{src: "1", want: tier, msg: "expected Tier, found int", span: "1:1-1:2"},
+		{src: "[critical]", want: tier, msg: "expected Tier, found a list", span: "1:1-1:11"},
+		{src: "-critical", want: tier, msg: "expected Tier, found a negated value", span: "1:1-1:10"},
+		{src: "critical + standard", want: tier, msg: "expected Tier, found `+` arithmetic", span: "1:1-1:20"},
+		{src: "critical == standard", want: tier, msg: "`==` isn't a constant", help: "a constant is a literal, a list or map of literals, or `+` and `-` applied to those", span: "1:1-1:21"},
+		{src: "not critical", want: tier, msg: "`not` isn't a constant", span: "1:1-1:13"},
+		{src: "Tier.critical", want: tier, val: constant.EnumValue("critical")},
+		{src: "(Tier.internal)", want: tier, val: constant.EnumValue("internal")},
+		{src: "Tier.standard", want: &types.Optional{Elem: tier}, val: constant.EnumValue("standard")},
+		{src: "[Tier.critical, standard]", want: &types.List{Elem: tier}, val: []any{constant.EnumValue("critical"), constant.EnumValue("standard")}},
+		{src: "{Tier.critical: 1h}", want: &types.Map{Key: tier, Value: types.Duration}, val: map[any]any{constant.EnumValue("critical"): time.Hour}},
+		{src: "{critical: 1h, Tier.critical: 2h}", want: &types.Map{Key: tier, Value: types.Duration}, msg: "duplicate key Tier.critical in map constant", span: "1:16-1:29"},
+		{src: "Tier.critcal", want: tier, msg: "Tier has no value `critcal`", help: "did you mean `critical`? Tier declares: critical, standard, internal", span: "1:6-1:13"},
+		{src: "Plan.standard", want: tier, msg: "`Plan.standard` isn't a value of Tier", help: "Tier declares standard too; write `Tier.standard`, or `standard`", span: "1:1-1:14"},
+		{src: "service.tier", want: tier, msg: "`service.tier` isn't a value of Tier", help: "Tier declares: critical, standard, internal", span: "1:1-1:13"},
+		{src: "a.b.critical", want: tier, msg: "`a.b.critical` isn't a constant", help: "a constant is a literal, a list or map of literals, or `+` and `-` applied to those", span: "1:1-1:13"},
+		{src: "Tier?.critical", want: tier, msg: "`Tier?.critical` isn't a constant", span: "1:1-1:15"},
+		{src: "Tier.critical", want: types.String, msg: "`Tier.critical` isn't a constant", span: "1:1-1:14"},
+		{src: "critical", want: types.String, msg: "`critical` isn't a constant", span: "1:1-1:9"},
 
 		// Type mismatches.
 		{src: "1", want: types.String, msg: "expected string, found int", span: "1:1-1:2"},
@@ -146,5 +180,18 @@ func TestEval(t *testing.T) {
 				t.Errorf("span = %s, want %s", got, tt.span)
 			}
 		})
+	}
+}
+
+func TestNilEnum(t *testing.T) {
+	x, errs := parser.ParseExpr("test.sigil", []byte("critical"))
+	if errs != nil {
+		t.Fatalf("parse: %v", errs)
+	}
+	if _, err := constant.Eval(x, (*types.Enum)(nil)); err == nil || err.Msg != "invalid type" {
+		t.Errorf("Eval(nil enum) error = %v, want invalid type", err)
+	}
+	if got := constant.EnumHelp(nil, "critical"); got != "" {
+		t.Errorf("EnumHelp(nil) = %q, want empty", got)
 	}
 }

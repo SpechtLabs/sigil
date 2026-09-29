@@ -107,6 +107,9 @@ func (p *parser) parsePolicyStmt() ast.Stmt {
 		return p.parseWhen()
 	case token.KwAssert:
 		return p.parseAssert()
+	case token.KwEnum:
+		p.errorTok(p.tok, "an enum can only be declared in a kind",
+			"declare it in the kind file, like `enum Tier: critical | standard`; policies and modules use its values by name")
 	case token.Ident:
 		if p.peek().Kind == token.LParen {
 			return p.parseCall()
@@ -313,7 +316,7 @@ func (p *parser) parseAssert() *ast.AssertStmt {
 	case token.RawString:
 		p.errorTok(p.tok, "the reason must be a double-quoted string", "raw strings are for patterns; write the reason as \"...\"")
 	default:
-		p.unexpected("a string literal reason", "the reason comes first, as in a decision constructor: `assert(\"reason\", condition)`")
+		p.unexpected("a string literal reason", "the reason comes first: `assert(\"reason\", condition)`")
 	}
 	p.expect(token.Comma, shape)
 	p.after = ast.OpInvalid
@@ -330,10 +333,10 @@ func (p *parser) parseAssert() *ast.AssertStmt {
 }
 
 // parseCall parses `name(args)`: a decision constructor or a policy
-// invocation. The first argument may be positional (a constructor's
-// reason); every later one is `name: value`. The parser tells the two
-// apart by whether a name is followed by `:`, the one place it looks two
-// tokens ahead.
+// invocation. Every argument is `name: value`, except that the first may
+// be positional, the old form of a constructor's reason, kept so that
+// `sigil fmt` can rewrite it. The parser tells the two apart by whether a
+// name is followed by `:`, the one place it looks two tokens ahead.
 func (p *parser) parseCall() *ast.CallStmt {
 	c := &ast.CallStmt{Name: p.expectIdent("a name", "")}
 	open := p.expect(token.LParen, "")
@@ -351,7 +354,7 @@ func (p *parser) parseCall() *ast.CallStmt {
 				break
 			}
 			if !p.atNamedArg() {
-				p.unexpected("a named argument", "after the reason, every argument is written `name: value`, like `approvers: [\"payments-leads\"]`")
+				p.unexpected("a named argument", "every argument is written `name: value`, like `approvers: [\"payments-leads\"]`")
 			}
 			c.Args = append(c.Args, p.parseNamedArg())
 		}

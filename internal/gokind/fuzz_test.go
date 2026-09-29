@@ -15,7 +15,7 @@ import (
 )
 
 func FuzzSynthesize(f *testing.F) {
-	for _, src := range []string{synthKind, decodeKind, "kind K version 1\ndecision d { r }\ncollect all"} {
+	for _, src := range []string{synthKind, decodeKind, "kind K version 1\ndecision d { reason: r }\ncollect all"} {
 		f.Add(src)
 	}
 	f.Fuzz(func(t *testing.T, src string) {
@@ -44,7 +44,7 @@ func FuzzDecodeInput(f *testing.F) {
 		f.Fatal(errs)
 	}
 	b := gokind.Synthesize(k)
-	for _, src := range []string{`{}`, `null`, `{"s":{"n":9223372036854775807,"o":null,"l":[1,2],"m":{"x":3}}}`, `{"s":{"d":"1h30m","t":"2026-09-28T12:00:00Z","inner":{"x":2}}}`, "s:\n  n: 2\n  mb: {true: 1}\n", "s: {f: .nan}", "&a [*a]"} {
+	for _, src := range []string{`{}`, `null`, `{"s":{"n":9223372036854775807,"o":null,"l":[1,2],"m":{"x":3}}}`, `{"s":{"d":"1h30m","t":"2026-09-28T12:00:00Z","inner":{"x":2}}}`, "s:\n  n: 2\n  mb: {true: 1}\n", "s: {f: .nan}", "&a [*a]", `{"s":{"tier":"critical","tiers":["internal"],"mt":{"standard":1},"ot":null}}`, `{"s":{"tier":"critcal","mt":{"gold":1}}}`} {
 		f.Add([]byte(src), true)
 		f.Add([]byte(src), false)
 	}
@@ -91,8 +91,10 @@ func FuzzGoKindRoundTrip(f *testing.F) {
 		payload := reflect.StructOf([]reflect.StructField{
 			{Name: "Count", Type: reflect.TypeFor[int64](), Tag: reflect.StructTag(`policy:` + constant.Format("count,default="+constant.Format(n)))},
 			{Name: "Text", Type: reflect.TypeFor[string](), Tag: reflect.StructTag(`policy:` + constant.Format("text,default="+constant.Format(s)))},
+			{Name: "Level", Type: reflect.TypeFor[Tier](), Tag: `policy:"level,default=standard"`},
 		})
 		opts := gokind.Options{Name: "Generated", Version: 2, Accepts: new(1), Input: reflect.TypeFor[struct{}](), Collect: all,
+			Enums:     []gokind.Enum{{Type: reflect.TypeFor[Tier](), Values: []string{"critical", "standard"}}},
 			Decisions: []gokind.Decision{{Name: "allow", Payload: payload, Reasons: []string{"ok"}}},
 			Default:   &gokind.Default{Decision: "allow", Reason: "ok"},
 		}

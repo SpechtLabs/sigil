@@ -12,7 +12,8 @@ import (
 
 	"github.com/sierrasoftworks/humane-errors-go"
 
-	"github.com/spechtlabs/sigil/internal/check"
+	"github.com/spechtlabs/sigil/internal/constant"
+	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/kind"
 	"github.com/spechtlabs/sigil/internal/lexer"
 	"github.com/spechtlabs/sigil/internal/types"
@@ -23,13 +24,14 @@ import (
 // strings, bools and numbers. The rules are strict where a typo would
 // otherwise go unnoticed: a key the kind doesn't declare is an error,
 // while a missing one reads as its zero value, as it would from Go. A
-// duration is a string in Sigil's syntax, `"1h30m"`, and a timestamp an
-// RFC 3339 string. null is allowed for optionals, lists and maps only.
-// The error names the path to the value that doesn't fit, like
-// `release.soak`, with the fix as its advice. Keys are visited in sorted
-// order and decoding stops at the first misfit, so the error is
-// deterministic; the value returned with it is partly filled. k must be
-// the kind b was built for.
+// duration is a string in Sigil's syntax, `"1h30m"`, a timestamp an RFC
+// 3339 string, and an enum value a string naming one of the enum's
+// values. null is allowed for optionals, lists and maps only. The error
+// names the path to the value that doesn't fit, like `release.soak`,
+// with the fix as its advice. Keys are visited in sorted order and
+// decoding stops at the first misfit, so the error is deterministic; the
+// value returned with it is partly filled. k must be the kind b was built
+// for.
 func (b *Binding) DecodeInput(k *kind.Kind, raw any) (reflect.Value, humane.Error) { //nolint:emptyinterface // raw is a decoded JSON or YAML document
 	v := reflect.New(b.Input).Elem()
 	obj, ok := object(raw)
@@ -65,6 +67,8 @@ func (b *Binding) Decode(t types.Type, raw any, v reflect.Value, path string) hu
 	switch t := t.(type) {
 	case types.Basic:
 		return scalar(t, raw, v, path)
+	case *types.Enum:
+		return enumValue(t, raw, v, path)
 	case *types.Optional:
 		p := reflect.New(v.Type().Elem())
 		if err := b.Decode(t.Elem, raw, p.Elem(), path); err != nil {
@@ -95,9 +99,9 @@ func (b *Binding) Decode(t types.Type, raw any, v reflect.Value, path string) hu
 
 // Canonical returns v, a Go value of Sigil type t, in the representation
 // constants use (see constant.Conforms): int64, float64, string, bool,
-// [time.Duration], [time.Time] in UTC without its monotonic reading, []any,
-// map[any]any, nil for an absent optional, and a struct as a map[any]any
-// by field name. Interfaces are unwrapped first, and an invalid v is nil.
+// [time.Duration], [time.Time] in UTC without its monotonic reading,
+// [constant.EnumValue], []any, map[any]any, nil for an absent optional, and
+// a struct as a map[any]any by field name. Interfaces are unwrapped first, and an invalid v is nil.
 // Two values of one Sigil type are equal when their canonical forms are
 // deeply equal, whatever Go types they came from.
 func (b *Binding) Canonical(t types.Type, v reflect.Value) any { //nolint:emptyinterface // canonical values are dynamically typed, like constants
@@ -110,6 +114,8 @@ func (b *Binding) Canonical(t types.Type, v reflect.Value) any { //nolint:emptyi
 	switch t := t.(type) {
 	case types.Basic:
 		return canonicalScalar(t, v)
+	case *types.Enum:
+		return constant.EnumValue(v.String())
 	case *types.Optional:
 		if v.Kind() == reflect.Pointer {
 			if v.IsNil() {
@@ -187,7 +193,7 @@ func (b *Binding) decodeMap(t *types.Map, raw any, v reflect.Value, path string)
 	for _, key := range sortedKeys(obj) {
 		at := fmt.Sprintf("%s[%q]", path, key)
 		k := reflect.New(v.Type().Key()).Elem()
-		if err := scalar(t.Key.(types.Basic), keyValue(t.Key, key), k, at); err != nil {
+		if err := b.Decode(t.Key, keyValue(t.Key, key), k, at); err != nil {
 			return err
 		}
 		val := reflect.New(v.Type().Elem()).Elem()
@@ -259,6 +265,20 @@ func scalar(t types.Basic, raw any, v reflect.Value, path string) humane.Error {
 	default:
 		return decodeErr(path, "values of type "+t.String()+" can't be decoded", "")
 	}
+	return nil
+}
+
+// enumValue decodes an enum value: a string naming one of the enum's
+// values, set into v's Go string type.
+func enumValue(t *types.Enum, raw any, v reflect.Value, path string) humane.Error { //nolint:emptyinterface // raw is a decoded JSON or YAML value
+	s, ok := raw.(string)
+	if !ok {
+		return decodeErr(path, fmt.Sprintf("expected a %s value, found %s", t.Name, describe(raw)), "write an enum value as a string, like "+strconv.Quote(t.Values[0]))
+	}
+	if !t.Has(s) {
+		return decodeErr(path, fmt.Sprintf("%q is not a value of %s", s, t.Name), constant.EnumHelp(t, s))
+	}
+	v.SetString(s)
 	return nil
 }
 
@@ -374,7 +394,7 @@ func sortedKeys(m map[string]any) []string { //nolint:emptyinterface // raw is a
 
 func unknownKey(key, path, msg string, declared []string) humane.Error {
 	help := "declared: " + strings.Join(declared, ", ")
-	if near, ok := check.Nearest(key, declared); ok {
+	if near, ok := diag.Nearest(key, declared); ok {
 		help = fmt.Sprintf("did you mean %q? %s", near, help)
 	}
 	if len(declared) == 0 {

@@ -1,0 +1,10 @@
+testdata/kinds/invalid.sigil:3:34: error: enum Tier: value "standard" is declared twice
+  |
+3 | enum Tier: critical | standard | standard
+  |                                  ^^^^^^^^
+  = help: declare each value once
+
+✗ the kind file doesn't load, so nothing was checked
+--- error ---
+the kind file has 1 error
+advice: fix the kind file, or regenerate it from the host's Schema(); `sigil fmt --write` rewrites the old decision syntax

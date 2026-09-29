@@ -1,0 +1,28 @@
+kind Tiers version 1
+
+enum Tier: critical | standard | internal
+
+type Service {
+  name: string
+  tier: Tier
+  backups: list<Tier>
+  limits: map<Tier, int>
+}
+
+input service: Service
+
+decision keep {
+  reason: no_rule_matched
+}
+
+decision move {
+  reason: promote
+  to: Tier
+  also: list<Tier> = []
+  quota: map<Tier, int> = {}
+}
+
+collect one
+precedence move > keep
+
+default keep(reason: no_rule_matched)

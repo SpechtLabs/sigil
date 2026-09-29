@@ -1,28 +1,39 @@
-kind AccessGrant version 1 [1:1-28:63]
+kind AccessGrant version 1 [1:1-29:63]
   type Actor { [3:1-7:2]
     name: string
     groups: list<string>
     clearance: string
   }
   input actor: Actor [9:1-9:19]
-  decision read { engineering_member } [11:1-13:2]
-  decision write { platform_member } [14:1-16:2]
-  decision admin(ttl: duration = 8h) { oncall } [17:1-19:2]
-  decision customer_data_writer { data_engineer } [20:1-22:2]
-  decision development_environment_writer { platform_member } [23:1-25:2]
-  collect all [27:1-27:12]
-  exclusive customer_data_writer, development_environment_writer [28:1-28:63]
+  decision read { [11:1-13:2]
+    reason: engineering_member
+  }
+  decision write { [14:1-16:2]
+    reason: platform_member
+  }
+  decision admin { [17:1-20:2]
+    reason: oncall
+    ttl: duration = 8h
+  }
+  decision customer_data_writer { [21:1-23:2]
+    reason: data_engineer
+  }
+  decision development_environment_writer { [24:1-26:2]
+    reason: platform_member
+  }
+  collect all [28:1-28:12]
+  exclusive customer_data_writer, development_environment_writer [29:1-29:63]
 ---
-policy access.guardrails: AccessGrant@1 [32:1-41:54]
-  assert("sod_customer_dev", ([customer_data_writer, development_environment_writer] exclusive in outcome)) [34:1-35:79]
-  assert("pii_needs_clearance", ((customer_data_writer not in outcome) or (actor.clearance == "pii"))) [37:1-39:2]
-  assert("no_root", (all g in actor.groups: (g != "root"))) [41:1-41:54]
+policy access.guardrails: AccessGrant@1 [33:1-42:54]
+  assert("sod_customer_dev", ([customer_data_writer, development_environment_writer] exclusive in outcome)) [35:1-36:79]
+  assert("pii_needs_clearance", ((customer_data_writer not in outcome) or (actor.clearance == "pii"))) [38:1-40:2]
+  assert("no_root", (all g in actor.groups: (g != "root"))) [42:1-42:54]
 ---
-policy access.platform: AccessGrant@1 [45:1-55:2]
-  use access.guardrails [47:1-47:22]
-  guardrails() [49:1-49:13]
-  when ("platform" in actor.groups) { [51:1-55:2]
-    write(platform_member) [52:3-52:25]
-    development_environment_writer(platform_member) [53:3-53:50]
-    assert("actor_named", (actor.name != "")) [54:3-54:42]
+policy access.platform: AccessGrant@1 [46:1-56:2]
+  use access.guardrails [48:1-48:22]
+  guardrails() [50:1-50:13]
+  when ("platform" in actor.groups) { [52:1-56:2]
+    write(reason: platform_member) [53:3-53:33]
+    development_environment_writer(reason: platform_member) [54:3-54:58]
+    assert("actor_named", (actor.name != "")) [55:3-55:42]
   }

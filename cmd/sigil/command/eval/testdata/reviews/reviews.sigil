@@ -1,7 +1,7 @@
 policy reviews: Reviews@1
 
 when true {
-  review(manager, approvers: ["cedric", "alice"])
+  review(reason: manager, approvers: ["cedric", "alice"])
 }
 
 // A four-eyes guardrail: nobody reviews their own request.

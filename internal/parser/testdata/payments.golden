@@ -10,5 +10,5 @@ policy payments.production: DeployApproval@1 [1:1-19:2]
     production(approvers: ["payments-leads"]) [14:3-14:44]
   }
   when (cleared and ("payments-sre" in actor.teams)) { [17:1-19:2]
-    approve(payments_sre, bake: 15m) [18:3-18:35]
+    approve(reason: payments_sre, bake: 15m) [18:3-18:43]
   }

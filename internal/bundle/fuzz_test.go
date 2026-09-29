@@ -15,7 +15,7 @@ func FuzzBundle(f *testing.F) {
 	if errs != nil {
 		f.Fatal(errs)
 	}
-	for _, src := range []string{library, library + broken, "policy good: K@1\nallow(ok)", "policy good: K@1\nuse other\nother()\n---\npolicy other: K@1\nuse good\ngood()", kindSrc} {
+	for _, src := range []string{library, library + broken, "policy good: K@1\nallow(reason: ok)", "policy good: K@1\nwhen true { allow(ok) }", "policy good: K@1\nuse other\nother()\n---\npolicy other: K@1\nuse good\ngood()", kindSrc} {
 		f.Add(src, "good")
 	}
 	f.Add(kindSrc, "K")

@@ -3,5 +3,5 @@ policy p: DeployApproval@1
 param min_soak: duration = 1h
 
 when release.soak < min_soak {
-  deny(a)
+  deny(reason: a)
 }

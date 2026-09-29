@@ -10,7 +10,8 @@ import (
 // singles maps each character that is an operator on its own to its kind.
 // A zero entry (Illegal) means the character starts no single-character
 // token. Characters that also start a longer token (`=`, `<`, `>`, `?`, `-`)
-// are here too; operator checks pair and the separator first.
+// are here too; operator checks pair and the separator first. So is `|`,
+// though `||` is an error rather than two pipes.
 var singles = [256]token.Kind{
 	'=': token.Assign,
 	'<': token.Lt,
@@ -28,6 +29,7 @@ var singles = [256]token.Kind{
 	']': token.RBracket,
 	'{': token.LBrace,
 	'}': token.RBrace,
+	'|': token.Pipe,
 }
 
 // pair returns the two-character operator that c and next spell, or Illegal.
@@ -71,6 +73,11 @@ func (l *Lexer) operator(start token.Pos) token.Token {
 		return l.emit(kind, start)
 	}
 
+	if c == '|' && next == '|' {
+		l.advance()
+		return l.failChar(start, "use `or`")
+	}
+
 	if kind := singles[c]; kind != token.Illegal {
 		l.advance()
 		return l.emit(kind, start)
@@ -85,12 +92,6 @@ func (l *Lexer) operator(start token.Pos) token.Token {
 			l.advance()
 		}
 		return l.failChar(start, "use `and`")
-
-	case '|':
-		if next == '|' {
-			l.advance()
-		}
-		return l.failChar(start, "use `or`")
 	}
 
 	return l.failChar(start, "")

@@ -33,9 +33,9 @@ type Diagnostic struct {
 
 // RuntimeError is what [Policy.Eval] returns when a policy can't be
 // evaluated against an input: a list index out of range, integer overflow,
-// or a host function that returned an error, or panicked under
-// [WithRecoverHostPanics]. The result that comes with it holds the kind's
-// default.
+// a Go value outside its enum ([WithEnum]), or a host function that
+// returned an error, or panicked under [WithRecoverHostPanics]. The
+// result that comes with it holds the kind's default.
 //
 // When a host function failed, Err holds what it returned, or a
 // [*HostPanicError] when it panicked, and [errors.Is] and [errors.As]

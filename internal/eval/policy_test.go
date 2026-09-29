@@ -39,23 +39,23 @@ let owns_service = actor.teams any in service.owners
 let cleared = split(service.labels["regions"], ",") all in actor.regions
 let eligible = "deployer" in actor.roles and environment == "production"
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 when cleared {
   when service.tier == "critical"
     and "release_manager" in actor.roles {
-    approve(release_manager)
+    approve(reason: release_manager)
   }
   when service.tier in tiers
     and owns_service {
-    review(service_owner, approvers: approvers)
+    review(reason: service_owner, approvers: approvers)
   }
 }
 when cleared and "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m, ticket: release.ticket ?? "none")
+  approve(reason: payments_sre, bake: 15m, ticket: release.ticket ?? "none")
 }`
 
 // evalCase is one row of TestPolicyEval.
@@ -99,23 +99,23 @@ func TestPolicyEval(t *testing.T) {
 			winner: "approve release_manager", payload: map[string]any{"bake": time.Hour, "ticket": ""},
 		},
 		{
-			name: "equal candidates fold into one", src: "policy p: Test@1\nwhen true { deny(a) }\nwhen release.soak > 0s { deny(a) }",
+			name: "equal candidates fold into one", src: "policy p: Test@1\nwhen true { deny(reason: a) }\nwhen release.soak > 0s { deny(reason: a) }",
 			want: "deny a 2:13 [true] *\ndeny a 3:26 [release.soak > 0s]", winner: "deny a", payload: map[string]any{},
 		},
 		{
-			name: "the same reason with different payloads conflicts", src: "policy p: Test@1\nwhen true { review(a, approvers: [\"x\"]) }\nwhen release.soak > 0s { review(a, approvers: [\"y\"]) }",
+			name: "the same reason with different payloads conflicts", src: "policy p: Test@1\nwhen true { review(reason: a, approvers: [\"x\"]) }\nwhen release.soak > 0s { review(reason: a, approvers: [\"y\"]) }",
 			want: "review a 2:13 [true]\nreview a 3:26 [release.soak > 0s]", conflict: "collect one: 2 candidates at the top rank",
 		},
 		{
-			name: "unranked reasons of one decision conflict", src: "policy p: Test@1\nwhen true { deny(a) }\nwhen true { deny(b) }",
+			name: "unranked reasons of one decision conflict", src: "policy p: Test@1\nwhen true { deny(reason: a) }\nwhen true { deny(reason: b) }",
 			want: "deny a 2:13 [true]\ndeny b 3:13 [true]", conflict: "collect one: 2 candidates at the top rank",
 		},
 		{
-			name: "an exclusive set conflicts before ranking", src: "policy p: Test@1\nwhen true { deny(d) }\nwhen true { approve(a) }\nwhen true { review(c, approvers: []) }",
+			name: "an exclusive set conflicts before ranking", src: "policy p: Test@1\nwhen true { deny(reason: d) }\nwhen true { approve(reason: a) }\nwhen true { review(reason: c, approvers: []) }",
 			want: "deny d 2:13 [true]\nreview c 4:13 [true]\napprove a 3:13 [true]", conflict: "exclusive review.c, approve.a: more than one fired",
 		},
 		{
-			name: "an exclusive set needs two members", src: "policy p: Test@1\nwhen true { deny(d) }\nwhen true { review(c, approvers: []) }",
+			name: "an exclusive set needs two members", src: "policy p: Test@1\nwhen true { deny(reason: d) }\nwhen true { review(reason: c, approvers: []) }",
 			want: "deny d 2:13 [true] *\nreview c 3:13 [true]", winner: "deny d", payload: map[string]any{},
 		},
 		{
@@ -130,16 +130,16 @@ func TestPolicyEval(t *testing.T) {
 			typed: ReviewData{Approvers: []string{"payments-leads"}},
 		},
 		{
-			name: "a filter takes the requestor off the approvers", src: "policy p: Test@1\nlet others = filter name in [\"alice\", \"bob\", \"carol\"]: name != actor.name\nwhen true { review(a, approvers: others) }",
+			name: "a filter takes the requestor off the approvers", src: "policy p: Test@1\nlet others = filter name in [\"alice\", \"bob\", \"carol\"]: name != actor.name\nwhen true { review(reason: a, approvers: others) }",
 			want: "review a 3:13 [true] *", winner: "review a", payload: map[string]any{"approvers": []string{"bob", "carol"}},
 			typed: ReviewData{Approvers: []string{"bob", "carol"}},
 		},
 		{
-			name: "a let's quantifier keeps its variable apart from an outer one of the same name", src: "policy p: Test@1\nlet eu = any r in actor.regions: r == \"ap-1\"\nwhen any r in actor.roles: eu and r == \"deployer\" { deny(a) }",
+			name: "a let's quantifier keeps its variable apart from an outer one of the same name", src: "policy p: Test@1\nlet eu = any r in actor.regions: r == \"ap-1\"\nwhen any r in actor.roles: eu and r == \"deployer\" { deny(reason: a) }",
 			want: "deny a 3:53 [any r in actor.roles: eu and r == \"deployer\"] *", winner: "deny a", payload: map[string]any{},
 		},
 		{
-			name: "a let's filter keeps its variable apart from an outer one of the same name", src: "policy p: Test@1\nlet others = filter r in actor.teams: r != \"payments\"\nwhen any r in actor.roles: \"payments-sre\" in others and r == \"deployer\" { deny(a) }",
+			name: "a let's filter keeps its variable apart from an outer one of the same name", src: "policy p: Test@1\nlet others = filter r in actor.teams: r != \"payments\"\nwhen any r in actor.roles: \"payments-sre\" in others and r == \"deployer\" { deny(reason: a) }",
 			want: "deny a 3:75 [any r in actor.roles: \"payments-sre\" in others and r == \"deployer\"] *", winner: "deny a", payload: map[string]any{},
 		},
 		{
@@ -153,54 +153,54 @@ func TestPolicyEval(t *testing.T) {
 		},
 		{
 			name: "payload fields are converted to the host's types",
-			src:  "policy p: Test@1\nwhen true { tag(t, labels: {\"team\": service.labels[\"team\"], \"env\": environment}, count: count + 1, at: release.built_at, owners: service.owners) }",
+			src:  "policy p: Test@1\nwhen true { tag(reason: t, labels: {\"team\": service.labels[\"team\"], \"env\": environment}, count: count + 1, at: release.built_at, owners: service.owners) }",
 			want: "tag t 2:13 [true] *", winner: "tag t",
 			payload: map[string]any{"labels": map[string]string{"team": "payments", "env": "production"}, "count": 4, "ratio": 0.5, "at": built, "owners": []string{"payments", "platform"}},
 			typed:   TagData{Labels: map[string]string{"team": "payments", "env": "production"}, Count: 4, Ratio: 0.5, At: built, Owners: []string{"payments", "platform"}},
 		},
 		{
 			name: "payload defaults of every shape",
-			src:  "policy p: Test@1\nwhen true { tag(t, labels: {}, count: 0, at: release.built_at) }",
+			src:  "policy p: Test@1\nwhen true { tag(reason: t, labels: {}, count: 0, at: release.built_at) }",
 			want: "tag t 2:13 [true] *", winner: "tag t",
 			payload: map[string]any{"labels": map[string]string{}, "count": 0, "ratio": 0.5, "at": built, "owners": []string{}},
 			typed:   TagData{Labels: map[string]string{}, Count: 0, Ratio: 0.5, At: built, Owners: []string{}},
 		},
 		{
-			name: "several constructors in one body", src: "policy p: Test@1\nwhen true {\n  approve(a)\n  deny(b)\n  review(a, approvers: [])\n}",
+			name: "several constructors in one body", src: "policy p: Test@1\nwhen true {\n  approve(reason: a)\n  deny(reason: b)\n  review(reason: a, approvers: [])\n}",
 			want: "deny b 4:3 [true] *\nreview a 5:3 [true]\napprove a 3:3 [true]", winner: "deny b", payload: map[string]any{},
 		},
 		{
-			name: "a let is evaluated at most once and only when read", src: "policy p: Test@1\nlet boom = fail(\"x\") == \"y\"\nlet ok = release.hotfix or not release.hotfix\nwhen ok and ok { deny(a) }\nwhen false { when boom { deny(b) } }",
+			name: "a let is evaluated at most once and only when read", src: "policy p: Test@1\nlet boom = fail(\"x\") == \"y\"\nlet ok = release.hotfix or not release.hotfix\nwhen ok and ok { deny(reason: a) }\nwhen false { when boom { deny(reason: b) } }",
 			want: "deny a 4:18 [ok and ok] *", winner: "deny a", payload: map[string]any{},
 		},
 		{
-			name: "runtime error in a condition", src: "policy p: Test@1\nwhen actor.roles[9] == \"x\" { deny(a) }",
+			name: "runtime error in a condition", src: "policy p: Test@1\nwhen actor.roles[9] == \"x\" { deny(reason: a) }",
 			err: "p.sigil:2:6: index 9 out of range for a list of 2",
 		},
 		{
-			name: "runtime error in a payload", src: "policy p: Test@1\nwhen true { review(a, approvers: [fail(\"x\")]) }",
-			err: "p.sigil:2:35: host function fail failed: boom: x",
+			name: "runtime error in a payload", src: "policy p: Test@1\nwhen true { review(reason: a, approvers: [fail(\"x\")]) }",
+			err: "p.sigil:2:43: host function fail failed: boom: x",
 		},
 		{
-			name: "runtime error in an unreached block never happens", src: "policy p: Test@1\nwhen false { when actor.roles[9] == \"x\" { deny(a) } }",
+			name: "runtime error in an unreached block never happens", src: "policy p: Test@1\nwhen false { when actor.roles[9] == \"x\" { deny(reason: a) } }",
 			want: "", winner: "default", payload: map[string]any{},
 		},
 		{
-			name: "asserts run after the outcome", src: "policy p: Test@1\nassert(\"no_deny\", deny not in outcome)\nassert(\"soak\", release.soak >= 0s)\nwhen true {\n  assert(\"approved\", approve in outcome)\n  approve(a)\n}\nwhen false { assert(\"unreached\", false) }",
+			name: "asserts run after the outcome", src: "policy p: Test@1\nassert(\"no_deny\", deny not in outcome)\nassert(\"soak\", release.soak >= 0s)\nwhen true {\n  assert(\"approved\", approve in outcome)\n  approve(reason: a)\n}\nwhen false { assert(\"unreached\", false) }",
 			want: "approve a 6:3 [true] *", winner: "approve a", payload: map[string]any{"bake": time.Hour, "ticket": ""},
 		},
 		{
-			name: "a failing input assert stops the rules", src: "policy p: Test@1\nassert(\"want_deny\", deny in outcome)\nwhen true {\n  approve(a)\n  assert(\"inner\", false)\n}\nassert(\"empty\", approve not in outcome)",
+			name: "a failing input assert stops the rules", src: "policy p: Test@1\nassert(\"want_deny\", deny in outcome)\nwhen true {\n  approve(reason: a)\n  assert(\"inner\", false)\n}\nassert(\"empty\", approve not in outcome)",
 			want: "", winner: "default", payload: map[string]any{},
 			failed: "inner",
 		},
 		{
-			name: "failing outcome asserts are all reported in order", src: "policy p: Test@1\nassert(\"want_deny\", deny in outcome)\nwhen true {\n  approve(a)\n  assert(\"approved\", approve in outcome)\n}\nassert(\"empty\", approve not in outcome)",
+			name: "failing outcome asserts are all reported in order", src: "policy p: Test@1\nassert(\"want_deny\", deny in outcome)\nwhen true {\n  approve(reason: a)\n  assert(\"approved\", approve in outcome)\n}\nassert(\"empty\", approve not in outcome)",
 			want: "approve a 4:3 [true] *", winner: "approve a", payload: map[string]any{"bake": time.Hour, "ticket": ""},
 			failed: "want_deny empty",
 		},
 		{
-			name: "input asserts run before any rule", src: "policy p: Test@1\nassert(\"soak\", release.soak < 0s)\nwhen true { review(a, approvers: [fail(\"x\")]) }",
+			name: "input asserts run before any rule", src: "policy p: Test@1\nassert(\"soak\", release.soak < 0s)\nwhen true { review(reason: a, approvers: [fail(\"x\")]) }",
 			want: "", winner: "default", payload: map[string]any{}, failed: "soak",
 		},
 		{
@@ -208,7 +208,7 @@ func TestPolicyEval(t *testing.T) {
 			want: "", winner: "default", payload: map[string]any{}, failed: "a b", cause: "index 9 out of range for a list of 2",
 		},
 		{
-			name: "a scoped let is evaluated only when its body is reached", src: "policy p: Test@1\nwhen false {\n  let boom = fail(\"x\") == \"y\"\n  when boom { deny(a) }\n}\nwhen true {\n  let two = count + 1\n  when two == 4 { deny(b) }\n}",
+			name: "a scoped let is evaluated only when its body is reached", src: "policy p: Test@1\nwhen false {\n  let boom = fail(\"x\") == \"y\"\n  when boom { deny(reason: a) }\n}\nwhen true {\n  let two = count + 1\n  when two == 4 { deny(reason: b) }\n}",
 			want: "deny b 8:19 [true | two == 4] *", winner: "deny b", payload: map[string]any{},
 		},
 		{
@@ -220,20 +220,20 @@ func TestPolicyEval(t *testing.T) {
 			want: "", winner: "default", payload: map[string]any{}, failed: "a", cause: "p.sigil:2:13: index 9 out of range for a list of 2",
 		},
 		{
-			name: "collecting kind returns every candidate in declaration order", src: "policy p: Test@1\nwhen true {\n  approve(a)\n  deny(b)\n}\nwhen release.hotfix { review(c, approvers: []) }\nwhen not release.hotfix { deny(d) }\nassert(\"both\", [deny, approve] all in outcome)\nassert(\"no_review\", review not in outcome)",
+			name: "collecting kind returns every candidate in declaration order", src: "policy p: Test@1\nwhen true {\n  approve(reason: a)\n  deny(reason: b)\n}\nwhen release.hotfix { review(reason: c, approvers: []) }\nwhen not release.hotfix { deny(reason: d) }\nassert(\"both\", [deny, approve] all in outcome)\nassert(\"no_review\", review not in outcome)",
 			collect: true,
 			want:    "deny b 4:3 [true] *\ndeny d 7:27 [not release.hotfix] *\napprove a 3:3 [true] *", winner: "none",
 		},
 		{
-			name: "an outcome assert reads a candidate's payload", src: "policy p: Test@1\nassert(\"no_self_review\", all r in outcome.review: actor.name not in r.approvers)\nwhen true { review(a, approvers: [\"bob\"]) }",
+			name: "an outcome assert reads a candidate's payload", src: "policy p: Test@1\nassert(\"no_self_review\", all r in outcome.review: actor.name not in r.approvers)\nwhen true { review(reason: a, approvers: [\"bob\"]) }",
 			want: "review a 3:13 [true] *", winner: "review a", payload: map[string]any{"approvers": []string{"bob"}},
 		},
 		{
-			name: "an outcome assert fails on a candidate's payload", src: "policy p: Test@1\nassert(\"no_self_review\", all r in outcome.review: actor.name not in r.approvers)\nwhen true { review(a, approvers: [\"alice\", \"bob\"]) }",
+			name: "an outcome assert fails on a candidate's payload", src: "policy p: Test@1\nassert(\"no_self_review\", all r in outcome.review: actor.name not in r.approvers)\nwhen true { review(reason: a, approvers: [\"alice\", \"bob\"]) }",
 			want: "review a 3:13 [true] *", winner: "review a", payload: map[string]any{"approvers": []string{"alice", "bob"}}, failed: "no_self_review",
 		},
 		{
-			name: "a collecting kind's assert reads every candidate of the decision", src: "policy p: Test@1\nassert(\"no_self_review\", all r in outcome.review: actor.name not in r.approvers)\nassert(\"some_clean_review\", any r in outcome.review: actor.name not in r.approvers)\nwhen true {\n  review(a, approvers: [\"bob\"])\n  review(service_owner, approvers: [\"alice\"])\n}",
+			name: "a collecting kind's assert reads every candidate of the decision", src: "policy p: Test@1\nassert(\"no_self_review\", all r in outcome.review: actor.name not in r.approvers)\nassert(\"some_clean_review\", any r in outcome.review: actor.name not in r.approvers)\nwhen true {\n  review(reason: a, approvers: [\"bob\"])\n  review(reason: service_owner, approvers: [\"alice\"])\n}",
 			collect: true, want: "review a 5:3 [true] *\nreview service_owner 6:3 [true] *", winner: "none", failed: "no_self_review",
 		},
 		{
@@ -241,19 +241,19 @@ func TestPolicyEval(t *testing.T) {
 			want: "", winner: "default", payload: map[string]any{},
 		},
 		{
-			name: "a reason narrows the candidates, and payload defaults are read", src: "policy p: Test@1\nassert(\"bake\", all a in outcome.approve.release_manager: a.bake == 1h and a.ticket == \"\")\nassert(\"one\", any a in outcome.approve.release_manager: a.reason == approve.release_manager)\nassert(\"narrowed\", not (any a in outcome.approve.payments_sre: true))\nwhen true { approve(release_manager) }",
+			name: "a reason narrows the candidates, and payload defaults are read", src: "policy p: Test@1\nassert(\"bake\", all a in outcome.approve.release_manager: a.bake == 1h and a.ticket == \"\")\nassert(\"one\", any a in outcome.approve.release_manager: a.reason == approve.release_manager)\nassert(\"narrowed\", not (any a in outcome.approve.payments_sre: true))\nwhen true { approve(reason: release_manager) }",
 			want: "approve release_manager 5:13 [true] *", winner: "approve release_manager", payload: map[string]any{"bake": time.Hour, "ticket": ""},
 		},
 		{
-			name: "a filter ranges over candidates", src: "policy p: Test@1\nassert(\"bob_reviews\", all r in (filter x in outcome.review: \"bob\" in x.approvers): r.reason == review.a)\nassert(\"found\", any r in (filter x in outcome.review: \"bob\" in x.approvers): true)\nwhen true { review(a, approvers: [\"bob\"]) }",
+			name: "a filter ranges over candidates", src: "policy p: Test@1\nassert(\"bob_reviews\", all r in (filter x in outcome.review: \"bob\" in x.approvers): r.reason == review.a)\nassert(\"found\", any r in (filter x in outcome.review: \"bob\" in x.approvers): true)\nwhen true { review(reason: a, approvers: [\"bob\"]) }",
 			want: "review a 4:13 [true] *", winner: "review a", payload: map[string]any{"approvers": []string{"bob"}},
 		},
 		{
-			name: "candidates outranked by precedence aren't in the outcome", src: "policy p: Test@1\nassert(\"hidden\", not (any r in outcome.review: true))\nassert(\"denied\", all d in outcome.deny.a: d.reason == deny.a)\nwhen true { deny(a) }\nwhen true { review(a, approvers: [\"alice\"]) }",
+			name: "candidates outranked by precedence aren't in the outcome", src: "policy p: Test@1\nassert(\"hidden\", not (any r in outcome.review: true))\nassert(\"denied\", all d in outcome.deny.a: d.reason == deny.a)\nwhen true { deny(reason: a) }\nwhen true { review(reason: a, approvers: [\"alice\"]) }",
 			want: "deny a 4:13 [true] *\nreview a 5:13 [true]", winner: "deny a", payload: map[string]any{},
 		},
 		{
-			name: "collecting kind with nothing fired", src: "policy p: Test@1\nwhen false { deny(a) }\nassert(\"empty\", deny not in outcome)",
+			name: "collecting kind with nothing fired", src: "policy p: Test@1\nwhen false { deny(reason: a) }\nassert(\"empty\", deny not in outcome)",
 			collect: true, want: "", winner: "none",
 		},
 	}

@@ -1,0 +1,29 @@
+[
+  {
+    "severity": "error",
+    "file": "testdata/kinds/legacy.sigil",
+    "message": "old decision syntax; write `decision deny { reason: … }`",
+    "help": "write `decision deny { reason: no_rule_matched }`, or run `sigil fmt --write`",
+    "line": 5,
+    "column": 10
+  },
+  {
+    "severity": "error",
+    "file": "testdata/kinds/legacy.sigil",
+    "message": "old decision syntax; write `decision approve { reason: … bake: … }`",
+    "help": "write `decision approve { reason: release_manager | payments_sre  bake: duration = 1h }`, or run `sigil fmt --write`",
+    "line": 9,
+    "column": 10
+  },
+  {
+    "severity": "error",
+    "file": "testdata/kinds/legacy.sigil",
+    "message": "the reason is a named argument",
+    "help": "write `deny(reason: no_rule_matched)`",
+    "line": 17,
+    "column": 14
+  }
+]
+--- error ---
+the kind file has 3 errors
+advice: fix the kind file, or regenerate it from the host's Schema(); `sigil fmt --write` rewrites the old decision syntax

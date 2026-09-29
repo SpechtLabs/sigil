@@ -3,5 +3,5 @@ policy p: DeployApproval@1
 use lib.roles.{fourth}
 
 when fourth == "x" {
-  approve(a)
+  approve(reason: a)
 }

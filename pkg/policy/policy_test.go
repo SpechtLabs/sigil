@@ -89,33 +89,24 @@ input environment: string
 fn split(string, string) -> list<string>
 
 decision deny {
-  a
-  no_rule_matched
-  never
-  b
-  not_eligible
-  soak_too_short
-  x
+  reason: a | no_rule_matched | never | b | not_eligible | soak_too_short | x
 }
 
-decision review(approvers: list<string>) {
-  b
-  a
-  service_owner
+decision review {
+  reason: b | a | service_owner
+  approvers: list<string>
 }
 
-decision approve(bake: duration = 1h) {
-  owned
-  a
-  release_manager
-  payments_sre
+decision approve {
+  reason: owned | a | release_manager | payments_sre
+  bake: duration = 1h
 }
 
 collect one
 precedence deny > review > approve
 precedence approve: release_manager > payments_sre > owned > a
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 `
 	if got := Deploy.Schema(); got != want {
 		t.Errorf("Schema() =\n%s\nwant\n%s", got, want)
@@ -168,7 +159,7 @@ func TestCollect(t *testing.T) {
 	read := policy.NewDecision[policy.None]("read", "engineering_member")
 	admin := policy.NewDecision[AdminData]("admin", "platform_member", "oncall")
 	access := policy.NewKind[AccessInput]("AccessGrant", policy.WithVersion(1), policy.WithCollect(read), policy.WithCollect(admin))
-	want := "kind AccessGrant version 1\n\ntype Actor {\n  name: string\n  teams: list<string>\n  roles: list<string>\n  regions: list<string>\n}\n\ninput actor: Actor\n\ndecision read {\n  engineering_member\n}\n\ndecision admin(ttl: duration = 8h) {\n  platform_member\n  oncall\n}\n\ncollect all\n"
+	want := "kind AccessGrant version 1\n\ntype Actor {\n  name: string\n  teams: list<string>\n  roles: list<string>\n  regions: list<string>\n}\n\ninput actor: Actor\n\ndecision read {\n  reason: engineering_member\n}\n\ndecision admin {\n  reason: platform_member | oncall\n  ttl: duration = 8h\n}\n\ncollect all\n"
 	if got := access.Schema(); got != want {
 		t.Errorf("Schema() =\n%s\nwant\n%s", got, want)
 	}
@@ -376,7 +367,7 @@ func TestDiagnostics(t *testing.T) {
 	}{
 		{
 			name: "a typo in the second document of a file",
-			src:  "policy p: DeployApproval@1\nwhen true { deny(a) }\n---\npolicy q: DeployApproval@1\nwhen servce.tier == \"x\" { deny(a) }",
+			src:  "policy p: DeployApproval@1\nwhen true { deny(reason: a) }\n---\npolicy q: DeployApproval@1\nwhen servce.tier == \"x\" { deny(reason: a) }",
 			root: "p",
 			want: []policy.Diagnostic{{
 				Message:  "unknown name `servce`",
@@ -387,13 +378,13 @@ func TestDiagnostics(t *testing.T) {
 		},
 		{
 			name: "a missing root has no position",
-			src:  "policy p: DeployApproval@1\nwhen true { deny(a) }",
+			src:  "policy p: DeployApproval@1\nwhen true { deny(reason: a) }",
 			root: "q",
 			want: []policy.Diagnostic{{Message: "bundle has no policy q", Help: "the bundle defines: p"}},
 		},
 		{
 			name: "a nil param value",
-			src:  "policy p: DeployApproval@1\nparam a: int\nwhen true { deny(a) }",
+			src:  "policy p: DeployApproval@1\nparam a: int\nwhen true { deny(reason: a) }",
 			root: "p",
 			opts: []policy.LoadOption{policy.Params{"a": nil}},
 			want: []policy.Diagnostic{{Message: "param a: expected int, found nil", Help: "Params values are Go values of the shape NewKind accepts for the param's type",
@@ -401,7 +392,7 @@ func TestDiagnostics(t *testing.T) {
 		},
 		{
 			name: "every param problem is reported",
-			src:  "policy p: DeployApproval@1\nparam a: int\nparam b: duration\nwhen true { deny(a) }",
+			src:  "policy p: DeployApproval@1\nparam a: int\nparam b: duration\nwhen true { deny(reason: a) }",
 			root: "p",
 			opts: []policy.LoadOption{policy.Params{"c": 1, "b": 2}},
 			want: []policy.Diagnostic{ // in param name order
@@ -447,7 +438,7 @@ func TestParamBounds(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			src := "policy p: DeployApproval@1\nparam min_soak: duration = 24h" + tt.bounds + "\nwhen release.soak < min_soak { deny(a) }"
+			src := "policy p: DeployApproval@1\nparam min_soak: duration = 24h" + tt.bounds + "\nwhen release.soak < min_soak { deny(reason: a) }"
 			_, err := Deploy.Compile(src, "p", policy.Params{"min_soak": tt.value})
 			if tt.want == "" {
 				if err != nil {
@@ -545,7 +536,7 @@ func TestHostFunctionPanics(t *testing.T) {
 		policy.WithDefault(Deny.Reason("no_rule_matched")),
 		policy.WithFunc("explode", func(s string) string { panic("kaboom: " + s) }),
 	)
-	p, err := k.Compile("policy p: Panicky@1\n\nwhen explode(\"x\") == \"\" {\n  approve(a)\n}\n", "p")
+	p, err := k.Compile("policy p: Panicky@1\n\nwhen explode(\"x\") == \"\" {\n  approve(reason: a)\n}\n", "p")
 	if err != nil {
 		t.Fatalf("Compile:\n%v", err)
 	}

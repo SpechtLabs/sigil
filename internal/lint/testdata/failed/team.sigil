@@ -4,7 +4,7 @@ policy team.broken: DeployApproval@1
 let unused = release.hotfix
 
 when service.teir == "x" {
-  approve(payments_sre)
+  approve(reason: payments_sre)
 }
 
 ---
@@ -14,5 +14,5 @@ policy team.clean: DeployApproval@1
 let unused = release.hotfix
 
 when release.hotfix {
-  approve(payments_sre)
+  approve(reason: payments_sre)
 }

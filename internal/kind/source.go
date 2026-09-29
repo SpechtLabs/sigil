@@ -12,12 +12,12 @@ import (
 // exports with Schema(), and what a loaded kind file prints back as. The
 // round trip is the property the exporter is tested by, and two kinds
 // with the same Source are the same contract, which is how a stale
-// exported kind file is detected. The layout is
-// the one `sigil fmt` writes: a blank line after the header, around every
-// type and decision and before the default, with the conflict outcome on
-// the line after it, and
-// inputs, functions and the collect, precedence and exclusive lines each
-// grouped together.
+// exported kind file is detected. The layout is the one `sigil fmt`
+// writes: a blank line after the header, around every type and decision
+// and before the default, with the conflict outcome on the line after it,
+// and enums, inputs, functions and the collect, precedence and exclusive
+// lines each grouped together. Enums come first, each on one line, since
+// struct fields refer to them.
 func (k *Kind) Source() string {
 	var b strings.Builder
 	b.WriteString("kind " + k.Name + " version " + strconv.Itoa(k.Version))
@@ -25,6 +25,13 @@ func (k *Kind) Source() string {
 		b.WriteString(", accepts: " + strconv.Itoa(k.Accepts))
 	}
 	b.WriteString("\n")
+
+	if len(k.Enums) > 0 {
+		b.WriteString("\n")
+	}
+	for _, e := range k.Enums {
+		b.WriteString("enum " + e.Name + ": " + strings.Join(e.Values, " | ") + "\n")
+	}
 
 	for _, t := range k.Types {
 		b.WriteString("\ntype " + t.Name + " {")
@@ -93,10 +100,11 @@ func (k *Kind) Source() string {
 }
 
 // Call renders the constructor call of a default or conflict declaration,
-// like `deny(no_rule_matched)`, without the keyword before it. decl is
-// the decision it constructs, or nil. When given, it orders the arguments
-// as its fields are declared; arguments it doesn't declare, and all of
-// them without it, follow sorted by name.
+// like `deny(reason: no_rule_matched)`, without the keyword before it. The
+// reason comes first. decl is the decision it constructs, or nil. When
+// given, it orders the other arguments as its fields are declared;
+// arguments it doesn't declare, and all of them without it, follow sorted
+// by name.
 func (d *Default) Call(decl *Decision) string {
 	names := make([]string, 0, len(d.Args))
 	if decl != nil {
@@ -115,7 +123,7 @@ func (d *Default) Call(decl *Decision) string {
 	sort.Strings(extra)
 	names = append(names, extra...)
 	args := make([]string, 0, 1+len(names))
-	args = append(args, d.Reason)
+	args = append(args, "reason: "+d.Reason)
 	for _, name := range names {
 		args = append(args, name+": "+constant.Format(d.Args[name]))
 	}

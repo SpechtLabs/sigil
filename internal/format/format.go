@@ -3,18 +3,26 @@
 //
 // The formatter reprints the syntax tree, so spacing and indentation are
 // always normalized, and takes its few layout decisions from where the
-// author broke lines: an `and`, `or` or `xor` chain breaks where the
-// source broke it, a list, map or argument list is one item per line when
-// its first item started a new line, and a `let` keeps its value on the
-// next line when it was written there. Comments aren't part of the tree;
+// author broke lines: an `and`, `or` or `xor` chain, and the `|` list of
+// an enum's values or a decision's reasons, breaks where the source broke
+// it, a list, map or argument list is one item per line when its first
+// item started a new line, and a `let` keeps its value on the next line
+// when it was written there. Comments aren't part of the tree;
 // they come from a second pass over the tokens and are put back by
 // position, each on its own line or trailing the code it followed.
 //
+// A decision prints with its reason first and then its payload fields,
+// one per line. The formatter also migrates the syntax from before enums:
+// a decision written `decision name(fields) { reasons }` prints in the
+// current syntax, and a constructor's positional reason prints as a
+// leading `reason:` argument. A comment moves with the field it belongs
+// to.
+//
 // Formatting is idempotent and keeps every comment. The formatted source
-// parses to the same tree as the original, except that a quantifier or
-// filter body with a top-level `and`, `or` or `xor` gains parentheses,
-// which show how far the body extends. The package's corpus test and fuzz
-// target check these properties.
+// parses to the same tree as the original, except for the migration
+// above, and that a quantifier or filter body with a top-level `and`,
+// `or` or `xor` gains parentheses, which show how far the body extends.
+// The package's corpus test and fuzz target check these properties.
 package format
 
 import (

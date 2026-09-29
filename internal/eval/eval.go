@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/spechtlabs/sigil/internal/ast"
+	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/types"
 )
@@ -19,7 +20,14 @@ import (
 // noticing a cancellation within a few microseconds of loop work.
 const pollEvery = 256
 
-var timeType = reflect.TypeFor[time.Time]()
+var (
+	timeType      = reflect.TypeFor[time.Time]()
+	int64Type     = reflect.TypeFor[int64]()
+	float64Type   = reflect.TypeFor[float64]()
+	stringType    = reflect.TypeFor[string]()
+	boolType      = reflect.TypeFor[bool]()
+	enumValueType = reflect.TypeFor[constant.EnumValue]()
+)
 
 // Value is a runtime value: a [reflect.Value] over the host's data, or
 // over a constant. An absent optional is the invalid Value, and a present
@@ -157,6 +165,8 @@ func equal(t types.Type, a, b Value) bool {
 		case types.Timestamp:
 			return a.Interface().(time.Time).Equal(b.Interface().(time.Time))
 		}
+	case *types.Enum:
+		return a.String() == b.String()
 	case *types.List:
 		if a.Len() != b.Len() {
 			return false
@@ -173,7 +183,7 @@ func equal(t types.Type, a, b Value) bool {
 		}
 		iter := a.MapRange()
 		for iter.Next() {
-			bv := mapGet(b, iter.Key())
+			bv := mapGet(b, iter.Key(), t.Key)
 			if !bv.IsValid() || !equal(t.Value, iter.Value(), bv) {
 				return false
 			}
@@ -218,13 +228,21 @@ func cmp[T int64 | float64](a, b T) int {
 	return 0
 }
 
-// mapGet looks key up in m, converting the key to the map's key type
-// when the two Go types differ (an int64 literal against map[int]T, or a
-// string against map[any]any).
-func mapGet(m, key Value) Value {
+// mapGet looks key, of Sigil type kt, up in m. A typed Go map gets the
+// key converted to its key type (an int64 literal against map[int]T). A
+// literal's map[any]any holds its keys in the Go type canonical gives
+// them, so a key of another Go type, like a host's named string type,
+// is converted to that first.
+func mapGet(m, key Value, kt types.Type) Value {
 	m, key = norm(m), norm(key)
 	if !m.IsValid() || m.IsNil() {
 		return Value{}
+	}
+	if m.Type().Key().Kind() == reflect.Interface && key.IsValid() {
+		if ct := canonicalType(kt); ct != nil && key.Type() != ct {
+			key = reflect.ValueOf(canonical(kt, key))
+		}
+		return norm(m.MapIndex(key))
 	}
 	return norm(m.MapIndex(convert(key, m.Type().Key())))
 }

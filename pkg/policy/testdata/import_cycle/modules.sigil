@@ -26,4 +26,4 @@ policy p: DeployApproval@1
 
 use a.{x}
 
-when x { deny(not_eligible) }
+when x { deny(reason: not_eligible) }

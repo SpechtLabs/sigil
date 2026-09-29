@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spechtlabs/sigil/internal/ast"
 	"github.com/spechtlabs/sigil/internal/constant"
@@ -38,6 +39,22 @@ func (l *kindLoader) declareType(d *ast.TypeDecl) {
 	l.kind.Types = append(l.kind.Types, s)
 	l.decls[d] = s
 	l.set("type "+s.Name, d.Name)
+}
+
+// enum loads an enum. It has no types to resolve, so it's complete as
+// soon as it's declared.
+func (l *kindLoader) enum(d *ast.EnumDecl) {
+	if d == nil {
+		return
+	}
+	key := "enum " + d.Name.Name
+	l.set(key, d.Name)
+	e := &types.Enum{Name: d.Name.Name, Values: make([]string, len(d.Values))}
+	for i, v := range d.Values {
+		l.set(key+".value "+v.Name, v)
+		e.Values[i] = v.Name
+	}
+	l.kind.Enums = append(l.kind.Enums, e)
 }
 
 func (l *kindLoader) typeFields(d *ast.TypeDecl) {
@@ -78,8 +95,9 @@ func (l *kindLoader) fn(d *ast.FnDecl) {
 	l.kind.Funcs = append(l.kind.Funcs, f)
 }
 
-// decision loads a decision: its payload fields with their constant
-// defaults, and the reasons its block declares.
+// decision loads a decision: its reasons and its payload fields with
+// their constant defaults. A decision in the old syntax loads the same,
+// and is an error whose help is the declaration in the current syntax.
 func (l *kindLoader) decision(d *ast.DecisionDecl) {
 	if d == nil {
 		return
@@ -112,6 +130,31 @@ func (l *kindLoader) decision(d *ast.DecisionDecl) {
 		dec.Reasons = append(dec.Reasons, r.Name)
 	}
 	l.kind.Decisions = append(l.kind.Decisions, dec)
+	if d.Legacy {
+		l.legacy(d, dec)
+	}
+}
+
+// legacy reports a decision in the old syntax, `decision name(fields) {
+// reasons }`. The message sketches the new shape with the decision's own
+// field names. The help is the whole declaration in the new syntax on one
+// line, fields two spaces apart and defaults as written, which is what
+// `sigil fmt --write` rewrites it to, one field per line.
+func (l *kindLoader) legacy(d *ast.DecisionDecl, dec *kind.Decision) {
+	shape := make([]string, 0, 1+len(d.Fields))
+	shape = append(shape, "reason: …")
+	fields := make([]string, 0, 1+len(d.Fields))
+	fields = append(fields, "reason: "+strings.Join(dec.Reasons, " | "))
+	for i, f := range d.Fields {
+		shape = append(shape, f.Name.Name+": …")
+		field := f.Name.Name + ": " + dec.Fields[i].Type.String()
+		if f.Default != nil {
+			field += " = " + ast.Sprint(f.Default)
+		}
+		fields = append(fields, field)
+	}
+	l.c.errorf(d.Name, fmt.Sprintf("write `decision %s { %s }`, or run `sigil fmt --write`", dec.Name, strings.Join(fields, "  ")),
+		"old decision syntax; write `decision %s { %s }`", dec.Name, strings.Join(shape, " "))
 }
 
 func (l *kindLoader) precedence(d *ast.PrecedenceDecl) {
@@ -200,6 +243,9 @@ func (l *kindLoader) once(at *ast.Node, d ast.Node, what string) bool {
 	return false
 }
 
+// defaultDecl loads `default deny(reason: no_rule_matched, field: value)`.
+// The reason follows a constructor's rules, and each argument must be a
+// constant of its payload field's type, given once.
 func (l *kindLoader) defaultDecl(d *ast.DefaultDecl) {
 	if d == nil {
 		return
@@ -207,14 +253,13 @@ func (l *kindLoader) defaultDecl(d *ast.DefaultDecl) {
 	if l.once(&l.defaultAt, d, "default") {
 		return
 	}
-	l.kind.Default = l.constructor(d, d.Call, "default", "the default",
-		"the default is written `default deny(no_rule_matched)`, naming one of the decision's reasons")
+	l.kind.Default = l.constructor(d, d.Call, "default")
 }
 
-// conflictDecl loads `conflict deny(conflicting_rules)`, which follows
-// the default's rules. Whether the kind may declare one at all depends on
-// its collect mode, which kind.Validate checks once every declaration is
-// loaded.
+// conflictDecl loads `conflict deny(reason: conflicting_rules)`, which
+// follows the default's rules. Whether the kind may declare one at all
+// depends on its collect mode, which kind.Validate checks once every
+// declaration is loaded.
 func (l *kindLoader) conflictDecl(d *ast.ConflictDecl) {
 	if d == nil {
 		return
@@ -222,61 +267,78 @@ func (l *kindLoader) conflictDecl(d *ast.ConflictDecl) {
 	if l.once(&l.conflictAt, d, "conflict") {
 		return
 	}
-	l.kind.Conflict = l.constructor(d, d.Call, "conflict", "the conflict outcome",
-		"the conflict outcome is written `conflict deny(conflicting_rules)`, naming one of the decision's reasons")
+	l.kind.Conflict = l.constructor(d, d.Call, "conflict")
 }
 
 // constructor loads the constructor call of the declaration d, `default`
-// or `conflict` as key says: its decision, a bare reason name, and a
-// constant for each payload argument. what names the declaration in
-// messages and shape is the help for a malformed reason.
-func (l *kindLoader) constructor(d ast.Node, call *ast.CallStmt, key, what, shape string) *kind.Default {
+// or `conflict` as key says: its decision, a labeled reason that follows a
+// constructor's rules, and a constant for each payload argument.
+func (l *kindLoader) constructor(d ast.Node, call *ast.CallStmt, key string) *kind.Default {
 	l.set(key, d)
 	def := &kind.Default{Decision: call.Name.Name, Args: map[string]any{}}
 
 	// The reason's key points at whatever is wrong with it, so the model's
 	// finding about it lands on the loader's error and is dropped.
-	switch r := call.Positional.(type) {
-	case nil:
-		l.set(key+".reason", call)
-		l.c.errorf(call, shape, "%s needs a reason", what)
-	case *ast.Ident:
-		l.set(key+".reason", r)
+	decl := l.kind.Decision(def.Decision)
+	l.set(key+".reason", reasonNode(call))
+	if decl == nil {
+		// The unknown decision is reported by kind.Validate; the reason
+		// can't be checked without it.
+		if r, ok := reasonNode(call).(*ast.Ident); ok {
+			def.Reason = r.Name
+		}
+	} else if r := l.c.reasonArg(call, decl, nil); r != nil {
 		def.Reason = r.Name
-	case *ast.StringLit:
-		l.set(key+".reason", r)
-		l.c.errorf(r, fmt.Sprintf("reasons are declared names, not strings; write `%s(%s)`", call.Name.Name, r.Value), "%s's reason must be a bare name", what)
-		def.Reason = r.Value
-	default:
-		l.set(key+".reason", call.Positional)
-		l.c.errorf(call.Positional, shape, "%s's reason must be a bare name", what)
 	}
 
-	decl := l.kind.Decision(def.Decision)
 	for _, arg := range call.Args {
 		name := arg.Name.Name
+		if name == reasonField {
+			continue
+		}
 		l.set(key+".arg "+name, arg.Name)
 		if _, dup := def.Args[name]; dup {
 			l.c.errorf(arg.Name, "pass each field once", "field %q is given twice", name)
 			continue
 		}
 		if decl == nil {
-			continue // the unknown decision is reported by kind.Validate
+			continue
 		}
 		f := decl.Field(name)
 		if f == nil {
-			l.c.errorf(arg.Name, decl.Name+" is declared as: "+decl.Signature(), "decision %s has no payload field %q", decl.Name, name)
+			help := decl.Signature()
+			if closest, ok := closestField(decl, name); ok {
+				help = fmt.Sprintf("did you mean %q? %s", closest, help)
+			}
+			l.c.errorf(arg.Name, help, "decision %s has no payload field %q", decl.Name, name)
 			continue
 		}
 		v, err := constant.Eval(arg.Value, f.Type)
 		if err != nil {
 			err.File = l.c.file
 			l.c.errs = append(l.c.errs, err)
-			continue
+			// The field was given, so it isn't also reported as missing, and
+			// the model's finding about its value lands on this error.
+			l.loc[key+".arg "+name] = span{err.Pos, err.End}
 		}
 		def.Args[name] = v
 	}
 	return def
+}
+
+// reasonNode returns the part of call that gives its reason: the value of
+// its first `reason:` argument, else its positional argument, else the
+// call itself.
+func reasonNode(call *ast.CallStmt) ast.Node { //nolint:returninterface // an argument's value, or the call itself
+	for _, arg := range call.Args {
+		if arg.Name.Name == reasonField {
+			return arg.Value
+		}
+	}
+	if call.Positional != nil {
+		return call.Positional
+	}
+	return call
 }
 
 // resolve turns a type expression in the kind into a type.

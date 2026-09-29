@@ -92,6 +92,19 @@ func (k *Kind[In]) params(file string, doc *ast.PolicyDoc, info *check.Info, giv
 			errs = append(errs, err)
 			continue
 		}
+		if hasEnum(want) {
+			// The evaluator holds enum values as constants, and a Go
+			// string can hold a value the enum lacks.
+			v = k.binding.Canonical(want, reflect.ValueOf(v))
+			if bad, e := outsideEnum(v, want); e != nil {
+				errs = append(errs, &diag.Error{
+					File: file, Pos: p.Pos(), End: p.End(),
+					Msg:  fmt.Sprintf("param %s: %q is not a value of %s", name, bad, e.Name),
+					Help: e.Name + " declares: " + e.ValueNames(),
+				})
+				continue
+			}
+		}
 		out[name] = reflect.ValueOf(v)
 	}
 	return out, errs
@@ -119,6 +132,55 @@ func inBounds(p *ast.ParamStmt, t types.Type, v any) *diag.Error {
 		}
 	}
 	return nil
+}
+
+// hasEnum reports whether values of t hold an enum value.
+func hasEnum(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.Enum:
+		return true
+	case *types.List:
+		return hasEnum(t.Elem)
+	case *types.Map:
+		return hasEnum(t.Key) || hasEnum(t.Value)
+	case *types.Optional:
+		return hasEnum(t.Elem)
+	}
+	return false
+}
+
+// outsideEnum returns the first enum value in v, a constant of type t,
+// that its enum doesn't declare, with the enum, or a nil enum when every
+// value is declared.
+func outsideEnum(v any, t types.Type) (string, *types.Enum) { //nolint:emptyinterface // constants are typed by their Sigil type
+	switch t := t.(type) {
+	case *types.Enum:
+		if s, _ := v.(constant.EnumValue); !t.Has(string(s)) {
+			return string(s), t
+		}
+	case *types.List:
+		xs, _ := v.([]any)
+		for _, x := range xs {
+			if bad, e := outsideEnum(x, t.Elem); e != nil {
+				return bad, e
+			}
+		}
+	case *types.Map:
+		m, _ := v.(map[any]any)
+		for _, key := range slices.SortedFunc(maps.Keys(m), constant.Compare) {
+			if bad, e := outsideEnum(key, t.Key); e != nil {
+				return bad, e
+			}
+			if bad, e := outsideEnum(m[key], t.Value); e != nil {
+				return bad, e
+			}
+		}
+	case *types.Optional:
+		if v != nil {
+			return outsideEnum(v, t.Elem)
+		}
+	}
+	return "", nil
 }
 
 // conforms reports whether v, a Go value bound to a param, is a t: either

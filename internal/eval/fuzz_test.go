@@ -149,3 +149,43 @@ func FuzzEvalCollections(f *testing.F) {
 		}
 	})
 }
+
+// FuzzEvalEnum evaluates enum expressions over host values that may lie
+// outside their enum: evaluation never panics, and it fails or succeeds
+// the same way twice.
+func FuzzEvalEnum(f *testing.F) {
+	k, b := accountsKind(f)
+	for _, src := range []string{"account.tier == critical", "critical in account.tiers", "account.limits has standard", "next(account.tier) == standard",
+		"{critical: 1}[account.tier] == 1", "(account.backup ?? internal) != standard", "any x in account.tiers: {internal: true} has x", "account.plan == basic"} {
+		f.Add(src, "critical")
+		f.Add(src, "")
+	}
+	f.Fuzz(func(t *testing.T, src, value string) {
+		x, errs := parser.ParseExpr("fuzz.sigil", []byte(src))
+		if errs != nil {
+			return
+		}
+		c := check.New("fuzz.sigil")
+		typ := c.Expr(x, check.NewEnv(k))
+		if c.Errors() != nil {
+			return
+		}
+		scope := eval.NewScope(b)
+		prog, err := eval.Compile(x, c.Info(), scope)
+		if err != nil {
+			t.Fatalf("checked expression failed compilation: %v", err)
+		}
+		in := account()
+		in.Account.Tier, in.Account.Plan = Tier(value), Plan(value)
+		in.Account.Tiers = append(in.Account.Tiers, Tier(value))
+		in.Account.Limits[Tier(value)] = 7
+		v, first := eval.Run(prog, eval.NewFrame(&in, scope))
+		w, second := eval.Run(prog, eval.NewFrame(&in, scope))
+		if !reflect.DeepEqual(first, second) { //nolint:govet // deepequalerrors: a runtime error compares field by field
+			t.Fatalf("runtime errors changed: %v != %v", first, second)
+		}
+		if first == nil && !reflect.DeepEqual(b.Canonical(typ, v), b.Canonical(typ, w)) {
+			t.Fatal("evaluation is not repeatable")
+		}
+	})
+}

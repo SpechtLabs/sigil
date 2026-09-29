@@ -71,12 +71,17 @@
 //	time.Duration          duration
 //	time.Time              timestamp
 //	[]T                    list<T>
-//	map[K]T, scalar K      map<K, T>
+//	map[K]T                map<K, T>, K a scalar or enum
 //	*T                     ?T
 //	named struct           type, named after the Go type
+//	T with WithEnum        enum, named after the Go type
 //
 // A named type follows its underlying type, so `type Tier string` is a
-// string. Anything else is rejected: other integer and float sizes,
+// string, unless [WithEnum] registers it as an enum:
+//
+//	policy.WithEnum(TierCritical, TierStandard, TierInternal)
+//
+// NewKind rejects every other type: other integer and float sizes,
 // unsigned integers, channels, funcs, interfaces, anonymous structs, and
 // pointers to slices or maps, since a nil slice or map already reads as
 // empty. The full rules are at
@@ -144,14 +149,14 @@
 // kind, so a host that fails closed can use it directly. The error is one
 // of:
 //
-//   - [*RuntimeError]: a list index out of range, integer overflow, or a
-//     host function that returned an error, which [errors.Is] finds
-//     through it.
+//   - [*RuntimeError]: a list index out of range, integer overflow, a Go
+//     value outside its enum, or a host function that returned an error,
+//     which [errors.Is] finds through it.
 //   - [*ConflictError]: two members of an exclusive set fired, or a
 //     `collect one` kind has several candidates at its top rank. This is a
 //     defect in the policy rather than in the input. A kind declared with
 //     [WithConflict] holds its conflict outcome here instead of the
-//     default, such as deny(conflicting_rules), so a log line or a metric
+//     default, such as deny(reason: conflicting_rules), so a log line or a metric
 //     labeled from the result names the conflict instead of claiming no
 //     rule matched.
 //   - [*AssertionError]: one or more of the policy's asserts didn't hold.

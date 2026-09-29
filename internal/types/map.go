@@ -1,8 +1,8 @@
 package types
 
-// Map is `map<K, V>`. K must be a scalar; see [IsKey]. As with [List], the
-// checker types an empty `{}` with nil parameters until the context
-// supplies them.
+// Map is `map<K, V>`. K must be a scalar or an enum; see [IsKey]. As with
+// [List], the checker types an empty `{}` with nil parameters until the
+// context supplies them.
 type Map struct {
 	Key   Type // K
 	Value Type // V

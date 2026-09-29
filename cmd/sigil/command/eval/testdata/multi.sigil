@@ -1,5 +1,5 @@
 policy access.other: Access@1
 
 when user.admin {
-  allow(admin)
+  allow(reason: admin)
 }

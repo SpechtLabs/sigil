@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/spechtlabs/sigil/internal/check"
+	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/gokind"
 	"github.com/spechtlabs/sigil/internal/kind"
 )
@@ -24,9 +24,9 @@ type None struct{}
 // [Decision.Match] and [Decision.MatchAll].
 //
 // T's tagged fields are the decision's payload fields, which a policy
-// sets by name when it constructs the decision:
+// sets by name next to the reason when it constructs the decision:
 //
-//	approve(release_manager, bake: 30m)
+//	approve(reason: release_manager, bake: 30m)
 //
 // A field whose tag carries a default, `policy:"bake,default=1h"`, may be
 // left out. Use [None] for a decision without a payload.
@@ -191,7 +191,7 @@ func (o Outcome) outcome() kind.Outcome { return kind.Outcome{Decision: o.decisi
 // checker gives for the same typo in a constructor.
 func undeclaredReason(decision, name string, reasons []string) string {
 	help := fmt.Sprintf("%s declares: %s", decision, strings.Join(reasons, ", "))
-	if closest, ok := check.Nearest(name, reasons); ok {
+	if closest, ok := diag.Nearest(name, reasons); ok {
 		help = fmt.Sprintf("did you mean %q? %s", closest, help)
 	}
 	return fmt.Sprintf("policy: decision %s has no reason %q (%s)", decision, name, help)

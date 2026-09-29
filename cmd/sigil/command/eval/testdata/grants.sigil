@@ -2,13 +2,13 @@ kind Grants version 1
 
 input teams: list<string>
 
-decision read(scope: string = "all") {
-  member
+decision read {
+  reason: member
+  scope: string = "all"
 }
 
 decision write {
-  owner
-  oncall
+  reason: owner | oncall
 }
 
 collect all

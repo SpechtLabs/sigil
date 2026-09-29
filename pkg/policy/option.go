@@ -1,6 +1,8 @@
 package policy
 
 import (
+	"reflect"
+
 	"github.com/spechtlabs/sigil/internal/gokind"
 	"github.com/spechtlabs/sigil/internal/kind"
 )
@@ -123,11 +125,11 @@ func WithExclusive(outcomes ...OutcomeRef) Option {
 }
 
 // WithDefault sets the decision and reason returned when no rule fires,
-// `default deny(no_rule_matched)` in a kind file, given as an [Outcome]
-// from [Decision.Reason]. Its payload fields take their defaults, so
-// every field of the decision's payload struct needs a `default=` in its
-// tag. It is required for a [WithDecisions] kind and optional for a
-// [WithCollect] kind.
+// `default deny(reason: no_rule_matched)` in a kind file, given as an
+// [Outcome] from [Decision.Reason]. Its payload fields take their
+// defaults, so every field of the decision's payload struct needs a
+// `default=` in its tag. It is required for a [WithDecisions] kind and
+// optional for a [WithCollect] kind.
 //
 // [Policy.Eval] also returns the default alongside a runtime error, a
 // conflict or a failed assert, so a host that fails closed can use the
@@ -144,7 +146,7 @@ func WithDefault(reason Outcome) Option {
 
 // WithConflict sets the decision and reason a [WithDecisions] kind
 // returns when resolution ends in a conflict, `conflict
-// deny(conflicting_rules)` in a kind file, given as an [Outcome] from
+// deny(reason: conflicting_rules)` in a kind file, given as an [Outcome] from
 // [Decision.Reason]. Like [WithDefault], its payload fields take their
 // defaults, so every field of the decision's payload struct needs a
 // `default=` in its tag. It's optional; without it a conflict returns the
@@ -190,6 +192,43 @@ func WithFunc(name string, fn any) Option {
 	return func(o *gokind.Options) {
 		o.Funcs = append(o.Funcs, gokind.Func{Name: name, Fn: fn})
 	}
+}
+
+// WithEnum declares the enum named after T, with its values in
+// declaration order, `enum Tier: critical | standard | internal` in a
+// kind file. T must be a named type whose underlying type is string. An
+// input or struct field of type T, a host function parameter or result, a
+// payload field, and a slice, pointer or map key of T then read as the
+// enum. T can't be a map's value type, because a missing key would have
+// to read as a value the enum lacks. A named string type that isn't
+// registered stays a plain string.
+//
+//	type Tier string
+//
+//	const (
+//		TierCritical Tier = "critical"
+//		TierStandard Tier = "standard"
+//		TierInternal Tier = "internal"
+//	)
+//
+//	policy.WithEnum(TierCritical, TierStandard, TierInternal)
+//
+// Policies write the values bare, as in `service.tier == critical`. Go
+// can put any string in a T, the zero value "" included. Such a value is
+// harmless until a rule reads it. Then [Policy.Eval] fails with a
+// [*RuntimeError] naming the value, and the result holds the kind's
+// default.
+//
+// Register each enum type once, with all its values. A value is an
+// identifier, not a keyword, and can't share its name with an input,
+// host function or decision.
+func WithEnum[T ~string](values ...T) Option {
+	names := make([]string, len(values))
+	for i, v := range values {
+		names[i] = string(v)
+	}
+	e := gokind.Enum{Type: reflect.TypeFor[T](), Values: names}
+	return func(o *gokind.Options) { o.Enums = append(o.Enums, e) }
 }
 
 // WithRecoverHostPanics makes a panic in a host function fail the

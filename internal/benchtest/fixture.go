@@ -47,9 +47,9 @@ func Value() Input {
 }
 
 // WithOptions returns the gokind options that declare Bench@1: decisions
-// `deny` and `allow`, ranked in that order with deny(fallback) as the
-// default when collect is false, and `collect all` with no default when
-// it's true.
+// `deny` and `allow`, ranked in that order with
+// `deny(reason: fallback)` as the default when collect is false, and
+// `collect all` with no default when it's true.
 func WithOptions(collect bool) gokind.Options {
 	o := gokind.Options{Name: "Bench", Version: 1, Input: reflect.TypeFor[Input](), Ranked: !collect, Collect: collect,
 		Decisions: []gokind.Decision{
@@ -85,7 +85,7 @@ func Policy(rules int) string {
 	var s strings.Builder
 	s.WriteString("policy main: Bench@1\nassert(\"named\", actor != \"\")\n")
 	for i := range rules {
-		fmt.Fprintf(&s, "when %s { allow(member, ttl: %dm) }\n", Expression, i+1)
+		fmt.Fprintf(&s, "when %s { allow(reason: member, ttl: %dm) }\n", Expression, i+1)
 	}
 	return s.String()
 }
@@ -103,7 +103,7 @@ func OneMatching(rules int) string {
 		if i < rules-1 {
 			cond += ` and "auditor" in roles`
 		}
-		fmt.Fprintf(&s, "when %s { allow(member, ttl: %dm) }\n", cond, i+1)
+		fmt.Fprintf(&s, "when %s { allow(reason: member, ttl: %dm) }\n", cond, i+1)
 	}
 	return s.String()
 }
@@ -119,7 +119,7 @@ pub let member = "deployer" in roles
 policy grant: Bench@1
 use common.{member}
 param ttl: duration
-when enabled and member { allow(member, ttl: ttl) }
+when enabled and member { allow(reason: member, ttl: ttl) }
 ---
 policy main: Bench@1
 use grant

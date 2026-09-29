@@ -2,14 +2,14 @@ grants: an assert failed, the host falls back to no decisions
 
 assert write_needs_read failed at testdata/grants/grants.sigil:16:1
   the outcome it read:
-    write(owner)   testdata/grants/grants.sigil:8:3
-    write(oncall)  testdata/grants/grants.sigil:12:3
+    write(reason: owner)   testdata/grants/grants.sigil:8:3
+    write(reason: oncall)  testdata/grants/grants.sigil:12:3
   = help: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong
 
 trace: 2 candidates
-    write(owner)   testdata/grants/grants.sigil:8:3
+    write(reason: owner)   testdata/grants/grants.sigil:8:3
       when "platform" in teams
-    write(oncall)  testdata/grants/grants.sigil:12:3
+    write(reason: oncall)  testdata/grants/grants.sigil:12:3
       when "oncall" in teams
 --- error ---
 the evaluation failed; the host would act on the fallback shown above

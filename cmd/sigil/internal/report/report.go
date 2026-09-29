@@ -113,17 +113,18 @@ func New(k *project.Kind, res *result.Result) *Report {
 }
 
 // Text renders the report for a human, styled by t. Candidates read the
-// way a policy writes them, `allow(admin)`, with the conditions that held
-// and the payload beneath, and the ones in the outcome marked `*`:
+// way a policy writes them, `allow(reason: admin)`, with the conditions
+// that held and the payload beneath, and the ones in the outcome marked
+// `*`:
 //
-//	access.main: allow(admin)
+//	access.main: allow(reason: admin)
 //	  ttl = 8h
 //
 //	trace: 2 candidates
-//	  * allow(admin)      access/main.sigil:6:3
+//	  * allow(reason: admin)      access/main.sigil:6:3
 //	      when user.admin
 //	      ttl = 8h
-//	    deny(too_old)     access/main.sigil:14:3
+//	    deny(reason: too_old)     access/main.sigil:14:3
 //
 // A failed evaluation leads with why, then the fallback the host acts on.
 func (r *Report) Text(t pretty.Theme) string {
@@ -194,7 +195,7 @@ func (r *Report) width() int {
 // decisions a collecting kind returned.
 func (r *Report) summary(t pretty.Theme) string {
 	if !r.Collect {
-		s := t.Bold(r.Decision + "(" + r.Reason + ")")
+		s := t.Bold(r.Decision + "(reason: " + r.Reason + ")")
 		if len(r.Outcome) == 1 && r.Outcome[0].Position == "" {
 			note := "the kind's default"
 			if r.onConflict {
@@ -271,9 +272,9 @@ func help(kind string) string {
 	return "fix the expression the runtime error points at, or the input it read"
 }
 
-// head names a candidate the way a policy writes it: `allow(admin)`.
+// head names a candidate the way a policy writes it: `allow(reason: admin)`.
 func (e Entry) head() string {
-	return e.Decision + "(" + e.Reason + ")"
+	return e.Decision + "(reason: " + e.Reason + ")"
 }
 
 // row lays out a candidate: its head padded to width, then where it
@@ -362,10 +363,12 @@ func payload(k *project.Kind, decision string, p map[string]any) (map[string]any
 // Plain turns a canonical value (see gokind.Binding.Canonical) into one
 // encoding/json and YAML print the way a policy author writes it. A
 // duration becomes a string in Sigil's syntax, `1h30m`, and a time an
-// RFC 3339 string. Lists and maps are converted element by element, with
-// map keys turned into strings. Any other value is returned as it is.
+// RFC 3339 string, and an enum value its name. Lists and maps are
+// converted element by element, with map keys turned into strings. Any other value is returned as it is.
 func Plain(v any) any { //nolint:emptyinterface // canonical values are dynamically typed
 	switch v := v.(type) {
+	case constant.EnumValue:
+		return string(v)
 	case time.Duration:
 		return constant.FormatDuration(v)
 	case time.Time:

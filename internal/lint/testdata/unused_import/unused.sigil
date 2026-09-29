@@ -5,5 +5,5 @@ use deploy.common
 use deploy.production
 
 when release.hotfix {
-  approve(payments_sre)
+  approve(reason: payments_sre)
 }

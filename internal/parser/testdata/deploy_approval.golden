@@ -1,4 +1,4 @@
-kind DeployApproval version 1 [2:1-52:30]
+kind DeployApproval version 1 [2:1-43:38]
   type Release { [4:1-7:2]
     soak: duration
     hotfix: bool
@@ -20,10 +20,18 @@ kind DeployApproval version 1 [2:1-52:30]
   input actor: Actor [23:1-23:19]
   input environment: string [24:1-24:26]
   fn split(string, string) -> list<string> [26:1-26:41]
-  decision deny { no_rule_matched tmp chain paren unclosed not_eligible soak_too_short no_rules_in_modules } [28:1-37:2]
-  decision review(approvers: list<string>) { cluster_access owner service_owner } [38:1-42:2]
-  decision approve(bake: duration = 1h) { fine payments_sre release_manager } [43:1-47:2]
-  collect one [49:1-49:12]
-  precedence deny > review > approve [50:1-50:35]
-  precedence approve: release_manager > payments_sre > fine [51:1-51:58]
-  default deny(no_rule_matched) [52:1-52:30]
+  decision deny { [28:1-30:2]
+    reason: no_rule_matched | tmp | chain | paren | unclosed | not_eligible | soak_too_short | no_rules_in_modules
+  }
+  decision review { [31:1-34:2]
+    reason: cluster_access | owner | service_owner
+    approvers: list<string>
+  }
+  decision approve { [35:1-38:2]
+    reason: fine | payments_sre | release_manager
+    bake: duration = 1h
+  }
+  collect one [40:1-40:12]
+  precedence deny > review > approve [41:1-41:35]
+  precedence approve: release_manager > payments_sre > fine [42:1-42:58]
+  default deny(reason: no_rule_matched) [43:1-43:38]

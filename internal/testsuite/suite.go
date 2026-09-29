@@ -12,7 +12,7 @@ import (
 	"github.com/sierrasoftworks/humane-errors-go"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/spechtlabs/sigil/internal/check"
+	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/kind"
 )
 
@@ -241,7 +241,7 @@ func hint(name string, declared []string) string {
 	if len(declared) == 0 {
 		list = "none are declared"
 	}
-	if near, ok := check.Nearest(name, declared); ok {
+	if near, ok := diag.Nearest(name, declared); ok {
 		return fmt.Sprintf("did you mean %q? %s", near, list)
 	}
 	return list

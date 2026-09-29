@@ -14,9 +14,9 @@
 // The parser reads tokens from the lexer on demand, skipping comments, and
 // keeps one token of lookahead beyond the current one. That's all the
 // grammar needs: one token everywhere, and a second only at the start of a
-// call argument. The parser also peeks at the second token in a few other
-// places to give a better error, or to stop a dotted name before the `.{`
-// of a selective import.
+// call argument. The parser also peeks further in a few other places to
+// give a better error, or to stop a dotted name before the `.{` of a
+// selective import.
 //
 // Parsing has no shared state, so separate calls may run concurrently.
 package parser
@@ -87,10 +87,16 @@ func (p *parser) next() {
 
 // peek returns the token after the current one without consuming it.
 func (p *parser) peek() token.Token {
-	if len(p.buf) == 0 {
+	return p.peekAt(1)
+}
+
+// peekAt returns the token n places after the current one, for n of at
+// least 1, without consuming anything.
+func (p *parser) peekAt(n int) token.Token {
+	for len(p.buf) < n {
 		p.buf = append(p.buf, p.scan())
 	}
-	return p.buf[0]
+	return p.buf[n-1]
 }
 
 // run calls fn and recovers the bailout an error raises. Any other panic is

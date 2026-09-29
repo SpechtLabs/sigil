@@ -3,10 +3,10 @@
   source: |
     policy a: K@1
 
-    when x == 1 { deny(r) }
+    when x == 1 { deny(reason: r) }
 - file: b.sigil
   formatted: true
   source: |
     policy a: K@1
 
-    when x == 1 { deny(r) }
+    when x == 1 { deny(reason: r) }

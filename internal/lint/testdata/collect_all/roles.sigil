@@ -1,7 +1,7 @@
 policy roles.base: Roles@1
 
 when user != "" {
-  read(member)
+  read(reason: member)
 }
 
 assert("named_user", user != "")
@@ -11,7 +11,7 @@ assert("named_user", user != "")
 policy roles.writers: Roles@1
 
 when user == "root" {
-  write(owner)
+  write(reason: owner)
 }
 
 ---

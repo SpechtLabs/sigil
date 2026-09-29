@@ -5,13 +5,13 @@ policy p: DeployApproval@1
 when false {
   let boom = split(actor.roles[9], ",")
   when boom any in ["x"] {
-    deny(never)
+    deny(reason: never)
   }
 }
 
 when service.tier == "critical" {
   let owners = service.owners
   when "payments" in owners {
-    approve(owned)
+    approve(reason: owned)
   }
 }

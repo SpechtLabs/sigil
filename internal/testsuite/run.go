@@ -315,4 +315,4 @@ func derefEntries(es *[]Entry) []Entry {
 	return *es
 }
 
-func call(decision, reason string) string { return decision + "(" + reason + ")" }
+func call(decision, reason string) string { return decision + "(reason: " + reason + ")" }

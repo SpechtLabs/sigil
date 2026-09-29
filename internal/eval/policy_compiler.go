@@ -16,6 +16,9 @@ import (
 	"github.com/spechtlabs/sigil/internal/kind"
 )
 
+// reasonArg is the named argument of a constructor that names the reason.
+const reasonArg = "reason"
+
 // Source is a checked document the compiler can compile as the root,
 // instantiate for an invocation, or read pub lets from.
 type Source struct {
@@ -449,6 +452,9 @@ func literal(v Value) any {
 	if v.Type() == timeType {
 		return v.Interface()
 	}
+	if v.Type() == enumValueType {
+		return constant.EnumValue(v.String())
+	}
 	switch v.Kind() {
 	case reflect.Bool:
 		return v.Bool()
@@ -482,14 +488,24 @@ func literal(v Value) any {
 
 var durationType = reflect.TypeFor[time.Duration]()
 
-// constructor compiles a decision constructor into a rule.
+// constructor compiles a decision constructor into a rule. The `reason:`
+// argument names the rule's reason; the others are its payload, in the
+// order written.
 func (pc *policyCompiler) constructor(s *ast.CallStmt, conds []*Cond) *Rule {
 	d := pc.info.Constructors[s]
 	if d == nil {
 		throwf(s, "constructor `%s` wasn't checked; compile only checked policies", s.Name.Name)
 	}
-	reason, ok := s.Positional.(*ast.Ident)
-	if !ok {
+	var reason *ast.Ident
+	var payload []*ast.NamedArg
+	for _, a := range s.Args {
+		if a.Name.Name == reasonArg {
+			reason, _ = a.Value.(*ast.Ident)
+		} else {
+			payload = append(payload, a)
+		}
+	}
+	if reason == nil {
 		throwf(s, "constructor `%s` has no reason name", s.Name.Name)
 	}
 	r := &Rule{
@@ -498,7 +514,7 @@ func (pc *policyCompiler) constructor(s *ast.CallStmt, conds []*Cond) *Rule {
 	}
 	pc.payloadType(r)
 	given := map[string]Expr{}
-	for _, a := range s.Args {
+	for _, a := range payload {
 		given[a.Name.Name] = pc.exprOrNil(a.Value)
 		r.Args = append(r.Args, Arg{Name: a.Name.Name, Text: pc.text(a.Value)})
 	}

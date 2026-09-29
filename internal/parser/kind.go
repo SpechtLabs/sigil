@@ -8,9 +8,9 @@ import (
 )
 
 // parseKind parses a kind document from its `kind` keyword to the end of
-// the document. Only syntax is checked here; that `reason: string` comes
-// first, that precedence names every decision and the other validity rules
-// from docs/reference/kind-files.md are the checker's.
+// the document. Only syntax is checked here; that the reason doesn't name
+// a type, that precedence names every decision and the other validity
+// rules from docs/reference/kind-files.md are the checker's.
 func (p *parser) parseKind() *ast.KindDoc {
 	const shape = "a kind starts with `kind Name version N`, optionally followed by `, accepts: M`"
 	kw := p.tok
@@ -51,6 +51,8 @@ func (p *parser) parseDecl() ast.Decl {
 	switch p.tok.Kind {
 	case token.KwType:
 		return p.parseTypeDecl()
+	case token.KwEnum:
+		return p.parseEnum()
 	case token.KwInput:
 		return p.parseInput()
 	case token.KwFn:
@@ -68,7 +70,7 @@ func (p *parser) parseDecl() ast.Decl {
 	case token.KwConflict:
 		return p.parseConflict()
 	}
-	p.unexpected("a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect`, `default` or `conflict`)", "")
+	p.unexpected("a declaration (`type`, `enum`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect`, `default` or `conflict`)", "")
 	return nil
 }
 
@@ -103,7 +105,7 @@ func (p *parser) parseTypeDecl() *ast.TypeDecl {
 // isDeclKeyword reports whether k starts a kind declaration.
 func isDeclKeyword(k token.Kind) bool {
 	switch k {
-	case token.KwType, token.KwInput, token.KwFn, token.KwDecision, token.KwPrecedence, token.KwCollect, token.KwDefault, token.KwConflict:
+	case token.KwType, token.KwEnum, token.KwInput, token.KwFn, token.KwDecision, token.KwPrecedence, token.KwCollect, token.KwDefault, token.KwConflict:
 		return true
 	}
 	return false
@@ -147,38 +149,177 @@ func (p *parser) parseFn() *ast.FnDecl {
 	return d
 }
 
-// parseDecision parses `decision name(reason: string, field: type = default, ...)`.
-func (p *parser) parseDecision() *ast.DecisionDecl {
-	const shape = "a decision is written `decision name(field: type) { reason ... }`, with the payload fields optional"
+// parseEnum parses `enum Name: a | b | c`.
+func (p *parser) parseEnum() *ast.EnumDecl {
+	const shape = "an enum is written `enum Name: a | b | c`"
 	kw := p.tok
 	p.next()
-	d := &ast.DecisionDecl{Name: p.expectIdent("a name after `decision`", shape)}
+	d := &ast.EnumDecl{Name: p.expectIdent("a name after `enum`", shape)}
+	p.expect(token.Colon, shape)
+	d.Values = p.parseAlternatives("an enum value", shape)
+	d.Span = ast.Span{From: kw.Pos, To: d.Values[len(d.Values)-1].End()}
+	return d
+}
+
+// parseAlternatives parses `a | b | c`, the values of an enum or the
+// reasons of a decision. Line breaks may fall on either side of a `|`.
+// want names one value for errors, like "an enum value".
+func (p *parser) parseAlternatives(want, shape string) []*ast.Ident {
+	names := []*ast.Ident{p.expectAlternative(want, shape)}
+	for {
+		switch p.tok.Kind {
+		case token.Pipe:
+			p.next()
+			names = append(names, p.expectAlternative(want, shape))
+			continue
+		case token.Comma:
+			p.unexpected("`|` between two values", shape)
+		}
+		return names
+	}
+}
+
+// expectAlternative consumes one name of an enum's values or a decision's
+// reasons. A keyword gets its own hint, since `one` or `all` are easy
+// names to reach for and read like identifiers. A keyword that starts a
+// declaration or a document more likely follows a trailing `|`.
+func (p *parser) expectAlternative(want, shape string) *ast.Ident {
+	if p.tok.Kind.IsKeyword() && !isDeclKeyword(p.tok.Kind) && !isHeaderKeyword(p.tok.Kind) {
+		p.errorTok(p.tok, fmt.Sprintf("expected %s, found the keyword `%s`", want, p.tok.Text),
+			"a keyword can't be a value; pick another name")
+	}
+	return p.expectIdent(want, shape)
+}
+
+// decisionShape is the hint for a malformed decision.
+const decisionShape = "a decision is written `decision name { reason: a | b  field: type = default }`, with the payload fields optional"
+
+// parseDecision parses `decision name { reason: a | b  field: type = default }`,
+// or the legacy form `decision name(field: type = default) { a b }`, which
+// it marks Legacy. A block of bare names is legacy too, with or without
+// the parentheses.
+func (p *parser) parseDecision() *ast.DecisionDecl {
+	kw := p.tok
+	p.next()
+	d := &ast.DecisionDecl{Name: p.expectIdent("a name after `decision`", decisionShape)}
 	if p.tok.Kind == token.LParen {
-		d.Fields = p.parsePayloadFields(shape)
+		d.Legacy = true
+		d.Fields = p.parsePayloadFields()
 	}
-	open := p.expect(token.LBrace, shape)
-	for p.tok.Kind != token.RBrace && p.tok.Kind != token.EOF && !p.atDeclEnd() {
-		d.Reasons = append(d.Reasons, p.expectIdent("a reason name", "reasons are bare identifiers, one per line, like `soak_too_short`"))
-	}
-	if len(d.Reasons) == 0 {
-		p.errorAt(open.Pos, open.End, "decision "+d.Name.Name+" declares no reasons", "every decision needs at least one reason in its block")
+	open := p.expect(token.LBrace, decisionShape)
+	switch {
+	case d.Legacy && p.atField():
+		p.errorTok(p.tok, "the payload fields go inside the braces, next to `reason:`",
+			"move them out of the parentheses: `decision approve { reason: release_manager  bake: duration = 1h }`")
+	case d.Legacy, p.tok.Kind == token.Ident && !p.atField():
+		d.Legacy = true
+		p.parseLegacyReasons(d, open)
+	default:
+		p.parseDecisionFields(d, open)
 	}
 	closing := p.expectClosing(token.RBrace, open)
 	d.Span = ast.Span{From: kw.Pos, To: closing.End}
 	return d
 }
 
+// atField reports whether the current token starts `name:`. A field may
+// be named like a keyword.
+func (p *parser) atField() bool {
+	return (p.tok.Kind == token.Ident || p.tok.Kind.IsKeyword()) && p.peek().Kind == token.Colon
+}
+
+// parseDecisionFields parses the body of a decision in the current
+// syntax: the `reason:` field and the payload fields, in any order, up to
+// the closing brace. Like the fields of a type, each ends where the next
+// `name:` begins.
+func (p *parser) parseDecisionFields(d *ast.DecisionDecl, open token.Token) {
+	if d == nil {
+		return
+	}
+	const field = "a payload field is written `name: type` or `name: type = default`"
+	for p.tok.Kind != token.RBrace {
+		// As in a type body, a declaration or header keyword that isn't a
+		// field name means the brace is missing.
+		if p.tok.Kind == token.EOF || p.tok.Kind == token.Separator ||
+			((isDeclKeyword(p.tok.Kind) || isHeaderKeyword(p.tok.Kind)) && p.peek().Kind != token.Colon) {
+			p.expectClosing(token.RBrace, open)
+		}
+		name := p.parseName("a field name or `reason:`")
+		p.expect(token.Colon, field)
+		if name.Name == "reason" {
+			if d.ReasonName != nil {
+				p.errorAt(name.Pos(), name.End(), "decision "+d.Name.Name+" declares `reason` twice",
+					"list every reason in one field, like `reason: not_eligible | soak_too_short`")
+			}
+			d.ReasonName = name
+			d.Reasons = p.parseReasons()
+			continue
+		}
+		f := &ast.Field{Name: name, Type: p.parseType()}
+		if p.tok.Kind == token.Assign {
+			p.next()
+			p.after = ast.OpInvalid
+			f.Default = p.parseExpr(lowest)
+		}
+		d.Fields = append(d.Fields, f)
+	}
+	if d.ReasonName == nil {
+		p.errorAt(open.Pos, open.End, "decision "+d.Name.Name+" declares no reason",
+			"list its reasons first, like `reason: not_eligible | soak_too_short`")
+	}
+}
+
+// parseReasons parses the values after `reason:`. The reason is an inline
+// list of names, never a type, so a type's syntax gets a hint toward the
+// list; a bare name that happens to be a type is the checker's to reject.
+func (p *parser) parseReasons() []*ast.Ident {
+	const (
+		shape  = "the reasons are listed inline, like `reason: not_eligible | soak_too_short`"
+		asType = "the reason can't name a type"
+	)
+	start := p.tok
+	if start.Kind == token.Question || start.Kind == token.Coalesce {
+		p.errorTok(start, asType, shape)
+	}
+	reasons := p.parseAlternatives("a reason", shape)
+	switch p.tok.Kind {
+	case token.Lt:
+		if len(reasons) == 1 {
+			p.errorAt(start.Pos, p.tok.End, asType, shape)
+		}
+	case token.Assign:
+		p.errorTok(p.tok, "the reason can't have a default",
+			"every constructor names its reason, like `deny(reason: soak_too_short)`")
+	}
+	return reasons
+}
+
+// parseLegacyReasons parses the reason block of the legacy syntax, bare
+// names up to the closing brace.
+func (p *parser) parseLegacyReasons(d *ast.DecisionDecl, open token.Token) {
+	if d == nil {
+		return
+	}
+	for p.tok.Kind != token.RBrace && p.tok.Kind != token.EOF && !p.atDeclEnd() {
+		d.Reasons = append(d.Reasons, p.expectIdent("a reason name", "reasons are bare identifiers, one per line, like `soak_too_short`"))
+	}
+	if len(d.Reasons) == 0 {
+		p.errorAt(open.Pos, open.End, "decision "+d.Name.Name+" declares no reasons", "every decision needs at least one reason in its block")
+	}
+}
+
 // parsePayloadFields parses `(name: type = default, ...)` after a
-// decision's name. A first field called `reason` is the old form, where
-// the reason was a string parameter, and gets a hint toward the block.
-func (p *parser) parsePayloadFields(shape string) []*ast.Field {
-	open := p.expect(token.LParen, shape)
+// decision's name, in the legacy syntax. A first field called `reason` is
+// an older form still, where the reason was a string parameter, and gets
+// a hint toward the current syntax.
+func (p *parser) parsePayloadFields() []*ast.Field {
+	open := p.expect(token.LParen, decisionShape)
 	var fields []*ast.Field
 	for p.tok.Kind != token.RParen && p.tok.Kind != token.EOF {
 		f := &ast.Field{Name: p.parseName("a field name")}
 		if len(fields) == 0 && f.Name.Name == "reason" {
-			p.errorAt(f.Name.Pos(), f.Name.End(), "the reason isn't a payload field",
-				"reasons are declared in a block after the fields: `decision deny { not_eligible soak_too_short }`")
+			p.errorAt(f.Name.Pos(), f.Name.End(), "the reason isn't a string parameter",
+				"list the reasons inside the braces: `decision deny { reason: not_eligible | soak_too_short }`")
 		}
 		p.expect(token.Colon, "a field is written `name: type` or `name: type = default`")
 		f.Type = p.parseType()
@@ -261,24 +402,24 @@ func (p *parser) parseCollect() *ast.CollectDecl {
 	return d
 }
 
-// parseDefault parses `default deny("reason", field: value)`.
+// parseDefault parses `default deny(reason: no_rule_matched, field: value)`.
 func (p *parser) parseDefault() *ast.DefaultDecl {
 	kw := p.tok
 	p.next()
 	if p.tok.Kind != token.Ident || p.peek().Kind != token.LParen {
-		p.unexpected("a decision constructor", "the default is written `default deny(no_rule_matched)`")
+		p.unexpected("a decision constructor", "the default is written `default deny(reason: no_rule_matched)`")
 	}
 	d := &ast.DefaultDecl{Call: p.parseCall()}
 	d.Span = ast.Span{From: kw.Pos, To: d.Call.End()}
 	return d
 }
 
-// parseConflict parses `conflict deny(conflicting_rules, field: value)`.
+// parseConflict parses `conflict deny(reason: conflicting_rules, field: value)`.
 func (p *parser) parseConflict() *ast.ConflictDecl {
 	kw := p.tok
 	p.next()
 	if p.tok.Kind != token.Ident || p.peek().Kind != token.LParen {
-		p.unexpected("a decision constructor", "the conflict outcome is written `conflict deny(conflicting_rules)`")
+		p.unexpected("a decision constructor", "the conflict outcome is written `conflict deny(reason: conflicting_rules)`")
 	}
 	d := &ast.ConflictDecl{Call: p.parseCall()}
 	d.Span = ast.Span{From: kw.Pos, To: d.Call.End()}

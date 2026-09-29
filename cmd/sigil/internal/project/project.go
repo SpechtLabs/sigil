@@ -16,6 +16,7 @@ import (
 
 	"github.com/sierrasoftworks/humane-errors-go"
 
+	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/check"
 	"github.com/spechtlabs/sigil/internal/gokind"
@@ -73,7 +74,8 @@ func LoadKind(file string, linked []Linked) (*Kind, humane.Error) {
 	}
 	k, errs := check.LoadKind(file, src)
 	if errs != nil {
-		return nil, humane.New(errs.Error(), "fix the kind file, or regenerate it from the host's Schema()")
+		source := func(string) []byte { return src }
+		return nil, pretty.Diagnose(errs, source, file+" isn't a valid kind file, so nothing was loaded", "fix the kind file, or regenerate it from the host's Schema()")
 	}
 	for _, l := range linked {
 		if l.Model.Name != k.Name {

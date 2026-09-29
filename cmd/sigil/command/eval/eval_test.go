@@ -25,10 +25,11 @@ func TestEval(t *testing.T) {
 		access  = "access"
 		grants  = "grants"
 		reviews = "reviews"
+		tiers   = "tiers"
 	)
 	tests := []struct {
 		name     string
-		kind     string // access, grants or reviews
+		kind     string // access, grants, reviews or tiers
 		kindFile string // the kind file under testdata, without .sigil; the kind's own when empty
 		input    string // under testdata/inputs, or "-" for stdin
 		stdin    string
@@ -60,6 +61,10 @@ func TestEval(t *testing.T) {
 		{name: "outcome_assert_json", kind: grants, input: "writeonly.json", format: output.JSON},
 		{name: "outcome_assert_yaml", kind: grants, input: "writeonly.json", format: output.YAML},
 		{name: "candidate_assert", kind: reviews, input: "selfreview.json"},
+		{name: "enum", kind: tiers, input: "tier_standard.json"},
+		{name: "enum_json", kind: tiers, input: "tier_standard.json", format: output.JSON},
+		{name: "enum_yaml", kind: tiers, input: "tier_standard.json", format: output.YAML},
+		{name: "enum_outside_the_set", kind: tiers, input: "tier_typo.json"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

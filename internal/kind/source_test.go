@@ -5,12 +5,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/kind"
+	"github.com/spechtlabs/sigil/internal/types"
 )
 
 func TestSource(t *testing.T) {
 	t.Run("deploy approval", func(t *testing.T) {
 		want := `kind DeployApproval version 1
+
+enum Tier: critical | standard | internal
 
 type Release {
   soak: duration
@@ -19,7 +23,7 @@ type Release {
 
 type Service {
   name: string
-  tier: string
+  tier: Tier
   owners: list<string>
   labels: map<string, string>
 }
@@ -39,26 +43,23 @@ input environment: string
 fn split(string, string) -> list<string>
 
 decision deny {
-  not_eligible
-  soak_too_short
-  no_rule_matched
+  reason: not_eligible | soak_too_short | no_rule_matched
 }
 
-decision review(approvers: list<string>) {
-  service_owner
-  everyone
+decision review {
+  reason: service_owner | everyone
+  approvers: list<string>
 }
 
-decision approve(bake: duration = 1h) {
-  release_manager
-  payments_sre
-  open
+decision approve {
+  reason: release_manager | payments_sre | open
+  bake: duration = 1h
 }
 
 collect one
 precedence deny > review > approve
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 `
 		if got := deploy().Source(); got != want {
 			t.Errorf("Source() =\n%s\nwant\n%s", got, want)
@@ -77,29 +78,61 @@ type Actor {
 input actor: Actor
 
 decision read {
-  member
+  reason: member
 }
 
 decision write {
-  member
+  reason: member
 }
 
-decision admin(ttl: duration = 8h) {
-  member
-  everyone
+decision admin {
+  reason: member | everyone
+  ttl: duration = 8h
 }
 
 decision customer_data_writer {
-  member
+  reason: member
 }
 
 decision development_environment_writer {
-  member
+  reason: member
 }
 
 collect all
 `
 		if got := access().Source(); got != want {
+			t.Errorf("Source() =\n%s\nwant\n%s", got, want)
+		}
+	})
+
+	t.Run("enums in declaration order before the types", func(t *testing.T) {
+		tier := &types.Enum{Name: "Tier", Values: []string{"critical", "standard"}}
+		region := &types.Enum{Name: "Region", Values: []string{"eu"}}
+		k := &kind.Kind{
+			Name: "Routing", Version: 1, Collect: kind.CollectAll,
+			Enums:  []*types.Enum{tier, region},
+			Inputs: []*kind.Input{{Name: "quota", Type: &types.Map{Key: region, Value: &types.List{Elem: tier}}}},
+			Decisions: []*kind.Decision{{Name: "route", Reasons: []string{"nearest"}, Fields: []*kind.Field{
+				{Name: "tier", Type: &types.Optional{Elem: tier}},
+				{Name: "regions", Type: &types.List{Elem: region}, HasDefault: true, Default: []any{constant.EnumValue("eu")}},
+			}}},
+		}
+		want := `kind Routing version 1
+
+enum Tier: critical | standard
+enum Region: eu
+
+input quota: map<Region, list<Tier>>
+
+decision route {
+  reason: nearest
+  tier: ?Tier
+  regions: list<Region> = [eu]
+}
+
+collect all
+`
+		if got := k.Source(); got != want {
 			t.Errorf("Source() =\n%s\nwant\n%s", got, want)
 		}
 	})
@@ -113,11 +146,11 @@ collect all
 			"zzz":    int64(1), // unknown fields come last, sorted
 			"aaa":    int64(2),
 		}}
-		want := `approve(open, bake: 15m, detail: ["a"], aaa: 2, zzz: 1)`
+		want := `approve(reason: open, bake: 15m, detail: ["a"], aaa: 2, zzz: 1)`
 		if got := k.Default.Call(k.Decision("approve")); got != want {
 			t.Errorf("Call() = %q, want %q", got, want)
 		}
-		if got := k.Default.Call(nil); got != `approve(open, aaa: 2, bake: 15m, detail: ["a"], zzz: 1)` {
+		if got := k.Default.Call(nil); got != `approve(reason: open, aaa: 2, bake: 15m, detail: ["a"], zzz: 1)` {
 			t.Errorf("Call(nil) = %q", got)
 		}
 	})
@@ -125,7 +158,7 @@ collect all
 	t.Run("conflict outcome after the default", func(t *testing.T) {
 		k := deploy()
 		k.Conflict = &kind.Default{Decision: "approve", Reason: "open", Args: map[string]any{"bake": 15 * time.Minute}}
-		want := "collect one\nprecedence deny > review > approve\n\ndefault deny(no_rule_matched)\nconflict approve(open, bake: 15m)\n"
+		want := "collect one\nprecedence deny > review > approve\n\ndefault deny(reason: no_rule_matched)\nconflict approve(reason: open, bake: 15m)\n"
 		if got := k.Source(); !strings.HasSuffix(got, want) {
 			t.Errorf("Source() ends in\n%s\nwant it to end in\n%s", got[max(0, len(got)-len(want)):], want)
 		}

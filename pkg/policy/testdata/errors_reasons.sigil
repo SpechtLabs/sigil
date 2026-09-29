@@ -2,11 +2,11 @@
 policy p: DeployApproval@1
 
 when true {
-  deny(soak_to_short)
+  deny(reason: soak_to_short)
 }
 
 when release.hotfix {
-  approve("release_manager")
+  approve(reason: "release_manager")
 }
 
 assert("rm", approve.lgtm not in outcome)

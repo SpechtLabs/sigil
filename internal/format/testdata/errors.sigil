@@ -1,5 +1,5 @@
 policy deploy.gate: DeployApproval@1
 
 when release.soak < {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }

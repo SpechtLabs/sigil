@@ -1,7 +1,7 @@
 // Package kind models the contract between a Go host and its policies:
-// the struct types, inputs, host functions and decisions a kind declares,
-// how the candidates that fire resolve into what the host gets back, and
-// which versions of the contract a document may pin.
+// the enums, struct types, inputs, host functions and decisions a kind
+// declares, how the candidates that fire resolve into what the host gets
+// back, and which versions of the contract a document may pin.
 //
 // A Kind is built from one of two sources, a kind file parsed into an AST
 // or a Go input struct walked by reflection, and both produce this one
@@ -11,6 +11,10 @@
 // the two sources can't drift in what they accept. [Kind.Source] prints a kind
 // back as a kind file in canonical form, which is what a host exports and
 // what a stale export is compared by.
+//
+// Enum values share one namespace with inputs, host functions and
+// decisions, so a bare name in a policy means one thing. A decision's
+// reasons are outside it: they're scoped to their decision.
 //
 // A kind's [Collect] mode says how candidates resolve: `collect one`
 // returns the one its [Kind.Precedence] ranks highest, and `collect all`
@@ -43,6 +47,7 @@ type Kind struct {
 	Default    *Default // nil only for a `collect all` kind without one
 	Conflict   *Default // the outcome of a conflict under `collect one`; nil falls back to Default
 	Name       string
+	Enums      []*types.Enum   // enums, in declaration order; printed before the struct types
 	Types      []*types.Struct // struct types, in declaration order
 	Inputs     []*Input
 	Funcs      []*Func
@@ -68,6 +73,29 @@ func (k *Kind) Type(name string) *types.Struct {
 		}
 	}
 	return nil
+}
+
+// Enum returns the enum called name, or nil.
+func (k *Kind) Enum(name string) *types.Enum {
+	for _, e := range k.Enums {
+		if e.Name == name {
+			return e
+		}
+	}
+	return nil
+}
+
+// EnumsWith returns the enums that declare value, in declaration order,
+// or nil. A policy's bare value name resolves against these when nothing
+// else fixes its type: one enum is the answer, two or more are ambiguous.
+func (k *Kind) EnumsWith(value string) []*types.Enum {
+	var out []*types.Enum
+	for _, e := range k.Enums {
+		if e.Has(value) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // Input returns the input called name, or nil.

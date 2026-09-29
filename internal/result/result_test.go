@@ -33,13 +33,13 @@ func TestEvaluateTypedPayloads(t *testing.T) {
 		},
 		{
 			name:       "failed outcome assert",
-			source:     "policy main: Bench@1\nwhen enabled { deny(blocked) }\nassert(\"granted\", allow in outcome)\n",
+			source:     "policy main: Bench@1\nwhen enabled { deny(reason: blocked) }\nassert(\"granted\", allow in outcome)\n",
 			wantTyped:  []any{struct{}{}},
 			candidates: 2,
 		},
 		{
 			name:      "no candidate",
-			source:    "policy main: Bench@1\nwhen not enabled { allow(member) }\n",
+			source:    "policy main: Bench@1\nwhen not enabled { allow(reason: member) }\n",
 			wantTyped: []any{struct{}{}},
 		},
 	}

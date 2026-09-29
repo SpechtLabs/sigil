@@ -55,13 +55,13 @@ use deploy.common.{cleared}
 param min_soak: duration = 24h, min: 1h, max: 48h
 pub let soaked = release.soak >= 1h
 let short = release.soak < min_soak
-when short and cleared { deny(soak_too_short) }`
+when short and cleared { deny(reason: soak_too_short) }`
 	productionPolicy = `policy deploy.production: Test@1
 use deploy.common.{cleared, owns_service}
 param approvers: list<string>
-param tiers: list<string> = ["standard", "internal"]
+param tiers: list<Tier> = [standard, internal]
 when cleared and service.tier in tiers and owns_service {
-  review(service_owner, approvers: approvers)
+  review(reason: service_owner, approvers: approvers)
 }`
 )
 
@@ -74,28 +74,32 @@ func TestImports(t *testing.T) {
 		errs []string
 		help string
 	}{
-		{name: "selective import", src: "policy p: Test@1\nuse deploy.common.{cleared, owns_service as owner}\nwhen cleared and owner { deny(a) }"},
-		{name: "whole module import", src: "policy p: Test@1\nuse deploy.common\nwhen common.cleared and common.open { deny(a) }"},
-		{name: "aliased whole import", src: "policy p: Test@1\nuse deploy.common as c\nwhen c.cleared { deny(a) }"},
+		{name: "selective import", src: "policy p: Test@1\nuse deploy.common.{cleared, owns_service as owner}\nwhen cleared and owner { deny(reason: a) }"},
+		{name: "whole module import", src: "policy p: Test@1\nuse deploy.common\nwhen common.cleared and common.open { deny(reason: a) }"},
+		{name: "aliased whole import", src: "policy p: Test@1\nuse deploy.common as c\nwhen c.cleared { deny(reason: a) }"},
 		{name: "invocation at the top level", src: "policy p: Test@1\nuse deploy.guardrails\nguardrails(min_soak: 4h)"},
 		{name: "invocation with defaults only", src: "policy p: Test@1\nuse deploy.guardrails\nguardrails()"},
-		{name: "invocation in a when with a param argument", src: "policy p: Test@1\nuse deploy.production\nparam mine: list<string> = [\"a\"]\nwhen release.hotfix { production(approvers: mine, tiers: [\"x\"]) }"},
+		{name: "invocation in a when with a param argument", src: "policy p: Test@1\nuse deploy.production\nparam mine: list<string> = [\"a\"]\nwhen release.hotfix { production(approvers: mine, tiers: [\"x\"]) }", errs: []string{"4:59: expected Tier, found string"}, help: "an enum value is a bare name; Tier declares: critical, standard, internal"},
+		{name: "invocation binds an enum param", src: "policy p: Test@1\nuse deploy.production\nparam mine: list<string> = [\"a\"]\nwhen release.hotfix { production(approvers: mine, tiers: [critical, standard]) }"},
+		{name: "invocation binds an enum param from a param", src: "policy p: Test@1\nuse deploy.production\nparam mine: list<Tier> = [internal]\nproduction(approvers: [\"a\"], tiers: mine)"},
+		{name: "invocation binds a qualified enum value", src: "policy p: Test@1\nuse deploy.production\nproduction(approvers: [\"a\"], tiers: [Tier.critical, standard])"},
+		{name: "invocation enum argument misspelled", src: "policy p: Test@1\nuse deploy.production\nproduction(approvers: [\"a\"], tiers: [critcal])", errs: []string{"3:38: Tier has no value `critcal`"}, help: "did you mean `critical`? Tier declares: critical, standard, internal"},
 		{name: "invocation aliased", src: "policy p: Test@1\nuse deploy.production as approvals\napprovals(approvers: [\"a\"])"},
 		{name: "invocation argument from arithmetic on a param", src: "policy p: Test@1\nuse deploy.guardrails\nparam extra: duration = 1h\nguardrails(min_soak: extra + 2h)"},
-		{name: "pub let of a policy", src: "policy p: Test@1\nuse deploy.guardrails.{soaked}\nwhen soaked { deny(a) }"},
-		{name: "pub let of a policy through a whole import", src: "policy p: Test@1\nuse deploy.guardrails\nwhen guardrails.soaked { deny(a) }"},
+		{name: "pub let of a policy", src: "policy p: Test@1\nuse deploy.guardrails.{soaked}\nwhen soaked { deny(reason: a) }"},
+		{name: "pub let of a policy through a whole import", src: "policy p: Test@1\nuse deploy.guardrails\nwhen guardrails.soaked { deny(reason: a) }"},
 		{name: "module importing a module", src: "module m: Test@1\nuse deploy.common.{cleared}\npub let both = cleared and release.hotfix"},
 
-		{name: "unknown document", src: "policy p: Test@1\nuse deploy.commn\nwhen true { deny(a) }", errs: []string{"2:5: unknown document `deploy.commn`"}},
-		{name: "private let", src: "policy p: Test@1\nuse deploy.common.{restricted}\nwhen restricted { deny(a) }", errs: []string{"2:20: let `restricted` of deploy.common is private", "3:6: unknown name `restricted`"}, help: "only `pub let`s can be imported; mark it `pub let restricted = ...` in deploy.common"},
-		{name: "unknown let with suggestion", src: "policy p: Test@1\nuse deploy.common.{clearedd}\nwhen true { deny(a) }", errs: []string{"2:20: deploy.common has no pub let `clearedd`"}, help: "did you mean `cleared`? deploy.common exports: cleared, names, open, owns_service"},
-		{name: "unknown qualified let", src: "policy p: Test@1\nuse deploy.common\nwhen common.nope { deny(a) }", errs: []string{"3:13: deploy.common has no pub let `nope`"}},
-		{name: "import collides with an input", src: "policy p: Test@1\nuse deploy.common.{cleared as actor}\nwhen true { deny(a) }", errs: []string{"2:31: `actor` is already the name of an input"}},
-		{name: "import collides with a let", src: "policy p: Test@1\nuse deploy.common.{cleared}\nlet cleared = true\nwhen true { deny(a) }", errs: []string{"3:5: `cleared` is already the name of a let"}},
-		{name: "module used as a value", src: "policy p: Test@1\nuse deploy.common\nwhen common { deny(a) }", errs: []string{"3:6: `common` is a module, not a value"}, help: "read one of its pub lets as `common.<let>`"},
+		{name: "unknown document", src: "policy p: Test@1\nuse deploy.commn\nwhen true { deny(reason: a) }", errs: []string{"2:5: unknown document `deploy.commn`"}},
+		{name: "private let", src: "policy p: Test@1\nuse deploy.common.{restricted}\nwhen restricted { deny(reason: a) }", errs: []string{"2:20: let `restricted` of deploy.common is private", "3:6: unknown name `restricted`"}, help: "only `pub let`s can be imported; mark it `pub let restricted = ...` in deploy.common"},
+		{name: "unknown let with suggestion", src: "policy p: Test@1\nuse deploy.common.{clearedd}\nwhen true { deny(reason: a) }", errs: []string{"2:20: deploy.common has no pub let `clearedd`"}, help: "did you mean `cleared`? deploy.common exports: cleared, names, open, owns_service"},
+		{name: "unknown qualified let", src: "policy p: Test@1\nuse deploy.common\nwhen common.nope { deny(reason: a) }", errs: []string{"3:13: deploy.common has no pub let `nope`"}},
+		{name: "import collides with an input", src: "policy p: Test@1\nuse deploy.common.{cleared as actor}\nwhen true { deny(reason: a) }", errs: []string{"2:31: `actor` is already the name of an input"}},
+		{name: "import collides with a let", src: "policy p: Test@1\nuse deploy.common.{cleared}\nlet cleared = true\nwhen true { deny(reason: a) }", errs: []string{"3:5: `cleared` is already the name of a let"}},
+		{name: "module used as a value", src: "policy p: Test@1\nuse deploy.common\nwhen common { deny(reason: a) }", errs: []string{"3:6: `common` is a module, not a value"}, help: "read one of its pub lets as `common.<let>`"},
 		{name: "module invoked", src: "policy p: Test@1\nuse deploy.common\ncommon()", errs: []string{"3:1: `common` is a module and can't be invoked"}},
-		{name: "policy used as a value", src: "policy p: Test@1\nuse deploy.guardrails\nwhen guardrails { deny(a) }", errs: []string{"3:6: `guardrails` is an imported policy, not a value"}},
-		{name: "optional chaining on an import", src: "policy p: Test@1\nuse deploy.common\nwhen common?.cleared { deny(a) }", errs: []string{"3:14: `common` isn't optional"}},
+		{name: "policy used as a value", src: "policy p: Test@1\nuse deploy.guardrails\nwhen guardrails { deny(reason: a) }", errs: []string{"3:6: `guardrails` is an imported policy, not a value"}},
+		{name: "optional chaining on an import", src: "policy p: Test@1\nuse deploy.common\nwhen common?.cleared { deny(reason: a) }", errs: []string{"3:14: `common` isn't optional"}},
 
 		{name: "invocation with a positional argument", src: "policy p: Test@1\nuse deploy.guardrails\nguardrails(4h)", errs: []string{"3:12: invocation arguments are named"}},
 		{name: "invocation with an unknown param", src: "policy p: Test@1\nuse deploy.guardrails\nguardrails(min_soke: 4h)", errs: []string{"3:12: policy deploy.guardrails has no param `min_soke`"}, help: "did you mean `min_soak`? deploy.guardrails declares: min_soak"},

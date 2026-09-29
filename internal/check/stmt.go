@@ -187,22 +187,26 @@ func (c *Checker) declare(name *ast.Ident, env *Env, b Binding) bool {
 
 // keeps reports whether a document name may take the name prev holds. A
 // document pinned to an older kind version compiled against that version,
-// where any collision was an error, so a kind input, host function or
-// decision it collides with must have been added since. The document keeps
-// its own name, and adding a name to a kind never breaks a policy.
+// where any collision was an error, so a kind input, host function,
+// decision, enum or enum value it collides with must have been added
+// since. The
+// document keeps its own name, and adding a name to a kind never breaks a
+// policy.
 func (c *Checker) keeps(prev Binding) bool {
 	switch prev.Entity {
-	case Input, Function, DecisionName:
+	case Input, Function, DecisionName, EnumValue, EnumType:
 		return c.older
 	}
 	return false
 }
 
 // resolveType turns a type expression into a type against k's struct
-// types, for a param or for a declaration in the kind itself, which
-// inKind says. An unknown name or a map key that isn't a scalar is
+// types and enums, for a param or for a declaration in the kind itself,
+// which inKind says. An unknown name or a map key that isn't a scalar is
 // reported here with a hint and becomes types.Invalid, and so does any
-// type built around one; kind.Validate lets types.Invalid pass.
+// type built around one; kind.Validate lets types.Invalid pass. A param's
+// map can't hold enum values, which the kind's own declarations leave to
+// kind.Validate.
 func (c *Checker) resolveType(t ast.Type, k *kind.Kind, inKind bool) types.Type {
 	switch t := t.(type) {
 	case *ast.NamedType:
@@ -212,11 +216,17 @@ func (c *Checker) resolveType(t ast.Type, k *kind.Kind, inKind bool) types.Type 
 		if s := k.Type(t.Name.Name); s != nil {
 			return s
 		}
+		if e := k.Enum(t.Name.Name); e != nil {
+			return e
+		}
 		candidates := types.ScalarNames()
 		for _, s := range k.Types {
 			candidates = append(candidates, s.Name)
 		}
-		help := "types are the built-ins and the struct types the kind declares"
+		for _, e := range k.Enums {
+			candidates = append(candidates, e.Name)
+		}
+		help := "types are the built-ins and the struct types and enums the kind declares"
 		if inKind {
 			help = "declare it with `type " + t.Name.Name + " { ... }`, or use a built-in type"
 		}
@@ -243,7 +253,11 @@ func (c *Checker) resolveType(t ast.Type, k *kind.Kind, inKind bool) types.Type 
 			return types.Invalid
 		}
 		if !types.IsKey(key) {
-			c.errorf(t.Key, "map keys are scalars: bool, int, float, string, duration or timestamp", "%s can't be a map key", key)
+			c.errorf(t.Key, keyHelp, "%s can't be a map key", key)
+			return types.Invalid
+		}
+		if _, isEnum := elemOf(val).(*types.Enum); isEnum && !inKind {
+			c.errorf(t.Value, enumValueHelp, "an enum can't be a map value")
 			return types.Invalid
 		}
 		return &types.Map{Key: key, Value: val}
@@ -419,23 +433,28 @@ func (c *Checker) callStmt(s *ast.CallStmt, env *Env) {
 	}
 }
 
-// constructor checks a decision constructor: a literal reason first, then
-// the payload fields by name, each of its declared type, with every field
-// without a default given exactly once.
+// constructor checks a decision constructor: every argument named, in any
+// order, each at most once. `reason:` names one of the decision's
+// reasons, and the other arguments are payload fields, each of its
+// declared type, with every field without a default given.
 func (c *Checker) constructor(s *ast.CallStmt, env *Env) {
 	d := env.Kind().Decision(s.Name.Name)
 	if d == nil {
 		return
 	}
 	c.info.Constructors[s] = d
-
-	c.reason(s, d, env)
+	if r := c.reasonArg(s, d, env); r != nil {
+		c.info.Reasons[s] = r
+	}
 
 	given := map[string]bool{}
 	for _, arg := range s.Args {
+		if arg.Name.Name == reasonField {
+			continue
+		}
 		f := d.Field(arg.Name.Name)
 		if f == nil {
-			help := fmt.Sprintf("%s is declared as: %s", d.Name, d.Signature())
+			help := d.Signature()
 			if closest, ok := closestField(d, arg.Name.Name); ok {
 				help = fmt.Sprintf("did you mean %q? %s", closest, help)
 			}
@@ -451,23 +470,43 @@ func (c *Checker) constructor(s *ast.CallStmt, env *Env) {
 	}
 	for _, f := range d.Fields {
 		if !given[f.Name] && !f.HasDefault {
-			c.errorf(s, fmt.Sprintf("%s is declared as: %s", d.Name, d.Signature()), "decision %s needs field %q", d.Name, f.Name)
+			c.errorf(s, d.Signature(), "decision %s needs field %q", d.Name, f.Name)
 		}
 	}
 }
 
-// reason checks a constructor's first argument: a bare name, one of the
-// decision's declared reasons. The name is a reason, not a value, so it's
-// never resolved against the document's names.
-func (c *Checker) reason(s *ast.CallStmt, d *kind.Decision, env *Env) {
+// reasonArg checks the reason a constructor, or a kind's default, gives
+// decision d: the named argument `reason:`, in any position, holding a
+// bare name d declares. The name is a reason, not a value, so it's never
+// resolved against the document's names. A reason written first without
+// its label is the old form, and the error spells out the call with the
+// label. It returns the reason's name, or nil after reporting what's
+// wrong. env is nil for the default, which has no document around it.
+func (c *Checker) reasonArg(s *ast.CallStmt, d *kind.Decision, env *Env) *ast.Ident {
 	declares := fmt.Sprintf("%s declares: %s", d.Name, strings.Join(d.Reasons, ", "))
-	switch r := s.Positional.(type) {
-	case nil:
-		c.errorf(s, fmt.Sprintf("write `%s(<reason>)`; %s", d.Name, declares), "decision %s needs a reason", d.Name)
+	var named *ast.NamedArg
+	for _, arg := range s.Args {
+		switch {
+		case arg.Name.Name != reasonField:
+		case named != nil:
+			c.errorf(arg.Name, "a constructor names one reason", "field %q is given twice", reasonField)
+		default:
+			named = arg
+		}
+	}
+	if s.Positional != nil {
+		c.positionalReason(s, d, named, env)
+		return nil
+	}
+	if named == nil {
+		c.errorf(s, fmt.Sprintf("write `%s(reason: <reason>)`; %s", d.Name, declares), "decision %s needs a reason", d.Name)
+		return nil
+	}
+	switch r := named.Value.(type) {
 	case *ast.Ident:
 		if d.HasReason(r.Name) {
 			c.record(r, types.Decision)
-			return
+			return r
 		}
 		help := declares
 		if closest, ok := nearest(r.Name, d.Reasons); ok {
@@ -477,20 +516,116 @@ func (c *Checker) reason(s *ast.CallStmt, d *kind.Decision, env *Env) {
 	case *ast.StringLit:
 		help := fmt.Sprintf("reasons are declared names, not strings; %s", declares)
 		if d.HasReason(r.Value) {
-			help = fmt.Sprintf("reasons are declared names, not strings; write `%s(%s)`", d.Name, r.Value)
+			help = fmt.Sprintf("reasons are declared names, not strings; write `reason: %s`", r.Value)
 		}
 		c.errorf(r, help, "decision reason must be a bare name")
-	default:
-		c.errorf(s.Positional, fmt.Sprintf("a reason is one of the names the kind declares; put dynamic text in a `detail` field. %s", declares),
+	case *ast.SelectorExpr:
+		if qualifiedName(r, env) {
+			c.qualifiedReason(r, d, declares)
+			break
+		}
+		c.errorf(r, fmt.Sprintf("a reason is one of the names the kind declares; put dynamic text in a `detail` field. %s", declares),
 			"decision reason must be a bare name")
-		c.Expr(s.Positional, env)
+		if env != nil {
+			c.Expr(r, env)
+		}
+	default:
+		c.errorf(named.Value, fmt.Sprintf("a reason is one of the names the kind declares; put dynamic text in a `detail` field. %s", declares),
+			"decision reason must be a bare name")
+		if env != nil {
+			c.Expr(named.Value, env)
+		}
 	}
+	return nil
 }
 
+// positionalReason reports a reason passed without its `reason:` label,
+// with the whole call rewritten as the fix. named is the call's labeled
+// reason, if it has one as well.
+func (c *Checker) positionalReason(s *ast.CallStmt, d *kind.Decision, named *ast.NamedArg, env *Env) {
+	const msg = "the reason is a named argument"
+	if named != nil {
+		c.errorf(s.Positional, fmt.Sprintf("remove `%s`; the call already names `reason: %s`", ast.Sprint(s.Positional), ast.Sprint(named.Value)), msg)
+		return
+	}
+	reason := ""
+	switch r := s.Positional.(type) {
+	case *ast.Ident:
+		reason = r.Name
+	case *ast.StringLit:
+		reason = r.Value
+	case *ast.SelectorExpr:
+		if qualifiedName(r, env) {
+			reason = r.Sel.Name
+		} else if env != nil {
+			defer c.Expr(s.Positional, env)
+		}
+	default:
+		if env != nil {
+			defer c.Expr(s.Positional, env)
+		}
+	}
+	help := "write `" + fixedCall(s, reason) + "`"
+	if !d.HasReason(reason) {
+		if closest, ok := nearest(reason, d.Reasons); ok && reason != "" {
+			help = "write `" + fixedCall(s, closest) + "`"
+		} else {
+			help = fmt.Sprintf("write `%s`; %s declares: %s", fixedCall(s, "<reason>"), d.Name, strings.Join(d.Reasons, ", "))
+		}
+	}
+	c.errorf(s.Positional, help, msg)
+}
+
+// fixedCall renders s with reason as its labeled first argument, followed
+// by its named arguments as written.
+func fixedCall(s *ast.CallStmt, reason string) string {
+	args := make([]string, 0, 1+len(s.Args))
+	args = append(args, reasonField+": "+reason)
+	for _, arg := range s.Args {
+		args = append(args, arg.Name.Name+": "+ast.Sprint(arg.Value))
+	}
+	return s.Name.Name + "(" + strings.Join(args, ", ") + ")"
+}
+
+// closestField returns the payload field of d, or `reason`, most like
+// name, for a "did you mean".
 func closestField(d *kind.Decision, name string) (string, bool) {
-	names := make([]string, len(d.Fields))
-	for i, f := range d.Fields {
-		names[i] = f.Name
+	names := make([]string, 0, len(d.Fields)+1)
+	names = append(names, reasonField)
+	for _, f := range d.Fields {
+		names = append(names, f.Name)
 	}
 	return nearest(name, names)
+}
+
+// qualifiedReason reports a reason written like a qualified value, such
+// as `Tier.critical` or `approve.release_manager`. Reasons belong to their
+// decision and aren't an enum's values, so the fix is the bare name.
+func (c *Checker) qualifiedReason(r *ast.SelectorExpr, d *kind.Decision, declares string) {
+	const msg = "a reason is a bare name"
+	name := r.Sel.Name
+	if !d.HasReason(name) {
+		closest, ok := nearest(name, d.Reasons)
+		if !ok {
+			c.errorf(r, fmt.Sprintf("write `reason: <reason>`; %s", declares), msg)
+			return
+		}
+		name = closest
+	}
+	c.errorf(r, fmt.Sprintf("write `reason: %s`", name), msg)
+}
+
+// qualifiedName reports whether x reads like a qualified name, an enum's
+// value or a decision's reason, rather than a field of a value: its
+// operand names an enum or a decision. A kind file has no values, so
+// there, with env nil, any name qualifies.
+func qualifiedName(x *ast.SelectorExpr, env *Env) bool {
+	id, ok := x.X.(*ast.Ident)
+	switch {
+	case !ok:
+		return false
+	case env == nil:
+		return true
+	}
+	return env.Kind().Enum(id.Name) != nil || env.Kind().Decision(id.Name) != nil
 }

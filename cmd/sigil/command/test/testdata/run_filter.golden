@@ -1,6 +1,6 @@
 --- FAIL: testdata/failing/main_test.yaml:3: wrong reason
-      want allow(team_member)
-      got  allow(admin)
+      want allow(reason: team_member)
+      got  allow(reason: admin)
 --- FAIL: testdata/failing/main_test.yaml:9: wrong payload
       want ttl = 1h
       got  ttl = 8h

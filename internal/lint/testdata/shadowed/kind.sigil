@@ -1,21 +1,31 @@
 kind DeployApproval version 2
 
+enum Region: eu | us
+enum Zone: eu | apac
+
 type Service {
   tier: string
 }
 
 input service: Service
 input approvers: list<string>
+input region: Region
+
+fn split(string, string) -> list<string>
 
 decision deny {
-  no_rule_matched
+  reason: no_rule_matched
+}
+
+decision escalate {
+  reason: on_call
 }
 
 decision approve {
-  ok
+  reason: ok
 }
 
 collect one
-precedence deny > approve
+precedence deny > escalate > approve
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)

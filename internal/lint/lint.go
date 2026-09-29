@@ -9,7 +9,7 @@
 //
 //   - unused-import: a `use` binds a name nothing reads or invokes.
 //   - shadowed-kind-name: a document keeps a name the kind has since given
-//     to an input, host function or decision.
+//     to an input, host function, decision, enum or enum value.
 //   - unused-let: a private let is never read.
 //   - gated-assert: a policy holding asserts, directly or through its own
 //     invocations, is invoked under `when` and the host doesn't require it.
@@ -285,7 +285,7 @@ func (l *linter) unusedLets(d *bundle.Document, stmts []ast.Stmt) {
 		if let, ok := s.(*ast.LetStmt); ok {
 			lets = append(lets, let)
 		}
-		for _, x := range exprsOf(s) {
+		for _, x := range exprsOf(d, s) {
 			names(x, seen)
 		}
 	})
@@ -297,16 +297,27 @@ func (l *linter) unusedLets(d *bundle.Document, stmts []ast.Stmt) {
 	}
 }
 
+// shadows reports the document names the checker let a document keep
+// although the kind has since given them to an input, host function,
+// decision, enum or enum value.
 func (l *linter) shadows(d *bundle.Document) {
 	for _, id := range d.Info.Shadows {
 		what := "name"
-		switch {
+		switch enums := l.o.Kind.EnumsWith(id.Name); {
 		case l.o.Kind.Input(id.Name) != nil:
 			what = "input"
 		case l.o.Kind.Func(id.Name) != nil:
 			what = "host function"
 		case l.o.Kind.Decision(id.Name) != nil:
 			what = "decision"
+		case l.o.Kind.Enum(id.Name) != nil:
+			what = "enum"
+		case len(enums) > 0:
+			names := make([]string, len(enums))
+			for i, e := range enums {
+				names[i] = e.Name
+			}
+			what = strings.Join(names, " and ") + " value"
 		}
 		l.reportf(ShadowedKindName, d, id,
 			fmt.Sprintf("the kind's %s is out of reach here; rename %s and raise the document's pin to %s@%d", what, id.Name, l.o.Kind.Name, l.o.Kind.Version),
@@ -432,9 +443,11 @@ func walkStmts(stmts []ast.Stmt, fn func(ast.Stmt)) {
 	}
 }
 
-// exprsOf returns a statement's own expressions, not those of the
-// statements in its body.
-func exprsOf(s ast.Stmt) []ast.Expr {
+// exprsOf returns the expressions a statement of d reads names in, not
+// those of the statements in its body. A constructor's `reason:` names one
+// of its decision's reasons, which are outside the document's namespace,
+// so it reads nothing.
+func exprsOf(d *bundle.Document, s ast.Stmt) []ast.Expr {
 	switch s := s.(type) {
 	case *ast.LetStmt:
 		return []ast.Expr{s.Value}
@@ -445,8 +458,15 @@ func exprsOf(s ast.Stmt) []ast.Expr {
 	case *ast.AssertStmt:
 		return []ast.Expr{s.Cond}
 	case *ast.CallStmt:
-		out := []ast.Expr{s.Positional}
+		_, constructor := d.Info.Constructors[s]
+		var out []ast.Expr
+		if !constructor {
+			out = append(out, s.Positional)
+		}
 		for _, a := range s.Args {
+			if constructor && a.Name.Name == "reason" {
+				continue
+			}
 			out = append(out, a.Value)
 		}
 		return out

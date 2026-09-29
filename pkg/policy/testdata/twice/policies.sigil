@@ -6,7 +6,7 @@ param region: string
 param approvers: list<string>
 
 when region in actor.regions {
-  review(service_owner, approvers: approvers)
+  review(reason: service_owner, approvers: approvers)
 }
 
 ---

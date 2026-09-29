@@ -27,18 +27,17 @@ input environment: string
 fn split(string, string) -> list<string>
 
 decision deny {
-  not_eligible
-  soak_too_short
-  no_rule_matched
+  reason: not_eligible | soak_too_short | no_rule_matched
 }
 
-decision review(approvers: list<string>) {
-  service_owner
+decision review {
+  reason: service_owner
+  approvers: list<string>
 }
 
-decision approve(bake: duration = 1h) {
-  release_manager
-  payments_sre
+decision approve {
+  reason: release_manager | payments_sre
+  bake: duration = 1h
 }
 
 collect one
@@ -46,4 +45,4 @@ precedence deny > review > approve
 precedence deny: not_eligible > soak_too_short > no_rule_matched
 precedence approve: release_manager > payments_sre
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)

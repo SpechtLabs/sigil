@@ -15,6 +15,9 @@ var (
 	}}
 	service2 = &types.Struct{Name: "Service"} // same name, no fields: still identical
 	actor    = &types.Struct{Name: "Actor"}
+	tier     = &types.Enum{Name: "Tier", Values: []string{"critical", "standard", "internal"}}
+	tier2    = &types.Enum{Name: "Tier"} // same name, no values: still identical
+	plan     = &types.Enum{Name: "Plan", Values: []string{"critical", "standard", "internal"}}
 )
 
 func TestString(t *testing.T) {
@@ -39,6 +42,9 @@ func TestString(t *testing.T) {
 		{&types.Optional{Elem: service}, "?Service"},
 		{service, "Service"},
 		{&types.List{Elem: &types.Optional{Elem: service}}, "list<?Service>"},
+		{tier, "Tier"},
+		{&types.Optional{Elem: tier}, "?Tier"},
+		{&types.Map{Key: tier, Value: &types.List{Elem: tier}}, "map<Tier, list<Tier>>"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
@@ -68,6 +74,11 @@ func TestIdentical(t *testing.T) {
 		{"structs by name", service, service2, true},
 		{"structs differ by name", service, actor, false},
 		{"struct is not a list", service, &types.List{Elem: service}, false},
+		{"enums by name", tier, tier2, true},
+		{"enums with the same values differ by name", tier, plan, false},
+		{"enum is not a string", tier, types.String, false},
+		{"enum is not a struct of its name", tier, &types.Struct{Name: "Tier"}, false},
+		{"lists of enums", &types.List{Elem: tier}, &types.List{Elem: tier2}, true},
 		{"nested", &types.Map{Key: types.String, Value: &types.List{Elem: &types.Optional{Elem: service}}},
 			&types.Map{Key: types.String, Value: &types.List{Elem: &types.Optional{Elem: service2}}}, true},
 		{"nil is nothing", nil, types.Int, false},
@@ -105,6 +116,8 @@ func TestPredicates(t *testing.T) {
 		{&types.Map{Key: types.String, Value: types.Int}, false, false, false, false},
 		{&types.Optional{Elem: types.Int}, false, false, false, false},
 		{service, false, false, false, false},
+		{tier, false, false, true, true},
+		{&types.Optional{Elem: tier}, false, false, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.typ.String(), func(t *testing.T) {
@@ -126,5 +139,33 @@ func TestPredicates(t *testing.T) {
 		if !types.IsReserved(name) {
 			t.Errorf("IsReserved(%q) = false, want true", name)
 		}
+	}
+}
+
+func TestIsComparable(t *testing.T) {
+	tests := []struct {
+		typ  types.Type
+		want bool
+	}{
+		{types.String, true},
+		{types.Decision, true},
+		{types.Invalid, false},
+		{tier, true},
+		{&types.List{Elem: tier}, true},
+		{&types.Map{Key: tier, Value: types.Int}, true},
+		{&types.Map{Key: types.String, Value: &types.List{Elem: tier}}, true},
+		{&types.Optional{Elem: tier}, true},
+		{service, false},
+		{&types.List{Elem: service}, false},
+		{&types.Map{Key: types.String, Value: service}, false},
+		{&types.Optional{Elem: service}, false},
+		{types.NewCandidate("review", nil), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.typ.String(), func(t *testing.T) {
+			if got := types.IsComparable(tt.typ); got != tt.want {
+				t.Errorf("IsComparable(%v) = %v, want %v", tt.typ, got, tt.want)
+			}
+		})
 	}
 }

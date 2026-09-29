@@ -1,5 +1,5 @@
 policy deploy.production: DeployApproval@1
 
-when service.tier == "standard" {
-  approve(release_manager)
+when service.tier == standard {
+  approve(reason: release_manager)
 }

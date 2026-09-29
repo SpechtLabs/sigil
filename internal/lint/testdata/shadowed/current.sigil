@@ -1,5 +1,5 @@
 policy team.current: DeployApproval@2
 
 when service.tier == "x" {
-  approve(ok)
+  approve(reason: ok)
 }

@@ -1,11 +1,11 @@
 policy team.aliased: DeployApproval@1
 
 // Read through their aliases, and an aliased whole import invoked: used.
-use deploy.common.{owns as mine, critical as crit}
+use deploy.common.{owns as mine, is_critical as crit}
 use deploy.production as prod
 
 prod()
 
 when mine and not crit {
-  approve(payments_sre)
+  approve(reason: payments_sre)
 }

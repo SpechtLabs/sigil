@@ -13,7 +13,7 @@ import (
 // TestFold checks that fold keeps the first of every group of candidates
 // equal in decision, reason and payload, in order, whatever the payload
 // holds. Each case lists its payloads as one field's values, all from
-// allow(member) unless the case says otherwise.
+// allow(reason: member) unless the case says otherwise.
 func TestFold(t *testing.T) {
 	allow, deny := &kind.Decision{Name: "allow"}, &kind.Decision{Name: "deny"}
 	member, oncall := &Rule{Decision: allow, Reason: "member"}, &Rule{Decision: allow, Reason: "oncall"}
@@ -24,7 +24,7 @@ func TestFold(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		rules  []*Rule // per value; allow(member) for every value when nil
+		rules  []*Rule // per value; allow(reason: member) for every value when nil
 		values []any   //nolint:emptyinterface // payload field values, as Go values
 		want   []int   // the indices of the values fold keeps
 	}{
