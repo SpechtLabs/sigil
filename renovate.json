@@ -165,6 +165,16 @@
       "groupSlug": "golint-sl"
     },
     {
+      "description": "The commit message check must parse with the release-please version the release-please action bundles (see its package-lock.json), not the newest one. Bump it by hand alongside the action.",
+      "matchFileNames": [
+        ".github/commit-lint/package.json"
+      ],
+      "matchPackageNames": [
+        "release-please"
+      ],
+      "enabled": false
+    },
+    {
       "description": "Group docs site dependencies together.",
       "matchFileNames": [
         "docs/package.json",

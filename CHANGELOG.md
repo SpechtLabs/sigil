@@ -10,6 +10,7 @@
 ### Features
 
 * add a filter expression for lists ([#56](https://github.com/SpechtLabs/sigil/issues/56)) ([b5b724e](https://github.com/SpechtLabs/sigil/commit/b5b724ec2417046253299e57dc6d800d33a4e42c))
+* read candidate payloads in outcome asserts ([#57](https://github.com/SpechtLabs/sigil/issues/57)) ([e44b1c6](https://github.com/SpechtLabs/sigil/commit/e44b1c6e4afa4c8ab68b3116add7f42d7f15eaa4))
 
 ## [0.3.0](https://github.com/SpechtLabs/sigil/compare/v0.2.1...v0.3.0) (2026-09-28)
 
@@ -84,6 +85,7 @@
 * **lang:** imports, policy invocation and multi-document bundles ([#8](https://github.com/SpechtLabs/sigil/issues/8)) ([e0af09e](https://github.com/SpechtLabs/sigil/commit/e0af09e94235b82fb4becdda1ea5da181892a2ff))
 * **lang:** modules, imports, invocation, required policies and the bundle loader ([#33](https://github.com/SpechtLabs/sigil/issues/33)) ([45bb9a2](https://github.com/SpechtLabs/sigil/commit/45bb9a2261a9f79d8db29e8f342acdd5c31d368a))
 * **lang:** pin kind versions, has-only map keys, pin-aware names ([#21](https://github.com/SpechtLabs/sigil/issues/21)) ([7247e21](https://github.com/SpechtLabs/sigil/commit/7247e2191d32507977e8212676946e9ee4d9d410))
+* **lang:** settle asserts, collect modes, lets, optionals and param bounds ([#20](https://github.com/SpechtLabs/sigil/issues/20)) ([820bfcd](https://github.com/SpechtLabs/sigil/commit/820bfcdd2798ae20cdc1c734278ce966e230ec00))
 * **parser:** lexer, Pratt expression parser and document parser ([#17](https://github.com/SpechtLabs/sigil/issues/17)) ([07f10f1](https://github.com/SpechtLabs/sigil/commit/07f10f14a3d72093bc983e9f63414e5977763cf4))
 * **types:** kinds, type checker and expression evaluator ([#18](https://github.com/SpechtLabs/sigil/issues/18)) ([95896bb](https://github.com/SpechtLabs/sigil/commit/95896bb84f4280012f9d9e01e49c1e8a9a09b3f1))
 
