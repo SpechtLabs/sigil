@@ -20,6 +20,13 @@ on:
   # runs on every push to main and calls this workflow, so a push trigger here
   # would run everything twice against the same commit.
   workflow_call:
+    inputs:
+      # Every commit on main lands through a pull request whose run already
+      # fuzzed it and benchmarked it against its base. On main, HEAD^ is that
+      # same base, so the release run would repeat the PR's comparison.
+      skip-fuzz-and-bench:
+        type: boolean
+        default: false
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -170,6 +177,9 @@ jobs:
       - test
       - fuzz
       - benchmark
+    # Fuzz and benchmark are skipped on release runs; a skipped need would skip
+    # this job too, so only a failure or cancellation stops it.
+    if: ${{ !cancelled() && !failure() }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -194,6 +204,7 @@ jobs:
 
   fuzz:
     name: Fuzz smoke tests
+    if: ${{ !inputs.skip-fuzz-and-bench }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # devtool reads each fuzz run flag from FUZZ_<FLAG>.
@@ -233,12 +244,13 @@ jobs:
 
   benchmark:
     name: Benchmark regressions
+    if: ${{ !inputs.skip-fuzz-and-bench }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       # devtool reads each bench run flag from BENCH_<FLAG>. PRs compare the
-      # tested merge result with its base; release and manual runs compare the
-      # checked-out commit with its parent.
+      # tested merge result with its base; manual runs compare the checked-out
+      # commit with its parent.
       BENCH_BASELINE: ${{ github.event.pull_request.base.sha || 'HEAD^' }}
       BENCH_COUNT: "10"
       BENCH_TIME: 200ms
