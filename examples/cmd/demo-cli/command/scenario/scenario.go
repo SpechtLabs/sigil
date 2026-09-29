@@ -1,4 +1,5 @@
-// Package scenario implements the demo-cli scenarios command.
+// Package scenario implements `demo-cli scenarios`, which lists the
+// built-in deploy and access scenarios with their team and what each shows.
 package scenario
 
 import (

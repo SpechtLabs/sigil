@@ -1,12 +1,3 @@
-// Package store holds the policies deploygate serves and reloads them in
-// place. A compiled policy is immutable, so a reload compiles the whole new
-// bundle aside and swaps one pointer; in-flight evaluations finish on the
-// bundle they started with, and a bundle that doesn't compile never replaces
-// the one that serves.
-//
-// A Store is generic over a kind's input type. deploygate runs two: one for
-// the DeployApproval team policies, one root per team, and one for the
-// AccessGrant bundle, with the single root access.main.
 package store
 
 import (
@@ -60,6 +51,8 @@ const (
 // Store serves the current policy bundle of one kind and replaces it on
 // Load. Its configuration is fixed by New; the only thing that changes
 // afterwards is the snapshot pointer, and loads are serialized by the guard.
+// A Store is safe for concurrent use, and reading the snapshot never waits
+// for a load.
 type Store[In any] struct {
 	kind *policy.Kind[In]
 	cfg  config
@@ -78,8 +71,10 @@ type loadGuard struct {
 
 // New creates a store for kind. It has no bundle, root or required policy of
 // its own; WithBundle, WithTeams or WithRoots, and WithRequired set them.
-// NewDeploy and NewAccess set them for deploygate's two kinds. Nothing is
-// loaded until Load succeeds.
+// NewDeploy and NewAccess set them for deploygate's two kinds. Without
+// WithMetrics the store reports on a private set of metrics, and without
+// WithTracer it uses the global tracer provider. Nothing is loaded until
+// Load succeeds.
 func New[In any](kind *policy.Kind[In], opts ...Option) *Store[In] {
 	cfg := config{source: SourceEmbedded, clock: WallClock{}}
 	for _, opt := range opts {
@@ -130,7 +125,8 @@ func (s *Store[In]) InitialLoad(ctx context.Context) humane.Error {
 // Load compiles every root policy from the bundle and, when all of them
 // compile, makes them the snapshot that serves. When any fails, the previous
 // snapshot keeps serving and the error's cause is the compiler's
-// *policy.CompileError with its diagnostics.
+// [*policy.CompileError] with its diagnostics. It records the trigger
+// manual; the reload endpoint calls it.
 func (s *Store[In]) Load(ctx context.Context) humane.Error {
 	return s.load(ctx, TriggerManual)
 }
@@ -144,7 +140,8 @@ func (s *Store[In]) Snapshot() (*Snapshot[In], bool) {
 }
 
 // Policy returns the compiled root policy for key, a team or a fixed root's
-// name, from the current snapshot.
+// name, from the current snapshot. It returns false before the first
+// successful Load and for a key the snapshot doesn't serve.
 func (s *Store[In]) Policy(key string) (*policy.Policy[In], bool) {
 	snap, ok := s.Snapshot()
 	if !ok {

@@ -1,4 +1,6 @@
-// Package policy implements the demo-cli policies command.
+// Package policy implements `demo-cli policies`, the parent of the list and
+// reload subcommands. Run on its own, it lists the policies like `policies
+// list`.
 package policy
 
 import (

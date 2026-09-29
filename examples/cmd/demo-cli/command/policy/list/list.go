@@ -1,4 +1,6 @@
-// Package list implements the demo-cli list command.
+// Package list implements `demo-cli policies list`, which prints every
+// kind deploygate serves, with its version, source, load time and policies,
+// from GET /api/v1/policies.
 package list
 
 import (

@@ -1,6 +1,18 @@
 // Package telemetry sets up what deploygate reports about itself: traces
 // through OpenTelemetry, logs through otelzap so they land on the active span,
 // Prometheus metrics, and optional continuous Go runtime profiles.
+//
+// [Setup] installs the tracer provider and the logger as process globals
+// and starts the profiler when PYROSCOPE_SERVER_ADDRESS is set;
+// [Telemetry.Shutdown] flushes them and puts the previous globals back.
+// [FromContext] returns the logger with the trace and span ids of the
+// current span.
+//
+// [Metrics] is where a host of Sigil records what its policies do: decisions
+// by team, policy, decision and reason, roles granted, evaluation durations,
+// failed evaluations by kind, assertion, runtime or conflict, and the state
+// of the loaded bundles. It lives on a registry of its own, which /metrics
+// serves, so a test can build as many as it needs.
 package telemetry
 
 import (
@@ -42,9 +54,10 @@ const (
 // through the standard OTEL_* environment variables, so it works the same way
 // as in every other OpenTelemetry service.
 type Config struct {
-	// Version is recorded as service.version on every span.
+	// Version is recorded as service.version on every span, dev when empty,
+	// and as the version tag of every profile.
 	Version string
-	// LogFormat is LogFormatJSON or LogFormatConsole.
+	// LogFormat is LogFormatJSON or LogFormatConsole. Empty means JSON.
 	LogFormat string
 	// Debug lowers the log level to debug.
 	Debug bool
@@ -65,6 +78,10 @@ type Telemetry struct {
 // OTEL_TRACES_EXPORTER isn't "none"; otherwise spans are still created, so
 // trace ids show up in the logs, but go nowhere. PYROSCOPE_SERVER_ADDRESS
 // enables all supported Go profiles independently of tracing.
+//
+// Setup returns an error for an unknown log format and when the profiler
+// doesn't start. It replaces process globals, so call it once, and call
+// [Telemetry.Shutdown] before calling it again.
 func Setup(cfg Config) (*Telemetry, humane.Error) {
 	logger, err := newLogger(cfg)
 	if err != nil {

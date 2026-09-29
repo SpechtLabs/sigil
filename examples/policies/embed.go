@@ -3,6 +3,13 @@
 // guardrails, so the service only ever reads them from here and never from a
 // directory an operator can swap. The team and access documents are embedded
 // too, so the service runs with working bundles when nothing is mounted.
+//
+// A bundle holds documents of one kind, and the platform tree keeps both
+// kinds' documents side by side under deploy/ and access/. [PlatformDeploy]
+// and [PlatformAccess] are the per-kind views a host passes to
+// [github.com/spechtlabs/sigil/pkg/policy.From]; [Only] builds them without
+// stripping the directory, so positions in diagnostics and traces keep
+// naming the file as it sits in the repository.
 package policies //nolint:pkgnaming // named after the policies/ directory it embeds, which the docs and the tooling refer to
 
 import (

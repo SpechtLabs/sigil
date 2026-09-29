@@ -1,6 +1,3 @@
-// Package server is deploygate's HTTP API: one gin router serving the
-// deploy decisions, the policy administration endpoints, health checks and
-// Prometheus metrics, instrumented with OpenTelemetry spans and zap logs.
 package server
 
 import (
@@ -65,7 +62,9 @@ var standardMethods = []string{
 // tracing each hit would bury the requests worth reading.
 var quietPaths = []string{RouteHealthz, RouteReadyz, RouteMetrics}
 
-// Server is the deploygate HTTP server.
+// Server is the deploygate HTTP server. Each request takes the stores'
+// current snapshots, so a reload takes effect at the next request without
+// touching the server.
 type Server struct {
 	deploy  *store.Store[deploy.Input]
 	access  *store.Store[access.Input]
@@ -79,9 +78,10 @@ type Server struct {
 	shutdownTimeout time.Duration
 }
 
-// New builds the server and its routes. WithStore is required; without
-// WithMetrics the server reports on a private set of metrics, and without
-// WithTracerProvider it uses the global tracer provider.
+// New builds the server and its routes. [WithStore] and [WithAccessStore]
+// are required, and New returns an error without either; without
+// [WithMetrics] the server reports on a private set of metrics, and without
+// [WithTracerProvider] it uses the global tracer provider.
 func New(opts ...Option) (*Server, humane.Error) {
 	s := &Server{
 		addr:            DefaultAddr,
@@ -117,7 +117,7 @@ func (s *Server) Handler() http.Handler {
 }
 
 // Serve listens on the configured address and serves until ctx ends; see
-// ServeListener.
+// [Server.ServeListener]. It returns an error at once when it can't listen.
 //
 //nolint:lifecycle // the context is the stop mechanism; a Stop method would be a second way to do the same
 func (s *Server) Serve(ctx context.Context) humane.Error {
@@ -132,8 +132,9 @@ func (s *Server) Serve(ctx context.Context) humane.Error {
 
 // ServeListener serves on ln until ctx ends, then shuts down gracefully: it
 // stops accepting connections and waits up to the shutdown timeout for
-// in-flight requests. It returns nil after a clean shutdown. Tests pass a
-// listener on port 0 to get a free port.
+// in-flight requests. It returns nil after a clean shutdown, and an error
+// when serving fails or the shutdown timeout runs out. It closes ln. Tests
+// pass a listener on port 0 to get a free port.
 func (s *Server) ServeListener(ctx context.Context, ln net.Listener) humane.Error {
 	srv := &http.Server{
 		Handler:           s.router,

@@ -15,7 +15,8 @@ func defaultOptions() *options {
 	return &options{client: client.New(), json: &jsonOutput}
 }
 
-// WithClient sets the API client. Its settings are read after flag parsing.
+// WithClient sets the API client. Its settings are read after flag parsing,
+// so the root's --url and --timeout flags reach it. A nil api is ignored.
 func WithClient(api *client.Client) Option {
 	return func(o *options) {
 		if api != nil {
@@ -24,7 +25,8 @@ func WithClient(api *client.Client) Option {
 	}
 }
 
-// WithJSON shares the root output flag, read after Cobra parses it.
+// WithJSON shares the root's --json flag, read after Cobra parses it. A nil
+// value is ignored.
 func WithJSON(value *bool) Option {
 	return func(o *options) {
 		if value != nil {

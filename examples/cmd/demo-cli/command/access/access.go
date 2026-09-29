@@ -1,4 +1,7 @@
-// Package access implements the demo-cli access command.
+// Package access implements `demo-cli access`, which asks deploygate which
+// roles an actor holds. It posts a built-in scenario's request, or the JSON
+// read with --file, to /api/v1/access/grants and prints the grants and,
+// with --explain, the trace.
 package access
 
 import (
@@ -12,7 +15,8 @@ import (
 	"github.com/spechtlabs/sigil/examples/cmd/demo-cli/internal/scenario"
 )
 
-// NewCommand returns the access command.
+// NewCommand returns the access command. Without an argument it runs the
+// member scenario.
 func NewCommand(opts ...Option) *cobra.Command {
 	o := defaultOptions()
 	for _, opt := range opts {

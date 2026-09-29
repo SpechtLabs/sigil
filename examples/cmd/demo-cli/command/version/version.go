@@ -1,4 +1,5 @@
-// Package version implements the demo-cli version command.
+// Package version implements `demo-cli version`, which prints the version
+// the binary was built with, dev for a local build.
 package version
 
 import (

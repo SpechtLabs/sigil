@@ -1,5 +1,11 @@
 // Package command implements the demo-cli root command. Each subcommand
-// lives in its own package and receives dependencies through With* options.
+// lives in its own package and receives dependencies through With* options,
+// the same layout the sigil CLI uses.
+//
+// [NewCommand] builds the tree and owns the global flags: --url and --timeout
+// configure the one API client every subcommand shares, and --json is a flag
+// the subcommands read through a pointer once cobra has parsed it.
+// [Execute] runs the tree and turns the outcome into the exit status.
 package command
 
 import (
@@ -15,7 +21,8 @@ import (
 	"github.com/spechtlabs/sigil/examples/cmd/demo-cli/internal/client"
 )
 
-// NewCommand returns the demo CLI with every subcommand attached.
+// NewCommand returns the demo CLI with every subcommand attached. The
+// version is dev unless [WithVersion] sets it.
 func NewCommand(opts ...Option) *cobra.Command {
 	o := &options{version: "dev"}
 	for _, opt := range opts {

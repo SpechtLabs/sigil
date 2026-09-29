@@ -1,4 +1,6 @@
-// Package client talks to the running deploygate service.
+// Package client talks to the running deploygate service over HTTP. One
+// [Client] is shared by every demo-cli command; the root binds its --url
+// and --timeout flags to the client's fields.
 package client
 
 import (
@@ -19,11 +21,15 @@ import (
 // Client holds the connection settings shared by the commands. The root
 // binds flags to these fields so commands see their parsed values.
 type Client struct {
-	URL     string
+	// URL is deploygate's base URL, http or https, without a query or
+	// fragment.
+	URL string
+	// Timeout bounds each request, and must be positive.
 	Timeout time.Duration
 }
 
-// New uses DEPLOYGATE_URL, defaulting to localhost, and a ten-second timeout.
+// New returns a client for $DEPLOYGATE_URL, or http://localhost:8080 when it
+// is unset, with a ten-second timeout.
 func New() *Client {
 	target := os.Getenv("DEPLOYGATE_URL")
 	if target == "" {
@@ -32,7 +38,12 @@ func New() *Client {
 	return &Client{URL: target, Timeout: 10 * time.Second}
 }
 
-// Do sends one request without retrying or following redirects.
+// Do sends one request without retrying or following redirects, and returns
+// the status and the body, read up to 8 MiB. path is appended to URL as it
+// is. A non-nil body must be valid JSON and is sent as application/json. It
+// returns an error when URL or Timeout is invalid, the request can't be
+// sent, or the body is larger than the limit; any status is a response,
+// not an error.
 func (c *Client) Do(ctx context.Context, method, path string, body []byte) (int, []byte, humane.Error) {
 	target, herr := c.targetURL(path)
 	if herr != nil {

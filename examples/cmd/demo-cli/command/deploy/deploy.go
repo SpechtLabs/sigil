@@ -1,4 +1,8 @@
-// Package deploy implements the demo-cli deploy command.
+// Package deploy implements `demo-cli deploy`, which asks deploygate for a
+// deployment decision. It posts a built-in scenario's request, or the JSON
+// read with --file, to /api/v1/teams/{team}/deployments and prints the
+// decision, the roles the access stage granted and, with --explain, the
+// trace.
 package deploy
 
 import (
@@ -13,7 +17,9 @@ import (
 	"github.com/spechtlabs/sigil/examples/cmd/demo-cli/internal/scenario"
 )
 
-// NewCommand returns the deploy command.
+// NewCommand returns the deploy command. Without an argument it runs the
+// owner scenario. --team overrides the scenario's team, and --file needs
+// it, since a request body doesn't name its team.
 func NewCommand(opts ...Option) *cobra.Command {
 	o := defaultOptions()
 	for _, opt := range opts {

@@ -31,7 +31,10 @@ type Snapshot[In any] struct {
 // Root is one policy a store compiles and serves. A team root is looked up
 // by its team; a fixed root, which has no team, by its policy name.
 type Root struct {
-	Team   string
+	// Team is the team the root serves, empty for a fixed root.
+	Team string
+	// Policy is the root policy's name, such as payments.production or
+	// access.main.
 	Policy string
 }
 
@@ -43,7 +46,8 @@ func (s *Snapshot[In]) Policy(key string) (*policy.Policy[In], bool) {
 }
 
 // Single returns the root policy of a snapshot with exactly one root, such
-// as the access store's access.main.
+// as the access store's access.main, and false when it has any other number
+// of roots.
 func (s *Snapshot[In]) Single() (*policy.Policy[In], bool) {
 	if len(s.Roots) != 1 {
 		return nil, false
@@ -60,7 +64,8 @@ func (s *Snapshot[In]) PolicyNames() []string {
 	return names
 }
 
-// TeamNames lists the served teams in the configured order.
+// TeamNames lists the served teams in the configured order. Fixed roots have
+// no team and are left out.
 func (s *Snapshot[In]) TeamNames() []string {
 	names := make([]string, 0, len(s.Roots))
 	for _, r := range s.Roots {

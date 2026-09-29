@@ -1,4 +1,5 @@
-// Package metric implements the demo-cli metrics command.
+// Package metric implements `demo-cli metrics`, which prints what
+// deploygate serves on /metrics, in the Prometheus text format.
 package metric
 
 import (
@@ -10,7 +11,8 @@ import (
 	"github.com/spechtlabs/sigil/examples/cmd/demo-cli/internal/output"
 )
 
-// NewCommand returns the metrics command.
+// NewCommand returns the metrics command. It refuses --json, since the
+// metrics aren't JSON.
 func NewCommand(opts ...Option) *cobra.Command {
 	o := defaultOptions()
 	for _, opt := range opts {
