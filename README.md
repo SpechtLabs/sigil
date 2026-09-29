@@ -231,7 +231,7 @@ go install github.com/spechtlabs/sigil/cmd/sigil@latest
 
 Prebuilt archives for Linux and macOS on amd64 and arm64 are also available from the [releases](https://github.com/SpechtLabs/sigil/releases).
 
-The stock binary checks, formats and explains any policy, but it has only the signatures of the kind's host functions, so `eval` and `test` stop at the first call to one. A host builds its own CLI with the real functions linked in through [`pkg/cli`](./docs/reference/cli.md#host-functions-and-host-binaries); the example service's [`sigilc`](./examples/cmd/sigilc) is one.
+The stock binary checks, formats and explains any policy, but it has only the signatures of the kind's host functions, so `eval` and `test` stop at the first call to one. A host builds its own CLI with the real functions linked in through [`pkg/cli`](./docs/guides/host-binary.md); the example service's [`sigilc`](./examples/cmd/sigilc) is one.
 
 Every release after v0.1.0 signs `checksums.txt` with a keyless [cosign](https://docs.sigstore.dev/) signature from the release workflow. Verify the checksums, then the archive against them:
 
@@ -249,10 +249,10 @@ The docs site is at [sigil.specht-labs.de](https://sigil.specht-labs.de/), built
 
 | You want to | Start with |
 | --- | --- |
-| Write and test policies | [What Sigil is](./docs/getting-started/overview.md), [the tour](./docs/getting-started/tour.md) and [your first policy](./docs/getting-started/first-policy.md), then the [guides](./docs/guides/team-policies.md) and the [language reference](./docs/reference/policy-files.md) |
-| Embed Sigil in a Go service | The [Go API](./docs/reference/go-api.md), [the example service](./docs/guides/example-service.md), [policies in a ConfigMap](./docs/guides/configmaps.md) and [evolving a kind](./docs/guides/evolve-a-kind.md) |
+| Write and test policies | [What Sigil is](./docs/getting-started/overview.md), [the tour](./docs/getting-started/tour.md) and [your first policy](./docs/getting-started/first-policy.md), then the [guides](./docs/guides/team-policies.md), [testing your policies](./docs/guides/test-policies.md) and the [language reference](./docs/reference/policy-files.md) |
+| Embed Sigil in a Go service | [Embedding Sigil in a Go service](./docs/guides/embed-go.md), the [Go API reference](./docs/reference/go-api.md), [the example service](./docs/guides/example-service.md), [policies in a ConfigMap](./docs/guides/configmaps.md) and [evolving a kind](./docs/guides/evolve-a-kind.md) |
 | Decide whether Sigil fits | [What Sigil is](./docs/getting-started/overview.md), the [design goals](./docs/understanding/design-goals.md) and the other understanding pages, and [prior art](./docs/understanding/prior-art.md) |
-| Change Sigil itself | [Testing, fuzzing and benchmarking](./docs/guides/testing.md), the [open questions](./docs/project/open-questions.md) and the [roadmap](./roadmap.yml) |
+| Change Sigil itself | [Contributing](./docs/project/contributing.md), the [open questions](./docs/project/open-questions.md) and the [roadmap](./roadmap.yml) |
 
 To run the site locally you need [mise](https://mise.jdx.dev/), which installs the pinned toolchain:
 
@@ -280,7 +280,7 @@ The roadmap lives in [`roadmap.yml`](./roadmap.yml) in the [roadmap-md](https://
 
 ## Contributing
 
-Run `mise run test` for the race-enabled test suite, `mise run fuzz` for ten seconds of mutation fuzzing per target, and `mise run check` for the repository checks. Use `mise run bench -- --baseline main` to compare performance with a base revision. CI fails statistically significant regressions above 10% in time or allocations. See [Testing, fuzzing and benchmarking Sigil](./docs/guides/testing.md) for targeted runs, regression inputs and benchmark workloads.
+Run `mise run test` for the race-enabled test suite, `mise run fuzz` for ten seconds of mutation fuzzing per target, and `mise run check` for the repository checks. Use `mise run bench -- --baseline main` to compare performance with a base revision. CI fails statistically significant regressions above 10% in time or allocations. See [Contributing](./docs/project/contributing.md) for targeted runs, regression inputs and benchmark workloads.
 
 Bug reports and design challenges are both welcome: a policy that reads badly, an error message that doesn't point at the fix, a semantic corner the [reference](./docs/reference/policy-files.md) doesn't cover, or an answer to one of the [open questions](./docs/project/open-questions.md). Open an [issue](https://github.com/SpechtLabs/sigil/issues), ideally with the policy and input that show the problem, or send a pull request. Contributions are accepted under the project's license, as section 5 of the Apache License describes.
 

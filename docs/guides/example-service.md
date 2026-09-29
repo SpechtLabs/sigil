@@ -11,15 +11,15 @@ The code lives in [`examples/`](https://github.com/SpechtLabs/sigil/tree/main/ex
 
 ## What it shows
 
-| Piece | Where | Read more |
-| --- | --- | --- |
-| The `DeployApproval` kind, declared with `policy.NewKind` | `internal/deploy` | [Defining a kind](/reference/go-api/#defining-a-kind) |
-| The `AccessGrant` kind, a `collect all` kind with an `exclusive` line | `internal/access` | [Collecting kinds](/reference/kind-files/#collecting-kinds) |
-| Both kind files, written by the host's own `sigilc export` and checked by a test | `cmd/sigilc`, `policies/*.sigil` | [Exporting the kind](/reference/go-api/#exporting-the-kind) |
-| Platform guardrails embedded in the binary and required with `policy.From`, one trusted source per kind | `policies/embed.go`, `internal/store` | [Where required policies come from](/reference/go-api/#where-required-policies-come-from) |
-| Team and access policies read from directories, reloaded with last-known-good semantics | `internal/store` | [Hot reload](/reference/go-api/#hot-reload), [Policies in a ConfigMap](/guides/configmaps/) |
-| Results matched into typed payloads, with `Match` for the deploy kind and `MatchAll` for the access kind | `internal/server` | [Typed matching](/reference/go-api/#typed-matching) |
-| A counter and a span per decision and per grant, with the reason and the trace | `internal/telemetry` | |
+| Piece                                                                                                    | Where                                 | Read more                                                                                                                |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| The `DeployApproval` kind, declared with `policy.NewKind`                                                | `internal/deploy`                     | [Define the kind](/guides/embed-go/#define-the-kind)                                                                     |
+| The `AccessGrant` kind, a `collect all` kind with an `exclusive` line                                    | `internal/access`                     | [Collecting kinds](/reference/kind-files/#collecting-kinds)                                                              |
+| Both kind files, written by the host's own `sigilc export` and checked by a test                         | `cmd/sigilc`, `policies/*.sigil`      | [Export the kind](/guides/host-binary/#export-the-kind)                                                                  |
+| Platform guardrails embedded in the binary and required with `policy.From`, one trusted source per kind  | `policies/embed.go`, `internal/store` | [Trusted sources](/reference/bundles/#trusted-sources)                                                                   |
+| Team and access policies read from directories, reloaded with last-known-good semantics                  | `internal/store`                      | [Reload without an outage](/guides/configmaps/#reload-without-an-outage), [Policies in a ConfigMap](/guides/configmaps/) |
+| Results matched into typed payloads, with `Match` for the deploy kind and `MatchAll` for the access kind | `internal/server`                     | [Typed matching](/reference/go-api/#typed-matching)                                                                      |
+| A counter and a span per decision and per grant, with the reason and the trace                           | `internal/telemetry`                  |                                                                                                                          |
 
 ## Run it
 
@@ -47,16 +47,21 @@ The request describes the actor by their groups, `"groups": ["payments"]`, not b
 {
   "decision": "review",
   "reason": "service_owner",
-  "payload": {"approvers": ["payments-leads", "security-leads"]},
+  "payload": { "approvers": ["payments-leads", "security-leads"] },
   "trace": [
-    {"decision": "review", "reason": "service_owner", "policy": "deploy.production",
-     "location": "payments/production.sigil:10:3 → deploy/production.sigil:16:5", "winner": true}
+    {
+      "decision": "review",
+      "reason": "service_owner",
+      "policy": "deploy.production",
+      "location": "payments/production.sigil:10:3 → deploy/production.sigil:16:5",
+      "winner": true
+    }
   ],
   "access": {
     "policy": "access.main",
     "grants": [
-      {"role": "reader", "reason": "team_member"},
-      {"role": "deployer", "reason": "team_member", "ttl": "8h"}
+      { "role": "reader", "reason": "team_member" },
+      { "role": "deployer", "reason": "team_member", "ttl": "8h" }
     ]
   }
 }
@@ -64,7 +69,7 @@ The request describes the actor by their groups, `"groups": ["payments"]`, not b
 
 The README's [walkthrough](https://github.com/SpechtLabs/sigil/tree/main/examples#a-review) shows the full body, including the conditions each trace entry held under.
 
-The status encodes the decision: `200` for approve, `202` for review and `403` for deny. A failed evaluation answers by whose fault it is. A failed input assert is the caller's, so it's a `422`. A conflict, a failed outcome assert or a runtime error means the policy failed on a valid request, so it's a `500`, which counts against deploygate's error budget instead of reading as a client mistake. deploygate reads which it was from the assert error's phase rather than the trace, which is just as empty when an outcome assert fails with nothing fired. An evaluation that runs past deploygate's evaluation timeout, one second by default, is the service failing to answer in time, so it's a `503`. Whichever it is, the body holds the kind's default decision and says what failed. A client that disconnects mid-evaluation stops it too, and gets `499` with no body: no one failed, so it stays out of both the client and the server error rates. The kinds recover host function panics with [`policy.WithRecoverHostPanics()`](/reference/go-api/#evaluating), so a panic fails the evaluation closed with a `500` and a fallback, counted like any runtime error, instead of an empty `500` from gin's recovery that the request metrics never see. A request deploygate won't evaluate, such as one with an unknown field like `roles`, or a negative soak, gets `400` before any policy runs. A client can act on the status alone and read the body for the details.
+The status encodes the decision: `200` for approve, `202` for review and `403` for deny. A failed evaluation answers by whose fault it is. A failed input assert is the caller's, so it's a `422`. A conflict, a failed outcome assert or a runtime error means the policy failed on a valid request, so it's a `500`, which counts against deploygate's error budget instead of reading as a client mistake. deploygate reads which it was from the assert error's phase rather than the trace, which is just as empty when an outcome assert fails with nothing fired. An evaluation that runs past deploygate's evaluation timeout, one second by default, is the service failing to answer in time, so it's a `503`. Whichever it is, the body holds the kind's default decision and says what failed. A client that disconnects mid-evaluation stops it too, and gets `499` with no body: no one failed, so it stays out of both the client and the server error rates. The kinds recover host function panics with [`policy.WithRecoverHostPanics()`](/guides/handle-errors/#recover-host-panics), so a panic fails the evaluation closed with a `500` and a fallback, counted like any runtime error, instead of an empty `500` from gin's recovery that the request metrics never see. A request deploygate won't evaluate, such as one with an unknown field like `roles`, or a negative soak, gets `400` before any policy runs. A client can act on the status alone and read the body for the details.
 
 ## An authorization layer with collect all
 
@@ -107,7 +112,7 @@ Startup is the exception. With no bundle loaded yet there's nothing to fall back
 
 ## Check policies with the host's binary
 
-The stock `sigil` binary can't run the kind's `split` host function, so the example builds its own, `sigilc`, with the [`cli` package](/reference/cli/#host-functions-and-host-binaries), and links both kinds in. With two kinds linked, every policy command takes `--kind` with the exported kind file. A policy repository's CI runs it the same way the service loads the policies. `mise run policies` runs the checks and the tests for both kinds. The team policies' check, from `examples/`, requires the guardrails from the same trusted directory the service embeds:
+The stock `sigil` binary can't run the kind's `split` host function, so the example builds its own, `sigilc`, with the [`cli` package](/guides/host-binary/), and links both kinds in. With two kinds linked, every policy command takes `--kind` with the exported kind file. A policy repository's CI runs it the same way the service loads the policies. `mise run policies` runs the checks and the tests for both kinds. The team policies' check, from `examples/`, requires the guardrails from the same trusted directory the service embeds:
 
 ```bash
 mise run sigilc check --kind policies/deploy_approval.sigil --config policies/sigil.yaml \
@@ -130,6 +135,7 @@ Select a **Load run** in Grafana to inspect achieved throughput, p95/p99, incorr
 ## Further reading
 
 - The [example's README](https://github.com/SpechtLabs/sigil/tree/main/examples#readme) covers every package, metric, span and flag.
+- [Embed Sigil in a Go service](/guides/embed-go/) builds the same kind of host step by step, and [Handle failed evaluations](/guides/handle-errors/) shows how deploygate's statuses and error counts come about.
 - [Evaluation semantics](/reference/evaluation/#collecting-kinds) defines how a collecting kind's outcome forms.
 - [Per-team policies](/guides/team-policies/) explains the composition the team policies use.
 - [Policies in a ConfigMap](/guides/configmaps/) shows how to ship a bundle to a cluster.

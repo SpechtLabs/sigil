@@ -21,9 +21,9 @@ Two groups of people touch Sigil, and they want different things.
 
 ### Readable by any engineer on first contact
 
-A policy should read like the sentence it encodes. Terse syntax is fine; `when release.soak < min_soak { deny(soak_too_short) }` needs no explanation. Rego-style logic programming, where a rule body is a set of unification constraints and iteration happens implicitly, is the thing we're steering away from. People who've used OPA know the pattern: the policy works, but only two people on the team can change it.
+A policy should read like the sentence it encodes. Terse syntax is fine; `when release.soak < min_soak { deny(soak_too_short) }` needs no explanation. Rego-style logic programming, where a rule body is a set of unification constraints and iteration happens implicitly, is what Sigil steers away from. People who've used OPA know the pattern: the policy works, but only two people on the team can change it.
 
-This goal wins most arguments about syntax. It's why the language uses `and`/`or`/`not` instead of `&&`/`||`/`!`, why there's no `else`, and why decision payload arguments are named.
+This goal wins most arguments about syntax. It's why the language uses `and`/`or`/`not` instead of `&&`/`||`/`!`, why there's no `else`, and why decision payload arguments are named. [Why the language looks like this](/understanding/language-choices/) goes through those choices one by one.
 
 ### Finite and halting by design
 
@@ -31,15 +31,15 @@ No loops, no recursion, no user-defined functions. The language terminates on fi
 
 ### Typed against a host-defined contract
 
-The host describes its inputs, functions and decisions in a _kind_. Every policy declares which kind it implements, and the compiler checks every field access, comparison and decision payload against it. A typo like `service.teir` fails when the policy loads, with a file, line, column and a suggestion, instead of silently evaluating to nothing at runtime. [Strict schema, forgiving data](/understanding/strictness/) explains why this matters more for a policy language than for a filter language.
+The host describes its inputs, functions and decisions in a _kind_. Every policy declares which kind it implements, and the compiler checks every field access, comparison and decision payload against it. A typo like `service.teir` fails when the policy loads, with a file, line, column and a suggestion, instead of silently evaluating to nothing at runtime. [Strict schema, forgiving data](/understanding/strictness/) explains why this matters more for a policy language than for a filter language, and [Kinds as contracts](/understanding/kinds/) explains where the contract comes from and how it changes.
 
 ### Decisions carry data and a mandatory reason
 
-A decision is more than a boolean. `review` needs to know who reviews; `approve` needs a bake time before the rollout widens. So decisions are constructors with typed payloads, and every one of them takes a reason as its first argument. The kind declares each decision's reasons, so `deny(soak_too_short)` names one of a fixed set: a typo is a compile error, and the reason is a stable identifier you can grep for, put in a metric label and count. Nobody has to reverse-engineer why a deploy got denied from a boolean and a log line.
+A decision is more than a boolean. `review` needs to know who reviews; `approve` needs a bake time before the rollout widens. So decisions are constructors with typed payloads, and every one of them takes a reason as its first argument. The kind declares each decision's reasons, so `deny(soak_too_short)` names one of a fixed set: a typo is a compile error, and the reason is a stable identifier you can grep for, put in a metric label and count. Nobody has to reverse-engineer why a deploy got denied from a boolean and a log line. See [Decisions and reasons](/understanding/decisions/).
 
 ### Composable and templatable from day one
 
-Teams want their own version of a shared policy, usually with a different soak time or a different approver list. The usual answer is `text/template` over YAML, which works until someone's indentation breaks a production rule. Sigil makes this a language feature: a policy declares typed `param`s, a team policy imports it with `use` and invokes it with its own values, optionally inside a `when` that narrows where it applies. Shared matchers live in modules, and the host names the guardrail policies no team can switch off. See [Composition without templating](/understanding/composition/).
+Teams want their own version of a shared policy, usually with a different soak time or a different approver list. The usual answer is `text/template` over YAML, which works until someone's indentation breaks a production rule. Sigil makes this a language feature: a policy declares typed `param`s, a team policy imports it with `use` and invokes it with its own values, optionally inside a `when` that narrows where it applies. Shared matchers live in modules, and the host names the guardrail policies every team policy must invoke unconditionally. See [Composition without templating](/understanding/composition/) and [Bundles and trust](/understanding/bundles/).
 
 ### Parse once, evaluate many
 

@@ -1,7 +1,7 @@
 // Package lint finds the patterns `sigil check` warns about: code that
 // compiles and does what it says, but probably not what its author meant.
-// Each lint has a name, a default level, and a place in the CLI reference
-// https://sigil.specht-labs.de/reference/cli/, which describes when it fires.
+// Each lint has a name, a default level, and a place in the lint reference
+// https://sigil.specht-labs.de/reference/lints/, which describes when it fires.
 //
 // [Run] lints only the documents that checked cleanly, because the lints
 // read what the checker recorded about each one in its check.Info. The

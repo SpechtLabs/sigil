@@ -44,17 +44,13 @@ Match positively in grants (`== "payments"`, `has {...}`), or check for the key 
 Labels are flat strings, so lists get packed into them. Split with the host's `split` function and compare with `all in` (every element on the left appears on the right) or `any in` (at least one does):
 
 ```sigil
-let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
+let cleared = split(service.labels["regions"], ",") all in actor.regions
 ```
 
-Watch what happens when the label is missing. The lookup yields `""`, and `split` is Go's `strings.Split`, which turns `""` into `[""]`, a list with one empty string, not an empty list. `[""] all in actor.regions` is false unless some region is literally named `""`, so a missing label fails closed here. That's the behavior you want, but it rests on a detail of `strings.Split`. An empty list on the left of `all in` is vacuously true, and whether Sigil keeps that rule is an [open question](/project/open-questions/#vacuous-all-in).
-
-Don't rely on the accident. Say what you mean:
+A missing label reads as `""`, and `split` is Go's `strings.Split`, which returns `[""]` for it, so the rule fails closed only by accident of `split`. A function that returned `[]` would make it vacuously true ([why](/understanding/strictness/#absent-data-follows-go)). Test for the label instead:
 
 ```sigil
-let cleared =
-  service.labels has "regions"
+let cleared = service.labels has "regions"
   and split(service.labels["regions"], ",") all in actor.regions
 ```
 
@@ -129,9 +125,37 @@ let eu_only =
   and (all r in actor.regions: r like "eu-*")
 ```
 
-The same `any` is how you ask whether a list has elements at all. Lists have no `==` or `!=`, so `actor.regions != []` doesn't compile; the error suggests `any x in actor.regions: true` instead, or a host function such as `len` if your kind declares one.
+The same `any` is how you ask whether a list has elements at all; see [Test whether a list is empty](#test-whether-a-list-is-empty).
 
 When you only need membership, prefer the operators: `"deployer" in actor.roles` reads better than `any r in actor.roles: r == "deployer"`.
+
+## Test whether a list is empty
+
+Lists have no `==` or `!=`, so `actor.regions != []` is a compile error: the `[]` takes its type from the other side, and `!=` isn't defined for `list<string>`. Ask with a quantifier whose body is `true` instead, which is what the error suggests:
+
+```sigil
+let has_regions = any r in actor.regions: true
+let lacks_regions = not (any r in actor.regions: true)
+```
+
+`any` over an empty list is false, so `has_regions` holds exactly when the list has an element. Name the test in a `let`, as here, and rules read `when lacks_regions { ... }`.
+
+If your kind declares a length function, compare its result instead:
+
+```sigil
+// In the kind; the host implements it in Go.
+fn len(list<string>) -> int
+```
+
+```sigil
+let has_regions = len(actor.regions) > 0
+
+when len(actor.regions) == 0 {
+  deny(no_regions)
+}
+```
+
+A map can't be quantified over, so testing a map for emptiness always needs a host function like this one, declared for the map's type. To test for one key, use `has`: `service.labels has "team"`.
 
 ## Keep the requestor off the approvers
 
@@ -159,11 +183,33 @@ The policy only proposes who may approve. The approval itself happens in the hos
 To hold every team's policy to the rule, not just this one, put an assert on the reviews in `outcome` into a policy the host [requires](/reference/evaluation/#required-policies):
 
 ```sigil
-assert("no_self_review",
-  all r in outcome.review: actor.name not in r.approvers)
+assert("no_self_review", all r in outcome.review: actor.name not in r.approvers)
 ```
 
 `outcome.review` is every review the host gets back, with its payload (see [Candidates](/reference/expressions/#candidates)). Write `all`, not `any`: in a collecting kind that returns several reviews, `any` would let one clean review hide a self-review next to it. A team policy that forgets the filter then fails the evaluation with the offending approvers in the error, instead of quietly asking the requestor to approve their own change.
+
+## Add text computed from the input
+
+A reason is a name the kind declares, so it can't carry a service name or anything else from the input. When the person reading one result needs that text, declare an optional `detail: string` payload field on the decision, and fill it from any `string` expression:
+
+```sigil
+// kind: decision deny(detail: string = "") { not_eligible soak_too_short no_rule_matched }
+when release.soak < min_soak and not release.hotfix {
+  deny(soak_too_short, detail: service.name)
+}
+```
+
+In Go, the field goes on the decision's payload struct:
+
+```go
+type DenyData struct {
+	Detail string `policy:"detail,default=\"\""`
+}
+```
+
+Give it a default. Constructors that don't pass it keep compiling, and the kind's `default deny(no_rule_matched)` passes no payload, so every field of its decision needs one.
+
+`detail` is an ordinary payload field; only the convention is special. The reason is for machines and dashboards, so count and alert by it. The detail is for a human reading one specific result, so show it in the approval UI or the log line, and keep it out of metric labels. There's no `+` on strings, so the value is a single string expression, such as an input field or a label. [Decisions and reasons](/understanding/decisions/) explains why the reason itself is never computed.
 
 ## Write time-based rules
 
@@ -215,7 +261,7 @@ when service.tier == "critical" {
 }
 ```
 
-A failed assert fails the evaluation. The host gets an assertion error naming `named_actor`, alongside the kind's default decision, and logs it as an error rather than counting it as a deny. An assert that doesn't read `outcome` runs before any rule, so it works as a precondition, and one inside a `when` is only checked where the condition holds. A test case pins it with `asserts: [named_actor]` (see [`sigil test`](/reference/cli/#sigil-test)). The reason is a string literal the policy picks, not a name from the kind. [`assert`](/reference/policy-files/#assert) has the full rules.
+A failed assert fails the evaluation. The host gets an assertion error naming `named_actor`, alongside the kind's default decision, and logs it as an error rather than counting it as a deny. An assert that doesn't read `outcome` runs before any rule, so it works as a precondition, and one inside a `when` is only checked where the condition holds. A test case pins it with `asserts: [named_actor]` (see [Test your policies](/guides/test-policies/#write-test-cases)). The reason is a string literal the policy picks, not a name from the kind. [`assert`](/reference/policy-files/#assert) has the full rules.
 
 ## Fail closed
 
@@ -224,7 +270,7 @@ A policy fails closed when the absence of information leads to a deny. The piece
 - Make the kind's `default` a deny. Anything no rule covers gets refused.
 - Write explicit denies for things that must never be approved, in a policy the host requires with `policy.Require`. In `DeployApproval`, deny outranks every other decision, no composed policy can remove a deny, and a required policy can't be gated behind a `when`.
 - Write grants as positive matches. A grant that fires on `!=` or `not` fires on missing data too (see the missing-keys warning above).
-- Let failures fall back. When a host function fails, an index is out of range, an `assert` fails or two `exclusive` outcomes conflict, `Eval` returns the error together with the kind's default decision, so a host that just uses the result stays closed.
+- Let failures fall back. When a host function fails, an index is out of range, an `assert` fails or two `exclusive` outcomes conflict, `Eval` returns the error together with the kind's default decision, so a host that just uses the result stays closed. [Handle failed evaluations](/guides/handle-errors/#fail-closed) shows the host's side.
 
 The eligibility check in `deploy.guardrails` shows the shape:
 
@@ -243,8 +289,7 @@ Define a matcher once as a `let` in a module and import it wherever it's needed:
 ```sigil
 module deploy.common: DeployApproval@1
 
-pub let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
+pub let cleared = split(service.labels["regions"], ",") all in actor.regions
 ```
 
 ```sigil
@@ -276,6 +321,45 @@ when service.labels["compliance"] != "pci" {
 Two gated calls with complementary conditions are the idiom for "this policy, with different params depending on the input". Invocation arguments can't read inputs, so the input-dependent choice goes into the `when`, and `sigil explain` can still print every rule with concrete values.
 
 Don't gate a policy that holds denies unless you mean to switch them off where the condition is false. The `gated-deny` lint warns about it, and a host that requires the policy rejects it outright.
+
+## Compare versions
+
+Strings aren't ordered, so `service.labels["version"] < "v2.0.0"` is a compile error. Byte-wise order would make `"v10" < "v9"` true, which is exactly the result that gets a version rule wrong. Sigil ships no version comparison; declare a host function in the kind that compares versions the way yours are written:
+
+```sigil
+// In the kind; the name and the Go function behind it are the host's choice.
+fn version_below(string, string) -> bool
+```
+
+The host implements it and registers it with `policy.WithFunc`, here with `golang.org/x/mod/semver`:
+
+```go
+var Deploy = policy.NewKind[Input]("DeployApproval",
+	// ...
+	policy.WithFunc("version_below", versionBelow),
+)
+
+func versionBelow(a, b string) (bool, error) {
+	if !semver.IsValid(a) || !semver.IsValid(b) {
+		return false, fmt.Errorf("not a semantic version: %q or %q", a, b)
+	}
+	return semver.Compare(a, b) < 0, nil
+}
+```
+
+A policy calls it like any other host function:
+
+```sigil
+when version_below(service.labels["version"], "v2.0.0") {
+  deny(version_too_old)
+}
+```
+
+The error matters. A missing label reads as `""`, which isn't a version, so the call fails and the evaluation returns the kind's default, a deny, instead of the rule quietly not firing. [Handle failed evaluations](/guides/handle-errors/) covers the host's side.
+
+::: warning Planned
+[Host-ordered types](/project/planned/#host-ordered-types) would let `<` compare versions directly.
+:::
 
 ## Compare strings case-sensitively, or not
 

@@ -25,13 +25,13 @@ Sigil departs from filt-rs in how the host supplies data. A filt-rs host impleme
 
 The part Sigil deliberately doesn't copy is unknown properties evaluating to `null`. For a filter, that's a reasonable choice, because a typo just means the filter matches nothing and you notice. In a policy it's dangerous. A deny rule with a typo in its condition never fires, and the request sails through to whatever lower-precedence rule approves it. [Strict schema, forgiving data](/understanding/strictness/) is the long version of that argument.
 
-Sigil also differs on case sensitivity. filt-rs string operators fold case by default and offer `_cs` variants; Sigil's string comparison is always case-sensitive, because Kubernetes labels and most identifiers in this domain are.
+Sigil also differs on case sensitivity. filt-rs string operators fold case by default and offer `_cs` variants; Sigil's string comparison is always case-sensitive, because Kubernetes labels and most identifiers in this domain are. [Why the operators refuse to guess](/understanding/language-choices/#why-the-operators-refuse-to-guess) covers that and the other operator choices.
 
 ## Cedar
 
 [Cedar](https://www.cedarpolicy.com/), from AWS, is the closest thing to Sigil in spirit. Policies validate against a schema before they run, `forbid` always beats `permit`, and policy templates with slots let you stamp out per-tenant variants without copying text.
 
-All three ideas show up in Sigil in a generalized form. The schema becomes the _kind_. Forbid-overrides-permit becomes a `precedence` declaration, so a host can define `deny > review > approve` or any other order its decisions need. Templates with slots become typed `param`s bound by invoking a policy.
+All three ideas show up in Sigil in a generalized form. The schema becomes the [_kind_](/understanding/kinds/). Forbid-overrides-permit becomes a `precedence` declaration, so a host can define `deny > review > approve` or any other order its decisions need. Templates with slots become typed `param`s bound by invoking a policy.
 
 What Sigil can't take is Cedar's fixed data model. Every Cedar request is a principal, an action, a resource and a context. That fits access control well and fits "should this hotfix ship to production before it finished soaking in staging" badly. Sigil lets the host define arbitrary typed inputs instead.
 
