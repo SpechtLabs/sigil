@@ -314,6 +314,19 @@ func TestEval(t *testing.T) {
 		{src: "any n in service.counts: n > count - 1", want: true},
 		{src: "any r in actor.roles: r == \"sre-eu\" and actor.roles[9] == \"\"", err: "index 9 out of range for a list of 2", span: "1:41-1:55"},
 
+		// Filters keep the range's Go type and its order.
+		{src: `filter r in actor.roles: r like "sre-*"`, want: []string{"sre-eu"}},
+		{src: `filter r in actor.roles: r != actor.name`, want: []string{"deployer", "sre-eu"}},
+		{src: "filter r in actor.roles: false", want: []string{}},
+		{src: "filter n in service.counts: n > 1", want: []int{2, 3}},
+		{src: `filter s in ["a", "b", "c"]: s != "b"`, want: []any{"a", "c"}},
+		{src: `filter s in {"a": ["x"]}["b"]: true`, want: []any{}},
+		{src: "filter t in actor.teams: any o in service.owners: t == o", want: []string{"payments"}},
+		{src: `"sre-eu" in (filter r in actor.roles: r != "deployer")`, want: true},
+		{src: `(filter r in actor.regions: r != "ap-1") all in ["eu-1", "us-1"]`, want: true},
+		{src: "any r in (filter r2 in actor.roles: false): true", want: false},
+		{src: "filter r in actor.roles: actor.roles[9] == r", err: "index 9 out of range for a list of 2", span: "1:26-1:40"},
+
 		// Runtime errors.
 		{src: "actor.roles[2]", err: "index 2 out of range for a list of 2", span: "1:1-1:15"},
 		{src: "actor.roles[-1]", err: "index -1 out of range for a list of 2", span: "1:1-1:16"},
@@ -378,10 +391,36 @@ func TestNilCollections(t *testing.T) {
 	if err != nil || eval.Bool(v) {
 		t.Fatalf("nil collections: %v, %v", v, err)
 	}
-	e, f = setup(t, `service.labels["k"] == "" and len(actor.roles) == 0 and actor.roles all in service.owners and service.labels has {} and all r in actor.roles: false`, false)
+	e, f = setup(t, `service.labels["k"] == "" and len(actor.roles) == 0 and actor.roles all in service.owners and service.labels has {} and (all r in actor.roles: false) and not (any x in (filter t in actor.teams: true): true)`, false)
 	f.Input = reflect.ValueOf(empty)
 	if v, err := eval.Run(e, f); err != nil || !eval.Bool(v) {
 		t.Fatalf("nil collections read as empty: %v, %v", v, err)
+	}
+}
+
+// TestUnsetList ranges over a list with no value at all, which a host
+// binding a slot can produce: quantifiers and filters read it as empty.
+func TestUnsetList(t *testing.T) {
+	tests := []struct {
+		src  string
+		want any
+	}{
+		{src: "any t in tiers: true", want: false},
+		{src: "all t in tiers: false", want: true},
+		{src: "filter t in tiers: true", want: []any{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.src, func(t *testing.T) {
+			e, f := setup(t, tt.src, false)
+			f.Set(1, reflect.Value{}) // tiers, the second name setup declares
+			v, err := eval.Run(e, f)
+			if err != nil {
+				t.Fatalf("Run() error: %v", err)
+			}
+			if got := v.Interface(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Run() = %#v, want %#v", got, tt.want)
+			}
+		})
 	}
 }
 

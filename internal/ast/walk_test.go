@@ -24,6 +24,8 @@ func TestInspect(t *testing.T) {
 		{src: "a.b[0]", want: "IndexExpr SelectorExpr Ident Ident IntLit"},
 		{src: "f(a, true)", want: "CallExpr Ident Ident BoolLit"},
 		{src: "any r in xs: r == outcome", want: "QuantExpr Ident Ident BinaryExpr Ident Outcome"},
+		{src: "filter r in xs: r != a", want: "FilterExpr Ident Ident BinaryExpr Ident Ident"},
+		{src: "filter r in xs: r != a", prune: "FilterExpr", want: "FilterExpr"},
 		{src: "f(a) and [b, c]", prune: "CallExpr", want: "BinaryExpr CallExpr ListLit Ident Ident"},
 		{src: "a and b", prune: "BinaryExpr", want: "BinaryExpr"},
 	}

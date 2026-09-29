@@ -29,6 +29,7 @@ const (
 	Param
 	Let
 	QuantVar
+	FilterVar
 	Module    // a whole import of a module: a qualifier for its pub lets
 	Invocable // a whole import of a policy: a name to invoke
 )
@@ -41,6 +42,7 @@ var entityNames = [...]string{
 	Param:        "param",
 	Let:          "let",
 	QuantVar:     "quantifier variable",
+	FilterVar:    "filter variable",
 	Module:       "module",
 	Invocable:    "imported policy",
 }

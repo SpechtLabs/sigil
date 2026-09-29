@@ -390,7 +390,7 @@ A breaking change that the type checker catches, such as a removed field, would 
 
 ### Adding a name never breaks a policy
 
-Inputs, host functions and decisions share one flat namespace with a policy's params, lets, imports and quantifier variables, and nothing shadows anything (see [Identifiers](/reference/policy-files/#identifiers)). Without pins, a new `input approvers` would break every policy that already declares `param approvers`.
+Inputs, host functions and decisions share one flat namespace with a policy's params, lets, imports and quantifier and filter variables, and nothing shadows anything (see [Identifiers](/reference/policy-files/#identifiers)). Without pins, a new `input approvers` would break every policy that already declares `param approvers`.
 
 Pins make the collision safe to resolve. A document pinned to `@N` compiled against version N, where any collision was an error. So when a document pinned below the current version collides with an input, host function or decision, the kind must have added that name after the document was written. The document keeps its own name, the kind's new name is out of reach in that document, and the [`shadowed-kind-name`](/reference/cli/#lints) lint reports it so the team renames and raises the pin at its own pace. A document pinned to the current version gets the usual collision error, because its author wrote it knowing the name.
 

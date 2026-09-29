@@ -97,6 +97,7 @@ const (
 	KwIn
 	KwAll
 	KwAny
+	KwFilter
 	KwOne
 	KwExclusive
 	KwHas
@@ -176,6 +177,7 @@ var names = [...]string{
 	KwIn:         "in",
 	KwAll:        "all",
 	KwAny:        "any",
+	KwFilter:     "filter",
 	KwOne:        "one",
 	KwExclusive:  "exclusive",
 	KwHas:        "has",

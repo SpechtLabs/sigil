@@ -8,8 +8,8 @@ import (
 // Scope maps the names a document declares to how the compiled code
 // reads them: params are constants bound at compile time, lets are
 // expressions compiled on first reference and evaluated at most once
-// per frame, and quantifier variables get frame slots as the compiler
-// meets them. Inputs and host functions come from the binding.
+// per frame, and quantifier and filter variables get frame slots as the
+// compiler meets them. Inputs and host functions come from the binding.
 type Scope struct {
 	binding *gokind.Binding
 	consts  map[string]Value
@@ -57,6 +57,26 @@ func (s *Scope) Declare(name string) int {
 	s.slots[name] = slot
 	s.nslots++
 	return slot
+}
+
+// bindVar gives a quantifier's or filter's variable a slot of its own
+// while its body compiles, and returns the slot and a func that restores
+// what name meant before. Two variables with the same name get different
+// slots: a let read inside an `any a in xs` body may be compiled right
+// there, and a quantifier of its own over another `a` must not overwrite
+// the outer `a` when the let is evaluated.
+func (s *Scope) bindVar(name string) (int, func()) {
+	prev, had := s.slots[name]
+	slot := s.nslots
+	s.slots[name] = slot
+	s.nslots++
+	return slot, func() {
+		if had {
+			s.slots[name] = prev
+		} else {
+			delete(s.slots, name)
+		}
+	}
 }
 
 // Cond reserves a memo slot for a `when` condition and returns it.

@@ -133,6 +133,31 @@ The same `any` is how you ask whether a list has elements at all. Lists have no 
 
 When you only need membership, prefer the operators: `"deployer" in actor.roles` reads better than `any r in actor.roles: r == "deployer"`.
 
+## Keep the requestor off the approvers
+
+Four-eyes review means nobody approves their own request, even when they're on the list that normally approves. Take them off the list where it's built, with a [filter](/reference/expressions/#filters):
+
+```sigil
+param approvers: list<string>
+
+let reviewers = filter a in approvers: a != actor.name
+let has_reviewers = any r in reviewers: true
+
+when has_reviewers {
+  review(service_owner, approvers: reviewers)
+}
+
+when not has_reviewers {
+  deny(not_eligible)
+}
+```
+
+The second rule matters. When the requestor is the only approver, the filter leaves nobody, and a review that nobody can approve just waits forever. Decide what happens instead: deny, as here, or send the review to a fallback list.
+
+The policy only proposes who may approve. The approval itself happens in the host, after evaluation, so the host still has to reject a self-approval. The policy's filter is what keeps the requestor from being asked in the first place.
+
+A guardrail that holds every team's policy to this rule would need to read the approvers out of the `review` in `outcome`, and asserts can't read payloads yet. See [the roadmap](/project/roadmap/) for the plan.
+
 ## Write time-based rules
 
 Sigil has no clock. Evaluation is deterministic, so a policy that needs the current time gets it from the host as an input. Add it to the kind, along with whatever timestamps the rule compares against:

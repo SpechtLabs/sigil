@@ -35,8 +35,8 @@ Keyword     ::= "policy" | "module" | "use" | "as" | "param" | "let" | "pub"
               | "when" | "assert"
               | "kind" | "version" | "type" | "input" | "fn" | "decision"
               | "precedence" | "collect" | "default"
-              | "and" | "or" | "xor" | "not" | "in" | "all" | "any" | "one"
-              | "exclusive" | "has" | "like" | "matches" | "present"
+              | "and" | "or" | "xor" | "not" | "in" | "all" | "any" | "filter"
+              | "one" | "exclusive" | "has" | "like" | "matches" | "present"
               | "true" | "false" | "outcome"
 
 Int         ::= [0-9]+
@@ -199,8 +199,10 @@ OrExpr       ::= AndExpr ( ( "or" AndExpr )+ | "xor" AndExpr )?   /* no mixing *
 AndExpr      ::= NotExpr ( "and" NotExpr )*
 NotExpr      ::= "not" NotExpr
                | Quantifier
+               | Filter
                | RelExpr
 Quantifier   ::= ( "any" | "all" ) Ident "in" Coalesce ":" Expr
+Filter       ::= "filter" Ident "in" Coalesce ":" Expr
 RelExpr      ::= Coalesce ( RelOp Coalesce )?          /* non-associative */
 RelOp        ::= "==" | "!=" | "<" | "<=" | ">" | ">="
                | "in" | "not" "in" | "all" "in" | "any" "in"
@@ -244,7 +246,7 @@ The expression grammar encodes this table, lowest to highest. It matches [Expres
 
 `or` and `xor` share level 1, but `OrExpr` takes either a chain of `or` or a single `xor`, never both, so `a xor b xor c` and `a or b xor c` fail to parse with a hint to add parentheses.
 
-A quantifier sits at level 3 as an alternative to `not`. Its range is parsed at level 5, and its body is a full `Expr`, so the body extends as far right as the enclosing construct allows.
+A quantifier or a filter sits at level 3 as an alternative to `not`. Its range is parsed at level 5, and its body is a full `Expr`, so the body extends as far right as the enclosing construct allows.
 
 ## How the parser decides
 
@@ -266,9 +268,11 @@ not eligible                           // unary not
 "admin" not in actor.roles             // `not in` after an operand
 ```
 
-Because the quantifier alternative lives at level 3, `x == all r in xs: p` doesn't parse. Put the quantifier in parentheses.
+`filter` has one job: it only starts a filter, at operand position, and there's no `filter in` operator.
 
-### Where a quantifier body ends
+Because the quantifier and filter alternatives live at level 3, `x == all r in xs: p` and `x in filter r in xs: p` don't parse. Put the quantifier or filter in parentheses.
+
+### Where a quantifier or filter body ends
 
 The body is an `Expr`, so it takes every `and` and `or` that follows:
 
@@ -301,7 +305,7 @@ A `Call`'s arguments are either one positional reason followed by named payload 
 
 ### Keywords as field names
 
-A Go host can tag a field with any name, and Kubernetes-shaped data often has a field called `type`, which is a keyword. The grammar allows any keyword wherever a field or payload name appears: after `.`, in `type` bodies, in decision fields and in named arguments. If `Service` declared a `type` field, `service.type` would parse, because the token after `.` is always a name. Top-level names (inputs, params, lets, imported names, host functions, decisions, types), decision reasons and quantifier variables must still be plain identifiers.
+A Go host can tag a field with any name, and Kubernetes-shaped data often has a field called `type`, which is a keyword. The grammar allows any keyword wherever a field or payload name appears: after `.`, in `type` bodies, in decision fields and in named arguments. If `Service` declared a `type` field, `service.type` would parse, because the token after `.` is always a name. Top-level names (inputs, params, lets, imported names, host functions, decisions, types), decision reasons, and quantifier and filter variables must still be plain identifiers.
 
 ### Closing angle brackets
 

@@ -17,7 +17,7 @@ import (
 const (
 	lowest     = 1 // or, xor
 	bpAnd      = 2 // and
-	bpNot      = 3 // not, quantifiers (prefix)
+	bpNot      = 3 // not, quantifiers, filters (prefix)
 	bpCmp      = 4 // comparisons, membership, has, like, matches
 	bpCoalesce = 5 // ??
 	bpAdd      = 6 // + -
@@ -156,8 +156,7 @@ func (p *parser) checkNeighbor(prev ast.Op) {
 }
 
 // parsePrefix parses the prefix forms (`not`, unary minus, `present`,
-// quantifiers) or
-// an operand. minBP says how tightly the surrounding operator binds: a
+// quantifiers, filters) or an operand. minBP says how tightly the surrounding operator binds: a
 // prefix form at a looser level than that can't appear here without
 // parentheses, because its operand would have to extend past the operator
 // that's waiting for its own.
@@ -182,6 +181,9 @@ func (p *parser) parsePrefix(minBP int) ast.Expr {
 	case token.KwAny, token.KwAll:
 		p.requireLevel(minBP, bpNot, "a quantifier")
 		return p.parseQuantifier()
+	case token.KwFilter:
+		p.requireLevel(minBP, bpNot, "a filter")
+		return p.parseFilter()
 	case token.KwOne, token.KwExclusive:
 		p.errorTok(p.tok, fmt.Sprintf("`%s` is an operator, not a quantifier", p.tok.Text),
 			fmt.Sprintf("write `a %s in b`; only `any` and `all` start a quantifier", p.tok.Text))
@@ -210,26 +212,41 @@ func (p *parser) parseQuantifier() ast.Expr {
 	if kw.Kind == token.KwAll {
 		q.Op = ast.OpAll
 	}
-	shape := fmt.Sprintf("a quantifier is written `%s x in xs: condition`", kw.Text)
+	q.Var, q.Range, q.Body = p.parseBinder(fmt.Sprintf("a quantifier is written `%s x in xs: condition`", kw.Text))
+	return q
+}
+
+// parseFilter parses `filter x in xs: body` from the keyword.
+func (p *parser) parseFilter() ast.Expr {
+	f := &ast.FilterExpr{FilterPos: p.tok.Pos}
+	f.Var, f.Range, f.Body = p.parseBinder("a filter is written `filter x in xs: condition`")
+	return f
+}
+
+// parseBinder parses the `x in xs: body` that follows a quantifier's or
+// a filter's keyword, which is the current token. shape is the hint for
+// a malformed one.
+func (p *parser) parseBinder(shape string) (v *ast.Ident, rng, body ast.Expr) {
+	kw := p.tok
 	p.next()
 
 	if p.tok.Kind != token.Ident {
 		p.unexpected(fmt.Sprintf("a variable name after `%s`", kw.Text), shape)
 	}
-	q.Var = &ast.Ident{Name: p.tok.Text, Span: span(p.tok)}
+	v = &ast.Ident{Name: p.tok.Text, Span: span(p.tok)}
 	p.next()
 
 	if p.tok.Kind != token.KwIn {
-		p.unexpected(fmt.Sprintf("`in` after the variable `%s`", q.Var.Name), shape)
+		p.unexpected(fmt.Sprintf("`in` after the variable `%s`", v.Name), shape)
 	}
 	p.next()
 
 	p.after = ast.OpIn
-	q.Range = p.parseExpr(bpCoalesce)
+	rng = p.parseExpr(bpCoalesce)
 	p.expect(token.Colon, shape)
 	p.after = ast.OpInvalid
-	q.Body = p.parseExpr(lowest)
-	return q
+	body = p.parseExpr(lowest)
+	return v, rng, body
 }
 
 // parsePostfix applies any run of `.name`, `?.name`, `[index]` and `(args)` to x.

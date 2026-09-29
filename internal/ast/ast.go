@@ -170,6 +170,15 @@ type QuantExpr struct {
 	Op       Op // OpAny or OpAll
 }
 
+// FilterExpr is a filter `filter x in xs: body`: the elements of xs for
+// which body holds, in their order.
+type FilterExpr struct {
+	Var       *Ident
+	Range     Expr
+	Body      Expr
+	FilterPos token.Pos
+}
+
 // Pos returns the start of the operator.
 func (x *UnaryExpr) Pos() token.Pos { return x.OpPos }
 
@@ -206,6 +215,12 @@ func (x *QuantExpr) Pos() token.Pos { return x.QuantPos }
 // End returns the end of the body.
 func (x *QuantExpr) End() token.Pos { return x.Body.End() }
 
+// Pos returns the start of the `filter` keyword.
+func (x *FilterExpr) Pos() token.Pos { return x.FilterPos }
+
+// End returns the end of the body.
+func (x *FilterExpr) End() token.Pos { return x.Body.End() }
+
 func (*BadExpr) exprNode()      {}
 func (*Ident) exprNode()        {}
 func (*IntLit) exprNode()       {}
@@ -223,3 +238,4 @@ func (*SelectorExpr) exprNode() {}
 func (*IndexExpr) exprNode()    {}
 func (*CallExpr) exprNode()     {}
 func (*QuantExpr) exprNode()    {}
+func (*FilterExpr) exprNode()   {}

@@ -26,7 +26,7 @@ let cleared = environment == "production" // so is this tail
 identifier = [A-Za-z_][A-Za-z0-9_]*
 ```
 
-Identifiers name inputs, types, fields, params, lets, host functions, decisions, quantifier variables and names bound by `use`. They're case-sensitive: `Release` and `release` are different names.
+Identifiers name inputs, types, fields, params, lets, host functions, decisions, quantifier and filter variables and names bound by `use`. They're case-sensitive: `Release` and `release` are different names.
 
 Identifiers are ASCII only and can't contain `-` or `.`. A key such as `platform.example.com/lifecycle` isn't a name; you reach it through map indexing:
 
@@ -54,7 +54,7 @@ These words are reserved and can't be used as identifiers.
 | -------------- | --------------------------------------------------------------------------------- |
 | Policy files   | `policy`, `module`, `use`, `as`, `param`, `let`, `pub`, `when`, `assert`          |
 | Kind files     | `kind`, `version`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default` |
-| Operators      | `and`, `or`, `xor`, `not`, `in`, `all`, `any`, `one`, `exclusive`, `has`, `like`, `matches`, `present` |
+| Operators      | `and`, `or`, `xor`, `not`, `in`, `all`, `any`, `filter`, `one`, `exclusive`, `has`, `like`, `matches`, `present` |
 | Values         | `true`, `false`, `outcome`                                                        |
 
 The built-in type names (`bool`, `int`, `float`, `string`, `duration`, `timestamp`, `list`, `map`) aren't keywords. They only mean a type in type position, so a field declared as `duration: duration` is a field named `duration` of type `duration`. A kind can't declare a struct type with one of those names.
@@ -169,7 +169,7 @@ production(
 | `[` `]`                     | List literals, indexing                     |
 | `{` `}`                     | Map literals, rule bodies, type bodies, reason blocks, selective imports |
 | `(` `)`                     | Grouping, calls, decision constructors, policy invocations |
-| `:`                         | Type annotations, named arguments, quantifier bodies, map entries |
+| `:`                         | Type annotations, named arguments, quantifier and filter bodies, map entries |
 | `,`                         | Separators                                  |
 | `=`                         | `let` bindings, param and payload defaults  |
 | `->`                        | Return type in `fn` declarations            |

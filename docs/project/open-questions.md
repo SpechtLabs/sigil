@@ -29,7 +29,7 @@ If you have an opinion on any of these, [open an issue](https://github.com/Spech
 
 An assert names decisions as values, `[auditor, deployer] exclusive in outcome`, and `outcome` is a `list<decision>` (see [Types](/reference/types/#decision)). Two things it can't express yet:
 
-- **Payloads.** `outcome` holds decisions, not candidates, so an assert can't read a payload: "no `admin` grant with a `ttl` above 8h" isn't expressible. Something like `all g in outcome.admin: g.ttl <= 8h` would need a per-decision view of the candidates.
+- **Payloads.** `outcome` holds decisions, not candidates, so an assert can't read a payload: "no `admin` grant with a `ttl` above 8h" isn't expressible, and neither is the four-eyes guardrail "no `review` lists its own requestor as an approver". Something like `all g in outcome.admin: g.ttl <= 8h` or `all r in outcome.review: requestor.name not in r.approvers` would need a per-decision view of the candidates. A single policy can already keep the requestor off with a [filter](/reference/expressions/#filters); the assert is what a host-required guardrail would need to hold every team's policy to it. It's on the [roadmap](/project/roadmap/) as "Payloads in outcome asserts".
 - **Kinds with `precedence`.** There `outcome` is the winner alone. An assert can't see the losing candidates. That's right for "what will the host do", but it means an assert can't check, for example, that a guardrail's deny fired at all when a team's approve won. Contradictions between candidates are the kind's business, through [`exclusive`](/reference/kind-files/#exclusive), which sees every candidate.
 
 ## Collecting kinds

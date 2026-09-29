@@ -21,7 +21,7 @@ func FuzzEvalExpr(f *testing.F) {
 	if errs != nil {
 		f.Fatal(errs)
 	}
-	for _, src := range []string{"count + 1", "ratio - 0.5", "release.soak >= 1h", "release.parent?.author.name ?? \"nobody\"", "[1, 2][count]", "all x in service.counts: x > count", "actor.roles any in [\"admin\"]", `service.labels has "team"`, `service.name matches "a.*"`, `service.name like "*api"`, "[[]] in [[[]]]", "true or [1][9] == 0"} {
+	for _, src := range []string{"count + 1", "ratio - 0.5", "release.soak >= 1h", "release.parent?.author.name ?? \"nobody\"", "[1, 2][count]", "all x in service.counts: x > count", "filter x in service.counts: x > count", "actor.roles any in [\"admin\"]", `service.labels has "team"`, `service.name matches "a.*"`, `service.name like "*api"`, "[[]] in [[[]]]", "true or [1][9] == 0"} {
 		f.Add(src, int64(0))
 	}
 	f.Fuzz(func(t *testing.T, src string, n int64) {

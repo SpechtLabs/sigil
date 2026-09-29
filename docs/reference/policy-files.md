@@ -346,7 +346,7 @@ Each policy and module has one flat top-level namespace containing:
 - the document's own params and lets, including the lets inside `when` bodies,
 - every name bound by a `use`.
 
-Any collision between two of these is a compile error, and nothing shadows anything. A `param` named `release` in a kind that declares `input release` fails to compile, and so does a quantifier variable named `approvers` in a policy that has a param by that name.
+Any collision between two of these is a compile error, and nothing shadows anything. A `param` named `release` in a kind that declares `input release` fails to compile, and so does a quantifier or filter variable named `approvers` in a policy that has a param by that name.
 
 There's one exception, and it only exists so that adding a name to a kind never breaks a policy. When a document pinned below the kind's current version collides with an input, host function or decision, the kind must have added that name after the document was written, because the collision would have been an error at the pinned version. The document's own name wins, the kind's new name is out of reach in that document, and the `shadowed-kind-name` lint says so. The same collision in a document pinned to the current version is an error. Collisions between two of the document's own names are always errors.
 

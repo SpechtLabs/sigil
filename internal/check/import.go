@@ -243,6 +243,9 @@ func (c *Checker) static(x ast.Expr, env *Env) {
 		case *ast.QuantExpr:
 			c.errorf(n, help, "invocation argument quantifies over input")
 			return false
+		case *ast.FilterExpr:
+			c.errorf(n, help, "invocation argument filters a list")
+			return false
 		case *ast.SelectorExpr:
 			if id, ok := n.X.(*ast.Ident); ok {
 				if b, found := env.Lookup(id.Name); found && (b.Entity == Module || b.Entity == Invocable) {

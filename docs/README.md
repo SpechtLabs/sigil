@@ -32,7 +32,7 @@ config:
 
       - title: Halts by construction
         icon: mdi:timer-sand-complete
-        details: No loops, no recursion, no user-defined functions. Quantifiers range over finite lists and regexes use RE2. Host functions must terminate. Static cost budgets are planned.
+        details: No loops, no recursion, no user-defined functions. Quantifiers and filters range over finite lists and regexes use RE2. Host functions must terminate. Static cost budgets are planned.
 
       - title: Rule order never matters
         icon: mdi:sort-variant-off

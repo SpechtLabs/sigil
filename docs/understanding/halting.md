@@ -11,7 +11,7 @@ A policy engine often runs on every request. Termination alone does not protect 
 
 ## What's missing, on purpose
 
-**No loops.** There's no `for`, no `while`, no recursion through data. The only iteration is the quantifiers, `any x in xs: ...` and `all x in xs: ...`, and the operators that scan a collection: `in`, `has`, and the list operators `all in`, `any in`, `one in` and `exclusive in`. Each of them walks a list or map that already exists when it runs: part of the input, a param, a literal, a `let` or a host function's return value. None of them can grow the collection it walks.
+**No loops.** There's no `for`, no `while`, no recursion through data. The only iteration is the quantifiers, `any x in xs: ...` and `all x in xs: ...`, the filter, `filter x in xs: ...`, and the operators that scan a collection: `in`, `has`, and the list operators `all in`, `any in`, `one in` and `exclusive in`. Each of them walks a list or map that already exists when it runs: part of the input, a param, a literal, a `let` or a host function's return value. None of them can grow the collection it walks, and a filter's result is never longer than the list it filters.
 
 **No recursion.** A `let` can refer to other `let`s, a file can import from other files, and a policy can invoke other policies, but all three graphs must be acyclic. The compiler builds each dependency graph and rejects a cycle with an error pointing at the edge that closes it:
 

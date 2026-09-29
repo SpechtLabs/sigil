@@ -135,6 +135,16 @@ func TestParseExpr(t *testing.T) {
 		{"f(any r in xs: p, q)", "f((any r in xs: p), q)"},
 		{"[any r in xs: p, q]", "[(any r in xs: p), q]"},
 
+		// Filters parse like quantifiers and yield a list.
+		{`filter a in approvers: a != requestor.name`, `(filter a in approvers: (a != requestor.name))`},
+		{"filter a in xs: p and q", "(filter a in xs: (p and q))"},
+		{"(filter a in xs: p) all in ys", "(((filter a in xs: p)) all in ys)"},
+		{"x in (filter a in xs: p)", "(x in ((filter a in xs: p)))"},
+		{"any r in (filter a in xs: p): r", "(any r in ((filter a in xs: p)): r)"},
+		{"filter a in xs ?? []: p", "(filter a in (xs ?? []): p)"},
+		{"filter a in xs: any b in ys: a == b", "(filter a in xs: (any b in ys: (a == b)))"},
+		{"f(filter a in xs: p, q)", "f((filter a in xs: p), q)"},
+
 		// Comments and newlines are invisible.
 		{"a // c\n and b", "(a and b)"},
 		{"a\n  and b\n  or c", "((a and b) or c)"},
@@ -158,6 +168,7 @@ func TestParseExpr(t *testing.T) {
 func TestParseExprErrors(t *testing.T) {
 	const closeParen = "to close the `(` at 1:1"
 	const quantAny = "a quantifier is written `any x in xs: condition`"
+	const filterShape = "a filter is written `filter x in xs: condition`"
 	const chain = "add parentheses to say which comparison happens first, or join two comparisons with `and`"
 	const wrap = "wrap it in parentheses"
 
@@ -184,6 +195,8 @@ func TestParseExprErrors(t *testing.T) {
 		{"x == all r in xs: p", "a quantifier can't be an operand of `==`", wrap, "1:6-1:9"},
 		{"x == any r in xs: p", "a quantifier can't be an operand of `==`", wrap, "1:6-1:9"},
 		{"x in any r in xs: p", "a quantifier can't be an operand of `in`", wrap, "1:6-1:9"},
+		{"x in filter a in xs: p", "a filter can't be an operand of `in`", wrap, "1:6-1:12"},
+		{"any r in filter a in xs: p: r", "a filter can't be an operand of `in`", wrap, "1:10-1:16"},
 		{"a == not b", "`not` can't be an operand of `==`", wrap, "1:6-1:9"},
 		{"a - not b", "`not` can't be an operand of `-`", wrap, "1:5-1:8"},
 		{"a ?? not b", "`not` can't be an operand of `??`", wrap, "1:6-1:9"},
@@ -199,6 +212,12 @@ func TestParseExprErrors(t *testing.T) {
 		{"any r xs: p", "expected `in` after the variable `r`, found `xs`", quantAny, "1:7-1:9"},
 		{"any r in xs p", "expected `:`, found `p`", quantAny, "1:13-1:14"},
 		{"any r in xs:", "expected an expression, found end of file", "", "1:13-1:13"},
+
+		// Filter shape.
+		{"filter in xs: p", "expected a variable name after `filter`, found `in`", filterShape, "1:8-1:10"},
+		{"filter a xs: p", "expected `in` after the variable `a`, found `xs`", filterShape, "1:10-1:12"},
+		{"filter a in xs p", "expected `:`, found `p`", filterShape, "1:16-1:17"},
+		{"filter a in xs:", "expected an expression, found end of file", "", "1:16-1:16"},
 
 		// Compound operators after an operand.
 		{"a not b", "expected `in` after `not`", "after an operand, `not` is only valid as part of `not in`", "1:3-1:6"},
@@ -387,6 +406,7 @@ func TestParseExprPositions(t *testing.T) {
 		{"[1, 2]", "1:1-1:7"},
 		{`{"a": 1}`, "1:1-1:9"},
 		{"any r in xs: r", "1:1-1:15"},
+		{"filter r in xs: r", "1:1-1:18"},
 		{"a and\n  b", "1:1-2:4"},
 		{"`a\nb`", "1:1-2:3"},
 		{"a\n  or b\n  and c", "1:1-3:8"},

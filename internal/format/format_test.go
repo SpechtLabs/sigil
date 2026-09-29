@@ -69,6 +69,16 @@ func TestSource(t *testing.T) {
 			want: "policy a: K@1\n\nlet x = all r in xs: r != \"admin\"\n",
 		},
 		{
+			name: "filter body with and gets parentheses",
+			src:  "policy a: K@1\nlet x = filter   r in [\"a\",\"b\"]: r != \"a\" and r != y\n",
+			want: "policy a: K@1\n\nlet x = filter r in [\"a\", \"b\"]: (r != \"a\" and r != y)\n",
+		},
+		{
+			name: "filter body without and or or stays bare",
+			src:  "policy a: K@1\nlet x = z in (filter r in xs: r != y)\n",
+			want: "policy a: K@1\n\nlet x = z in (filter r in xs: r != y)\n",
+		},
+		{
 			name: "break after an operator moves before it",
 			src:  "policy a: K@1\nlet x = a and\n    b or\n c\n",
 			want: "policy a: K@1\n\nlet x = a\n  and b\n  or c\n",
@@ -151,7 +161,7 @@ func TestSource(t *testing.T) {
 // sigil block in the documentation that parses on its own, and checks
 // that formatting is idempotent and keeps the tree: the formatted source
 // parses to the same AST, apart from the parentheses fmt adds around
-// quantifier bodies.
+// quantifier and filter bodies.
 func TestCorpus(t *testing.T) {
 	for name, src := range corpus(t) {
 		t.Run(name, func(t *testing.T) {
@@ -262,7 +272,7 @@ func corpus(t *testing.T) map[string][]byte {
 }
 
 // tree dumps the AST of src without positions, with the parentheses fmt
-// adds around quantifier bodies removed.
+// adds around quantifier and filter bodies removed.
 func tree(t *testing.T, name string, src []byte) string {
 	t.Helper()
 	f, errs := parser.ParseFile(name, src)
@@ -272,18 +282,28 @@ func tree(t *testing.T, name string, src []byte) string {
 	for _, d := range f.Docs {
 		for _, x := range exprsOf(d) {
 			ast.Inspect(x, func(x ast.Expr) bool {
-				if q, ok := x.(*ast.QuantExpr); ok {
-					if p, ok := q.Body.(*ast.ParenExpr); ok {
-						if b, ok := p.X.(*ast.BinaryExpr); ok && breaks(b.Op) {
-							q.Body = b
-						}
-					}
+				switch q := x.(type) {
+				case *ast.QuantExpr:
+					q.Body = bare(q.Body)
+				case *ast.FilterExpr:
+					q.Body = bare(q.Body)
 				}
 				return true
 			})
 		}
 	}
 	return spans.ReplaceAllString(ast.Dump(f), "")
+}
+
+// bare returns a quantifier's or filter's body without the parentheses
+// fmt adds around a top-level `and`, `or` or `xor`.
+func bare(body ast.Expr) ast.Expr {
+	if p, ok := body.(*ast.ParenExpr); ok {
+		if b, ok := p.X.(*ast.BinaryExpr); ok && breaks(b.Op) {
+			return b
+		}
+	}
+	return body
 }
 
 // exprsOf returns the top-level expressions of a document.

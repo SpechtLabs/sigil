@@ -175,7 +175,7 @@ if r, ok := Review.Match(res); ok {
 ## Design goals
 
 - **Readable on first contact.** Terse is fine; Rego-style logic programming isn't.
-- **Finite and halting by design.** No loops, no recursion, no user-defined functions. Quantifiers range over finite collections. Host functions must terminate; static cost budgets are still planned.
+- **Finite and halting by design.** No loops, no recursion, no user-defined functions. Quantifiers and filters range over finite collections. Host functions must terminate; static cost budgets are still planned.
 - **Typed against the host's contract.** Unknown fields, type mismatches and wrong payload keys fail at compile time. A typo can't silently switch a deny rule off.
 - **Self-describing decisions.** A mandatory, literal reason on every decision, plus a typed payload the host acts on.
 - **Composable from day one.** Typed `param`s, `use` imports and policy invocation replace text templating for per-team variants, and `sigil explain` flattens any composition back into the rules it adds up to.

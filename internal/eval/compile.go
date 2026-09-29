@@ -70,6 +70,8 @@ func (c *compiler) expr(x ast.Expr) Expr {
 		return c.call(x)
 	case *ast.QuantExpr:
 		return c.quant(x)
+	case *ast.FilterExpr:
+		return c.filter(x)
 	}
 	throwf(x, "can't evaluate %T", x)
 	return nil
@@ -689,12 +691,13 @@ func (c *compiler) call(x *ast.CallExpr) Expr {
 	}
 }
 
-// quant compiles a quantifier: the variable gets a slot, and the body
-// runs per element until the result is decided.
+// quant compiles a quantifier: the variable gets a slot of its own, and
+// the body runs per element until the result is decided.
 func (c *compiler) quant(x *ast.QuantExpr) Expr {
 	rng := c.expr(x.Range)
-	slot := c.scope.Declare(x.Var.Name)
+	slot, restore := c.scope.bindVar(x.Var.Name)
 	body := c.expr(x.Body)
+	restore()
 	isAny := x.Op == ast.OpAny
 	return func(f *Frame) Value {
 		list := norm(rng(f))
@@ -709,6 +712,31 @@ func (c *compiler) quant(x *ast.QuantExpr) Expr {
 			}
 		}
 		return reflect.ValueOf(!isAny)
+	}
+}
+
+// filter compiles a filter: the variable gets a slot of its own, the body
+// runs once per element, and the elements it holds for are copied, in
+// order, into a new list of the range's own Go type.
+func (c *compiler) filter(x *ast.FilterExpr) Expr {
+	rng := c.expr(x.Range)
+	slot, restore := c.scope.bindVar(x.Var.Name)
+	body := c.expr(x.Body)
+	restore()
+	return func(f *Frame) Value {
+		list := norm(rng(f))
+		if !list.IsValid() {
+			return reflect.ValueOf([]any{})
+		}
+		out := reflect.MakeSlice(list.Type(), 0, list.Len())
+		for i := 0; i < list.Len(); i++ {
+			elem := list.Index(i)
+			f.slots[slot] = elem
+			if norm(body(f)).Bool() {
+				out = reflect.Append(out, elem)
+			}
+		}
+		return out
 	}
 }
 

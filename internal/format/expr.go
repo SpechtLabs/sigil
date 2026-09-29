@@ -78,7 +78,13 @@ func (p *printer) expr(x ast.Expr, indent int) {
 		}
 		p.list("(", ")", x.Fun.End().Line, before(x.End()), len(x.Args), item, indent)
 	case *ast.QuantExpr:
-		p.quant(x, indent)
+		if x != nil {
+			p.binder(x.Op.String(), x.Var.Name, x.Range, x.Body, indent)
+		}
+	case *ast.FilterExpr:
+		if x != nil {
+			p.binder("filter", x.Var.Name, x.Range, x.Body, indent)
+		}
 	}
 	p.last = x.End().Line
 }
@@ -135,23 +141,20 @@ func (p *printer) binary(x *ast.BinaryExpr, indent int) {
 	}
 }
 
-// quant prints a quantifier. A body with a top-level `and`, `or` or `xor`
-// gets parentheses, since the body extends as far right as it can and
-// the parentheses make that visible.
-func (p *printer) quant(x *ast.QuantExpr, indent int) {
-	if x == nil {
-		return
-	}
-	p.write(x.Op.String() + " " + x.Var.Name + " in ")
-	p.expr(x.Range, indent)
+// binder prints a quantifier or a filter, spelled kw. A body with a
+// top-level `and`, `or` or `xor` gets parentheses, since the body extends
+// as far right as it can and the parentheses make that visible.
+func (p *printer) binder(kw, name string, rng, body ast.Expr, indent int) {
+	p.write(kw + " " + name + " in ")
+	p.expr(rng, indent)
 	p.write(": ")
-	if b, ok := x.Body.(*ast.BinaryExpr); ok && breaks(b.Op) {
+	if b, ok := body.(*ast.BinaryExpr); ok && breaks(b.Op) {
 		p.write("(")
 		p.expr(b, indent+1)
 		p.write(")")
 		return
 	}
-	p.expr(x.Body, indent)
+	p.expr(body, indent)
 }
 
 // list prints bracketed items: on one line, separated by `, `, or one per
