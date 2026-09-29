@@ -97,21 +97,26 @@ func (k *Kind[In]) params(file string, doc *ast.PolicyDoc, info *check.Info, giv
 	return out, errs
 }
 
-// inBounds checks a bound value against the param's `min` and `max`.
+// inBounds checks a bound value against the param's `min` and `max`,
+// either of which may be absent.
 func inBounds(p *ast.ParamStmt, t types.Type, v any) *diag.Error {
 	if p.Min == nil && p.Max == nil {
 		return nil
 	}
 	got := constant.Ordered(v)
-	if lo, err := constant.Eval(p.Min, t); p.Min != nil && err == nil && constant.Compare(got, lo) < 0 {
-		return &diag.Error{Pos: p.Pos(), End: p.End(),
-			Msg:  fmt.Sprintf("param %s: %s is below the minimum %s", p.Name.Name, constant.Format(got), constant.Format(lo)),
-			Help: "the policy bounds the param; bind a value it accepts"}
+	if p.Min != nil {
+		if lo, err := constant.Eval(p.Min, t); err == nil && constant.Compare(got, lo) < 0 {
+			return &diag.Error{Pos: p.Pos(), End: p.End(),
+				Msg:  fmt.Sprintf("param %s: %s is below the minimum %s", p.Name.Name, constant.Format(got), constant.Format(lo)),
+				Help: "the policy bounds the param; bind a value it accepts"}
+		}
 	}
-	if hi, err := constant.Eval(p.Max, t); p.Max != nil && err == nil && constant.Compare(got, hi) > 0 {
-		return &diag.Error{Pos: p.Pos(), End: p.End(),
-			Msg:  fmt.Sprintf("param %s: %s is above the maximum %s", p.Name.Name, constant.Format(got), constant.Format(hi)),
-			Help: "the policy bounds the param; bind a value it accepts"}
+	if p.Max != nil {
+		if hi, err := constant.Eval(p.Max, t); err == nil && constant.Compare(got, hi) > 0 {
+			return &diag.Error{Pos: p.Pos(), End: p.End(),
+				Msg:  fmt.Sprintf("param %s: %s is above the maximum %s", p.Name.Name, constant.Format(got), constant.Format(hi)),
+				Help: "the policy bounds the param; bind a value it accepts"}
+		}
 	}
 	return nil
 }
