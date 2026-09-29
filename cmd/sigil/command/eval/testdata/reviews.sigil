@@ -1,0 +1,9 @@
+kind Reviews version 1
+
+input requestor: string
+
+decision review(approvers: list<string>) {
+  manager
+}
+
+collect all

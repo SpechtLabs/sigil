@@ -288,7 +288,7 @@ trace: no rule fired
 
 The help depends on what failed. Most runtime errors get "fix the expression the runtime error points at, or the input it read", and a host function that isn't linked in gets the advice above.
 
-A failing outcome assert lists the candidates that formed the outcome it read, so you can see which grants broke it. Here the separation-of-duties assert from the examples' access policies catches an auditor who also got deploy rights through on-call:
+A failing outcome assert lists the candidates that formed the outcome it read, with their payloads, so you can see which grants broke it and what they carried. Here the separation-of-duties assert from the examples' access policies catches an auditor who also got deploy rights through on-call:
 
 ```text
 $ sigil eval --kind access_grant.sigil --input access/testdata/auditor-sre.json --policy access.main access platform/access
@@ -297,6 +297,7 @@ access.main: an assert failed, the host falls back to no decisions
 assert sod_auditor_deployer failed at access/main.sigil:6:1 → platform/access/guardrails.sigil:11:1
   the outcome it read:
     deployer(oncall)            access/main.sigil:19:3
+      ttl = 2h
     auditor(compliance_member)  access/main.sigil:40:3
   = help: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong
 

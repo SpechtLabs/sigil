@@ -151,6 +151,16 @@ func TestExpr(t *testing.T) {
 		{src: "any x in (release.parent?.author.roles ?? []): true", want: "bool"},
 		{src: "actor.regions all in []", want: "bool"},
 
+		// Candidates: `outcome.<decision>` in asserts, typed by the payload.
+		{src: "outcome.review", assert: true, want: "list<review candidate>"},
+		{src: "outcome.review.service_owner", assert: true, want: "list<review candidate>"},
+		{src: "all r in outcome.review: actor.name not in r.approvers", assert: true, want: "bool"},
+		{src: "any a in outcome.approve: a.bake > 1h", assert: true, want: "bool"},
+		{src: "all d in outcome.deny: d.reason in [deny.no_rule_matched, deny.x]", assert: true, want: "bool"},
+		{src: "all r in outcome.review: r.reason == review.x", assert: true, want: "bool"},
+		{src: `filter r in outcome.review: "a" in r.approvers`, assert: true, want: "list<review candidate>"},
+		{src: "any r in (filter r2 in outcome.review.x: true): true", assert: true, want: "bool"},
+
 		// Filters have the type of the list they filter.
 		{src: `filter r in actor.roles: r like "sre-*"`, want: "list<string>"},
 		{src: "filter n in [1, 2, 3]: n > 1", want: "list<int>"},
@@ -367,6 +377,25 @@ func TestExpr(t *testing.T) {
 		{src: "any r in actor.roles: r", msg: "expected bool, found string", span: "1:23-1:24"},
 		{src: "any r in actor.roles: r == 1", msg: "`==` needs operands of the same type, found string and int", span: "1:23-1:29"},
 		{src: "(any r in actor.roles: r == \"a\") and r == \"b\"", msg: "unknown name `r`", span: "1:38-1:39"},
+
+		// Candidates are ranged over and read field by field, nothing else.
+		{src: "outcome.reviw", assert: true, msg: "the kind declares no decision `reviw`", help: "did you mean `review`? `outcome.<decision>` reads the candidates of one decision; the kind declares: deny, review, approve", span: "1:9-1:14"},
+		{src: "outcome.review.approvers", assert: true, msg: "decision review has no reason `approvers`", help: "`approvers` is a field of each candidate, not of the list; read it per candidate, like `all x in outcome.review: x.approvers ...`", span: "1:16-1:25"},
+		{src: "outcome.review.servce_owner", assert: true, msg: "decision review has no reason `servce_owner`", help: "did you mean `service_owner`? review declares: r, c, x, service_owner", span: "1:16-1:28"},
+		{src: "all r in outcome.review: r.aprovers", assert: true, msg: "unknown field \"aprovers\" on a review candidate", help: "did you mean \"approvers\"? a review candidate has: approvers, reason", span: "1:28-1:36"},
+		{src: "all a in outcome.approve: a.bak > 1h", assert: true, msg: "unknown field \"bak\" on an approve candidate", help: "did you mean \"bake\"? an approve candidate has: bake, reason", span: "1:29-1:32"},
+		{src: "outcome.review[0].approvers", assert: true, msg: "`outcome.review` is a list of candidates, which can't be indexed", help: "the order of candidates isn't part of the outcome; test every one with `all x in outcome.review: ...`, or `any`", span: "1:1-1:18"},
+		{src: "(filter r in outcome.review: true)[0]", assert: true, msg: "`((filter r in outcome.review: true))` is a list of candidates, which can't be indexed", span: "1:1-1:38"},
+		{src: "[outcome.review]", assert: true, msg: "list<review candidate> can't be a list element", help: "candidates can only be ranged over with `any`, `all` or `filter`, and read field by field, like `all r in outcome.<decision>: r.<field> ...`", span: "1:2-1:16"},
+		{src: "all r in outcome.review: [r]", assert: true, msg: "review candidate can't be a list element", span: "1:27-1:28"},
+		{src: `all r in outcome.review: {"a": r}`, assert: true, msg: "review candidate can't be a map value", span: "1:32-1:33"},
+		{src: "all r in outcome.review: all s in outcome.review: r == s", assert: true, msg: "`==` isn't defined for review candidate", help: "candidates have no equality; compare a field of each, such as `reason`", span: "1:51-1:57"},
+		{src: "outcome.review any in outcome.review", assert: true, msg: "`any in` can't compare elements of type review candidate", help: "candidates have no equality; compare a field of each, such as `reason`", span: "1:1-1:37"},
+		{src: "all r in outcome.review: r in outcome.review", assert: true, msg: "`in` can't compare elements of type review candidate", span: "1:26-1:45"},
+		{src: "outcome?.review", assert: true, msg: "`outcome` isn't optional", span: "1:10-1:16"},
+		{src: "any d in outcome: d.x", assert: true, msg: "`d` is a decision value, not a decision's name, so `.x` names no reason", help: "compare the whole value instead, like `d == <decision>.x`, or test it with `in`", span: "1:21-1:22"},
+		{src: "all r in outcome.review: r.reason.x", assert: true, msg: "`r.reason.x` names no reason", help: "a reason follows a decision's name directly, like `approve.release_manager`", span: "1:35-1:36"},
+		{src: "outcome.review", msg: "`outcome` can only be read in an assert condition", help: "a rule that read its own outcome could fire exactly when it doesn't; only `assert` conditions may read it", span: "1:1-1:8"},
 
 		// Filter rules, the same as a quantifier's.
 		{src: "filter r in service.labels: true", msg: "`filter` needs a list to range over, found map<string, string>", help: "a filter ranges over a list; to test a map's keys, index it or use `has` on map<string, string>", span: "1:13-1:27"},

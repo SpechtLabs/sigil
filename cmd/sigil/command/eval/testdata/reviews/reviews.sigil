@@ -1,0 +1,9 @@
+policy reviews: Reviews@1
+
+when true {
+  review(manager, approvers: ["cedric", "alice"])
+}
+
+// A four-eyes guardrail: nobody reviews their own request.
+assert("no_self_review",
+  all r in outcome.review: requestor not in r.approvers)

@@ -112,6 +112,12 @@ timeline:
       `filter a in approvers: a != requestor.name` keeps a requestor off their own approver list
       without a host function. Payloads in outcome asserts, which would let a guardrail enforce
       the same rule across every team's policies, join the roadmap as the next step.
+  - date: 2026-09-29
+    title: Payloads in outcome asserts
+    description: |
+      `outcome.<decision>` gives asserts the candidates the host acts on, typed by their payload,
+      so a required guardrail can check what every team's policy granted, not only which
+      decisions fired. The open question on decision values and `outcome` is settled.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -367,18 +373,17 @@ milestones:
           is likely to need it. Nothing else blocks it: kinds, the checker and the evaluator exist.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/types.md
       - title: Payloads in outcome asserts
-        state: TODO
+        state: DONE
         requirement: SHOULD
         description: |
-          An assert can test which decisions fired but not what they carry, so a guardrail can't
-          say "no review lists its own requestor as an approver" about every team's policy at
-          once. Something like `all r in outcome.review: requestor.name not in r.approvers` would,
-          with `outcome.review` a list of the review candidates' payloads. Open: how that list is
-          typed when the reasons share one payload struct, whether it holds the losing candidates
-          of a `collect one` kind, and whether the host's approval step makes the policy-side
-          check worth having at all. A filter already keeps the requestor off the list where the
-          list is built; this is about enforcing it across policies.
-        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/project/open-questions.md
+          `outcome.review` is the list of `review` candidates the host gets back, typed by the
+          decision's payload, so a guardrail can say `all r in outcome.review: requestor.name not
+          in r.approvers` about every team's policy at once. A reason narrows the list, and
+          `r.reason` is a decision value. It holds what the host acts on in both `collect` modes:
+          the top rank after folding, or the default. Candidates have no equality and no order, so
+          a list of them can only be ranged over with `any`, `all` or `filter`; indexing it is a
+          compile error. A failing outcome assert prints the payloads of the candidates it read.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/expressions.md
       - title: Evaluation trace
         state: DONE
         requirement: MUST

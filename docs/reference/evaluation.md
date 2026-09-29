@@ -94,7 +94,7 @@ In every phase, asserts reached through invocations are included, with their cal
 
 Checking input asserts first is what makes them useful as preconditions. With `assert("critical_needs_team_label", service.labels has "team")` in place, an input without the label fails with that reason. Without it, a rule reading `service.labels["team"]` would get `""` from the missing key and decide on it, and a rule indexing a list the input left short would fail with a bare index error. It also means no rule and no host function call runs on input the policy has declared invalid.
 
-`outcome` is the whole root's outcome, including an assert in an invoked policy. That's what lets a required guardrail policy check what every other policy in the composition granted. It also means an assert can fail because of a rule in a policy it has never seen, which is the point.
+`outcome` is the whole root's outcome, including an assert in an invoked policy. That's what lets a required guardrail policy check what every other policy in the composition granted. With [`outcome.<decision>`](/reference/expressions/#candidates) it can check what they carry too, such as the approvers of every review. It also means an assert can fail because of a rule in a policy it has never seen, which is the point.
 
 Every failing assert of the phase is reported, sorted by source position, not just the first one found. Stopping at the first failure would make the error depend on evaluation order. A phase that fails ends the evaluation, so a failed input assert hides outcome asserts, which never get an outcome to check.
 
