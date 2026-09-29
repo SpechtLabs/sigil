@@ -15,6 +15,7 @@ func FuzzLoadKind(f *testing.F) {
 		f.Add(src)
 	}
 	f.Add("kind K version 1\ndecision d(f: float = " + strings.Repeat("9", 308) + ".0 + " + strings.Repeat("9", 308) + ".0) { r }\ncollect all")
+	f.Add("kind K version 1\ndecision conflict(n: int = 1) { conflict r }\ncollect one\nprecedence conflict\ndefault conflict(r)\nconflict conflict(conflict, n: 2)")
 	f.Fuzz(func(t *testing.T, src string) {
 		k, errs := check.LoadKind("fuzz.sigil", []byte(src))
 		if errs != nil {

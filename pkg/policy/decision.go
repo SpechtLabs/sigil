@@ -64,9 +64,10 @@ type OutcomeRef interface {
 
 // Outcome is one reason of a decision, a reason handle from
 // [Decision.Reason]. It is how Go code names a reason: to rank it with
-// [WithReasonPrecedence], make it the default with [WithDefault], declare
-// it exclusive with [WithExclusive], and compare a result against it with
-// [Outcome.Is]. The zero value names no reason, and [NewKind] rejects it.
+// [WithReasonPrecedence], make it the default with [WithDefault] or the
+// conflict outcome with [WithConflict], declare it exclusive with
+// [WithExclusive], and compare a result against it with [Outcome.Is].
+// The zero value names no reason, and [NewKind] rejects it.
 type Outcome struct {
 	decision string
 	reason   string
@@ -78,8 +79,8 @@ type Outcome struct {
 type Matched[T any] struct {
 	Payload  T        // the payload struct, defaults filled in
 	Reason   string   // the reason the policy gave
-	Policy   string   // the policy whose rule produced it; empty for the kind's default
-	Position Position // of the constructor; unknown for the kind's default
+	Policy   string   // the policy whose rule produced it; empty for the kind's default and conflict outcome
+	Position Position // of the constructor; unknown for the kind's default and conflict outcome
 }
 
 // Name returns the decision's name as policies write it, such as
@@ -115,8 +116,8 @@ func (d Decision[T]) Reason(name string) Outcome {
 // entry.
 //
 // The result [Policy.Eval] returns alongside an error holds the kind's
-// default, so matching the default decision on it succeeds. Check the
-// error before matching.
+// default, or its [WithConflict] outcome after a conflict, so matching
+// that decision on it succeeds. Check the error before matching.
 func (d Decision[T]) Match(res *Result) (T, bool) {
 	var zero T
 	if res == nil {
@@ -165,8 +166,8 @@ func (o Outcome) Name() string { return o.reason }
 // [Decision.MatchAll] there.
 //
 // The result [Policy.Eval] returns alongside an error holds the kind's
-// default, so checking for the default reason on it succeeds. Check the
-// error first.
+// default, or its [WithConflict] outcome after a conflict, so checking
+// for that reason on it succeeds. Check the error first.
 func (o Outcome) Is(res *Result) bool {
 	if res == nil {
 		return false

@@ -1,0 +1,41 @@
+// `conflict` starts a declaration only where a kind declaration can
+// start. Everywhere else it's a name: a type field, an input, a
+// decision, a reason, and anything in a policy.
+kind Gate version 1
+
+type Merge {
+  conflict: bool
+}
+
+input conflict: Merge
+
+decision deny {
+  conflict
+  conflicting_rules
+  no_rule_matched
+}
+
+decision allow(ttl: duration = 1h) {
+  owner
+}
+
+collect one
+precedence deny > allow
+
+default deny(no_rule_matched)
+
+conflict deny(conflicting_rules)
+
+---
+
+// Joined onto one line, as a templater might, it still ends the line
+// before it and starts its own declaration.
+kind Joined version 1 decision allow(ttl: duration = 1h) { owner } collect one precedence allow default allow(owner) conflict allow(owner, ttl: 0s)
+
+---
+
+policy gate.main: Gate@1
+
+when conflict.conflict {
+  deny(conflict)
+}

@@ -83,7 +83,8 @@ func CompilePolicy(root *Source, k *kind.Kind, b *gokind.Binding, link Linker, o
 	err := catch(func() {
 		pc.ranks()
 		p.root = pc.instantiate(root, o.Params, nil, nil, nil)
-		p.def = pc.defaultCandidate()
+		p.def = pc.fixedCandidate(k.Default)
+		p.conflict = pc.fixedCandidate(k.Conflict)
 	})
 	if err != nil {
 		if err.File == "" {
@@ -235,10 +236,10 @@ func (pc *policyCompiler) ranks() {
 	}
 }
 
-// defaultCandidate builds the kind's default as a candidate: constant
-// payload values from the declaration, field defaults for the rest.
-func (pc *policyCompiler) defaultCandidate() *Candidate {
-	def := pc.policy.kind.Default
+// fixedCandidate builds the kind's default or its conflict outcome as a
+// candidate: constant payload values from the declaration, field defaults
+// for the rest. It returns nil for a declaration the kind leaves out.
+func (pc *policyCompiler) fixedCandidate(def *kind.Default) *Candidate {
 	if def == nil {
 		return nil
 	}

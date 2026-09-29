@@ -588,6 +588,49 @@ when "engineering" in teams {
 	//   dev_env engineering at 8:3 (grants)
 }
 
+// A conflict still fails the evaluation, but the result the host falls
+// back to says so, instead of claiming that no rule matched. Here two
+// approve reasons the kind doesn't rank fire together.
+func ExampleWithConflict() {
+	type Input struct {
+		Roles []string `policy:"roles"`
+	}
+	deny := policy.NewDecision[policy.None]("deny", "no_rule_matched", "conflicting_rules")
+	approve := policy.NewDecision[policy.None]("approve", "release_manager", "service_owner")
+	k := policy.NewKind[Input]("Deploy",
+		policy.WithVersion(1),
+		policy.WithDecisions(deny, approve),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
+		policy.WithConflict(deny.Reason("conflicting_rules")),
+	)
+	p, err := k.Compile(`policy deploy: Deploy@1
+
+when "release_manager" in roles {
+  approve(release_manager)
+}
+
+when "owner" in roles {
+  approve(service_owner)
+}
+`, "deploy")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	for _, roles := range [][]string{{"release_manager", "owner"}, {"viewer"}} {
+		res, err := p.Eval(context.Background(), Input{Roles: roles})
+		if _, ok := errors.AsType[*policy.ConflictError](err); ok {
+			fmt.Println("conflict, fall back to:", res.Decision, res.Reason)
+			continue
+		}
+		fmt.Println("decided:", res.Decision, res.Reason)
+	}
+	// Output:
+	// conflict, fall back to: deny conflicting_rules
+	// decided: deny no_rule_matched
+}
+
 // A host function receives its arguments as Go values; an error it returns
 // becomes a *RuntimeError.
 func ExampleWithFunc() {

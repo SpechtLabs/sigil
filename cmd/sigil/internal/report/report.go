@@ -29,7 +29,8 @@ const (
 
 // Report is one evaluation. For a kind that returns one decision,
 // Decision, Reason and Payload repeat the outcome's single entry, which is
-// the kind's default when no rule fired or the evaluation failed.
+// the kind's default when no rule fired or the evaluation failed, or its
+// conflict outcome after a conflict when the kind declares one.
 type Report struct {
 	Payload  map[string]any `json:"payload,omitempty" yaml:"payload,omitempty"` //nolint:emptyinterface // payload values are the host's, of any Sigil type
 	Error    *Failure       `json:"error,omitempty" yaml:"error,omitempty"`     // why the evaluation failed; nil when it didn't
@@ -39,6 +40,9 @@ type Report struct {
 	Outcome  []Entry        `json:"outcome" yaml:"outcome"`                     // what the host acts on; never nil
 	Trace    []Entry        `json:"trace" yaml:"trace"`                         // every candidate the rules produced, winners first; never nil
 	Collect  bool           `json:"collect,omitempty" yaml:"collect,omitempty"` // the kind collects every candidate
+	// onConflict says the outcome is the kind's conflict outcome, not its
+	// default, so the text names which of the two the host falls back to.
+	onConflict bool
 }
 
 // Entry is one candidate or outcome entry.
@@ -81,6 +85,7 @@ type Assert struct {
 // New builds the report for one evaluation.
 func New(k *project.Kind, res *result.Result) *Report {
 	r := &Report{Policy: res.Policy, Collect: res.Collect, Outcome: []Entry{}, Trace: []Entry{}}
+	r.onConflict = res.Failure != nil && res.Failure.Conflict != nil && k.Model.Conflict != nil
 	if !r.Collect && len(res.Outcome) == 1 {
 		e := res.Outcome[0]
 		r.Decision, r.Reason = e.Decision, e.Reason
@@ -191,7 +196,11 @@ func (r *Report) summary(t pretty.Theme) string {
 	if !r.Collect {
 		s := t.Bold(r.Decision + "(" + r.Reason + ")")
 		if len(r.Outcome) == 1 && r.Outcome[0].Position == "" {
-			s += ", " + t.Muted("the kind's default")
+			note := "the kind's default"
+			if r.onConflict {
+				note = "the kind's conflict outcome"
+			}
+			s += ", " + t.Muted(note)
 		}
 		return s
 	}

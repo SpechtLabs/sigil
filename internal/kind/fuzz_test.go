@@ -11,7 +11,8 @@ import (
 )
 
 // Generate valid contracts directly so mutations exercise export/import on
-// every run, including nested types, defaults and both resolution modes.
+// every run, including nested types, defaults, the conflict outcome's
+// constant payload and both resolution modes.
 func FuzzKindRoundTrip(f *testing.F) {
 	f.Add([]byte{0, 1, 2, 3, 4, 5}, int64(42), "hello", false)
 	f.Add([]byte{5, 4, 3, 2, 1}, int64(-9223372036854775808), "\x00\xff", true)
@@ -45,9 +46,10 @@ func FuzzKindRoundTrip(f *testing.F) {
 			Precedence: []string{"deny", "allow"},
 			Exclusive:  [][]kind.Outcome{{{Decision: "deny", Reason: "blocked"}, {Decision: "allow"}}},
 			Default:    &kind.Default{Decision: "deny", Reason: "fallback", Args: map[string]any{}},
+			Conflict:   &kind.Default{Decision: "allow", Reason: "ok", Args: map[string]any{"count": n, "text": s}},
 		}
 		if all {
-			k.Collect, k.Precedence, k.Default = kind.CollectAll, nil, nil
+			k.Collect, k.Precedence, k.Default, k.Conflict = kind.CollectAll, nil, nil, nil
 		}
 		if errs := k.Validate(nil); errs != nil {
 			t.Fatal(errs)

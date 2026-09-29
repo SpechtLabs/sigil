@@ -53,6 +53,10 @@ func TestLookup(t *testing.T) {
 		{"map", Ident},
 		{"deny", Ident},
 		{"approve", Ident},
+		// Words a kind file gives a meaning in one position, which the
+		// parser recognizes by spelling so they stay usable as names.
+		{"accepts", Ident},
+		{"conflict", Ident},
 		// Symbols other languages use aren't words.
 		{"", Ident},
 		{"&&", Ident},

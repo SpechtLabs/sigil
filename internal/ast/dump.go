@@ -224,6 +224,8 @@ func (d *dumper) decl(decl Decl) {
 		d.linef("collect %s %s", mode, spanOf(decl))
 	case *DefaultDecl:
 		d.linef("default %s %s", callString(decl.Call), spanOf(decl))
+	case *ConflictDecl:
+		d.linef("conflict %s %s", callString(decl.Call), spanOf(decl))
 	default:
 		d.linef("<%T>", decl)
 	}

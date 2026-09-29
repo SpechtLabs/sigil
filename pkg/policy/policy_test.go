@@ -236,6 +236,16 @@ func TestNewKindPanics(t *testing.T) {
 			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(Deny.Reason("x")),
 				policy.WithReasonPrecedence(Deny.Reason("x")), policy.WithReasonPrecedence(Deny.Reason("x")))
 		}, want: []string{"precedence deny is declared twice"}},
+		{name: "conflict outcome on a collecting kind", fn: func() {
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithCollect(Deny), policy.WithConflict(Deny.Reason("x")))
+		}, want: []string{"kind K collects all decisions and can't declare a conflict outcome", "because granting anything on a defect in the policy would fail open"}},
+		{name: "conflict outcome without every field", fn: func() {
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny, Review), policy.WithDefault(Deny.Reason("x")),
+				policy.WithConflict(Review.Reason("a")))
+		}, want: []string{`conflict: field "approvers" is required and has no value`}},
+		{name: "the zero outcome as conflict outcome", fn: func() {
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(Deny.Reason("x")), policy.WithConflict(policy.Outcome{}))
+		}, want: []string{`conflict names undeclared decision ""`}},
 		{name: "the zero outcome as default", fn: func() {
 			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(policy.Outcome{}))
 		}, want: []string{`default names undeclared decision ""`}},

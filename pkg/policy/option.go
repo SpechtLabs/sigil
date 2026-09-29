@@ -131,13 +131,40 @@ func WithExclusive(outcomes ...OutcomeRef) Option {
 //
 // [Policy.Eval] also returns the default alongside a runtime error, a
 // conflict or a failed assert, so a host that fails closed can use the
-// result directly.
+// result directly. A kind with [WithConflict] returns its conflict
+// outcome for a conflict instead.
 //
 //	policy.WithDefault(Deny.Reason("no_rule_matched"))
 func WithDefault(reason Outcome) Option {
 	return func(o *gokind.Options) {
 		// The zero Outcome fails validation as an undeclared decision.
 		o.Default = &gokind.Default{Decision: reason.decision, Reason: reason.reason}
+	}
+}
+
+// WithConflict sets the decision and reason a [WithDecisions] kind
+// returns when resolution ends in a conflict, `conflict
+// deny(conflicting_rules)` in a kind file, given as an [Outcome] from
+// [Decision.Reason]. Like [WithDefault], its payload fields take their
+// defaults, so every field of the decision's payload struct needs a
+// `default=` in its tag. It's optional; without it a conflict returns the
+// kind's default.
+//
+// [Policy.Eval] still returns the [*ConflictError], and the result's trace
+// still lists every candidate. What changes is the outcome that comes
+// with the error: with the default, a log line or a dashboard that reads
+// the result reports "no rule matched" for an evaluation where several
+// rules fired, and a dedicated reason says what happened.
+//
+// A [WithCollect] kind can't take it, and [NewKind] panics: a collecting
+// kind returns an empty outcome on every failed evaluation, because
+// granting anything on a defect in the policy would fail open.
+//
+//	policy.WithConflict(Deny.Reason("conflicting_rules"))
+func WithConflict(reason Outcome) Option {
+	return func(o *gokind.Options) {
+		// The zero Outcome fails validation as an undeclared decision.
+		o.Conflict = &gokind.Default{Decision: reason.decision, Reason: reason.reason}
 	}
 }
 

@@ -1,6 +1,7 @@
 package kind_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -112,12 +113,21 @@ collect all
 			"zzz":    int64(1), // unknown fields come last, sorted
 			"aaa":    int64(2),
 		}}
-		want := `default approve(open, bake: 15m, detail: ["a"], aaa: 2, zzz: 1)`
-		if got := k.Default.Source(k.Decision("approve")); got != want {
-			t.Errorf("Source() = %q, want %q", got, want)
+		want := `approve(open, bake: 15m, detail: ["a"], aaa: 2, zzz: 1)`
+		if got := k.Default.Call(k.Decision("approve")); got != want {
+			t.Errorf("Call() = %q, want %q", got, want)
 		}
-		if got := k.Default.Source(nil); got != `default approve(open, aaa: 2, bake: 15m, detail: ["a"], zzz: 1)` {
-			t.Errorf("Source(nil) = %q", got)
+		if got := k.Default.Call(nil); got != `approve(open, aaa: 2, bake: 15m, detail: ["a"], zzz: 1)` {
+			t.Errorf("Call(nil) = %q", got)
+		}
+	})
+
+	t.Run("conflict outcome after the default", func(t *testing.T) {
+		k := deploy()
+		k.Conflict = &kind.Default{Decision: "approve", Reason: "open", Args: map[string]any{"bake": 15 * time.Minute}}
+		want := "collect one\nprecedence deny > review > approve\n\ndefault deny(no_rule_matched)\n\nconflict approve(open, bake: 15m)\n"
+		if got := k.Source(); !strings.HasSuffix(got, want) {
+			t.Errorf("Source() ends in\n%s\nwant it to end in\n%s", got[max(0, len(got)-len(want)):], want)
 		}
 	})
 

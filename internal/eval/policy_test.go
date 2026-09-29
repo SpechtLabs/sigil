@@ -306,10 +306,45 @@ func TestPolicyIsConcurrent(t *testing.T) {
 	}
 }
 
+// TestConflictOutcome checks the candidate a kind's conflict outcome
+// compiles to: its decision and reason, the payload with field defaults
+// filled in, typed too, and no position or policy, since no rule
+// produced it. A kind without one has none, and a conflict falls back to
+// the default.
+func TestConflictOutcome(t *testing.T) {
+	const src = "policy p: Test@1\n"
+	o := testOptions(false)
+	o.Conflict = &gokind.Default{Decision: "approve", Reason: "a"}
+	c := compileWith(t, src, o, nil).ConflictOutcome()
+	if c == nil {
+		t.Fatal("ConflictOutcome() = nil")
+	}
+	if got := c.Decision.Name + " " + c.Reason; got != "approve a" {
+		t.Errorf("ConflictOutcome() = %s, want approve a", got)
+	}
+	if want := map[string]any{"bake": time.Hour, "ticket": ""}; !reflect.DeepEqual(c.Payload, want) {
+		t.Errorf("Payload = %#v, want %#v", c.Payload, want)
+	}
+	if want := (ApproveData{Bake: time.Hour}); !reflect.DeepEqual(c.Typed.Interface(), want) {
+		t.Errorf("Typed = %#v, want %#v", c.Typed.Interface(), want)
+	}
+	if c.Pos.IsValid() || c.Policy != "" {
+		t.Errorf("the conflict outcome has a position or policy: %+v", c.Rule)
+	}
+	if got := compilePolicy(t, src, false, nil).ConflictOutcome(); got != nil {
+		t.Errorf("ConflictOutcome() without a declaration = %v, want nil", got)
+	}
+}
+
 // compilePolicy builds the Test kind (ranked, or collecting when collect
 // is set), checks src against it and compiles it with params bound.
 func compilePolicy(t *testing.T, src string, collect bool, params map[string]eval.Value) *eval.Policy {
 	t.Helper()
+	return compileWith(t, src, testOptions(collect), params)
+}
+
+// testOptions declares the Test kind, ranked or collecting.
+func testOptions(collect bool) gokind.Options {
 	o := gokind.Options{
 		Name: "Test", Version: 1, Input: typeOf[Input](),
 		Decisions: []gokind.Decision{
@@ -328,6 +363,13 @@ func compilePolicy(t *testing.T, src string, collect bool, params map[string]eva
 		o.Ranked = true
 		o.Default = &gokind.Default{Decision: "deny", Reason: "no_rule_matched"}
 	}
+	return o
+}
+
+// compileWith builds the kind o declares, checks src against it and
+// compiles it with params bound.
+func compileWith(t *testing.T, src string, o gokind.Options, params map[string]eval.Value) *eval.Policy {
+	t.Helper()
 	k, b, errs := gokind.Build(o)
 	if errs != nil {
 		t.Fatal(errs)

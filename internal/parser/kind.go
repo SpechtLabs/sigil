@@ -7,6 +7,14 @@ import (
 	"github.com/spechtlabs/sigil/internal/token"
 )
 
+// conflictWord starts the declaration `conflict deny(conflicting_rules)`.
+// It isn't a keyword, as `accepts` in the header isn't: reserving it
+// would break every document that already names a reason, input, param
+// or let `conflict`, since those must be plain identifiers. No other kind
+// declaration starts with an identifier, so at the start of one its
+// spelling is enough to tell.
+const conflictWord = "conflict"
+
 // parseKind parses a kind document from its `kind` keyword to the end of
 // the document. Only syntax is checked here; that `reason: string` comes
 // first, that precedence names every decision and the other validity rules
@@ -65,8 +73,12 @@ func (p *parser) parseDecl() ast.Decl {
 		return p.parseCollect()
 	case token.KwDefault:
 		return p.parseDefault()
+	case token.Ident:
+		if p.tok.Text == conflictWord {
+			return p.parseConflict()
+		}
 	}
-	p.unexpected("a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect` or `default`)", "")
+	p.unexpected("a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect`, `default` or `conflict`)", "")
 	return nil
 }
 
@@ -271,9 +283,36 @@ func (p *parser) parseDefault() *ast.DefaultDecl {
 	return d
 }
 
+// parseConflict parses `conflict deny(conflicting_rules, field: value)`.
+func (p *parser) parseConflict() *ast.ConflictDecl {
+	kw := p.tok
+	p.next()
+	if p.tok.Kind != token.Ident || p.peek().Kind != token.LParen {
+		p.unexpected("a decision constructor", "the conflict outcome is written `conflict deny(conflicting_rules)`")
+	}
+	d := &ast.ConflictDecl{Call: p.parseCall()}
+	d.Span = ast.Span{From: kw.Pos, To: d.Call.End()}
+	return d
+}
+
 // syncKind skips to the next kind declaration or the end of the document.
 func (p *parser) syncKind() {
 	p.sync(func(t token.Token) bool {
-		return t.Kind == token.Separator || p.atHeader(t) || isDeclKeyword(t.Kind)
+		return t.Kind == token.Separator || p.atHeader(t) || isDeclKeyword(t.Kind) || p.atConflict(t)
 	})
+}
+
+// atConflict reports whether t, the current token, looks like the start
+// of a conflict declaration while the parser skips ahead after an error:
+// the identifier `conflict` followed by the constructor's decision name,
+// or by the `(` of a constructor missing its name. A field called
+// `conflict` is followed by `:`, but in a reason block the next reason
+// is a name too; there the worst case is one more error in a declaration
+// already reported.
+func (p *parser) atConflict(t token.Token) bool {
+	if t.Kind != token.Ident || t.Text != conflictWord {
+		return false
+	}
+	next := p.peek().Kind
+	return next == token.Ident || next == token.LParen
 }

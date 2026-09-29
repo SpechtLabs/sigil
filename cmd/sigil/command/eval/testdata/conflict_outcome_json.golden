@@ -1,0 +1,63 @@
+{
+  "error": {
+    "kind": "conflict",
+    "message": "collect one: 2 candidates at the top rank",
+    "help": "a conflict is a defect in the policy: rank the reasons with precedence, or keep the exclusive outcomes' conditions apart",
+    "candidates": [
+      {
+        "decision": "deny",
+        "reason": "too_old",
+        "policy": "access.main",
+        "position": "testdata/access/main.sigil:14:3",
+        "conditions": [
+          "age \u003e 30d"
+        ]
+      },
+      {
+        "decision": "deny",
+        "reason": "banned",
+        "policy": "access.main",
+        "position": "testdata/access/main.sigil:18:3",
+        "conditions": [
+          "labels[\"tier\"] \u003e 2"
+        ]
+      }
+    ]
+  },
+  "policy": "access.main",
+  "decision": "deny",
+  "reason": "conflicting_rules",
+  "outcome": [
+    {
+      "decision": "deny",
+      "reason": "conflicting_rules"
+    }
+  ],
+  "trace": [
+    {
+      "decision": "deny",
+      "reason": "too_old",
+      "policy": "access.main",
+      "position": "testdata/access/main.sigil:14:3"
+    },
+    {
+      "decision": "deny",
+      "reason": "banned",
+      "policy": "access.main",
+      "position": "testdata/access/main.sigil:18:3"
+    },
+    {
+      "payload": {
+        "scopes": [],
+        "ttl": "1h"
+      },
+      "decision": "allow",
+      "reason": "team_member",
+      "policy": "access.main",
+      "position": "testdata/access/main.sigil:10:3"
+    }
+  ]
+}
+--- error ---
+the evaluation failed; the host would act on the fallback shown above
+advice: a conflict is a defect in the policy: rank the reasons with precedence, or keep the exclusive outcomes' conditions apart

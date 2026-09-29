@@ -1,7 +1,8 @@
 // Package result turns one evaluation of a compiled policy into what a
 // host acts on. A [Result] holds the outcome, which falls back to the
-// kind's default when nothing fired or the evaluation failed, the trace,
-// with the conditions that held for the candidates of the winning
+// kind's default when nothing fired or the evaluation failed, or to its
+// conflict outcome after a conflict when the kind declares one, the
+// trace, with the conditions that held for the candidates of the winning
 // decisions, and the failure that stopped it, if any.
 //
 // It sits after the evaluator: [Evaluate] runs an
@@ -30,7 +31,8 @@ type Result struct {
 	Policy  string   // the root policy
 	// Outcome is what the host acts on: the winner, every top-ranked
 	// candidate of a collecting kind, or the kind's default. After a
-	// failure it's the default, or empty for a collecting kind.
+	// failure it's the default, or the kind's conflict outcome after a
+	// conflict when it declares one, and empty for a collecting kind.
 	Outcome []Entry
 	Trace   []Candidate // every candidate the rules produced, winners first
 	Collect bool        // the kind collects every candidate
@@ -112,7 +114,8 @@ type Position struct {
 // Evaluate evaluates prog against input, a value of the kind's input
 // struct or a pointer to one, and never returns nil. When the evaluation
 // fails, Failure says why and the outcome is the fallback: the kind's
-// default, or empty for a collecting kind. The trace then holds every
+// default, its conflict outcome after a conflict when it declares one, or
+// empty for a collecting kind. The trace then holds every
 // candidate the rules produced, which is none after failed input asserts,
 // a runtime error or a cancellation. It's safe for concurrent use, as
 // prog is.
@@ -130,7 +133,7 @@ func EvaluateContext(ctx context.Context, prog *eval.Policy, input any) *Result 
 	b := builder{prog: prog}
 	out, err := prog.EvalContext(ctx, input)
 	if err != nil {
-		res := b.fallback(nil)
+		res := b.fallback(prog.Default(), nil)
 		if rerr, ok := errors.AsType[*diag.Error](err); ok {
 			res.Failure = &Failure{Runtime: b.runtime(rerr, prog.Name)}
 		} else {
@@ -144,7 +147,7 @@ func EvaluateContext(ctx context.Context, prog *eval.Policy, input any) *Result 
 		for _, cand := range out.Conflict.Candidates {
 			c.Candidates = append(c.Candidates, b.candidate(cand, true))
 		}
-		failed := b.fallback(res.Trace)
+		failed := b.fallback(b.onConflict(), res.Trace)
 		failed.Failure = &Failure{Conflict: c}
 		return failed
 	}
@@ -168,7 +171,7 @@ func EvaluateContext(ctx context.Context, prog *eval.Policy, input any) *Result 
 		}
 		f.Asserts = append(f.Asserts, af)
 	}
-	failed := b.fallback(res.Trace)
+	failed := b.fallback(prog.Default(), res.Trace)
 	failed.Failure = f
 	return failed
 }
@@ -215,16 +218,27 @@ type builder struct {
 	prog *eval.Policy
 }
 
-// fallback is the result of an evaluation that failed: the kind's
-// default, or an empty outcome for a collecting kind, with the given
-// trace and no Failure yet.
-func (b builder) fallback(trace []Candidate) *Result {
+// fallback is the result of an evaluation that failed: def, the kind's
+// default or its conflict outcome, or an empty outcome for a collecting
+// kind, with the given trace and no Failure yet.
+func (b builder) fallback(def *eval.Candidate, trace []Candidate) *Result {
 	res := b.empty()
 	res.Trace = trace
-	if def := b.prog.Default(); def != nil && !res.Collect {
+	if def != nil && !res.Collect {
 		res.Outcome = []Entry{b.entry(def)}
 	}
 	return res
+}
+
+// onConflict is the outcome a conflict falls back to: the kind's
+// conflict outcome when it declares one, so the result names the
+// conflict instead of repeating the default's reason, and the default
+// otherwise.
+func (b builder) onConflict() *eval.Candidate {
+	if c := b.prog.ConflictOutcome(); c != nil {
+		return c
+	}
+	return b.prog.Default()
 }
 
 // result builds the Result for an outcome. Conditions are recorded for

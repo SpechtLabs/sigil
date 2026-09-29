@@ -18,7 +18,8 @@ import (
 //     of range, or a host function returned an error, or panicked under
 //     [WithRecoverHostPanics].
 //   - [*ConflictError], when two candidates can't both stand; its
-//     Candidates field names them.
+//     Candidates field names them. A kind with [WithConflict] returns its
+//     conflict outcome here instead of the default.
 //   - [*AssertionError], when an assert failed. The result's trace lists
 //     every candidate the rules produced: none when an input assert
 //     failed, since no rule ran.

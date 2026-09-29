@@ -10,7 +10,8 @@ import (
 // doc prints a document from its header to its last statement. A blank
 // line follows the header, and top-level items are grouped by kind: a
 // blank line comes between two groups, and around every rule,
-// invocation, type, decision and default, which stand alone.
+// invocation, type, decision, default and conflict outcome, which stand
+// alone.
 func (p *printer) doc(d ast.Doc) {
 	var items []ast.Node
 	switch d := d.(type) {
@@ -64,7 +65,7 @@ func (p *printer) doc(d ast.Doc) {
 // The groups top-level items fall into.
 const (
 	groupHeader = iota
-	groupAlone  // a rule, invocation, type, decision or default: never grouped
+	groupAlone  // a rule, invocation, type, decision, default or conflict: never grouped
 	groupUse
 	groupParam
 	groupLet
@@ -318,6 +319,9 @@ func (p *printer) decl(d ast.Decl) {
 		}
 	case *ast.DefaultDecl:
 		p.write("default ")
+		p.call(d.Call, 0)
+	case *ast.ConflictDecl:
+		p.write("conflict ")
 		p.call(d.Call, 0)
 	}
 	p.last = d.End().Line

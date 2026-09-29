@@ -290,7 +290,7 @@ func TestParseFileErrors(t *testing.T) {
 		{name: "precedence without names", src: "kind K version 1\nprecedence", errs: []string{"2:11: expected a decision name after `precedence`, found end of file"}, help: "precedence is written `precedence deny > review > approve`, highest first, or `precedence approve: a > b` for one decision's reasons"},
 		{name: "precedence trailing arrow", src: "kind K version 1\nprecedence a >", errs: []string{"2:15: expected a name after `>`, found end of file"}},
 		{name: "precedence scoped without reasons", src: "kind K version 1\nprecedence a:", errs: []string{"2:14: expected a reason name after `:`, found end of file"}},
-		{name: "precedence wrong operator", src: "kind K version 1\nprecedence a < b", errs: []string{"2:14: expected a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect` or `default`), found `<`"}},
+		{name: "precedence wrong operator", src: "kind K version 1\nprecedence a < b", errs: []string{"2:14: expected a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect`, `default` or `conflict`), found `<`"}},
 		{name: "exclusive with one outcome", src: "kind K version 1\nexclusive a", errs: []string{"2:1: exclusive needs at least two outcomes"}},
 		{name: "exclusive with a dangling dot", src: "kind K version 1\nexclusive a., b", errs: []string{"2:13: expected a reason name after `.`, found `,`"}},
 		{name: "collect without mode", src: "kind K version 1\ncollect", errs: []string{"2:8: expected `one` or `all`, found end of file"},
@@ -298,7 +298,7 @@ func TestParseFileErrors(t *testing.T) {
 		{name: "collect any", src: "kind K version 1\ncollect any", errs: []string{"2:9: expected `one` or `all`, found `any`"}},
 		{name: "default without constructor", src: "kind K version 1\ndefault", errs: []string{"2:8: expected a decision constructor, found end of file"}, help: "the default is written `default deny(no_rule_matched)`"},
 		{name: "default bare name", src: "kind K version 1\ndefault deny", errs: []string{"2:9: expected a decision constructor, found `deny`"}},
-		{name: "policy statement in kind", src: "kind K version 1\nwhen x {}", errs: []string{"2:1: expected a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect` or `default`), found `when`"}},
+		{name: "policy statement in kind", src: "kind K version 1\nwhen x {}", errs: []string{"2:1: expected a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect`, `default` or `conflict`), found `when`"}},
 		{name: "broken declaration keeps the rest", src: "kind K version 1\ninput x\ninput y: int", errs: []string{"3:1: expected `:`, found `input`"}, want: "kind K version 1\n  input y: int"},
 
 		// Document boundaries.

@@ -357,6 +357,8 @@ func exprsOf(d ast.Doc) []ast.Expr {
 				}
 			case *ast.DefaultDecl:
 				call(decl.Call)
+			case *ast.ConflictDecl:
+				call(decl.Call)
 			}
 		}
 	}
@@ -406,6 +408,7 @@ func builtKind(t *testing.T) *kind.Kind {
 		Exclusive: [][]kind.Outcome{{{Decision: "approve", Reason: "lgtm"}, {Decision: "approve", Reason: "release_manager"}}},
 		Funcs:     []gokind.Func{{Name: "split", Fn: strings.Split}, {Name: "parse", Fn: time.ParseDuration}},
 		Default:   &gokind.Default{Decision: "deny", Reason: "no_rule_matched"},
+		Conflict:  &gokind.Default{Decision: "deny", Reason: "stale"},
 	})
 	if errs != nil {
 		t.Fatalf("building the kind: %v", errs)

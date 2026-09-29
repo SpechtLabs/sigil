@@ -14,8 +14,9 @@ import (
 // with the same Source are the same contract, which is how a stale
 // exported kind file is detected. The layout is
 // the one `sigil fmt` writes: a blank line after the header, around every
-// type and decision and before the default, and inputs, functions and
-// the collect, precedence and exclusive lines each grouped together.
+// type and decision and before the default and the conflict outcome, and
+// inputs, functions and the collect, precedence and exclusive lines each
+// grouped together.
 func (k *Kind) Source() string {
 	var b strings.Builder
 	b.WriteString("kind " + k.Name + " version " + strconv.Itoa(k.Version))
@@ -79,17 +80,20 @@ func (k *Kind) Source() string {
 		b.WriteString("\n" + resolution.String())
 	}
 	if k.Default != nil {
-		b.WriteString("\n" + k.Default.Source(k.Decision(k.Default.Decision)) + "\n")
+		b.WriteString("\ndefault " + k.Default.Call(k.Decision(k.Default.Decision)) + "\n")
+	}
+	if k.Conflict != nil {
+		b.WriteString("\nconflict " + k.Conflict.Call(k.Decision(k.Conflict.Decision)) + "\n")
 	}
 	return b.String()
 }
 
-// Source renders the default declaration, like
-// `default deny(no_rule_matched)`, without a newline. decl is the decision
-// it constructs, or nil. When given, it orders the arguments as its fields
-// are declared; arguments it doesn't declare, and all of them without it,
-// follow sorted by name.
-func (d *Default) Source(decl *Decision) string {
+// Call renders the constructor call of a default or conflict declaration,
+// like `deny(no_rule_matched)`, without the keyword before it. decl is
+// the decision it constructs, or nil. When given, it orders the arguments
+// as its fields are declared; arguments it doesn't declare, and all of
+// them without it, follow sorted by name.
+func (d *Default) Call(decl *Decision) string {
 	names := make([]string, 0, len(d.Args))
 	if decl != nil {
 		for _, f := range decl.Fields {
@@ -111,5 +115,5 @@ func (d *Default) Source(decl *Decision) string {
 	for _, name := range names {
 		args = append(args, name+": "+constant.Format(d.Args[name]))
 	}
-	return "default " + d.Decision + "(" + strings.Join(args, ", ") + ")"
+	return d.Decision + "(" + strings.Join(args, ", ") + ")"
 }

@@ -27,12 +27,13 @@ func TestEval(t *testing.T) {
 		reviews = "reviews"
 	)
 	tests := []struct {
-		name   string
-		kind   string // access, grants or reviews
-		input  string // under testdata/inputs, or "-" for stdin
-		stdin  string
-		policy string
-		format output.Format
+		name     string
+		kind     string // access, grants or reviews
+		kindFile string // the kind file under testdata, without .sigil; the kind's own when empty
+		input    string // under testdata/inputs, or "-" for stdin
+		stdin    string
+		policy   string
+		format   output.Format
 	}{
 		{name: "winner", kind: access, input: "admin.json"},
 		{name: "winner_json", kind: access, input: "admin.json", format: output.JSON},
@@ -41,6 +42,9 @@ func TestEval(t *testing.T) {
 		{name: "assert", kind: access, input: "unnamed.json"},
 		{name: "assert_json", kind: access, input: "unnamed.json", format: output.JSON},
 		{name: "conflict", kind: access, input: "conflict.json"},
+		{name: "conflict_outcome", kind: access, kindFile: "access_conflict", input: "conflict.json"},
+		{name: "conflict_outcome_json", kind: access, kindFile: "access_conflict", input: "conflict.json", format: output.JSON},
+		{name: "conflict_outcome_unused", kind: access, kindFile: "access_conflict", input: "nobody.json"},
 		{name: "unbound_function", kind: access, input: "vault.json"},
 		{name: "unknown_field", kind: access, input: "typo.json"},
 		{name: "duration_as_number", kind: access, input: "number_age.json"},
@@ -67,9 +71,13 @@ func TestEval(t *testing.T) {
 			if input != "-" {
 				input = filepath.Join("testdata", "inputs", input)
 			}
+			kindFile := tt.kindFile
+			if kindFile == "" {
+				kindFile = tt.kind
+			}
 			var out bytes.Buffer
 			src := project.Sources{Paths: []string{filepath.Join("testdata", tt.kind)}, Stdin: strings.NewReader(tt.stdin)}
-			err := run(context.Background(), &out, &options{output: &format}, filepath.Join("testdata", tt.kind+".sigil"), input, tt.policy, src)
+			err := run(context.Background(), &out, &options{output: &format}, filepath.Join("testdata", kindFile+".sigil"), input, tt.policy, src)
 			golden(t, tt.name, render(out.String(), err))
 		})
 	}

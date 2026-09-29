@@ -18,7 +18,7 @@ type kindLoader struct {
 	decls map[*ast.TypeDecl]*types.Struct // the struct built for each declaration
 	loc   map[string]span                 // validation key to source span
 	// The declarations that may appear once.
-	precedenceAt, collectAt, defaultAt ast.Node
+	precedenceAt, collectAt, defaultAt, conflictAt ast.Node
 }
 
 type span struct {
@@ -207,34 +207,55 @@ func (l *kindLoader) defaultDecl(d *ast.DefaultDecl) {
 	if l.once(&l.defaultAt, d, "default") {
 		return
 	}
-	l.set("default", d)
-	call := d.Call
-	def := &kind.Default{Decision: call.Name.Name, Args: map[string]any{}}
-	l.kind.Default = def
+	l.kind.Default = l.constructor(d, d.Call, "default", "the default",
+		"the default is written `default deny(no_rule_matched)`, naming one of the decision's reasons")
+}
 
-	const shape = "the default is written `default deny(no_rule_matched)`, naming one of the decision's reasons"
+// conflictDecl loads `conflict deny(conflicting_rules)`, which follows
+// the default's rules. Whether the kind may declare one at all depends on
+// its collect mode, which kind.Validate checks once every declaration is
+// loaded.
+func (l *kindLoader) conflictDecl(d *ast.ConflictDecl) {
+	if d == nil {
+		return
+	}
+	if l.once(&l.conflictAt, d, "conflict") {
+		return
+	}
+	l.kind.Conflict = l.constructor(d, d.Call, "conflict", "the conflict outcome",
+		"the conflict outcome is written `conflict deny(conflicting_rules)`, naming one of the decision's reasons")
+}
+
+// constructor loads the constructor call of the declaration d, `default`
+// or `conflict` as key says: its decision, a bare reason name, and a
+// constant for each payload argument. what names the declaration in
+// messages and shape is the help for a malformed reason.
+func (l *kindLoader) constructor(d ast.Node, call *ast.CallStmt, key, what, shape string) *kind.Default {
+	l.set(key, d)
+	def := &kind.Default{Decision: call.Name.Name, Args: map[string]any{}}
+
 	// The reason's key points at whatever is wrong with it, so the model's
 	// finding about it lands on the loader's error and is dropped.
 	switch r := call.Positional.(type) {
 	case nil:
-		l.set("default.reason", call)
-		l.c.errorf(call, shape, "the default needs a reason")
+		l.set(key+".reason", call)
+		l.c.errorf(call, shape, "%s needs a reason", what)
 	case *ast.Ident:
-		l.set("default.reason", r)
+		l.set(key+".reason", r)
 		def.Reason = r.Name
 	case *ast.StringLit:
-		l.set("default.reason", r)
-		l.c.errorf(r, fmt.Sprintf("reasons are declared names, not strings; write `%s(%s)`", call.Name.Name, r.Value), "the default's reason must be a bare name")
+		l.set(key+".reason", r)
+		l.c.errorf(r, fmt.Sprintf("reasons are declared names, not strings; write `%s(%s)`", call.Name.Name, r.Value), "%s's reason must be a bare name", what)
 		def.Reason = r.Value
 	default:
-		l.set("default.reason", call.Positional)
-		l.c.errorf(call.Positional, shape, "the default's reason must be a bare name")
+		l.set(key+".reason", call.Positional)
+		l.c.errorf(call.Positional, shape, "%s's reason must be a bare name", what)
 	}
 
 	decl := l.kind.Decision(def.Decision)
 	for _, arg := range call.Args {
 		name := arg.Name.Name
-		l.set("default.arg "+name, arg.Name)
+		l.set(key+".arg "+name, arg.Name)
 		if _, dup := def.Args[name]; dup {
 			l.c.errorf(arg.Name, "pass each field once", "field %q is given twice", name)
 			continue
@@ -255,6 +276,7 @@ func (l *kindLoader) defaultDecl(d *ast.DefaultDecl) {
 		}
 		def.Args[name] = v
 	}
+	return def
 }
 
 // resolve turns a type expression in the kind into a type.

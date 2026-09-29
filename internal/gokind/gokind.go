@@ -64,6 +64,9 @@ func Build(o Options) (*kind.Kind, *Binding, diag.ErrorList) {
 	if o.Default != nil {
 		b.kind.Default = &kind.Default{Decision: o.Default.Decision, Reason: o.Default.Reason, Args: map[string]any{}}
 	}
+	if o.Conflict != nil {
+		b.kind.Conflict = &kind.Default{Decision: o.Conflict.Decision, Reason: o.Conflict.Reason, Args: map[string]any{}}
+	}
 	b.errs = append(b.errs, b.kind.Validate(nil)...)
 	if len(b.errs) > 0 {
 		return nil, nil, b.errs
