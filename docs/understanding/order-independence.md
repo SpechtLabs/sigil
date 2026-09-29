@@ -33,22 +33,22 @@ policy deploy.gate: DeployApproval@1
 use deploy.common.{cleared, eligible}
 
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 
 when cleared {
-  when service.tier == "critical"
+  when service.tier == critical
     and "release_manager" in actor.roles {
-    approve(release_manager)
+    approve(reason: release_manager)
   }
 }
 ```
 
-A release manager shipping a service that isn't managed by Argo CD produces two candidates, `deny(not_eligible)` and `approve(release_manager)`. Deny wins. Swap the two blocks and deny still wins, because the file order was never consulted.
+A release manager shipping a service that isn't managed by Argo CD produces two candidates, `deny(reason: not_eligible)` and `approve(reason: release_manager)`. Deny wins. Swap the two blocks and deny still wins, because the file order was never consulted.
 
 ## Nesting is conjunction, not sequence
 
-A nested `when` fires only if every enclosing condition holds. The inner block above is shorthand for `cleared and service.tier == "critical" and ...`. Nesting exists to avoid repeating shared conditions, not to express "check this first, then that". Nothing short-circuits across blocks, and a decision reached in one block doesn't stop evaluation of the others.
+A nested `when` fires only if every enclosing condition holds. The inner block above is shorthand for `cleared and service.tier == critical and ...`. Nesting exists to avoid repeating shared conditions, not to express "check this first, then that". Nothing short-circuits across blocks, and a decision reached in one block doesn't stop evaluation of the others.
 
 That also means decisions don't `return`: the host acts on the winner after evaluation finishes. See [Constructors, not calls](/understanding/decisions/#constructors-not-calls).
 
@@ -60,11 +60,11 @@ Sigil asks you to write the negation out:
 
 ```sigil
 when eligible {
-  review(service_owner, approvers: approvers)
+  review(reason: service_owner, approvers: approvers)
 }
 
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 ```
 
@@ -80,9 +80,9 @@ A first-match engine can't give you that. It stopped looking after the first mat
 
 Precedence settles conflicts between different decisions. It doesn't settle ties within one decision: if two `approve` rules fire with different bake times, something has to happen, and picking the earlier one in the file would be the order dependence this page exists to rule out.
 
-Sigil answers with the kind, not with a position. Reasons are declared on each decision and can be ranked there, so `approve(release_manager)` and `approve(payments_sre)` compete the same way `deny` and `approve` do, by a line in the kind. No step of the [resolution rule](/reference/evaluation/#resolution) reads a position.
+Sigil answers with the kind, not with a position. Reasons are declared on each decision and can be ranked there, so `approve(reason: release_manager)` and `approve(reason: payments_sre)` compete the same way `deny` and `approve` do, by a line in the kind. No step of the [resolution rule](/reference/evaluation/#resolution) reads a position.
 
-Take the canonical example, a critical service deployed by someone who is a release manager and also on `payments-sre`. `deploy.production`'s `approve(release_manager)` (bake 1h, the kind's default) and the team's `approve(payments_sre, bake: 15m)` both fire. With `precedence approve: release_manager > payments_sre` in the kind, the release manager's approval wins, wherever the two rules sit. Without that line, the `collect one` deploy kind can't pick, so `Eval` returns a `*ConflictError` naming both candidates, together with the kind's default. A kind that wants the host to see both approvals declares `collect all` instead, and the host takes the shorter bake in a few lines of Go over `Approve.MatchAll`. Either way, moving the team rule above the call changes nothing.
+Take the canonical example, a critical service deployed by someone who is a release manager and also on `payments-sre`. `deploy.production`'s `approve(reason: release_manager)` (bake 1h, the kind's default) and the team's `approve(reason: payments_sre, bake: 15m)` both fire. With `precedence approve: release_manager > payments_sre` in the kind, the release manager's approval wins, wherever the two rules sit. Without that line, the `collect one` deploy kind can't pick, so `Eval` returns a `*ConflictError` naming both candidates, together with the kind's default. A kind that wants the host to see both approvals declares `collect all` instead, and the host takes the shorter bake in a few lines of Go over `Approve.MatchAll`. Either way, moving the team rule above the call changes nothing.
 
 ## What you give up
 

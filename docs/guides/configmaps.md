@@ -80,7 +80,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
+  approve(reason: payments_sre, bake: 15m)
 }
 
 ---
@@ -92,7 +92,7 @@ use deploy.production
 
 guardrails(min_soak: 1h)
 
-production(approvers: ["payments-leads"], tiers: ["standard", "internal", "critical"])
+production(approvers: ["payments-leads"], tiers: [standard, internal, critical])
 ```
 
 The `---` lines don't clash with YAML. In the generated ConfigMap the value is a block scalar written with `|`, and the `---` lines are indented with the rest of the text, so YAML doesn't read them as its own document markers:

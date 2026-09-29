@@ -68,7 +68,7 @@ A case's `expect` holds exactly one of three forms.
 | Failing asserts | `asserts`: a list of assert reasons | Either | The evaluation fails exactly those asserts |
 
 - `decision` and `reason` are both required.
-- `payload` lists the fields to compare, in the same encoding as the input. Fields it leaves out aren't checked.
+- `payload` lists the fields to compare, in the same encoding as the input, so an enum value is its name: `tier: critical`. Fields it leaves out aren't checked.
 - `outcome: []` expects nothing to fire.
 - Under `asserts`, any other failing assert, or none, fails the case.
 - A case can't expect a [conflict](/reference/evaluation/#resolution): a conflict fails every one of the three forms, and a test file has no key that names the conflicting candidates. To test one, see [Test a conflict](/guides/test-policies/#test-a-conflict).
@@ -89,9 +89,9 @@ expect:
 - A case has exactly one of `input` and `input_file`.
 - `input` holds the input inline, in YAML.
 - `input_file` names a file relative to the test file. It's decoded as YAML when its name ends in `.yaml` or `.yml`, and as JSON otherwise.
-- Either way the input is decoded by the rules of [`eval`'s input documents](/reference/cli/#input-documents): an undeclared key is an error, a missing key reads as its zero value, and durations and timestamps are strings.
+- Either way the input is decoded by the rules of [`eval`'s input documents](/reference/cli/#input-documents): an undeclared key is an error, a missing key reads as its zero value, and durations, timestamps and [enum values](/reference/types/#enums) are strings.
 
-| Input error | Message |
-| --- | --- |
+| Input error                | Message                                                                                          |
+| -------------------------- | ------------------------------------------------------------------------------------------------ |
 | `input_file` can't be read | `input_file nope.json couldn't be read`, with the help `input_file is relative to the test file` |
-| `input_file` isn't valid | `input_file owner.json isn't valid: ...` |
+| `input_file` isn't valid   | `input_file owner.json isn't valid: ...`                                                         |

@@ -31,7 +31,7 @@ policy deploy.production: DeployApproval@1
 use deploy.common.{cleared, owns_service}
 
 param approvers: list<string>
-param tiers: list<string> = ["standard", "internal"]
+param tiers: list<Tier> = [standard, internal]
 ```
 
 `approvers` has no default, because a deploy gate with no reviewers makes no sense. `deploy.production` can't be evaluated until someone binds it, and a policy that invokes it without `approvers` fails to compile instead of surprising anyone at run time.
@@ -68,7 +68,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
+  approve(reason: payments_sre, bake: 15m)
 }
 ```
 
@@ -155,7 +155,7 @@ use deploy.common.{cleared, owns_service}
 
 when cleared and owns_service
   and "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
+  approve(reason: payments_sre, bake: 15m)
 }
 ```
 
@@ -170,7 +170,7 @@ Only `pub let`s can be imported, and an imported name can't collide with an inpu
 
 ## Invoke the same policy twice
 
-A policy can invoke the same policy more than once with different arguments, for example once per region. Take a policy that gates deploys touching one region. Its `regional_deploy` reason isn't in the tour's kind, so the kind would need it added to `decision review`:
+A policy can invoke the same policy more than once with different arguments, for example once per region. Take a policy that gates deploys touching one region. Its `regional_deploy` reason isn't in the tour's kind, so the kind would need it added to the reasons of `decision review`:
 
 ```sigil
 policy deploy.regional: DeployApproval@1
@@ -181,7 +181,7 @@ param approvers: list<string>
 let in_scope = region in split(service.labels["regions"], ",")
 
 when in_scope and "deployer" in actor.roles {
-  review(regional_deploy, approvers: approvers)
+  review(reason: regional_deploy, approvers: approvers)
 }
 ```
 
@@ -203,7 +203,7 @@ regional(region: "us-1", approvers: ["payments-leads", "us-platform"])
 Each call is a separate instantiation with its own params. A service that only runs in `us-1` only matches the second call's rule, so it gets both approver groups. The trace records the call chain for every candidate, so a review from the `us-1` call reads `payments/regions.sigil:10:1 → deploy/regional.sigil:9:3`, and it's clear which call produced it.
 
 ::: warning Composition is a union
-Every rule of every invocation runs against every input, unless a `when` around the call says otherwise. If `deploy.regional` had an unscoped rule such as `when not in_scope { deny(out_of_region) }`, the `eu-1` call would deny every service that runs only in `us-1`, and the other way round. A policy meant to be invoked more than once should guard each rule with its scoping condition, as `in_scope` does above, or the caller should gate each call.
+Every rule of every invocation runs against every input, unless a `when` around the call says otherwise. If `deploy.regional` had an unscoped rule such as `when not in_scope { deny(reason: out_of_region) }`, the `eu-1` call would deny every service that runs only in `us-1`, and the other way round. A policy meant to be invoked more than once should guard each rule with its scoping condition, as `in_scope` does above, or the caller should gate each call.
 :::
 
 ## Know what a team can and can't change

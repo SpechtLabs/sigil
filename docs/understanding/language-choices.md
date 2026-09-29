@@ -11,13 +11,13 @@ Most of Sigil's surface syntax comes from a few commitments in the [design goals
 
 ```sigil
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 
 A policy gets read during a review, or at 3am by someone working out why a deploy was denied, and that reader may not write Sigil every day. `and`, `or` and `not` read better than symbols in a condition that runs over several lines, and they pair naturally with the other word operators: `not in`, `all in`, `any in`, `one in`, `exclusive in`, `has`, `like` and `matches`. A condition such as `"admin" not in actor.roles` reads the way it would be said out loud.
 
-Readability wins most arguments about syntax. The same goal explains why there's no `else` (see [Why rule order never matters](/understanding/order-independence/#why-there-s-no-else)) and why payload arguments are named.
+Readability wins most arguments about syntax. The same goal explains why there's no `else` (see [Why rule order never matters](/understanding/order-independence/#why-there-s-no-else)) and why arguments are named.
 
 ## Why newlines and indentation mean nothing
 
@@ -26,7 +26,7 @@ In a YAML rule engine, indentation decides which block a rule belongs to, so a t
 That works because every statement starts with a keyword (`use`, `param`, `let`, `when`, `assert` and the others), or with a name followed by `(`, which is a decision constructor or a policy invocation. No keyword can continue an expression, and no expression continues with a bare name, so when the parser is inside a `let` and meets `let`, `when` or `guardrails(`, the expression is over. The whole team policy can be joined onto one line and still parse the same:
 
 ```sigil
-let a = environment == "production" let b = "deployer" in actor.roles guardrails(min_soak: 4h) when a and b { review(service_owner, approvers: approvers) }
+let a = environment == "production" let b = "deployer" in actor.roles guardrails(min_soak: 4h) when a and b { review(reason: service_owner, approvers: approvers) }
 ```
 
 `sigil fmt` would never write that, but it means nobody can break a policy by indenting it or joining its lines, whatever tool produced them. Templating is still a fallback, not the intended path. Params and invocations are the real answer, and [Composition without templating](/understanding/composition/) explains why.
@@ -40,7 +40,7 @@ A trailing comma is legal in every comma-separated list. Adding an approver grou
 ```sigil
 production(
   approvers: ["payments-leads", "security-leads"],
-  tiers: ["standard"],
+  tiers: [standard],
 )
 ```
 
@@ -61,11 +61,13 @@ means `any r in actor.roles: (r like "sre-*" and eligible)`. Read quickly, it lo
 ## Why arguments are named
 
 ```sigil
-review(service_owner, approvers: approvers)
+review(reason: service_owner, approvers: approvers)
 guardrails(min_soak: 4h)
 ```
 
-Decision payloads and policy invocations take named arguments only. Argument order can't cause a bug, because there is no order, and every call site documents itself: a reviewer sees `min_soak: 4h`, not a bare `4h` in second position. The reason is the one positional argument, always first; [Decisions and reasons](/understanding/decisions/) explains why every decision has one.
+Decision constructors and policy invocations take named arguments only, the reason included. Argument order can't cause a bug, because there is no order, and every call site documents itself: a reviewer sees `min_soak: 4h`, not a bare `4h` in second position. `approve(bake: 2h, reason: release_manager)` builds the same candidate as `approve(reason: release_manager, bake: 2h)`, and `sigil fmt` leaves the order alone.
+
+The reason used to be the exception, a bare name in the first slot: `review(service_owner, approvers: approvers)`. That one slot followed its own rules. It had to come first, it took a name from the decision's reason list where every other argument took an expression, and a reader had to know both rules to tell which argument was which. The kind declares the reason as a field of the decision, `reason: service_owner`, so the call now labels it the way the declaration does, and a constructor has one argument rule instead of two. A positional reason is a compile error whose help is the whole fixed call, and `sigil fmt --write` rewrites old files; [Migrate to the new decision syntax](/guides/evolve-a-kind/#migrate-to-the-new-decision-syntax) has the steps. [Decisions and reasons](/understanding/decisions/) explains why every decision has a reason at all.
 
 A param can't be declared optional either. An optional param would just be a param with a default, so the language offers the default and not the second spelling.
 
@@ -73,7 +75,7 @@ Host function calls are the exception. `split(service.labels["regions"], ",")` p
 
 ## Why a name has exactly one meaning
 
-Each policy and module has one flat namespace: the kind's inputs, host functions and decisions, the document's params and lets, and every name bound by a `use`. Any collision is a compile error, and nothing shadows anything. A param called `release` in a kind that declares `input release` doesn't compile, and neither does a quantifier variable named after a param.
+Each policy and module has one flat namespace: the kind's inputs, host functions, decisions and enum values, the document's params and lets, and every name bound by a `use`. Any collision is a compile error, and nothing shadows anything. A param called `release` in a kind that declares `input release` doesn't compile, and neither does a quantifier variable named after a param.
 
 The goal is that any name in a policy has one meaning, which a reader can find without knowing any scoping rules. Several smaller rules follow from it:
 
@@ -81,7 +83,29 @@ The goal is that any name in a policy has one meaning, which a reader can find w
 - A [scoped `let`](/reference/policy-files/#scoped-lets) inside a `when` body is visible only there, but its name is still unique across the document. A trace and `sigil explain` can then name every `let` without saying which block it came from.
 - A `let` is private unless it's `pub`, in modules and policies alike. A module author can refactor private helpers without breaking anyone who imports the module, and a policy never exports something by accident.
 
-The one exception exists so that a host can add an input without breaking policies that already use that name. [Adding a name never breaks a policy](/understanding/kinds/#adding-a-name-never-breaks-a-policy) explains how the kind version pin makes that safe.
+The one exception exists so that a host can add an input or an enum value without breaking policies that already use that name. [Adding a name never breaks a policy](/understanding/kinds/#adding-a-name-never-breaks-a-policy) explains how the kind version pin makes that safe.
+
+Reasons are the names the namespace leaves out. `release_manager` in `approve(reason: release_manager)` is looked up among `approve`'s reasons and nowhere else, so a `let release_manager` in the same policy is fine; [Why the reason is the decision's own enum](/understanding/decisions/#why-the-reason-is-the-decision-s-own-enum) explains why.
+
+## Why enum values are bare names
+
+```sigil
+when service.tier == critical {
+  approve(reason: release_manager)
+}
+
+param tiers: list<Tier> = [standard, internal]
+```
+
+An enum value is written as its name, `critical`, and the context says which enum it belongs to. `service.tier` is a `Tier`, so `critical` on the other side of `==` is `Tier`'s value; `list<Tier>` makes `standard` and `internal` in the default `Tier` values. That's the same way an empty `[]` gets its type today, from the other operand or the declared type, and the same way a reason gets its decision from the constructor around it. A condition reads the way someone would say it: "the tier is critical".
+
+Requiring the qualified form everywhere, `service.tier == Tier.critical`, was the alternative. It's unambiguous, but in the common case it repeats what the left side already said, and it makes every comparison longer in the language whose first goal is reading like the sentence it encodes. So the qualified form exists as an escape, not as the default: `Tier.critical` is always allowed, and it's only required where a bare name can't be resolved. Quoted strings were never an option: `"critical"` is exactly the value a typo slips through, which is the hole enums close ([Typos in values](/understanding/strictness/#typos-in-values)). So a string literal never converts to an enum, and the compiler's help on `service.tier == "critical"` suggests the bare name.
+
+Bare names do have a cost. Two enums may declare the same value, say `standard` in both `Tier` and `Plan`, and a bare `standard` with nothing around it to fix the type, such as `let s = standard`, could mean either. The compiler doesn't pick one. It reports ``standard` is a value of Plan and Tier``, and the help names the two ways out, ``write `Tier.standard` or `Plan.standard` ``. A guess, say by declaration order, would give the name a meaning nobody can see at the use site, and a kind that later declares `Plan` ahead of `Tier` would quietly change what an existing `let` means. The error makes that change loud instead. That's the [one meaning per name](#why-a-name-has-exactly-one-meaning) rule again: a name either resolves one way, or it's an error. When only one enum declares the value, there's nothing to guess, and `let t = critical` is a `Tier`.
+
+The same ambiguity is why a kind that adds a value another enum already declares makes a breaking change: `let s = standard` compiled while only `Tier` had `standard`, and stops compiling once `Plan` has it too ([Enums and versions](/understanding/kinds/#enums-and-versions)). A policy that writes `Tier.standard` is immune to that. The resolution order is under [Enum values](/reference/expressions/#enum-values).
+
+The reason in a constructor has no qualified form. `approve(reason: release_manager)` already names the decision whose reasons it picks from, so there's nothing to disambiguate.
 
 ## Why unused names are only warnings
 

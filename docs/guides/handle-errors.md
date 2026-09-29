@@ -9,12 +9,12 @@ An evaluation can fail: an assert doesn't hold, two rules conflict, a rule hits 
 
 ## Fail closed
 
-`Eval` never returns a nil result. When it returns an error, the result holds the kind's default decision, `deny(no_rule_matched)` for `DeployApproval`, or an empty outcome for a collecting kind. A kind that [names its conflicts](#name-conflicts-in-the-result) returns its conflict outcome after a conflict instead. Act on that result and handle the error apart:
+`Eval` never returns a nil result. When it returns an error, the result holds the kind's default decision, `deny(reason: no_rule_matched)` for `DeployApproval`, or an empty outcome for a collecting kind. A kind that [names its conflicts](#name-conflicts-in-the-result) returns its conflict outcome after a conflict instead. Act on that result and handle the error apart:
 
 ```go
 res, err := p.Eval(ctx, input)
 if err != nil {
-	// res holds deny(no_rule_matched): refuse the deploy, and report err
+	// res holds deny(reason: no_rule_matched): refuse the deploy, and report err
 	return reject(res, err)
 }
 ```
@@ -27,14 +27,14 @@ What each failure returns, outcome and trace, is in [Failed evaluations](/refere
 
 Each failure has its own error type, and the type says whose fault it is. Match them with `errors.As` and `errors.Is`:
 
-| Error                                                          | Whose fault                                                                                    | Status deploygate answers |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------- |
-| `*policy.AssertionError` with `Phase == policy.InputAsserts`   | The caller's: the policy rejected the input before any rule ran                                | `422`                     |
-| `*policy.AssertionError` with `Phase == policy.OutcomeAsserts` | The policy's: it produced an outcome it forbids                                                | `500`                     |
-| `*policy.ConflictError`                                        | The policy's: rules claimed outcomes that can't stand together                                 | `500`                     |
-| `*policy.RuntimeError`                                         | The policy's or the host's: an index out of range, an overflow, or a host function that failed | `500`                     |
-| `context.DeadlineExceeded`                                     | The service's: it didn't decide in time                                                        | `503`                     |
-| `context.Canceled`                                             | No one's: the caller left before the answer                                                    | `499`, no body            |
+| Error                                                          | Whose fault                                                                                                                     | Status deploygate answers |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `*policy.AssertionError` with `Phase == policy.InputAsserts`   | The caller's: the policy rejected the input before any rule ran                                                                 | `422`                     |
+| `*policy.AssertionError` with `Phase == policy.OutcomeAsserts` | The policy's: it produced an outcome it forbids                                                                                 | `500`                     |
+| `*policy.ConflictError`                                        | The policy's: rules claimed outcomes that can't stand together                                                                  | `500`                     |
+| `*policy.RuntimeError`                                         | The policy's or the host's: an index out of range, an overflow, a host function that failed, or an input value outside its enum | `500`                     |
+| `context.DeadlineExceeded`                                     | The service's: it didn't decide in time                                                                                         | `503`                     |
+| `context.Canceled`                                             | No one's: the caller left before the answer                                                                                     | `499`, no body            |
 
 In Go, the same mapping:
 

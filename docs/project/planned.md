@@ -24,7 +24,7 @@ fn semver(string) -> Version
 ```sigil
 // policy
 when semver(release.version) < semver("1.4.0") {
-  deny(client_too_old)
+  deny(reason: client_too_old)
 }
 ```
 
@@ -95,7 +95,7 @@ Today kinds declare no collection limits, and neither the compiler nor `sigil ch
 sigil breaking OLD_KIND_FILE NEW_KIND_FILE [flags]
 ```
 
-It takes only the global flags. It classifies every change by the compatibility table in [Versioning](/reference/kind-files/#versioning); a removed reason, for example, is breaking because every policy that constructs it stops compiling. It also checks the two numbers in the kind header: it fails when the contract changed but `version` didn't, and when a change is breaking but `accepts` wasn't raised to the new version. It needs nothing but the two kind files, so it can run in either the host repository or the policy repository, against the kind file on the main branch. The intended output:
+It takes only the global flags. It classifies every change by the compatibility table in [Versioning](/reference/kind-files/#versioning); a removed reason, for example, is breaking because every policy that constructs it stops compiling. Among the enum rules, it flags a value that another enum of the new kind also declares, such as `standard` added to `Plan` while `Tier` has it, because a bare `standard` without context becomes ambiguous; a new enum counts when its values overlap an existing one. It also checks the two numbers in the kind header: it fails when the contract changed but `version` didn't, and when a change is breaking but `accepts` wasn't raised to the new version. It needs nothing but the two kind files, so it can run in either the host repository or the policy repository, against the kind file on the main branch. The intended output:
 
 ```text
 deploy_approval.sigil: breaking: precedence changed
@@ -103,7 +103,9 @@ deploy_approval.sigil: breaking: precedence changed
   + deny > approve > review
   = help: raise `accepts` to 4, so policies pinned to older versions are reviewed before they load
 deploy_approval.sigil: breaking: decision deny lost reason `no_release`
-  = help: policies that construct deny(no_release) no longer compile; raise `accepts` to 4
+  = help: policies that construct deny(reason: no_release) no longer compile; raise `accepts` to 4
+deploy_approval.sigil: breaking: enum Plan declares `standard`, which Tier declares too
+  = help: a bare `standard` without context becomes ambiguous; raise `accepts` to 4, and qualify it as `Tier.standard`
 ```
 
 A CI job would run it as:

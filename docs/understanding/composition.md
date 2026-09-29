@@ -46,11 +46,11 @@ use deploy.common.{eligible}
 param min_soak: duration = 24h, min: 1h, max: 48h
 
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 
@@ -60,17 +60,17 @@ policy deploy.production: DeployApproval@1
 use deploy.common.{cleared, owns_service}
 
 param approvers: list<string>
-param tiers: list<string> = ["standard", "internal"]
+param tiers: list<Tier> = [standard, internal]
 
 when cleared {
-  when service.tier == "critical"
+  when service.tier == critical
     and "release_manager" in actor.roles {
-    approve(release_manager)
+    approve(reason: release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review(service_owner, approvers: approvers)
+    review(reason: service_owner, approvers: approvers)
   }
 }
 ```
@@ -97,11 +97,11 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
+  approve(reason: payments_sre, bake: 15m)
 }
 ```
 
-The compiler checks every argument against the declared type, so `min_soak: "4h"` is a type error pointing at the team file, not a rendering bug discovered in production. Go code can bind params the same way, straight from a CRD or config, without generating any text. See [Policy files](/reference/policy-files/) for the full rules and [Per-team policies](/guides/team-policies/) for a walkthrough.
+The compiler checks every argument against the declared type, so `min_soak: "4h"` and `tiers: ["standard"]` are type errors pointing at the team file, not a rendering bug discovered in production. Go code can bind params the same way, straight from a CRD or config, without generating any text. See [Policy files](/reference/policy-files/) for the full rules and [Per-team policies](/guides/team-policies/) for a walkthrough.
 
 An invocation inside a `when` block adds the block's conditions to every rule of the invoked policy, the same way nested `when` blocks do. That's how a team composes a shared policy with conditions of its own: PCI-scoped services above need a second approver group, everything else doesn't. The same policy can be invoked any number of times with different arguments, the invocation graph must be acyclic, and only policies of the same kind can be composed; pulling an access-request policy into `DeployApproval` is a compile error.
 

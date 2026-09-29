@@ -17,7 +17,7 @@ Asserts and decisions answer different questions. A decision is an outcome the a
 assert("negative_soak", release.soak >= 0s)
 
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 
@@ -59,7 +59,7 @@ The phase also says whose problem the failure is. A failed input assert rejects 
 
 ```sigil
 when admin not in outcome {
-  admin(oncall)
+  admin(reason: oncall)
 }
 ```
 

@@ -21,7 +21,7 @@ A complete team policy is in the [tour](/getting-started/tour/#the-team-policy).
 | `assert("<reason>", <expr>)`                                      | top level or nested | Condition that must hold, or evaluation fails with an assertion error                            |
 | `<policy>(<param>: <expr>, ...)`                                  | top level or nested | Invokes an imported policy, adding its rules with its params bound                               |
 
-After the imports, statements come in any order. [Modules](#modules) allow only `use` and `let`. Kind files use a different set of statements; see [Kind files](/reference/kind-files/).
+After the imports, statements come in any order. [Modules](#modules) allow only `use` and `let`. A policy or module can't declare an enum or a type; they come from the kind. Kind files use a different set of statements; see [Kind files](/reference/kind-files/).
 
 ## `policy`
 
@@ -92,7 +92,7 @@ deploy/guardrails.sigil:5:9: error: let `soak_ok` can't be `pub`: it reads param
 
 ```sigil
 param approvers: list<string>
-param tiers: list<string> = ["standard", "internal"]
+param tiers: list<Tier> = [standard, internal]
 ```
 
 A param is a typed value supplied when the policy gets instantiated. It has a name, a type and optionally a default.
@@ -100,6 +100,7 @@ A param is a typed value supplied when the policy gets instantiated. It has a na
 - A param without a default is required. Instantiating the policy without binding it is a compile error.
 - A default must have the declared type and must be a constant expression: literals, list and map literals of literals, and arithmetic on those. It can't read inputs, lets or other params.
 - The type can be any type from [Types](/reference/types/) except optional types.
+- A default of an enum type is a bare value, a list of them such as `[standard, internal]`, or a map keyed by them.
 
 | Bound by                                                                                                                       | Checked                          |
 | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
@@ -124,7 +125,7 @@ param min_soak: duration = 24h, min: 1h, max: 48h
 - `min` and `max` are names in a named-argument position, not keywords, so a kind can still declare `fn max(int, int) -> int`.
 
 ```text
-teams/payments.sigil:5:22: error: min_soak: 0s is below the minimum 1h
+teams/payments.sigil:5:22 (payments.production): error: min_soak: 0s is below the minimum 1h
   |
 5 | guardrails(min_soak: 0s)
   |                      ^^
@@ -163,8 +164,8 @@ deploy/fresh.sigil:4:37: error: let `fresh` depends on itself
 ```sigil
 when active {
   let sre = any r in actor.roles: r like "sre-*"
-  when sre and release.hotfix { approve(release_manager) }
-  when sre and not release.hotfix { review(service_owner, approvers: approvers) }
+  when sre and release.hotfix { approve(reason: release_manager) }
+  when sre and not release.hotfix { review(reason: service_owner, approvers: approvers) }
 }
 ```
 
@@ -193,14 +194,14 @@ let restricted = service.labels has "restricted"
 
 ```sigil
 when cleared {
-  when service.tier == "critical"
+  when service.tier == critical
     and "release_manager" in actor.roles {
-    approve(release_manager)
+    approve(reason: release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review(service_owner, approvers: approvers)
+    review(reason: service_owner, approvers: approvers)
   }
 }
 ```
@@ -218,7 +219,7 @@ A `when` block has a condition and a body in braces.
 ```sigil
 assert("negative_soak", release.soak >= 0s)
 
-when service.tier == "critical" {
+when service.tier == critical {
   assert("critical_needs_team_label", service.labels has "team")
 }
 
@@ -253,7 +254,7 @@ when service.labels["compliance"] == "pci" {
 An imported policy is invoked like a decision constructor. A decision constructor produces one candidate; an invocation produces the invoked policy's whole candidate set, with its params bound to the arguments. Both can go at the top level or inside a `when` body.
 
 - An invocation inside `when` blocks adds the enclosing conditions to every rule of the invoked policy. The `production(...)` call above behaves exactly as if `deploy.production`'s rules were pasted inside the block. See [Evaluation semantics](/reference/evaluation/#invocation).
-- Arguments are named-only, like decision payloads, and a trailing comma is allowed.
+- Arguments are named-only, like decision payloads, and a trailing comma is allowed. An enum value takes its type from the param: `production(tiers: [standard])`.
 - Every param without a default must be bound, and each value must have the param's type. An unknown name, a type mismatch, or a required param left unbound is a compile error.
 - Params with defaults can be left out. The parentheses are still required: `baseline()` invokes a policy (hypothetical here) whose params all have defaults.
 - Arguments may reference constants and the invoking policy's own params, but not inputs or `let`s, not even a `let` that only holds a constant. A team can pass its own params through: `production(approvers: approvers)`.
@@ -300,22 +301,24 @@ deploy/common.sigil:3:1: error: a module can't contain `param`
 
 Each policy and module has one flat top-level namespace containing:
 
-- the kind's inputs, host functions and decisions,
+- the kind's inputs, host functions and decisions, its enums' names and every value of its enums,
 - the document's own params and lets, including the lets inside `when` bodies,
 - every name bound by a `use`.
 
-| Case                                                                                                 | Result                                                                                                                                                  |
-| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Two of these names collide                                                                           | Compile error. Nothing shadows anything                                                                                                                 |
-| A `param` named `release` in a kind that declares `input release`                                    | Compile error                                                                                                                                           |
-| A quantifier or filter variable named `approvers` in a policy with a param of that name              | Compile error                                                                                                                                           |
-| A `let` called `deny` in a kind that declares `decision deny`                                        | Compile error. Decision names are in the namespace, because a bare decision name is a [value](/reference/types/#decision) in `assert` conditions        |
-| An import whose bound name is a decision                                                             | Compile error; rename it with `as`                                                                                                                      |
-| A reason with the same name as anything else                                                         | Allowed. Reasons aren't in the namespace: `let release_manager = ...` is fine next to `approve(release_manager)`                                        |
-| A document pinned below the kind's current version collides with an input, host function or decision | Allowed. The document's own name wins, the kind's name is out of reach in that document, and the [`shadowed-kind-name`](/reference/lints/) lint says so |
-| The same collision in a document pinned to the current version                                       | Compile error                                                                                                                                           |
-| Two of the document's own names collide, at any pin                                                  | Compile error                                                                                                                                           |
+| Case                                                                                                                   | Result                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Two of these names collide                                                                                             | Compile error. Nothing shadows anything                                                                                                                                   |
+| A `param` named `release` in a kind that declares `input release`                                                      | Compile error                                                                                                                                                             |
+| A quantifier or filter variable named `approvers` in a policy with a param of that name                                | Compile error                                                                                                                                                             |
+| A `let` called `deny` in a kind that declares `decision deny`                                                          | Compile error. Decision names are in the namespace, because a bare decision name is a [value](/reference/types/#decision) in `assert` conditions                          |
+| A `let`, param or quantifier variable named `critical` in a kind whose `enum Tier` declares `critical`                 | Compile error                                                                                                                                                             |
+| A `let`, param or quantifier variable named `Tier` in a kind that declares `enum Tier`                                 | Compile error                                                                                                                                                             |
+| An import whose bound name is a decision                                                                               | Compile error; rename it with `as`                                                                                                                                        |
+| A reason with the same name as anything else                                                                           | Allowed. Reasons aren't in the namespace: `let release_manager = ...` is fine next to `approve(reason: release_manager)`, and so is an enum value named `release_manager` |
+| A document pinned below the kind's current version collides with an input, host function, decision, enum or enum value | Allowed. The document's own name wins, the kind's name is out of reach in that document, and the [`shadowed-kind-name`](/reference/lints/) lint says so                   |
+| The same collision in a document pinned to the current version                                                         | Compile error                                                                                                                                                             |
+| Two of the document's own names collide, at any pin                                                                    | Compile error                                                                                                                                                             |
 
-Reasons only appear after a decision's name, as `approve.release_manager`, or in a constructor's first slot.
+Reasons only appear after a decision's name, as `approve.release_manager`, or after `reason:` in a constructor. Two enums may share a value name; which one a bare name means is on [Enum values](/reference/expressions/#enum-values).
 
 Why: [Why the language looks like this](/understanding/language-choices/) and [Adding a name never breaks a policy](/understanding/kinds/#adding-a-name-never-breaks-a-policy).

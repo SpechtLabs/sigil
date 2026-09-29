@@ -21,7 +21,7 @@ Two groups of people touch Sigil, and they want different things.
 
 ### Readable by any engineer on first contact
 
-A policy should read like the sentence it encodes. Terse syntax is fine; `when release.soak < min_soak { deny(soak_too_short) }` needs no explanation. Rego-style logic programming, where a rule body is a set of unification constraints and iteration happens implicitly, is what Sigil steers away from. People who've used OPA know the pattern: the policy works, but only two people on the team can change it.
+A policy should read like the sentence it encodes. Terse syntax is fine; `when release.soak < min_soak { deny(reason: soak_too_short) }` needs no explanation. Rego-style logic programming, where a rule body is a set of unification constraints and iteration happens implicitly, is what Sigil steers away from. People who've used OPA know the pattern: the policy works, but only two people on the team can change it.
 
 This goal wins most arguments about syntax. It's why the language uses `and`/`or`/`not` instead of `&&`/`||`/`!`, why there's no `else`, and why decision payload arguments are named. [Why the language looks like this](/understanding/language-choices/) goes through those choices one by one.
 
@@ -35,7 +35,7 @@ The host describes its inputs, functions and decisions in a _kind_. Every policy
 
 ### Decisions carry data and a mandatory reason
 
-A decision is more than a boolean. `review` needs to know who reviews; `approve` needs a bake time before the rollout widens. So decisions are constructors with typed payloads, and every one of them takes a reason as its first argument. The kind declares each decision's reasons, so `deny(soak_too_short)` names one of a fixed set: a typo is a compile error, and the reason is a stable identifier you can grep for, put in a metric label and count. Nobody has to reverse-engineer why a deploy got denied from a boolean and a log line. See [Decisions and reasons](/understanding/decisions/).
+A decision is more than a boolean. `review` needs to know who reviews; `approve` needs a bake time before the rollout widens. So decisions are constructors with typed payloads, and every one of them takes a reason. The kind declares each decision's reasons, so `deny(reason: soak_too_short)` names one of a fixed set: a typo is a compile error, and the reason is a stable identifier you can grep for, put in a metric label and count. Nobody has to reverse-engineer why a deploy got denied from a boolean and a log line. See [Decisions and reasons](/understanding/decisions/).
 
 ### Composable and templatable from day one
 

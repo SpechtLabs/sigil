@@ -7,7 +7,7 @@ permalink: /guides/test-policies/
 
 By the end of this guide, every decision and reason your policy can reach has a test case, the cases run with `sigil test` in the policy repository and with `go test` in the host, and a conflict the kind is meant to catch has a Go test of its own.
 
-The examples test `payments.production` from the [tour](/getting-started/tour/#the-team-policy). The exact format of a test file is in [Test files](/reference/test-files/).
+The examples test `payments.production` from the [tour](/getting-started/tour/#the-team-policy), with an input assert added below its imports, `assert("named_actor", actor.name != "")`, like the one the example service's checkout policy has. The exact format of a test file is in [Test files](/reference/test-files/).
 
 ## Write test cases
 
@@ -40,10 +40,10 @@ cases:
 
 1. **Give the input.** Put it in a JSON file under `testdata/`, relative to the test file, and name it with `input_file`, or write it inline under `input` when it's short. A missing key reads as its zero value, and a key the kind doesn't declare fails the case with a did-you-mean hint, so a typo in a fixture can't quietly test the zero value. The decoding rules are those of [`sigil eval`](/reference/cli/#input-documents).
 2. **Expect the decision and the reason.** Always name both. A deploy denied for the wrong reason is a common way a policy regression hides, and a case that checks only `decision: deny` passes right through it.
-3. **Pin the payload fields that matter.** `payload` compares only the fields it lists. The first case pins `approvers`, which is what tells a non-PCI owner deploy apart from a PCI one: both are `review(service_owner)`.
+3. **Pin the payload fields that matter.** `payload` compares only the fields it lists. The first case pins `approvers`, which is what tells a non-PCI owner deploy apart from a PCI one: both are `review(reason: service_owner)`.
 4. **Expect failing asserts by their reasons.** `asserts: [named_actor]` passes only when exactly that assert fails. An input that should break an assert gets a case like the third one.
 
-Write a case for every decision and reason the policy can reach, including the kind's default, `deny(no_rule_matched)`, for an input no rule covers. Keep each fixture close to a common one and change only what the case is about, so a failure points at one rule.
+Write a case for every decision and reason the policy can reach, including the kind's default, `deny(reason: no_rule_matched)`, for an input no rule covers. Keep each fixture close to a common one and change only what the case is about, so a failure points at one rule.
 
 A `collect all` kind, like the example service's `AccessGrant`, returns every candidate that fired, so its cases expect the whole outcome under `outcome`, in any order:
 
@@ -85,8 +85,8 @@ A failing case prints what it wanted and what it got. Had the second case above 
 ```text
 $ sigil test --kind deploy_approval.sigil
 --- FAIL: payments/production_test.yaml:10: a short soak is denied
-      want deny(not_eligible)
-      got  deny(soak_too_short)
+      want deny(reason: not_eligible)
+      got  deny(reason: soak_too_short)
 FAIL  payments/production_test.yaml  1 of 3 cases failed
 ✗ 1 of 3 test cases failed in 1 file
 ```
@@ -106,8 +106,8 @@ ok    payments/production_test.yaml  3 cases
 
 ```text
 --- FAIL: payments/production_test.yaml:3: an owner's deploy goes to review
-      want review(service_owner)
-      got  a runtime error (deploy/common.sigil:5:3: host function split failed: no implementation in this sigil binary; build a host binary with split linked in (see sigil's pkg/cli))
+      want review(reason: service_owner)
+      got  a runtime error (deploy/common.sigil:4:19: host function split failed: no implementation in this sigil binary; build a host binary with split linked in (see sigil's pkg/cli))
 ```
 
 Run the tests with the host team's own build of the CLI, which links the real functions in. The transcripts on this page come from one. [Build a host binary](/guides/host-binary/) shows how the host team builds it, and [`sigil test`](/reference/cli/#sigil-test) lists every flag.

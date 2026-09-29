@@ -14,6 +14,8 @@ The kind is the contract between the Go host and every policy written for it. No
 ```sigil
 kind DeployApproval version 1
 
+enum Tier: critical | standard | internal
+
 type Release {
   soak: duration
   hotfix: bool
@@ -21,7 +23,7 @@ type Release {
 
 type Service {
   name: string
-  tier: string
+  tier: Tier
   owners: list<string>
   labels: map<string, string>
 }
@@ -41,18 +43,17 @@ input environment: string
 fn split(string, string) -> list<string>
 
 decision deny {
-  not_eligible
-  soak_too_short
-  no_rule_matched
+  reason: not_eligible | soak_too_short | no_rule_matched
 }
 
-decision review(approvers: list<string>) {
-  service_owner
+decision review {
+  reason: service_owner
+  approvers: list<string>
 }
 
-decision approve(bake: duration = 1h) {
-  release_manager
-  payments_sre
+decision approve {
+  reason: release_manager | payments_sre
+  bake: duration = 1h
 }
 
 collect one
@@ -60,16 +61,17 @@ precedence deny > review > approve
 precedence deny: not_eligible > soak_too_short > no_rule_matched
 precedence approve: release_manager > payments_sre
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 ```
 
 Reading top to bottom:
 
 - `kind DeployApproval version 1` names the contract. Policies refer to it by that name.
+- `enum Tier` declares a closed set of values. A service is `critical`, `standard` or `internal`, and a policy writes those values as bare names: `service.tier == critical`. Misspell one and the policy doesn't compile.
 - `type` declares struct types. `duration` is a built-in type, so `release.soak < 24h` type-checks without any parsing on your side. `soak` is how long the release has been running in staging.
 - `input` lists the top-level names a policy can read: `release`, `service`, `actor` and `environment`. An input doesn't have to be a struct; `environment` is a plain string. Nothing else exists in a policy's scope unless the policy declares it.
 - `fn split(...)` is a host function. Its implementation is Go's `strings.Split`; the kind only carries the signature, so the type checker knows it takes two strings and returns a list.
-- The three `decision` lines are the only outcomes a policy can produce. Each one takes a `reason` first, then named payload fields. `approve` has a `bake`, how long the rollout sits in canary before it's promoted, which defaults to one hour.
+- The three `decision` blocks are the only outcomes a policy can produce. Each lists its reasons after `reason:`, then its payload fields. `approve` has a `bake`, how long the rollout sits in canary before it's promoted, which defaults to one hour.
 - `collect one` says the host gets one decision back, and `precedence deny > review > approve` says which one wins when several rules fire. A single deny beats any number of approvals.
 - `default` is the answer when no rule fires at all. This kind fails closed.
 
@@ -110,11 +112,11 @@ use deploy.common.{eligible}
 param min_soak: duration = 24h
 
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 
@@ -122,7 +124,7 @@ when release.soak < min_soak and not release.hotfix {
 
 `param min_soak` is a knob a team can turn, with a default of a day.
 
-A `when` block fires when its condition holds. Every `when` is evaluated, independently, and the order they appear in the file doesn't matter. Both rules here deny. `deny(not_eligible)` is a decision constructor. It doesn't return or stop anything; it adds a candidate to the pile. The argument is the reason, a bare name the kind declares for that decision (`deny("not_eligible")` is a compile error), so you can grep for it and count it in metrics.
+A `when` block fires when its condition holds. Every `when` is evaluated, independently, and the order they appear in the file doesn't matter. Both rules here deny. `deny(reason: not_eligible)` is a decision constructor. It doesn't return or stop anything; it adds a candidate to the pile. The `reason:` argument is a bare name the kind declares for that decision (`deny(reason: "not_eligible")` is a compile error), so you can grep for it and count it in metrics.
 
 There's no `else`. If you want "the other case", you write `when not x`, which says the same thing without implying an order.
 
@@ -136,26 +138,26 @@ policy deploy.production: DeployApproval@1
 use deploy.common.{cleared, owns_service}
 
 param approvers: list<string>
-param tiers: list<string> = ["standard", "internal"]
+param tiers: list<Tier> = [standard, internal]
 
 when cleared {
-  when service.tier == "critical"
+  when service.tier == critical
     and "release_manager" in actor.roles {
-    approve(release_manager)
+    approve(reason: release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review(service_owner, approvers: approvers)
+    review(reason: service_owner, approvers: approvers)
   }
 }
 ```
 
-`tiers` has a default. `approvers` doesn't, so whoever invokes this policy has to supply it, or compilation fails.
+`tiers` has a default, a list of `Tier` values. `approvers` doesn't, so whoever invokes this policy has to supply it, or compilation fails. `critical`, `standard` and `internal` carry no quotes: they're values of `Tier`, and the other side of `==` or the declared `list<Tier>` tells the compiler which enum they belong to.
 
 The outer `when cleared` is a container: its nested rules only fire if `cleared` holds too, because nesting means "and". Inside it, a release manager shipping a critical service gets an approval with the kind's default bake, and a service owner shipping a standard or internal service gets sent to review.
 
-`review(service_owner, approvers: approvers)` passes the reason and then a named payload field from the kind. `approve(release_manager)` passes no payload at all, so `bake` takes its default.
+`review(reason: service_owner, approvers: approvers)` passes the reason and a payload field, both by name. `approve(reason: release_manager)` passes no payload at all, so `bake` takes its default.
 
 ## The team policy
 
@@ -179,7 +181,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
+  approve(reason: payments_sre, bake: 15m)
 }
 ```
 
@@ -207,35 +209,35 @@ With calls to two other files, it helps to see the policy flattened. `sigil expl
 $ sigil explain --kind deploy_approval.sigil --policy payments.production deploy/ payments/
 payments.production: 7 rules from 3 policies and 1 module
 
-  deny(not_eligible)        payments.production:7 → deploy.guardrails:8
+  deny(reason: not_eligible)        payments.production:7 → deploy.guardrails:8
     when not eligible
 
-  deny(soak_too_short)      payments.production:7 → deploy.guardrails:12
+  deny(reason: soak_too_short)      payments.production:7 → deploy.guardrails:12
     when release.soak < 4h and not release.hotfix
 
-  approve(release_manager)  payments.production:10 → deploy.production:11
+  approve(reason: release_manager)  payments.production:10 → deploy.production:11
     when service.labels["compliance"] == "pci"
      and cleared
-     and service.tier == "critical" and "release_manager" in actor.roles
+     and service.tier == critical and "release_manager" in actor.roles
 
-  review(service_owner)     payments.production:10 → deploy.production:16
+  review(reason: service_owner)     payments.production:10 → deploy.production:16
     when service.labels["compliance"] == "pci"
      and cleared
-     and service.tier in ["standard", "internal"] and owns_service
+     and service.tier in [standard, internal] and owns_service
     with approvers = ["payments-leads", "security-leads"]
 
-  approve(release_manager)  payments.production:14 → deploy.production:11
+  approve(reason: release_manager)  payments.production:14 → deploy.production:11
     when service.labels["compliance"] != "pci"
      and cleared
-     and service.tier == "critical" and "release_manager" in actor.roles
+     and service.tier == critical and "release_manager" in actor.roles
 
-  review(service_owner)     payments.production:14 → deploy.production:16
+  review(reason: service_owner)     payments.production:14 → deploy.production:16
     when service.labels["compliance"] != "pci"
      and cleared
-     and service.tier in ["standard", "internal"] and owns_service
+     and service.tier in [standard, internal] and owns_service
     with approvers = ["payments-leads"]
 
-  approve(payments_sre)     payments.production:18
+  approve(reason: payments_sre)     payments.production:18
     when cleared and "payments-sre" in actor.teams
     with bake = 15m
 ```
@@ -283,16 +285,16 @@ The actors below all hold the `deployer` role and are cleared for `["eu-1", "eu-
 Six hours is over the team's four-hour `min_soak`, so `soak_too_short` doesn't fire. The service has no `compliance` label, so the second `production(...)` call applies. The service tier is `standard`, which is in the default `tiers`, and the actor is on `payments`, which owns the service, so that call produces a review. The actor is also on `payments-sre`, so the team rule produces an approval.
 
 ```text
-payments.production: review(service_owner)
+payments.production: review(reason: service_owner)
   approvers = ["payments-leads"]
 
 trace: 2 candidates
-  * review(service_owner)  payments/production.sigil:14:3 → deploy/production.sigil:16:5
+  * review(reason: service_owner)  payments/production.sigil:14:3 → deploy/production.sigil:16:5
       when service.labels["compliance"] != "pci"
        and cleared
-       and service.tier in ["standard", "internal"] and owns_service
+       and service.tier in [standard, internal] and owns_service
       approvers = ["payments-leads"]
-    approve(payments_sre)  payments/production.sigil:18:3
+    approve(reason: payments_sre)  payments/production.sigil:18:3
       bake = 15m
 ```
 
@@ -303,14 +305,14 @@ Review wins because it ranks above approve. The payments team's fast path doesn'
 Change `"soak"` to `"2h"` and a third candidate appears:
 
 ```text
-payments.production: deny(soak_too_short)
+payments.production: deny(reason: soak_too_short)
 
 trace: 3 candidates
-  * deny(soak_too_short)   payments/production.sigil:7:1 → deploy/guardrails.sigil:12:3
+  * deny(reason: soak_too_short)   payments/production.sigil:7:1 → deploy/guardrails.sigil:12:3
       when release.soak < 4h and not release.hotfix
-    review(service_owner)  payments/production.sigil:14:3 → deploy/production.sigil:16:5
+    review(reason: service_owner)  payments/production.sigil:14:3 → deploy/production.sigil:16:5
       approvers = ["payments-leads"]
-    approve(payments_sre)  payments/production.sigil:18:3
+    approve(reason: payments_sre)  payments/production.sigil:18:3
       bake = 15m
 ```
 
@@ -335,7 +337,7 @@ Now the actor is a developer from another team, outside the service's owners and
 The service is still eligible and the soak is long enough, so neither guardrail fires. `cleared` is true, but the tier isn't `critical` and the actor doesn't own the service, so nothing `deploy.production` contributes fires. The team rule needs `payments-sre`, which the actor isn't on.
 
 ```text
-payments.production: deny(no_rule_matched), the kind's default
+payments.production: deny(reason: no_rule_matched), the kind's default
 
 trace: no rule fired
 ```
@@ -346,16 +348,16 @@ With no candidates, the kind's `default` applies. Note the difference from the p
 Suppose the service is `critical`, and the actor is a release manager who is also on `payments-sre`. The review rule doesn't apply, because `critical` isn't in `tiers`, but two approvals fire:
 
 ```text
-payments.production: approve(release_manager)
+payments.production: approve(reason: release_manager)
   bake = 1h
 
 trace: 2 candidates
-  * approve(release_manager)  payments/production.sigil:14:3 → deploy/production.sigil:11:5
+  * approve(reason: release_manager)  payments/production.sigil:14:3 → deploy/production.sigil:11:5
       when service.labels["compliance"] != "pci"
        and cleared
-       and service.tier == "critical" and "release_manager" in actor.roles
+       and service.tier == critical and "release_manager" in actor.roles
       bake = 1h
-    approve(payments_sre)     payments/production.sigil:18:3
+    approve(reason: payments_sre)     payments/production.sigil:18:3
       when cleared and "payments-sre" in actor.teams
       bake = 15m
 ```

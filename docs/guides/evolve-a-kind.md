@@ -61,30 +61,73 @@ type ApproveData struct {
 The regenerated kind changes in one line:
 
 ```diff
--decision approve(bake: duration = 1h) {
-+decision approve(bake: duration = 1h, notify: bool = false) {
-   release_manager
-   payments_sre
+ decision approve {
+   reason: release_manager | payments_sre
+   bake: duration = 1h
++  notify: bool = false
  }
 ```
 
-Every existing `approve(release_manager)` still compiles and gets `notify = false`. Policies that want the new behavior opt in with `approve(release_manager, notify: true)`.
+Every existing `approve(reason: release_manager)` still compiles and gets `notify = false`. Policies that want the new behavior opt in with `approve(reason: release_manager, notify: true)`.
 
 Leave the default off and every existing call site breaks:
 
 ```text
+deploy/production.sigil:11:5: error: decision approve needs field "notify"
+   |
+11 |     approve(reason: release_manager)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: approve takes reason: release_manager | payments_sre, bake: duration = 1h, and notify: bool
+
 payments/production.sigil:18:3: error: decision approve needs field "notify"
    |
-18 |   approve(payments_sre, bake: 15m)
-   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   = help: approve is declared as: decision approve(bake: duration = 1h, notify: bool) { release_manager, payments_sre }
+18 |   approve(reason: payments_sre, bake: 15m)
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: approve takes reason: release_manager | payments_sre, bake: duration = 1h, and notify: bool
 ```
 
 Sometimes that's what you want, because every policy author should make a conscious choice. Then treat it as a breaking change and follow the steps below.
 
+## Add an enum value
+
+Say the platform starts running batch jobs through the same gate, and `Tier` needs a fourth value. Add a constant and pass it to `WithEnum`:
+
+```go
+const (
+	TierCritical Tier = "critical"
+	TierStandard Tier = "standard"
+	TierInternal Tier = "internal"
+	TierBatch    Tier = "batch"
+)
+
+var Deploy = policy.NewKind[Input]("DeployApproval",
+	policy.WithVersion(2),
+	policy.WithEnum(TierCritical, TierStandard, TierInternal, TierBatch),
+	...
+)
+```
+
+An added value is compatible, so bump `version` and leave `accepts` alone. Export the kind, and the diff shows both changes:
+
+```diff
+-kind DeployApproval version 1
++kind DeployApproval version 2
+
+-enum Tier: critical | standard | internal
++enum Tier: critical | standard | internal | batch
+```
+
+Every policy that compiled before still compiles, unless the third point applies. Before you ship, check:
+
+1. No existing rule names `batch`, so a batch service matches none of them, and the kind's default decides for it. For `DeployApproval` that's `deny(reason: no_rule_matched)`, which is safe, but tell the teams: `deploy.production`'s `tiers` defaults to `[standard, internal]`, and a team that wants batch services reviewed has to pass `tiers: [standard, internal, batch]`. Add a test case for a batch service so the decision is pinned either way.
+2. An enum value joins the kind's namespace, like an input or a decision. A document pinned to `@1` that has its own `let batch` keeps it, and `sigil check` warns with [`shadowed-kind-name`](/reference/lints/#shadowed-kind-name) until its team renames the `let` and raises the pin to `@2`. A document already pinned to `@2` can't declare `batch` at all.
+3. If another enum of the kind already declares `batch`, the addition is breaking: a policy that writes `batch` where nothing fixes its type, such as `let t = batch`, stops compiling, because the name is now [ambiguous](/reference/expressions/#enum-values). Raise `accepts` along with `version`, and have those policies write `Tier.batch`.
+
+Removing or renaming a value is breaking: every `service.tier == internal` in a policy stops compiling. Raise `accepts` and follow [Ship a breaking change](#ship-a-breaking-change). Turning an existing `string` field into an enum is breaking too, because it changes the field's type; [Replace a string field with an enum](/guides/patterns/#replace-a-string-field-with-an-enum) walks through it. Why these rules hold: [Enums and versions](/understanding/kinds/#enums-and-versions).
+
 ## Watch for changes that compile but change results
 
-Reordering `precedence`, changing `default`, and adding, removing or changing a `conflict` outcome pass the type checker and still change decisions. Swapping `review` and `approve` makes the tour's service-owner deploy skip review ([the example](/understanding/kinds/#why-raise-accepts-for-a-change-that-still-compiles)), and a `default` changed from `deny(no_rule_matched)` to a review sends every deploy no rule covered to a human's queue. A `conflict` outcome only touches evaluations that already fail with a conflict, but the host still acts on what they return: adding `conflict deny(conflicting_rules)` turns their `deny(no_rule_matched)` into `deny(conflicting_rules)`, which a host checking `NoRuleMatched.Is` no longer sees, and a `conflict` that constructs an approval would turn a defect in a policy into a grant. For any of these changes:
+Reordering `precedence`, changing `default`, and adding, removing or changing a `conflict` outcome pass the type checker and still change decisions. Swapping `review` and `approve` makes the tour's service-owner deploy skip review ([the example](/understanding/kinds/#why-raise-accepts-for-a-change-that-still-compiles)), and a `default` changed from `deny(reason: no_rule_matched)` to a review sends every deploy no rule covered to a human's queue. A `conflict` outcome only touches evaluations that already fail with a conflict, but the host still acts on what they return: adding `conflict deny(reason: conflicting_rules)` turns their `deny(reason: no_rule_matched)` into `deny(reason: conflicting_rules)`, which a host checking `NoRuleMatched.Is` no longer sees, and a `conflict` that constructs an approval would turn a defect in a policy into a grant. For any of these changes:
 
 1. Treat it as breaking and raise `accepts`, so every policy written against the old behavior stops loading until its team has looked at the new one.
 2. Keep test cases that pin decisions and reasons. They catch a reordered `precedence` or a changed `default` where the type checker can't, because they pin decisions rather than types. A test case can't expect a conflict, so a changed `conflict` outcome only shows in the kind file diff, and in a Go test that checks the outcome of a conflict, as [Test a conflict](/guides/test-policies/#test-a-conflict) does.
@@ -120,3 +163,81 @@ Changing a field's type follows the same pattern: add a field with the new type 
 ## Remember the other evaluators
 
 Adding a host function doesn't break existing policies, but anything that evaluates a policy calling it needs its implementation. The stock `sigil` binary knows only the signature from the kind file, so `sigil eval` and `sigil test` return a runtime error when they reach the call; a host binary built with [`pkg/cli`](/reference/cli/#host-functions-and-host-binaries) links the real function. Rebuild and ship those binaries before policies start using a new `fn`. Tools that only type-check, such as `sigil check`, work from the exported signature right away.
+
+## Migrate to the new decision syntax
+
+Sigil used to declare a decision's payload in parentheses and its reasons in a block, and constructors passed the reason first, without a label. Both are now written with `reason:`:
+
+```sigil
+// before
+decision approve(bake: duration = 1h) {
+  release_manager
+  payments_sre
+}
+
+approve(payments_sre, bake: 15m)
+default deny(no_rule_matched)
+
+// after
+decision approve {
+  reason: release_manager | payments_sre
+  bake: duration = 1h
+}
+
+approve(reason: payments_sre, bake: 15m)
+default deny(reason: no_rule_matched)
+```
+
+The old forms still parse, so nothing has to change by hand. They don't check any more: the kind loader rejects the old declaration and the type checker rejects a positional reason, and each error's help holds the rewritten form. Why every argument is named now: [Why arguments are named](/understanding/language-choices/#why-arguments-are-named).
+
+1. In the host repo, upgrade Sigil and export the kind again with `sigil export --out` from the host binary. Your Go code doesn't change: `NewDecision` and its reason handles work as before, and the export writes the new syntax.
+2. In the policy repo, run `sigil check` against the new kind file. It reports every positional reason:
+
+   ```text
+   $ sigil check --kind deploy_approval.sigil deploy/ payments/
+   deploy/guardrails.sigil:8:8: error: the reason is a named argument
+     |
+   8 |   deny(not_eligible)
+     |        ^^^^^^^^^^^^
+     = help: write `deny(reason: not_eligible)`
+
+   deploy/guardrails.sigil:12:8: error: the reason is a named argument
+      |
+   12 |   deny(soak_too_short)
+      |        ^^^^^^^^^^^^^^
+      = help: write `deny(reason: soak_too_short)`
+
+   deploy/production.sigil:11:13: error: the reason is a named argument
+      |
+   11 |     approve(release_manager)
+      |             ^^^^^^^^^^^^^^^
+      = help: write `approve(reason: release_manager)`
+
+   deploy/production.sigil:16:12: error: the reason is a named argument
+      |
+   16 |     review(service_owner, approvers: approvers)
+      |            ^^^^^^^^^^^^^
+      = help: write `review(reason: service_owner, approvers: approvers)`
+
+   payments/production.sigil:18:11: error: the reason is a named argument
+      |
+   18 |   approve(payments_sre, bake: 15m)
+      |           ^^^^^^^^^^^^
+      = help: write `approve(reason: payments_sre, bake: 15m)`
+
+   ✗ checked 4 files, 5 errors
+   ```
+
+3. Rewrite every file at once. `sigil fmt --write` turns old decision declarations into the new syntax, in kind files you maintain by hand as well, and puts `reason:` in front of every positional reason:
+
+   ```text
+   $ sigil fmt --write deploy/ payments/
+   ✓ reformatted 3 files, 1 left unchanged
+     deploy/guardrails.sigil
+     deploy/production.sigil
+     payments/production.sigil
+   ```
+
+4. Run `sigil check` and `sigil test` again. `fmt` only relabels, so the decisions your test cases pin don't change. Commit the rewrite on its own, apart from any rule change, so the diff is easy to review.
+
+The new syntax doesn't change the contract, so the kind's `version` stays where it is.
