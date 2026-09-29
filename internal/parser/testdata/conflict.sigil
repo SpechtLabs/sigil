@@ -1,16 +1,14 @@
-// `conflict` starts a declaration only where a kind declaration can
-// start. Everywhere else it's a name: a type field, an input, a
-// decision, a reason, and anything in a policy.
+// `conflict` is a keyword, like `default`. A type field may still be
+// spelled like it, as fields may be spelled like any keyword.
 kind Gate version 1
 
 type Merge {
   conflict: bool
 }
 
-input conflict: Merge
+input merge: Merge
 
 decision deny {
-  conflict
   conflicting_rules
   no_rule_matched
 }
@@ -23,7 +21,6 @@ collect one
 precedence deny > allow
 
 default deny(no_rule_matched)
-
 conflict deny(conflicting_rules)
 
 ---
@@ -36,6 +33,6 @@ kind Joined version 1 decision allow(ttl: duration = 1h) { owner } collect one p
 
 policy gate.main: Gate@1
 
-when conflict.conflict {
-  deny(conflict)
+when merge.conflict {
+  deny(conflicting_rules)
 }

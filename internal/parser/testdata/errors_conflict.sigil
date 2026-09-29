@@ -17,3 +17,15 @@ default deny(no_rule_matched)
 conflict "conflicting_rules"
 
 conflict(conflicting_rules)
+
+---
+
+// `conflict` is reserved, so it can't name an input or a reason.
+kind Reserved version 1
+
+input conflict: bool
+
+decision deny {
+  conflict
+  no_rule_matched
+}

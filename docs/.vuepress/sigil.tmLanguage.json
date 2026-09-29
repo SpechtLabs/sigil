@@ -86,18 +86,12 @@
     "keyword": {
       "patterns": [
         {
-          "match": "^\\s*(conflict)(?=\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\()",
-          "captures": {
-            "1": { "name": "keyword.other.sigil" }
-          }
-        },
-        {
           "name": "keyword.control.sigil",
           "match": "\\b(when|assert)\\b"
         },
         {
           "name": "keyword.other.sigil",
-          "match": "\\b(policy|module|use|as|param|let|pub|kind|version|type|input|fn|decision|precedence|collect|default)\\b"
+          "match": "\\b(policy|module|use|as|param|let|pub|kind|version|type|input|fn|decision|precedence|collect|default|conflict)\\b"
         }
       ]
     },

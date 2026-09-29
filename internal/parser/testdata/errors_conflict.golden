@@ -2,6 +2,8 @@ kind Broken version 1 [1:1-15:30]
   decision deny { conflicting_rules no_rule_matched } [3:1-6:2]
   conflict deny(conflicting_rules) [10:1-10:33]
   default deny(no_rule_matched) [15:1-15:30]
+---
+kind Reserved version 1 [24:1-24:24]
 
 == diagnostics ==
 
@@ -32,4 +34,28 @@ errors_conflict.sigil:19:9: error: expected a decision constructor, found `(`
    |
 19 | conflict(conflicting_rules)
    |         ^
+   = help: the conflict outcome is written `conflict deny(conflicting_rules)`
+
+errors_conflict.sigil:26:7: error: expected a name after `input`, found `conflict`
+   |
+26 | input conflict: bool
+   |       ^^^^^^^^
+   = help: an input is written `input name: type`
+
+errors_conflict.sigil:26:15: error: expected a decision constructor, found `:`
+   |
+26 | input conflict: bool
+   |               ^
+   = help: the conflict outcome is written `conflict deny(conflicting_rules)`
+
+errors_conflict.sigil:28:15: error: decision deny declares no reasons
+   |
+28 | decision deny {
+   |               ^
+   = help: every decision needs at least one reason in its block
+
+errors_conflict.sigil:30:3: error: expected a decision constructor, found `no_rule_matched`
+   |
+30 |   no_rule_matched
+   |   ^^^^^^^^^^^^^^^
    = help: the conflict outcome is written `conflict deny(conflicting_rules)`
