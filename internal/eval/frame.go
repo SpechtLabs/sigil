@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"math"
 	"reflect"
 
 	"github.com/spechtlabs/sigil/internal/diag"
@@ -28,6 +29,7 @@ type Frame struct {
 	lets       []Value // a let's value once evaluated, by let index
 	done       []bool  // whether lets[i] has been evaluated in this frame
 	conds      []condMemo
+	budget     int // loop steps left before the next poll of the context
 }
 
 // condMemo is a `when` condition's result, once evaluated in a frame, so
@@ -73,6 +75,31 @@ func (f *Frame) cond(b *block) (bool, *diag.Error) {
 		m.done = true
 	}
 	return m.held, m.err
+}
+
+// step counts n steps of a loop against the frame's budget, and polls
+// the context once the budget runs out. It's a decrement and a branch,
+// small enough to inline into every loop body.
+func (f *Frame) step(n int) {
+	f.budget -= n
+	if f.budget < 0 {
+		f.refill()
+	}
+}
+
+// refill polls the context and grants the frame another pollEvery
+// steps. A bare frame, or one of an evaluation whose context can't end,
+// has nothing to poll and gets a budget it never runs out of. It stays
+// out of line so that step inlines.
+//
+//go:noinline
+func (f *Frame) refill() {
+	if f.run == nil || f.run.ctx == nil {
+		f.budget = math.MaxInt
+		return
+	}
+	f.budget = pollEvery
+	f.run.poll()
 }
 
 // frameOf returns the frame of another instance in the same evaluation,

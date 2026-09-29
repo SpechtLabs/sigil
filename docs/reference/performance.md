@@ -14,7 +14,7 @@ A host compiles a policy once and evaluates it for every request. Evaluating a r
 - **Evaluation cost follows the rules that match.** The cost grows with the rules whose conditions hold and the candidates they produce. The 64-rule workload below, where every rule matches, is the worst case of its size; most real policies decide with a handful of matching rules.
 - **Compiled policies are safe to share.** A compiled policy is immutable. Concurrent evaluations share no mutable state and take no locks, so any number of goroutines can evaluate the same policy.
 - **Allocation is predictable.** An evaluation allocates the same number of objects every time for the same input and outcome; no evaluation benchmark's count varied between samples. Most of it is the result and the trace a host receives.
-- **Every evaluation halts.** Sigil has no loops or recursion; quantifiers and filters range over finite lists, so an evaluation ends as long as its host functions do. Its cost still grows with the input's lists and there's no cost budget yet, so bound input sizes. See [Halting by construction](/understanding/halting/).
+- **Every evaluation halts.** Sigil has no loops or recursion; quantifiers and filters range over finite lists, so an evaluation ends as long as its host functions do. Its cost still grows with the input's lists and there's no cost budget yet, so bound input sizes and evaluate under a context with a deadline, which `Eval` checks while it runs. See [Halting by construction](/understanding/halting/).
 
 ## Evaluating policies
 

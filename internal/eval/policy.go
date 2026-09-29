@@ -2,6 +2,8 @@ package eval
 
 import (
 	stdcmp "cmp"
+	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -63,8 +65,12 @@ type Requirement struct {
 }
 
 // run is the mutable state of one evaluation: the frames of every
-// instance reached, indexed by its compiled slot, and what the phases collected.
+// instance reached, indexed by its compiled slot, what the phases
+// collected, and the context that can end it early.
 type run struct {
+	// ctx is the evaluation's context, or nil when it can never be done,
+	// like context.Background(), so a poll has nothing to do.
+	ctx     context.Context //nolint:containedctx // one evaluation's context, polled while it runs
 	frames  []*Frame
 	input   Value
 	outcome Value
@@ -94,17 +100,55 @@ func (p *Policy) Ranked() bool { return len(p.kind.Precedence) > 0 }
 //
 // Eval doesn't check input's Go type, which must be the binding's input
 // struct. A policy compiled with [Options.Static] returns an error. A
-// panic in a host function isn't recovered. Eval is safe to call from
-// several goroutines at once.
+// panic in a host function isn't recovered unless the binding sets
+// [gokind.Binding.RecoverHostPanics]. Eval is safe to call from several
+// goroutines at once.
 func (p *Policy) Eval(input any) (*Outcome, *diag.Error) {
+	out, err := p.EvalContext(context.Background(), input)
+	if err != nil {
+		// A background context never ends, so the error is a runtime error.
+		derr, _ := errors.AsType[*diag.Error](err)
+		return nil, derr
+	}
+	return out, nil
+}
+
+// EvalContext is [Policy.Eval] under a context. It polls ctx before it
+// starts, before every rule and assert, after every host function call,
+// and every few hundred steps of a loop over a list or map, and stops
+// once ctx is done. The error is then ctx.Err(), unwrapped, with no
+// outcome, so nothing half-evaluated reaches the host. Any other error
+// is a runtime error in a rule, a *[diag.Error].
+func (p *Policy) EvalContext(ctx context.Context, input any) (out *Outcome, err error) { //nolint:humaneerror // a *diag.Error or the context's own error, which callers tell apart
 	if p.static {
 		return nil, &diag.Error{File: p.File, Msg: "policy was compiled for explanation only and can't be evaluated"}
 	}
+	if done := ctx.Err(); done != nil {
+		return nil, done //nolint:errorwrap // returned as is, so errors.Is(err, context.Canceled) holds
+	}
+	defer func() {
+		if rec := recover(); rec != nil {
+			c, ok := rec.(*canceled)
+			if !ok {
+				panic(rec) //nolint:nopanic // not ours: re-raise it unchanged
+			}
+			out, err = nil, c.err
+		}
+	}()
+	return p.evaluate(ctx, input)
+}
+
+// evaluate is the body of EvalContext, which recovers a cancellation
+// from it.
+func (p *Policy) evaluate(ctx context.Context, input any) (*Outcome, error) {
 	v := reflect.ValueOf(input)
 	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	r := &run{frames: make([]*Frame, p.nframes), input: v}
+	if ctx.Done() != nil {
+		r.ctx = ctx
+	}
 	f := r.frame(p.root)
 
 	p.walk(f, r, p.root.body, phaseInput)
@@ -148,6 +192,21 @@ func (r *run) frame(inst *instance) *Frame {
 	f.Outcome, f.Candidates = r.outcome, r.top
 	r.frames[inst.index] = f
 	return f
+}
+
+// poll ends the evaluation when its context is done. The panic isn't a
+// *[diag.Error], so every catch passes it on: a cancellation never
+// becomes a runtime error, an assert's failure or a condition's memo,
+// and only [Policy.EvalContext] recovers it.
+func (r *run) poll() {
+	if r.ctx == nil {
+		return
+	}
+	select {
+	case <-r.ctx.Done():
+		panic(&canceled{err: r.ctx.Err()}) //nolint:nopanic // unwinds to EvalContext, which returns the context's error
+	default:
+	}
 }
 
 // setOutcome makes the outcome visible to every frame, for the outcome
@@ -283,8 +342,10 @@ func (p *Policy) walk(f *Frame, r *run, nodes []*node, ph phase) {
 	for _, n := range nodes {
 		switch {
 		case n.rule != nil && ph == phaseRules:
+			r.poll()
 			r.cands = append(r.cands, fireIn(n.rule, f))
 		case n.assert != nil && n.assert.wants(ph):
+			r.poll()
 			r.check(f, n.assert)
 		case n.block != nil && n.block.summary.wants(ph):
 			p.enter(f, r, n.block, ph)

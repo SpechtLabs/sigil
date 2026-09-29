@@ -10,6 +10,15 @@ import (
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
+// pollEvery is how many loop steps pass between two polls of the
+// context. A step is one element of a quantifier, filter, membership
+// test, list operator or map `has`, and costs 10 to 20 ns; a poll is a
+// non-blocking receive on ctx.Done(). Counting a step is a decrement and
+// a branch, about 2.5% of the tightest loop, a quantifier comparing two
+// ints, and polling every 256 steps adds nothing measurable on top while
+// noticing a cancellation within a few microseconds of loop work.
+const pollEvery = 256
+
 var timeType = reflect.TypeFor[time.Time]()
 
 // Value is a runtime value: a [reflect.Value] over the host's data, or
@@ -22,9 +31,40 @@ type Value = reflect.Value
 // panic into a returned error.
 type Expr func(f *Frame) Value
 
+// HostPanic is what a host function panicked with, when the kind
+// recovers host panics ([gokind.Binding.RecoverHostPanics]): the cause of
+// the runtime error the panic became, with the stack at the panic for the
+// host to log.
+type HostPanic struct {
+	Value any    //nolint:emptyinterface // whatever the function passed to panic
+	Func  string // the host function's name in the kind
+	Stack []byte // the panicking goroutine's stack, from runtime/debug.Stack
+}
+
+// canceled unwinds an evaluation whose context is done. It isn't a
+// *[diag.Error], so catch passes it on to [Policy.EvalContext], which
+// returns err.
+type canceled struct {
+	err error
+}
+
+// Error names the function and the panic value, like the message of the
+// runtime error the panic became.
+func (p *HostPanic) Error() string {
+	return fmt.Sprintf("host function %s panicked: %v", p.Func, p.Value)
+}
+
+// Unwrap returns the panic value when it's an error, such as the
+// [runtime.Error] of a nil dereference, so [errors.As] reaches it.
+func (p *HostPanic) Unwrap() error { //nolint:humaneerror // returns the panic value unchanged, as errors.Unwrap expects
+	err, _ := p.Value.(error)
+	return err
+}
+
 // Run evaluates e in f and returns its value, or the runtime error it
 // raised. A panic that isn't a runtime error, such as one inside a host
-// function, is re-raised unchanged.
+// function or the cancellation of a policy evaluation, is re-raised
+// unchanged.
 func Run(e Expr, f *Frame) (v Value, err *diag.Error) {
 	err = catch(func() { v = e(f) })
 	return v, err

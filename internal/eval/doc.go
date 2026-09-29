@@ -41,6 +41,19 @@
 // A runtime error, such as an index out of range, integer overflow or a
 // host function returning an error, unwinds through a recovered panic and
 // comes back from [Run] or [Policy.Eval] as a *diag.Error pointing at the
-// expression that failed. Any other panic, such as one raised inside a
-// host function, isn't recovered and reaches the caller.
+// expression that failed. The error a host function returned is its
+// Cause. A panic raised inside a host function isn't recovered and
+// reaches the caller, unless the binding sets RecoverHostPanics: then it
+// becomes a runtime error too, caused by a [*HostPanic] that keeps the
+// stack.
+//
+// # Cancellation
+//
+// [Policy.EvalContext] polls its context before every rule and assert,
+// after every host function call, and every few hundred steps of a loop
+// over a list or map, so nested quantifiers over a large input stop soon
+// after the context is done. A cancellation unwinds through its own
+// panic, which no runtime error handler catches: it never turns into an
+// assert's failure or a memoized condition, and the evaluation returns
+// the context's error with no outcome.
 package eval

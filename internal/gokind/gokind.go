@@ -36,6 +36,7 @@ func Build(o Options) (*kind.Kind, *Binding, diag.ErrorList) {
 		},
 		structs: map[reflect.Type]*types.Struct{},
 	}
+	b.binding.RecoverHostPanics = o.RecoverHostPanics
 	if o.Ranked && o.Collect {
 		b.errorf("a kind ranks its decisions with WithDecisions, or applies them all with WithCollect; use one",
 			"kind %s mixes WithDecisions and WithCollect", o.Name)

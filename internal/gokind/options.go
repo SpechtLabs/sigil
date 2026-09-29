@@ -26,6 +26,9 @@ type Options struct {
 	// added the decisions; both is an error.
 	Ranked  bool
 	Collect bool
+	// RecoverHostPanics turns a panic in a host function into a runtime
+	// error instead of letting it unwind out of the evaluation.
+	RecoverHostPanics bool
 }
 
 // Decision is one decision, its payload struct and its reasons. None is

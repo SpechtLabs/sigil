@@ -136,19 +136,37 @@ func WithDefault(d DecisionRef, reason string) Option {
 //
 //	fn split(string, string) -> list<string>
 //
-// An error the function returns becomes a [*RuntimeError].
+// An error the function returns becomes a [*RuntimeError] whose Err is
+// that error.
 //
 // The name is written out rather than derived from fn, because it is part
 // of the policy contract: renaming a Go function must not rename it in
 // every policy.
 //
 // Host functions must be pure, must terminate and must not panic.
-// [Policy.Eval] can't interrupt a function that never returns, and doesn't
-// recover a panic, which propagates to the caller.
+// [Policy.Eval] can't interrupt a function that never returns, though it
+// stops once the function returns after the context is done. A panic
+// propagates to the caller unless the kind sets [WithRecoverHostPanics].
 func WithFunc(name string, fn any) Option {
 	return func(o *gokind.Options) {
 		o.Funcs = append(o.Funcs, gokind.Func{Name: name, Fn: fn})
 	}
+}
+
+// WithRecoverHostPanics makes a panic in a host function fail the
+// evaluation instead of unwinding out of [Policy.Eval]: Eval returns a
+// [*RuntimeError] naming the function and the panic value, whose Err is
+// a [*HostPanicError] with the stack, and the result holds the kind's
+// default, as when the function returns an error.
+//
+// It's off by default because a panic is a bug in the host, and the
+// usual Go answer is to let it surface where it happened: net/http
+// already recovers a handler's panic and logs it with the stack. Turn it
+// on where nothing above Eval recovers, such as a queue consumer or a
+// reconcile loop, so one bad input fails closed instead of killing the
+// worker.
+func WithRecoverHostPanics() Option {
+	return func(o *gokind.Options) { o.RecoverHostPanics = true }
 }
 
 func refs(ds []DecisionRef) []gokind.Decision {

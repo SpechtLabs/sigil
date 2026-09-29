@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 
+	"github.com/spechtlabs/sigil/internal/eval"
 	"github.com/spechtlabs/sigil/internal/result"
 )
 
@@ -14,24 +15,26 @@ import (
 // that fails closed can use it directly. The error is one of:
 //
 //   - [*RuntimeError], when an expression failed, such as a list index out
-//     of range, or a host function returned an error.
+//     of range, or a host function returned an error, or panicked under
+//     [WithRecoverHostPanics].
 //   - [*ConflictError], when two candidates can't both stand; its
 //     Candidates field names them.
 //   - [*AssertionError], when an assert failed. The result's trace lists
 //     every candidate the rules produced: none when an input assert
 //     failed, since no rule ran.
-//   - ctx.Err(), unwrapped, when ctx is already done. Eval then returns
-//     the default result without evaluating.
+//   - ctx.Err(), unwrapped, when ctx is done before or during the
+//     evaluation. The result's trace is then empty, however far the
+//     evaluation got.
 //
-// The context is checked once, before evaluation starts, and a running
-// evaluation isn't interrupted. Host functions run on the calling
-// goroutine, and a panic in one propagates out of Eval.
+// Eval checks ctx before it starts, before every rule and assert, after
+// every host function call, and every few hundred elements a quantifier,
+// filter or list operator goes through, so a deadline cuts off nested
+// quantifiers over a large input. It can't interrupt a host function
+// that doesn't return. Host functions run on the calling goroutine, and a
+// panic in one propagates out of Eval unless the kind sets
+// [WithRecoverHostPanics].
 func (p *Policy[In]) Eval(ctx context.Context, input In) (*Result, error) {
-	if err := ctx.Err(); err != nil {
-		res, _ := convert(result.Fallback(p.prog, nil))
-		return res, err //nolint:errorwrap,humaneerror // returned as is, so errors.Is(err, context.Canceled) holds
-	}
-	return convert(result.Evaluate(p.prog, &input))
+	return convert(result.EvaluateContext(ctx, p.prog, &input))
 }
 
 // convert turns an evaluation into the public Result and the error that
@@ -63,6 +66,8 @@ func convert(r *result.Result) (*Result, error) {
 // failure converts why an evaluation failed into its error type.
 func failure(policy string, f *result.Failure) error {
 	switch {
+	case f.Canceled != nil:
+		return f.Canceled //nolint:errorwrap,humaneerror // returned as is, so errors.Is(err, context.Canceled) holds
 	case f.Runtime != nil:
 		return runtimeError(policy, f.Runtime)
 	case f.Conflict != nil:
@@ -72,7 +77,10 @@ func failure(policy string, f *result.Failure) error {
 		}
 		return ce
 	}
-	ae := &AssertionError{Failures: make([]AssertFailure, 0, len(f.Asserts))}
+	ae := &AssertionError{Failures: make([]AssertFailure, 0, len(f.Asserts)), Phase: InputAsserts}
+	if f.OutcomeAsserts {
+		ae.Phase = OutcomeAsserts
+	}
 	for _, a := range f.Asserts {
 		af := AssertFailure{Reason: a.Reason, Policy: a.Policy, Position: Position(a.Position), CallChain: positions(a.Chain)}
 		if len(a.Outcome) > 0 {
@@ -89,8 +97,14 @@ func failure(policy string, f *result.Failure) error {
 	return ae
 }
 
+// runtimeError converts a runtime error, turning the evaluator's record
+// of a recovered host panic into a [*HostPanicError].
 func runtimeError(policy string, r *result.Runtime) *RuntimeError {
-	return &RuntimeError{Message: r.Msg, Policy: policy, Position: Position(r.Position)}
+	e := &RuntimeError{Message: r.Msg, Help: r.Help, Policy: policy, Position: Position(r.Position), Err: r.Cause}
+	if p, ok := r.Cause.(*eval.HostPanic); ok {
+		e.Err = &HostPanicError{Value: p.Value, Func: p.Func, Stack: p.Stack}
+	}
+	return e
 }
 
 func entry(e result.Entry) Entry {
