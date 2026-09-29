@@ -50,3 +50,6 @@ docs/project/roadmap.md
 # Binaries that `go build` drops into examples/ when run there.
 /examples/sigilc
 /examples/deploygate
+
+### Commit message check ###
+.github/commit-lint/node_modules/
