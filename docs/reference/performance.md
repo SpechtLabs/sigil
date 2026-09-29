@@ -40,6 +40,18 @@ The engine's own benchmarks evaluate a synthetic policy for each kind of outcome
 
 Below the public API, the evaluator alone takes 490 ns for one matching rule and 788 ns for a policy composed from an import and two invocations. Its cost grows in proportion to the rules. The synthetic policy repeats one rule shape: in the first column every copy matches, and in the second only the last one does, so the rules cost the same to evaluate and only the candidates differ.
 
+<LineChart
+  title="Evaluation time by number of rules"
+  x-label="Rules in the policy"
+  x-unit="rule"
+  :x="[1, 8, 16, 32, 64, 128]"
+  :x-ticks="[0, 32, 64, 96, 128]"
+  :series="[
+    { label: 'Every rule matches', values: [0.49, 3.02, 5.78, 11.7, 23.9, 50.6] },
+    { label: 'One rule matches', values: [0.49, 1.42, 2.46, 4.57, 8.89, 17.9] },
+  ]"
+/>
+
 | Rules | Every rule matches | Allocations | One rule matches | Allocations |
 | ---: | ---: | ---: | ---: | ---: |
 | 1 | 490 ns | 18 | 490 ns | 18 |

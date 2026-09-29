@@ -24,6 +24,8 @@ config:
       - p
       - img
       - kbd
+      # The performance page plots its benchmark curves with this component.
+      - LineChart
 
   # MD036: Allow bold labels used as pseudo-headings.
   MD036: false
