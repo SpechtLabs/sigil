@@ -3,6 +3,8 @@ package fixture
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -34,6 +36,9 @@ const requestTimeout = 10 * time.Second
 type Client struct {
 	http    *http.Client
 	baseURL string
+	// traceparent is the W3C trace context every request carries, empty
+	// for a client that doesn't set one; see Traced.
+	traceparent string
 }
 
 // NewClient returns a client for the server at baseURL, such as
@@ -43,6 +48,23 @@ func NewClient(baseURL string) *Client {
 		http:    &http.Client{Timeout: requestTimeout},
 		baseURL: strings.TrimSuffix(baseURL, "/"),
 	}
+}
+
+// Traced returns a copy of c whose requests all belong to one new, sampled
+// trace, and that trace's ID. Every request carries a W3C traceparent header
+// naming the trace, and deploygate continues the trace it's given, so a spec
+// can fetch the spans of exactly its own requests from Tempo by ID instead of
+// searching for them.
+func (c *Client) Traced(g gomega.Gomega) (*Client, string) {
+	var ids [24]byte
+	_, err := rand.Read(ids[:])
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+
+	traceID := hex.EncodeToString(ids[:16])
+	traced := *c
+	traced.traceparent = "00-" + traceID + "-" + hex.EncodeToString(ids[16:]) + "-01"
+
+	return &traced, traceID
 }
 
 // DeploymentsPath is the evaluation endpoint of team.
@@ -128,6 +150,9 @@ func (c *Client) Send(g gomega.Gomega, method, path, contentType string, body io
 
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
+	}
+	if c.traceparent != "" {
+		req.Header.Set("traceparent", c.traceparent)
 	}
 
 	resp, err := c.http.Do(req)

@@ -48,7 +48,7 @@ var _ = Describe("The embedded bundles", func() {
 				Expect(got.Reason).To(Equal(want.Reason))
 				Expect(got.Payload).To(Equal(want.Payload))
 			},
-			decisionEntries(),
+			fixture.Entries(fixture.DecisionCases()),
 		)
 	})
 
@@ -75,7 +75,7 @@ var _ = Describe("The embedded bundles", func() {
 				Expect(outcome(got)).To(Equal(outcome(want)))
 				Expect(got.Outcome).To(HaveLen(len(c.Grants)))
 			},
-			accessEntries(),
+			fixture.Entries(fixture.AccessCases()),
 		)
 	})
 })

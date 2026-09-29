@@ -1,6 +1,10 @@
 package fixture
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/onsi/ginkgo/v2"
+)
 
 // The roles of the AccessGrant kind, as grants and derived roles name them.
 const (
@@ -67,6 +71,30 @@ type BadRequestCase struct {
 	Name string
 	// Body is the raw request body, sent byte for byte.
 	Body string
+}
+
+// AccessFailureCase is a deployment whose access stage fails, and how the
+// service must answer it. The failure ends the request before the deploy
+// policy runs, whoever's fault it is; [ExpectAccessFailure] checks both.
+type AccessFailureCase struct {
+	Request DeployRequest
+	// Name is the spec's description.
+	Name string
+	// Team is the team the request is sent for.
+	Team string
+	// Asserts are the asserts that fail, empty for a conflict.
+	Asserts []AssertEntry
+	// Status is 422 for a failed input assert, the caller's to fix, and 500
+	// for a failure of the policy.
+	Status int
+	// Conflict is whether the failure is the break-glass conflict.
+	Conflict bool
+}
+
+// Case is a table case with a description, which every case type here is,
+// so [Entries] can turn any of their lists into a table.
+type Case interface {
+	Description() string
 }
 
 // The groups of the actors whose access evaluation fails. The specs send
@@ -199,6 +227,56 @@ func AccessBadRequestCases() []BadRequestCase {
 		{Name: "an empty team", Body: mustMarshal(AccessRequest{Actor: AccessActor{Name: Ada, Groups: []string{TeamPayments}}, Environment: EnvProduction})},
 	}
 }
+
+// AccessFailureCases returns a deployment for each way the access stage
+// fails: the caller's failed input assert, and the policy's failed outcome
+// assert and conflict.
+func AccessFailureCases() []AccessFailureCase {
+	return []AccessFailureCase{
+		{
+			Name: "answers 422 for an actor without a name, a failed input assert the caller can fix",
+			Team: TeamCheckout, Request: OwnerRequest(ActorName("")),
+			Status:  http.StatusUnprocessableEntity,
+			Asserts: []AssertEntry{{Reason: "named_actor", Policy: "access.guardrails"}},
+		},
+		{
+			Name: "answers 500 for an actor who would audit their own deploys, a failed outcome assert",
+			Team: TeamPayments, Request: OwnerRequest(Groups(ComplianceMember...)),
+			Status:  http.StatusInternalServerError,
+			Asserts: []AssertEntry{{Reason: "sod_auditor_deployer", Policy: "access.guardrails"}},
+		},
+		{
+			Name: "answers 500 naming both sides when admin and release manager collide",
+			Team: TeamPayments, Request: OwnerRequest(Groups(BreakGlassPlatform...)),
+			Status:   http.StatusInternalServerError,
+			Conflict: true,
+		},
+	}
+}
+
+// Entries turns cases into Ginkgo table entries, one per case, described by
+// the case and passing it whole to the table's body, so both suites build
+// every table the same way and a new table is one call.
+func Entries[C Case](cases []C) []ginkgo.TableEntry {
+	entries := make([]ginkgo.TableEntry, 0, len(cases))
+	for _, c := range cases {
+		entries = append(entries, ginkgo.Entry(c.Description(), c))
+	}
+
+	return entries
+}
+
+// Description is the spec's description, for [Entries].
+func (c DecisionCase) Description() string { return c.Name }
+
+// Description is the spec's description, for [Entries].
+func (c AccessCase) Description() string { return c.Name }
+
+// Description is the spec's description, for [Entries].
+func (c BadRequestCase) Description() string { return c.Name }
+
+// Description is the spec's description, for [Entries].
+func (c AccessFailureCase) Description() string { return c.Name }
 
 // reviewCases are the deploys that end in a review: a team member who owns
 // the service, as a deployer.

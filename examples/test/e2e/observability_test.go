@@ -23,6 +23,10 @@ const (
 
 	evaluateSpan = "deploygate.evaluate"
 	accessSpan   = "deploygate.access"
+
+	// deploymentsServerSpan is the HTTP server span of a deployment
+	// request, named after its route template.
+	deploymentsServerSpan = "POST /api/v1/teams/:team/deployments"
 )
 
 type promQueryResponse struct {
@@ -112,6 +116,34 @@ var _ = Describe("Observability backends", func() {
 		},
 			Entry("the access stage and its roles", accessSpan, "sigil.kind", "sigil.policy", "sigil.team", "sigil.environment", "sigil.grants"),
 			Entry("the deploy stage and its decision", evaluateSpan, "sigil.decision", "sigil.policy", "sigil.team", "sigil.roles"),
+		)
+
+		DescribeTable("stores no deploy evaluation for a request whose access stage failed",
+			func(c fixture.AccessFailureCase) {
+				// The request carries its own trace ID, so the spec reads
+				// that request's trace and nothing else.
+				client, traceID := deploygate.Traced(Default)
+				resp, _ := client.Deploy(Default, c.Team, c.Request)
+				Expect(resp).To(HaveHTTPStatus(c.Status))
+
+				// An absent span proves nothing while the trace is still
+				// arriving, so first wait for the access span and for the
+				// HTTP server span. The server span ends last, after an
+				// evaluate span would have, so once it is stored an evaluate
+				// span would be too.
+				var trace tempoTraceResponse
+				Eventually(func(g Gomega) {
+					resp, body := tempo.Get(g, "/api/traces/"+traceID)
+					g.Expect(resp).To(HaveHTTPStatus(http.StatusOK))
+					trace = fixture.Decode[tempoTraceResponse](g, body)
+					g.Expect(spanTags(trace, accessSpan)).To(HaveLen(1))
+					g.Expect(spanTags(trace, deploymentsServerSpan)).To(HaveLen(1))
+				}).WithTimeout(backendTimeout).WithPolling(backendPolling).Should(Succeed())
+
+				Expect(spanTags(trace, evaluateSpan)).To(BeEmpty(),
+					"trace %s ran the deploy policy although the access stage failed", traceID)
+			},
+			fixture.Entries(fixture.AccessFailureCases()),
 		)
 	})
 

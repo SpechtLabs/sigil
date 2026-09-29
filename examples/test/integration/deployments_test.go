@@ -33,49 +33,18 @@ var _ = Describe("Evaluating a deployment", func() {
 			resp, out := shared.client.Deploy(Default, c.Team, c.Request)
 			fixture.ExpectDecision(Default, c, resp, out)
 		},
-		decisionEntries(),
+		fixture.Entries(fixture.DecisionCases()),
 	)
 
-	Context("when the access stage fails", func() {
-		// An access failure ends the request before the deploy policy runs.
-		// The decision fields then hold the deploy kind's default, the
-		// fallback a host that fails closed acts on, and the access block
-		// shows that nothing was granted.
-		expectFallback := func(out fixture.DecisionResponse, team string) {
-			GinkgoHelper()
-
-			Expect(out.Team).To(Equal(team))
-			Expect(out.Policy).To(Equal(team + ".production"))
-			Expect(out.Decision).To(Equal(fixture.DecisionDeny))
-			Expect(out.Reason).To(Equal("no_rule_matched"))
-			Expect(out.Trace).To(BeEmpty())
-			Expect(out.Access).NotTo(BeNil())
-			Expect(out.Access.Grants).To(BeEmpty())
-		}
-
-		It("answers 422 for an actor without a name, a failed input assert the caller can fix", func() {
-			resp, out := shared.client.Deploy(Default, fixture.TeamCheckout, fixture.OwnerRequest(fixture.ActorName("")))
-
-			fixture.ExpectAsserts(Default, resp, http.StatusUnprocessableEntity, out.Asserts, out.Error,
-				fixture.AssertEntry{Reason: "named_actor", Policy: "access.guardrails"})
-			expectFallback(out, fixture.TeamCheckout)
-		})
-
-		It("answers 500 for an actor who would audit their own deploys, a failed outcome assert", func() {
-			resp, out := shared.client.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(fixture.ComplianceMember...)))
-
-			fixture.ExpectAsserts(Default, resp, http.StatusInternalServerError, out.Asserts, out.Error,
-				fixture.AssertEntry{Reason: "sod_auditor_deployer", Policy: "access.guardrails"})
-			expectFallback(out, fixture.TeamPayments)
-		})
-
-		It("answers 500 naming both sides when admin and release manager collide", func() {
-			resp, out := shared.client.Deploy(Default, fixture.TeamPayments, fixture.OwnerRequest(fixture.Groups(fixture.BreakGlassPlatform...)))
-
-			fixture.ExpectBreakGlassConflict(Default, resp, out.Conflict, out.Error)
-			expectFallback(out, fixture.TeamPayments)
-		})
-	})
+	// An access failure ends the request before the deploy policy runs, so
+	// no deploy decision is made on roles nobody granted.
+	DescribeTable("when the access stage fails, never runs the deploy policy",
+		func(c fixture.AccessFailureCase) {
+			resp, out := shared.client.Deploy(Default, c.Team, c.Request)
+			fixture.ExpectAccessFailure(Default, c, resp, out)
+		},
+		fixture.Entries(fixture.AccessFailureCases()),
+	)
 
 	Context("when the request can't be evaluated", func() {
 		It("answers 404 naming the teams it does serve", func() {
@@ -98,15 +67,15 @@ var _ = Describe("Evaluating a deployment", func() {
 		})
 
 		DescribeTable("answers 400 for a body it won't evaluate",
-			func(body string) {
-				resp, raw := shared.client.PostRaw(Default, fixture.DeploymentsPath(fixture.TeamPayments), body)
+			func(c fixture.BadRequestCase) {
+				resp, raw := shared.client.PostRaw(Default, fixture.DeploymentsPath(fixture.TeamPayments), c.Body)
 
 				Expect(resp).To(HaveHTTPStatus(http.StatusBadRequest))
 				herr := fixture.Decode[fixture.ErrorResponse](Default, raw).Error
 				Expect(herr).NotTo(BeNil())
 				Expect(herr.Advice).NotTo(BeEmpty(), "a client error should say how to fix the request")
 			},
-			badRequestEntries(),
+			fixture.Entries(fixture.BadRequestCases()),
 		)
 
 		It("answers 404 with the error model for a route that doesn't exist", func() {
@@ -124,7 +93,7 @@ var _ = Describe("Asking for access", func() {
 			resp, out := shared.client.Access(Default, c.Request)
 			fixture.ExpectAccess(Default, c, resp, out)
 		},
-		accessEntries(),
+		fixture.Entries(fixture.AccessCases()),
 	)
 
 	It("marks every grant as part of the outcome in the trace", func() {
@@ -168,15 +137,15 @@ var _ = Describe("Asking for access", func() {
 	})
 
 	DescribeTable("answers 400 for a body it won't evaluate",
-		func(body string) {
-			resp, raw := shared.client.PostRaw(Default, fixture.PathAccessGrants, body)
+		func(c fixture.BadRequestCase) {
+			resp, raw := shared.client.PostRaw(Default, fixture.PathAccessGrants, c.Body)
 
 			Expect(resp).To(HaveHTTPStatus(http.StatusBadRequest))
 			herr := fixture.Decode[fixture.ErrorResponse](Default, raw).Error
 			Expect(herr).NotTo(BeNil())
 			Expect(herr.Advice).NotTo(BeEmpty(), "a client error should say how to fix the request")
 		},
-		accessBadRequestEntries(),
+		fixture.Entries(fixture.AccessBadRequestCases()),
 	)
 })
 
@@ -214,45 +183,3 @@ var _ = Describe("The policy bundles", func() {
 		Expect(accessKind.Source).To(Equal(shared.accessDir))
 	})
 })
-
-// decisionEntries turns the shared decision cases into table entries, so
-// this suite and the end-to-end suite run the same table.
-func decisionEntries() []TableEntry {
-	cases := fixture.DecisionCases()
-	entries := make([]TableEntry, 0, len(cases))
-	for _, c := range cases {
-		entries = append(entries, Entry(c.Name, c))
-	}
-
-	return entries
-}
-
-func accessEntries() []TableEntry {
-	cases := fixture.AccessCases()
-	entries := make([]TableEntry, 0, len(cases))
-	for _, c := range cases {
-		entries = append(entries, Entry(c.Name, c))
-	}
-
-	return entries
-}
-
-func accessBadRequestEntries() []TableEntry {
-	cases := fixture.AccessBadRequestCases()
-	entries := make([]TableEntry, 0, len(cases))
-	for _, c := range cases {
-		entries = append(entries, Entry(c.Name, c.Body))
-	}
-
-	return entries
-}
-
-func badRequestEntries() []TableEntry {
-	cases := fixture.BadRequestCases()
-	entries := make([]TableEntry, 0, len(cases))
-	for _, c := range cases {
-		entries = append(entries, Entry(c.Name, c.Body))
-	}
-
-	return entries
-}
