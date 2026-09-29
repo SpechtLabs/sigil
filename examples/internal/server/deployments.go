@@ -56,6 +56,10 @@ func (s *Server) evaluate(c *gin.Context) {
 		herr = humane.New("release.soak is negative: "+req.Release.Soak.String(),
 			"send how long the release has soaked, zero or more, such as \"6h\"")
 	}
+	if herr == nil && !req.Service.Tier.Valid() {
+		herr = humane.New(fmt.Sprintf("service.tier %q isn't a tier", req.Service.Tier),
+			"send one of the tiers the DeployApproval kind declares: "+tierList())
+	}
 	if herr != nil {
 		writeError(c, http.StatusBadRequest, herr)
 		return
@@ -141,7 +145,7 @@ func (s *Server) deployFailed(c *gin.Context, resp *DecisionResponse, f failure)
 
 	// The answer carries the fallback decision, but the policy didn't make
 	// it, so it counts as an evaluation error and not as a decision: a real
-	// deny(no_rule_matched) and a failure stay apart in the metrics, as
+	// deny(reason: no_rule_matched) and a failure stay apart in the metrics, as
 	// they do for a failed access stage.
 	s.metrics.ObserveEvaluationError(telemetry.StageDeploy, resp.Team, f.kind)
 	ctx := c.Request.Context()
@@ -195,4 +199,13 @@ func recordResult(span trace.Span, resp DecisionResponse) {
 			attribute.Bool("winner", c.Winner),
 		))
 	}
+}
+
+// tierList is deploy.Tiers as the advice of a refused tier spells it.
+func tierList() string {
+	names := make([]string, len(deploy.Tiers))
+	for i, t := range deploy.Tiers {
+		names[i] = string(t)
+	}
+	return strings.Join(names, ", ")
 }

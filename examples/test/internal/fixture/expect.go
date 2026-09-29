@@ -51,7 +51,7 @@ func ExpectOwnerTrace(g gomega.Gomega, out DecisionResponse) {
 	g.Expect(w.Conditions).To(gomega.Equal([]string{
 		`service.labels["compliance"] == "pci"`,
 		"cleared",
-		`service.tier in ["standard", "internal"] and owns_service`,
+		`service.tier in [standard, internal] and owns_service`,
 	}))
 	g.Expect(w.Payload).To(gomega.MatchJSON(out.Payload))
 }

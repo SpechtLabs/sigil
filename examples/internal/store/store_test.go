@@ -39,7 +39,7 @@ nonexistent()
 const ungatedAccess = `policy access.main: AccessGrant@1
 
 when team in actor.groups {
-  reader(team_member)
+  reader(reason: team_member)
 }
 `
 
@@ -47,7 +47,7 @@ when team in actor.groups {
 const ungatedPolicy = `policy payments.production: DeployApproval@1
 
 when true {
-  approve(payments_sre)
+  approve(reason: payments_sre)
 }
 `
 

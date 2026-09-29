@@ -28,7 +28,7 @@ assert("named_service", service.name != "")
 
 guardrails()
 
-production(approvers: ["checkout-leads"], tiers: ["standard"])
+production(approvers: ["checkout-leads"], tiers: [standard])
 `
 
 // checkoutWith is checkout's policy with extra appended, so a test can make
@@ -43,7 +43,7 @@ assert("named_actor", actor.name != "")
 
 guardrails()
 
-production(approvers: ["checkout-leads"], tiers: ["standard"])
+production(approvers: ["checkout-leads"], tiers: [standard])
 
 ` + extra}
 }
@@ -298,14 +298,14 @@ func TestDeployStageFailures(t *testing.T) {
 		},
 		{
 			name:        "a runtime error is the policy's",
-			extra:       "when actor.regions[9] == \"eu\" {\n  deny(not_eligible)\n}",
+			extra:       "when actor.regions[9] == \"eu\" {\n  deny(reason: not_eligible)\n}",
 			wantStatus:  http.StatusInternalServerError,
 			wantKind:    "runtime",
 			wantMessage: "checkout.production can't be evaluated against this request",
 		},
 		{
 			name:        "two reviews with different approvers are the policy's conflict",
-			extra:       "when true {\n  review(service_owner, approvers: [\"security-leads\"])\n}",
+			extra:       "when true {\n  review(reason: service_owner, approvers: [\"security-leads\"])\n}",
 			wantStatus:  http.StatusInternalServerError,
 			wantKind:    "conflict",
 			wantMessage: "checkout.production produced decisions that can't stand together",
@@ -331,7 +331,7 @@ func TestDeployStageFailures(t *testing.T) {
 			decode(t, rec, &resp)
 
 			if resp.Decision != "deny" || resp.Reason != "no_rule_matched" {
-				t.Errorf("decision = %s(%s), want the fallback deny(no_rule_matched)", resp.Decision, resp.Reason)
+				t.Errorf("decision = %s(reason: %s), want the fallback deny(reason: no_rule_matched)", resp.Decision, resp.Reason)
 			}
 			if got := grantStrings(resp.Access.Grants); !slices.Equal(got, []string{"reader team_member", "deployer team_member 8h"}) {
 				t.Errorf("grants = %v, want the team member's", got)
@@ -477,7 +477,7 @@ func TestEvaluationDeadline(t *testing.T) {
 				t.Errorf("trace, grants = %+v, %+v; want none from an evaluation that ran out of time", resp.Trace, resp.Grants)
 			}
 			if strings.Contains(tt.path, "deployments") && (resp.Decision != "deny" || resp.Reason != "no_rule_matched") {
-				t.Errorf("decision = %s(%s), want the fallback deny(no_rule_matched)", resp.Decision, resp.Reason)
+				t.Errorf("decision = %s(reason: %s), want the fallback deny(reason: no_rule_matched)", resp.Decision, resp.Reason)
 			}
 
 			metrics := do(h, http.MethodGet, "/metrics", "").Body.String()
@@ -509,6 +509,8 @@ func TestDeploymentsReject(t *testing.T) {
 		{name: "numeric duration", team: "payments", edit: func(r, _ map[string]any) { r["release"] = map[string]any{"soak": 21600} }, wantStatus: http.StatusBadRequest, wantMsg: "isn't a valid request"},
 		{name: "unparsable duration", team: "payments", edit: func(r, _ map[string]any) { r["release"] = map[string]any{"soak": "a while"} }, wantStatus: http.StatusBadRequest, wantMsg: "isn't a valid request"},
 		{name: "negative soak", team: "payments", edit: func(r, _ map[string]any) { r["release"] = map[string]any{"soak": "-1h"} }, wantStatus: http.StatusBadRequest, wantMsg: "release.soak is negative"},
+		{name: "undeclared tier", team: "payments", edit: func(r, _ map[string]any) { r["service"].(map[string]any)["tier"] = "critcal" }, wantStatus: http.StatusBadRequest, wantMsg: `service.tier "critcal" isn't a tier`},
+		{name: "missing tier", team: "payments", edit: func(r, _ map[string]any) { delete(r["service"].(map[string]any), "tier") }, wantStatus: http.StatusBadRequest, wantMsg: `service.tier "" isn't a tier`},
 		{name: "two json values", team: "payments", body: deployRequest(nil) + deployRequest(nil), wantStatus: http.StatusBadRequest, wantMsg: "more than one JSON value"},
 	}
 	for _, tt := range tests {
@@ -584,7 +586,7 @@ func TestDeploymentMetrics(t *testing.T) {
 
 // TestFailedDeployEvaluationMetrics checks that a deploy evaluation that
 // fails counts as an evaluation error of the deploy stage and not as the
-// fallback decision it answers with, so a real deny(no_rule_matched) and a
+// fallback decision it answers with, so a real deny(reason: no_rule_matched) and a
 // failure stay apart.
 func TestFailedDeployEvaluationMetrics(t *testing.T) {
 	env := newEnv(t, envOptions{deployLoaded: true, accessLoaded: true, teamOverrides: map[string]string{"checkout/production.sigil": assertedCheckout}})

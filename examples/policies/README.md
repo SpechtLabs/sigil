@@ -112,7 +112,7 @@ tested with plain `testing` and with Ginkgo.
    reason the policy can reach, and add `--policy '<team>.*'` to the deploy
    check in the `policies` task of `examples/.mise.toml`.
 3. Add the team's on-call group to `sre_groups` in
-   `platform/access/common.sigil`, so its SREs get `deployer(oncall)`.
+   `platform/access/common.sigil`, so its SREs get `deployer(reason: oncall)`.
 4. Serve it with `--team <team>` or `DEPLOYGATE_TEAMS`, and add it to
    `DEPLOYGATE_TEAMS` in `docker-compose.yaml`. The binary embeds everything
    under `teams/`, so the new policy ships without further changes.

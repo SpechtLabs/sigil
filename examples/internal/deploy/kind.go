@@ -4,12 +4,14 @@
 //
 // The package shows how a host declares a kind in Go. [Input] and its nested
 // structs carry `policy:` tags that name what a policy reads, so the Sigil
-// field release.soak is [Release.Soak], a duration. [Deny], [Review] and
+// field release.soak is [Release.Soak], a duration. [Tier] is a named string
+// type the kind registers as an enum, so service.tier is one of critical,
+// standard and internal, written bare in a policy. [Deny], [Review] and
 // [Approve] are the decision handles, each with its reasons and payload type,
-// and [Kind] ties them together with the precedence, the default decision
-// and the host function split. The host reads a result through the same
-// handles: [policy.Decision.Match] hands back a [ReviewData] or an
-// [ApproveData], not a map.
+// and [Kind] ties them together with the Tier enum, the precedence, the
+// default decision and the host function split. The host reads a result
+// through the same handles: [policy.Decision.Match] hands back a
+// [ReviewData] or an [ApproveData], not a map.
 //
 // The Go types here are the source of truth. `sigilc export` writes them out
 // as policies/deploy_approval.sigil for the tooling that runs without this
@@ -20,11 +22,27 @@
 package deploy
 
 import (
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/spechtlabs/sigil/pkg/policy"
 )
+
+// Tier is a service's criticality. [Kind] declares it as the enum Tier, so
+// a policy writes service.tier == critical, and a misspelled tier is a
+// compile error instead of a comparison that never matches.
+type Tier string
+
+// The tiers, in the order the kind declares them.
+const (
+	TierCritical Tier = "critical"
+	TierStandard Tier = "standard"
+	TierInternal Tier = "internal"
+)
+
+// Tiers lists every tier [Kind] declares, in declaration order.
+var Tiers = []Tier{TierCritical, TierStandard, TierInternal}
 
 // Input is everything a deploy policy can read: the release being shipped,
 // the service it belongs to, who asks, and where.
@@ -48,9 +66,9 @@ type Release struct {
 // Service describes the workload the release belongs to.
 type Service struct {
 	Name string `policy:"name" json:"name"`
-	// Tier is the service's criticality, such as critical, standard or
-	// internal.
-	Tier string `policy:"tier" json:"tier"`
+	// Tier is the service's criticality. A tier outside [Tiers] fails the
+	// evaluation when a rule reads it, so check it with [Tier.Valid] first.
+	Tier Tier `policy:"tier" json:"tier"`
 	// Owners are the teams that own the service.
 	Owners []string `policy:"owners" json:"owners"`
 	// Labels are the workload's labels. The policies read compliance and
@@ -118,6 +136,7 @@ var (
 // evaluation error count. See [policy.WithRecoverHostPanics].
 var Kind = policy.NewKind[Input]("DeployApproval",
 	policy.WithVersion(1),
+	policy.WithEnum(TierCritical, TierStandard, TierInternal),
 	policy.WithDecisions(Deny, Review, Approve),
 	policy.WithReasonPrecedence(NotEligible, SoakTooShort, NoRuleMatched),
 	policy.WithReasonPrecedence(ReleaseManager, PaymentsSRE),
@@ -125,3 +144,10 @@ var Kind = policy.NewKind[Input]("DeployApproval",
 	policy.WithFunc("split", strings.Split),
 	policy.WithRecoverHostPanics(),
 )
+
+// Valid reports whether t is one of [Tiers]. A policy that reads a tier
+// outside them fails with a runtime error, so deploygate refuses one with
+// 400 before any policy runs.
+func (t Tier) Valid() bool {
+	return slices.Contains(Tiers, t)
+}

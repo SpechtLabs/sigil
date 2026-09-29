@@ -11,7 +11,9 @@ import (
 // It carries no roles: the access policy grants them, and the handler feeds
 // them into the deploy policy's actor.roles.
 type DeploymentRequest struct {
-	Release     ReleaseRequest `json:"release"`
+	Release ReleaseRequest `json:"release"`
+	// Service is the deploy policy's service as it is. The handler refuses
+	// a tier the kind doesn't declare with 400.
 	Service     deploy.Service `json:"service"`
 	Actor       ActorRequest   `json:"actor"`
 	Environment string         `json:"environment"`
