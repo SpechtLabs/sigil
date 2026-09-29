@@ -9,16 +9,17 @@ import (
 
 // Position is a place in a bundle: the file, the line and column in it,
 // and the name of the document at that place. Line and Column are 1-based
-// and Column counts characters. A Position with Line 0 is unknown, as
-// for the kind's default decision, which has no source.
+// and Column counts characters, not bytes. A Position with Line 0 is
+// unknown, as for the kind's default decision, which has no source.
 type Position struct {
-	File     string
-	Document string
+	File     string // the path in the fs.FS given to Load; empty for a source given to Compile
+	Document string // the name in the header of the document at this place, such as "payments.production"
 	Line     int
 	Column   int
 }
 
-// IsValid reports whether p names a place in a source.
+// IsValid reports whether p names a place in a source, that is whether
+// its Line is set.
 func (p Position) IsValid() bool { return p.Line > 0 }
 
 // String formats p as file:line:col, followed by the document's name in

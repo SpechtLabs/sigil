@@ -8,13 +8,51 @@
 //
 //	func TestPolicies(t *testing.T) {
 //		sub, _ := fs.Sub(policies, "policies")
-//		policytest.Run(t, deploy.Kind, sub)
+//		policytest.Run(t, deploy.Kind, sub, policy.Require("deploy.guardrails"))
 //	}
 //
-// Every `*_test.yaml` file in the fs.FS is a subtest named after its
-// path, and every case a subtest of it, so `go test -run` selects them.
-// The test file format is described in the CLI reference, under
-// `sigil test`.
+//	func TestKindFileIsCurrent(t *testing.T) {
+//		policytest.Schema(t, deploy.Kind, "policies/deploy_approval.sigil")
+//	}
+//
+// # Test files
+//
+// A test file is a YAML file named `*_test.yaml` next to the policies. It
+// names the root policy and lists cases, each an input and what the
+// evaluation must produce:
+//
+//	policy: access.main
+//	cases:
+//	  - name: admins get eight hours
+//	    input:
+//	      user: {name: ada, admin: true}
+//	    expect:
+//	      decision: allow
+//	      reason: admin
+//	      payload:
+//	        ttl: 8h
+//	  - name: platform members get the default ttl
+//	    input_file: testdata/member.json
+//	    expect:
+//	      decision: allow
+//	      reason: team_member
+//	  - name: an unnamed user fails the assert
+//	    input:
+//	      user: {name: ""}
+//	    expect:
+//	      asserts: [named_user]
+//
+// The complete format is described in the CLI reference, under
+// https://sigil.specht-labs.de/reference/cli/#sigil-test. A test file
+// can't expect a conflict; test one with [policy.Policy.Eval] and
+// [errors.As] on a [*policy.ConflictError].
+//
+// # Subtests
+//
+// Every test file in the [io/fs.FS] is a subtest named after its path, and
+// every case a subtest of it, so `go test -run` selects them:
+//
+//	go test -run 'TestPolicies/access/main_test.yaml/admins'
 package policytest
 
 import (
@@ -34,10 +72,16 @@ import (
 	"github.com/spechtlabs/sigil/pkg/policy"
 )
 
-// Run runs every test file in fsys against the policies in fsys, loaded
-// with k.Load and opts, the same options a host passes to Load. A test
-// file that can't be read, or whose policy doesn't compile, fails its
-// subtest; each case that doesn't get what it expects fails its own.
+// Run runs every `*_test.yaml` file in fsys, in every directory, against
+// the policies in fsys. Each file's policy is loaded with [policy.Kind.Load]
+// and opts, the same options a host passes to Load, such as
+// [policy.Require] and [policy.Params]. Entries whose names start with
+// `.` are skipped, as Load skips them.
+//
+// A test file that can't be read, doesn't parse, or whose policy doesn't
+// compile, fails its subtest; each case that doesn't get what it expects
+// fails its own. Run fails t at once when k is nil or fsys holds no test
+// files.
 func Run[In any](t *testing.T, k *policy.Kind[In], fsys fs.FS, opts ...policy.LoadOption) {
 	t.Helper()
 	if k == nil {
@@ -57,10 +101,11 @@ func Run[In any](t *testing.T, k *policy.Kind[In], fsys fs.FS, opts ...policy.Lo
 	}
 }
 
-// Schema fails the test when the kind file at path, on disk, isn't k's
-// Schema(), so a stale export fails go test instead of a policy
-// repository's CI. Regenerate the file with `sigil export --out path` in
-// a host binary, or by writing Schema() to it.
+// Schema fails the test when the kind file at file, on disk, isn't k's
+// [policy.Kind.Schema], so a stale export fails go test instead of a
+// policy repository's CI. The failure shows both versions. Regenerate the
+// file with `sigil export --out file` in a host binary built with
+// [github.com/spechtlabs/sigil/pkg/cli], or by writing Schema() to it.
 func Schema[In any](t testing.TB, k *policy.Kind[In], file string) {
 	t.Helper()
 	if k == nil {
