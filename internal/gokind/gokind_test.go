@@ -336,7 +336,7 @@ func TestBuild(t *testing.T) {
 		}, errs: []string{`default names undeclared decision "escalate"`}},
 		{name: "conflict outcome", mutate: func(o *gokind.Options) {
 			o.Conflict = &gokind.Default{Decision: "approve", Reason: "payments_sre"}
-		}, want: "default deny(no_rule_matched)\n\nconflict approve(payments_sre)\n"},
+		}, want: "default deny(no_rule_matched)\nconflict approve(payments_sre)\n"},
 		{name: "conflict outcome needs every payload field", mutate: func(o *gokind.Options) {
 			o.Conflict = &gokind.Default{Decision: "review", Reason: "everyone"}
 		}, errs: []string{`conflict: field "approvers" is required and has no value`}, help: "review is declared as: decision review(approvers: list<string>) { service_owner, everyone }"},

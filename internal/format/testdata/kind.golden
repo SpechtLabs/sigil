@@ -44,7 +44,6 @@ precedence approve: release_manager > payments_sre
 exclusive approve.release_manager, approve.payments_sre
 
 default deny(no_rule_matched)
-
 conflict deny(
   soak_too_short,
 )

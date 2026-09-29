@@ -10,8 +10,8 @@ import (
 // doc prints a document from its header to its last statement. A blank
 // line follows the header, and top-level items are grouped by kind: a
 // blank line comes between two groups, and around every rule,
-// invocation, type, decision, default and conflict outcome, which stand
-// alone.
+// invocation, type and decision, which stand alone. The default and the
+// conflict outcome form one group with no blank line between them.
 func (p *printer) doc(d ast.Doc) {
 	var items []ast.Node
 	switch d := d.(type) {
@@ -45,9 +45,14 @@ func (p *printer) doc(d ast.Doc) {
 	prev := groupHeader
 	for _, n := range items {
 		g := group(n)
-		if g != prev || g == groupAlone {
+		switch {
+		case g != prev || g == groupAlone:
 			p.section(n.Pos(), 0)
-		} else {
+		case g == groupOutcome:
+			// The conflict outcome reads as the default's counterpart, so
+			// it goes on the next line even when the source set it apart.
+			p.open(n.Pos(), 0, 0, true, false)
+		default:
 			p.open(n.Pos(), 0, 0, true, true)
 		}
 		prev = g
@@ -64,8 +69,9 @@ func (p *printer) doc(d ast.Doc) {
 
 // The groups top-level items fall into.
 const (
-	groupHeader = iota
-	groupAlone  // a rule, invocation, type, decision, default or conflict: never grouped
+	groupHeader  = iota
+	groupAlone   // a rule, invocation, type or decision: never grouped
+	groupOutcome // the default and the conflict outcome, set apart as a pair
 	groupUse
 	groupParam
 	groupLet
@@ -92,6 +98,8 @@ func group(n ast.Node) int {
 		return groupFn
 	case *ast.CollectDecl, *ast.PrecedenceDecl, *ast.ExclusiveDecl:
 		return groupResolution
+	case *ast.DefaultDecl, *ast.ConflictDecl:
+		return groupOutcome
 	}
 	return groupAlone
 }

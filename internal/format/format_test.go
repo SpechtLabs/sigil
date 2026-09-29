@@ -49,6 +49,16 @@ func TestSource(t *testing.T) {
 			want: "policy a: K@1\n\nwhen x {\n  deny(r)\n}\n",
 		},
 		{
+			name: "the conflict outcome goes right under the default",
+			src:  "kind K version 1\ndecision d { x y }\ncollect one\nprecedence d\ndefault d(x)\n\n\nconflict d(y)\n",
+			want: "kind K version 1\n\ndecision d {\n  x\n  y\n}\n\ncollect one\nprecedence d\n\ndefault d(x)\nconflict d(y)\n",
+		},
+		{
+			name: "a conflict outcome away from the default stands apart",
+			src:  "kind K version 1\nconflict d(y)\ndecision d { x y }\ncollect one\nprecedence d\ndefault d(x)\n",
+			want: "kind K version 1\n\nconflict d(y)\n\ndecision d {\n  x\n  y\n}\n\ncollect one\nprecedence d\n\ndefault d(x)\n",
+		},
+		{
 			name: "separators: one between documents, none around them",
 			src:  "---\npolicy a: K@1\n---\n---\nmodule b: K@1\n---\n",
 			want: "policy a: K@1\n\n---\n\nmodule b: K@1\n",

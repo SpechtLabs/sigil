@@ -14,7 +14,8 @@ import (
 // with the same Source are the same contract, which is how a stale
 // exported kind file is detected. The layout is
 // the one `sigil fmt` writes: a blank line after the header, around every
-// type and decision and before the default and the conflict outcome, and
+// type and decision and before the default, with the conflict outcome on
+// the line after it, and
 // inputs, functions and the collect, precedence and exclusive lines each
 // grouped together.
 func (k *Kind) Source() string {
@@ -83,7 +84,10 @@ func (k *Kind) Source() string {
 		b.WriteString("\ndefault " + k.Default.Call(k.Decision(k.Default.Decision)) + "\n")
 	}
 	if k.Conflict != nil {
-		b.WriteString("\nconflict " + k.Conflict.Call(k.Decision(k.Conflict.Decision)) + "\n")
+		if k.Default == nil {
+			b.WriteString("\n") // only an invalid kind, which Validate reports, has no default to follow
+		}
+		b.WriteString("conflict " + k.Conflict.Call(k.Decision(k.Conflict.Decision)) + "\n")
 	}
 	return b.String()
 }

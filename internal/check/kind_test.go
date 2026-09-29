@@ -334,11 +334,11 @@ default d(x)
 
 		// The conflict outcome is loaded like the default, and printed after it.
 		{name: "conflict outcome round-trips", src: "kind K version 1\ndecision d { a x y }\ncollect one\nprecedence d\nconflict d(y)\ndefault d(x)",
-			want: "kind K version 1\n\ndecision d {\n  a\n  x\n  y\n}\n\ncollect one\nprecedence d\n\ndefault d(x)\n\nconflict d(y)\n"},
+			want: "kind K version 1\n\ndecision d {\n  a\n  x\n  y\n}\n\ncollect one\nprecedence d\n\ndefault d(x)\nconflict d(y)\n"},
 		{name: "conflict outcome before the decision it names", src: "kind K version 1\nconflict review(y, approvers: [\"leads\"])\ndecision review(approvers: list<string>) { x y }\ncollect one\nprecedence review\ndefault review(x, approvers: [])",
-			want: "kind K version 1\n\ndecision review(approvers: list<string>) {\n  x\n  y\n}\n\ncollect one\nprecedence review\n\ndefault review(x, approvers: [])\n\nconflict review(y, approvers: [\"leads\"])\n"},
+			want: "kind K version 1\n\ndecision review(approvers: list<string>) {\n  x\n  y\n}\n\ncollect one\nprecedence review\n\ndefault review(x, approvers: [])\nconflict review(y, approvers: [\"leads\"])\n"},
 		{name: "conflict is a name everywhere else", src: "kind K version 1\ntype R { conflict: int }\ninput conflict: R\ndecision conflict { conflict x }\ncollect one\nprecedence conflict\ndefault conflict(x)\nconflict conflict(conflict)",
-			want: "kind K version 1\n\ntype R {\n  conflict: int\n}\n\ninput conflict: R\n\ndecision conflict {\n  conflict\n  x\n}\n\ncollect one\nprecedence conflict\n\ndefault conflict(x)\n\nconflict conflict(conflict)\n"},
+			want: "kind K version 1\n\ntype R {\n  conflict: int\n}\n\ninput conflict: R\n\ndecision conflict {\n  conflict\n  x\n}\n\ncollect one\nprecedence conflict\n\ndefault conflict(x)\nconflict conflict(conflict)\n"},
 		{name: "conflict twice", src: "kind K version 1\ndecision d { a x y }\ncollect one\nprecedence d\ndefault d(x)\nconflict d(y)\nconflict d(a)",
 			errs: []string{"7:1: conflict is declared twice"}, help: "a kind declares `conflict` once; remove one"},
 		{name: "conflict on a collecting kind", src: "kind K version 1\ndecision read { everyone denied }\ncollect all\nconflict read(denied)",

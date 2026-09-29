@@ -31,5 +31,4 @@ precedence deny > allow
 precedence allow: admin > team_member
 
 default deny(no_rule_matched)
-
 conflict deny(conflicting_rules)

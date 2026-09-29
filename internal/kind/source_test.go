@@ -125,7 +125,7 @@ collect all
 	t.Run("conflict outcome after the default", func(t *testing.T) {
 		k := deploy()
 		k.Conflict = &kind.Default{Decision: "approve", Reason: "open", Args: map[string]any{"bake": 15 * time.Minute}}
-		want := "collect one\nprecedence deny > review > approve\n\ndefault deny(no_rule_matched)\n\nconflict approve(open, bake: 15m)\n"
+		want := "collect one\nprecedence deny > review > approve\n\ndefault deny(no_rule_matched)\nconflict approve(open, bake: 15m)\n"
 		if got := k.Source(); !strings.HasSuffix(got, want) {
 			t.Errorf("Source() ends in\n%s\nwant it to end in\n%s", got[max(0, len(got)-len(want)):], want)
 		}
