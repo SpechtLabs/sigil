@@ -40,14 +40,18 @@ type Result struct {
 // Entry is a decision in an outcome.
 type Entry struct {
 	Payload  map[string]any //nolint:emptyinterface // the untyped payload, as the host's Go values
-	Typed    any            //nolint:emptyinterface // the payload struct, when the kind has a binding
+	Typed    any            //nolint:emptyinterface // the payload struct, when the kind has a binding; nil in a Candidate
 	Decision string
 	Reason   string
 	Policy   string   // the policy whose rule produced it; empty for the default
 	Position Position // of the constructor; invalid for the default
 }
 
-// Candidate is a constructor that fired.
+// Candidate is a constructor that fired. Its Entry has no Typed payload:
+// only outcome entries are read as typed, by
+// [github.com/spechtlabs/sigil/pkg/policy.Decision.Match] and MatchAll,
+// so a candidate in the trace, a conflict or an assert's outcome carries
+// only the untyped Payload.
 type Candidate struct {
 	Chain      []Position  // the invocations it was reached through, outermost first
 	Conditions []Condition // the conditions that held, for candidates of a winning decision
@@ -253,16 +257,20 @@ func (b builder) empty() *Result {
 	return &Result{Policy: b.prog.Name, Collect: b.prog.Collect(), Ranked: b.prog.Ranked()}
 }
 
+// entry converts a candidate of the outcome, with its typed payload.
 func (b builder) entry(c *eval.Candidate) Entry {
-	e := Entry{Decision: c.Decision.Name, Reason: c.Reason, Policy: c.Policy, Payload: c.Payload, Position: at(c.File, c.Policy, c.Pos)}
+	e := untyped(c)
 	if c.Typed.IsValid() {
 		e.Typed = c.Typed.Interface()
 	}
 	return e
 }
 
+// candidate converts a candidate of the trace, a conflict or an assert's
+// outcome. It leaves Typed nil: boxing the payload struct copies it onto
+// the heap for every candidate, and nothing reads it outside the outcome.
 func (b builder) candidate(c *eval.Candidate, withConds bool) Candidate {
-	out := Candidate{Entry: b.entry(c), Chain: sites(c.Chain)}
+	out := Candidate{Entry: untyped(c), Chain: sites(c.Chain)}
 	if !withConds {
 		return out
 	}
@@ -271,6 +279,11 @@ func (b builder) candidate(c *eval.Candidate, withConds bool) Candidate {
 		out.Conditions = append(out.Conditions, Condition{Text: cond.Text, Position: at(c.File, c.Policy, cond.Pos)})
 	}
 	return out
+}
+
+// untyped converts c into an Entry without its typed payload.
+func untyped(c *eval.Candidate) Entry {
+	return Entry{Decision: c.Decision.Name, Reason: c.Reason, Policy: c.Policy, Payload: c.Payload, Position: at(c.File, c.Policy, c.Pos)}
 }
 
 // runtime converts a runtime error, naming the document it happened in,

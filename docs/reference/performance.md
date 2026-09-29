@@ -22,19 +22,19 @@ The policies of the [example service](/guides/example-service/), evaluated throu
 
 | Case | Serial | Parallel | Allocated | Allocations |
 | --- | ---: | ---: | ---: | ---: |
-| `AccessGrant`, a member granted two roles | 1.73 µs | 1.47 µs | 3.9 KiB | 50 |
-| `AccessGrant`, two exclusive grants that conflict | 1.80 µs | 1.56 µs | 4.7 KiB | 58 |
-| `DeployApproval`, the service's owner deploys | 1.78 µs | 1.47 µs | 3.9 KiB | 56 |
+| `AccessGrant`, a member granted two roles | 1.73 µs | 1.47 µs | 3.9 KiB | 49 |
+| `AccessGrant`, two exclusive grants that conflict | 1.80 µs | 1.56 µs | 4.6 KiB | 54 |
+| `DeployApproval`, the service's owner deploys | 1.78 µs | 1.47 µs | 3.9 KiB | 55 |
 | `AccessGrant`, an input that fails an assertion | 378 ns | 378 ns | 1.6 KiB | 17 |
 
 The engine's own benchmarks evaluate a synthetic policy for each kind of outcome, also through the public API. The rules read scalar, list and map fields, and one quantifies over a list. Apple M5 Pro, `GOMAXPROCS=2`, medians of ten samples:
 
 | Case | Time | Allocated | Allocations |
 | --- | ---: | ---: | ---: |
-| One ranked decision | 724 ns | 1.9 KiB | 30 |
-| Collected outcomes from an import and two invocations | 1.25 µs | 4.0 KiB | 49 |
-| The same, two goroutines on two CPUs | 1.05 µs | 4.0 KiB | 49 |
-| Two exclusive decisions that conflict | 1.38 µs | 5.0 KiB | 60 |
+| One ranked decision | 724 ns | 1.9 KiB | 29 |
+| Collected outcomes from an import and two invocations | 1.25 µs | 4.0 KiB | 47 |
+| The same, two goroutines on two CPUs | 1.05 µs | 4.0 KiB | 47 |
+| Two exclusive decisions that conflict | 1.38 µs | 5.0 KiB | 56 |
 | A failed assertion | 332 ns | 1.6 KiB | 18 |
 | No rule matches; the fallback decides | 267 ns | 1.0 KiB | 15 |
 
@@ -61,7 +61,7 @@ Below the public API, the evaluator alone takes 451 ns for one matching rule and
 | 64 | 22.4 µs | 403 | 8.45 µs | 81 |
 | 128 | 48.1 µs | 788 | 17.0 µs | 145 |
 
-A `collect one` kind with a precedence costs the same when one rule matches: 8.40 µs at 64 rules. Through the public API, with the result and its trace, the 64-rule policy takes 33.7 µs, 77 KiB and 666 allocations when every rule matches, and 8.80 µs, 5.7 KiB and 92 allocations when one does. Building the result and the trace, which lists every candidate, accounts for 11 µs of the first.
+A `collect one` kind with a precedence costs the same when one rule matches: 8.40 µs at 64 rules. Through the public API, with the result and its trace, the 64-rule policy takes 33.7 µs, 77 KiB and 602 allocations when every rule matches, and 8.80 µs, 5.7 KiB and 91 allocations when one does. Building the result and the trace, which lists every candidate, accounts for 11 µs of the first.
 
 ## Compiling and checking
 
@@ -119,20 +119,20 @@ Apple M5 Pro, `GOMAXPROCS=2`, medians of ten samples each; see [how they were me
 | internal/parser | ParseFile/rules=1 | 2.52 µs | 3.95 KiB | 104 |
 | internal/parser | ParseFile/rules=64 | 112 µs | 171 KiB | 4.52k |
 | internal/result | Result/assertion | 168 ns | 848 B | 10 |
-| internal/result | Result/success | 1.02 µs | 2.95 KiB | 41 |
+| internal/result | Result/success | 1.02 µs | 2.94 KiB | 39 |
 | internal/testsuite | TestSuiteParse | 228 µs | 245 KiB | 4.7k |
 | pkg/policy | CandidateLocation | 93.8 ns | 144 B | 5 |
 | pkg/policy | PolicyCompile/rules=1 | 6.23 µs | 13.7 KiB | 222 |
 | pkg/policy | PolicyCompile/rules=64 | 269 µs | 528 KiB | 7.88k |
 | pkg/policy | PolicyEval/assertion | 332 ns | 1.55 KiB | 18 |
-| pkg/policy | PolicyEval/collect | 1.25 µs | 3.97 KiB | 49 |
-| pkg/policy | PolicyEval/conflict | 1.38 µs | 5.02 KiB | 60 |
+| pkg/policy | PolicyEval/collect | 1.25 µs | 3.95 KiB | 47 |
+| pkg/policy | PolicyEval/conflict | 1.38 µs | 4.98 KiB | 56 |
 | pkg/policy | PolicyEval/fallback | 267 ns | 1.02 KiB | 15 |
-| pkg/policy | PolicyEval/parallel | 1.05 µs | 3.97 KiB | 49 |
-| pkg/policy | PolicyEval/ranked | 724 ns | 1.92 KiB | 30 |
-| pkg/policy | PolicyEvalRules/all-matching/rules=64 | 33.7 µs | 77.2 KiB | 666 |
-| pkg/policy | PolicyEvalRules/one-matching/rules=64 | 8.8 µs | 5.73 KiB | 92 |
-| pkg/policy | PolicyEvalRules/ranked/rules=64 | 8.89 µs | 5.74 KiB | 93 |
+| pkg/policy | PolicyEval/parallel | 1.05 µs | 3.95 KiB | 47 |
+| pkg/policy | PolicyEval/ranked | 724 ns | 1.91 KiB | 29 |
+| pkg/policy | PolicyEvalRules/all-matching/rules=64 | 33.7 µs | 76.7 KiB | 602 |
+| pkg/policy | PolicyEvalRules/one-matching/rules=64 | 8.8 µs | 5.73 KiB | 91 |
+| pkg/policy | PolicyEvalRules/ranked/rules=64 | 8.89 µs | 5.73 KiB | 92 |
 
 :::
 
