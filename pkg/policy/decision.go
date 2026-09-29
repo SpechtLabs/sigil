@@ -1,8 +1,12 @@
 package policy
 
 import (
+	"fmt"
 	"reflect"
+	"slices"
+	"strings"
 
+	"github.com/spechtlabs/sigil/internal/check"
 	"github.com/spechtlabs/sigil/internal/gokind"
 	"github.com/spechtlabs/sigil/internal/kind"
 )
@@ -58,8 +62,11 @@ type OutcomeRef interface {
 	outcome() kind.Outcome
 }
 
-// Outcome is one reason of a decision, from [Decision.Reason], for
-// [WithExclusive].
+// Outcome is one reason of a decision, a reason handle from
+// [Decision.Reason]. It is how Go code names a reason: to rank it with
+// [WithReasonPrecedence], make it the default with [WithDefault], declare
+// it exclusive with [WithExclusive], and compare a result against it with
+// [Outcome.Is]. The zero value names no reason, and [NewKind] rejects it.
 type Outcome struct {
 	decision string
 	reason   string
@@ -83,9 +90,20 @@ func (d Decision[T]) Name() string { return d.name }
 // order. The slice is a copy.
 func (d Decision[T]) Reasons() []string { return append([]string{}, d.reasons...) }
 
-// Reason names one reason of the decision, for [WithExclusive]. A name the
-// decision doesn't declare makes [NewKind] panic.
-func (d Decision[T]) Reason(name string) Outcome { return Outcome{decision: d.name, reason: name} }
+// Reason returns the [Outcome] handle for one of the decision's reasons.
+// It panics when the decision doesn't declare name, naming the nearest
+// declared reason, so a misspelled reason stops the program where the
+// handle is declared, like [NewKind], instead of compiling into a
+// comparison no result ever satisfies. Declare the handles at package
+// level, next to the decision:
+//
+//	var NoRuleMatched = Deny.Reason("no_rule_matched")
+func (d Decision[T]) Reason(name string) Outcome {
+	if !slices.Contains(d.reasons, name) {
+		panic(undeclaredReason(d.name, name, d.reasons)) //nolint:nopanic // a misspelled reason is a programming error, caught at init like NewKind's
+	}
+	return Outcome{decision: d.name, reason: name}
+}
 
 // Match reports whether res's outcome is exactly one entry of d and, if
 // so, returns its payload as the decision's struct. It returns the zero T
@@ -132,6 +150,33 @@ func (d Decision[T]) MatchAll(res *Result) []Matched[T] {
 	return out
 }
 
+// Decision returns the name of the outcome's decision as policies write
+// it, such as "deny".
+func (o Outcome) Decision() string { return o.decision }
+
+// Name returns the reason's name as policies write it, such as
+// "no_rule_matched".
+func (o Outcome) Name() string { return o.reason }
+
+// Is reports whether res's outcome is exactly one entry, of o's decision
+// with o's reason. It follows [Decision.Match]: a nil res is false, with
+// [WithPrecedence] a top rank of more than one entry is false, and on a
+// [WithCollect] kind without WithPrecedence it panics; use
+// [Decision.MatchAll] there.
+//
+// The result [Policy.Eval] returns alongside an error holds the kind's
+// default, so checking for the default reason on it succeeds. Check the
+// error first.
+func (o Outcome) Is(res *Result) bool {
+	if res == nil {
+		return false
+	}
+	if res.collect && !res.ranked {
+		panic("policy: Is on a collecting kind's result; use MatchAll") //nolint:nopanic // a programming error, like Match on the same result
+	}
+	return len(res.Outcome) == 1 && res.Outcome[0].Decision == o.decision && res.Outcome[0].Reason == o.reason
+}
+
 // ref implements DecisionRef.
 func (d Decision[T]) ref() gokind.Decision {
 	return gokind.Decision{Name: d.name, Payload: reflect.TypeFor[T](), Reasons: d.reasons}
@@ -140,3 +185,13 @@ func (d Decision[T]) ref() gokind.Decision {
 func (d Decision[T]) outcome() kind.Outcome { return kind.Outcome{Decision: d.name} }
 
 func (o Outcome) outcome() kind.Outcome { return kind.Outcome{Decision: o.decision, Reason: o.reason} }
+
+// undeclaredReason is Reason's panic message, with the hint the policy
+// checker gives for the same typo in a constructor.
+func undeclaredReason(decision, name string, reasons []string) string {
+	help := fmt.Sprintf("%s declares: %s", decision, strings.Join(reasons, ", "))
+	if closest, ok := check.Nearest(name, reasons); ok {
+		help = fmt.Sprintf("did you mean %q? %s", closest, help)
+	}
+	return fmt.Sprintf("policy: decision %s has no reason %q (%s)", decision, name, help)
+}

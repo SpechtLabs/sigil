@@ -36,7 +36,7 @@ var (
 
 	// The same kind with a default grant, for the case where nothing fires.
 	AccessWithDefault = policy.NewKind[AccessInput]("AccessGrant", policy.WithVersion(1),
-		policy.WithCollect(Read, Write, Admin), policy.WithDefault(Read, "everyone"))
+		policy.WithCollect(Read, Write, Admin), policy.WithDefault(Read.Reason("everyone")))
 
 	// A compartment kind: an actor may be granted A or B, never both, and
 	// a deny outranks either.
@@ -46,7 +46,7 @@ var (
 	Compartments = policy.NewKind[AccessInput]("Compartments", policy.WithVersion(1),
 		policy.WithDecisions(Suspend, GrantA, GrantB),
 		policy.WithExclusive(GrantA, GrantB),
-		policy.WithDefault(Suspend, "none"))
+		policy.WithDefault(Suspend.Reason("none")))
 
 	// A collect all kind with precedence: every review reaches the host
 	// unless a deny fired.

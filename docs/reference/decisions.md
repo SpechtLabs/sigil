@@ -139,7 +139,7 @@ The kind names the decision that applies when no rule fires:
 default deny(no_rule_matched)
 ```
 
-It's a constructor like any other and follows the same rules: the reason is one the decision declares, and every payload value must be a constant, because there's no rule context to evaluate expressions in. A kind defined in Go sets it with `policy.WithDefault(decision, reason)`, which passes no payload, so every field of that decision needs a default.
+It's a constructor like any other and follows the same rules: the reason is one the decision declares, and every payload value must be a constant, because there's no rule context to evaluate expressions in. A kind defined in Go sets it with `policy.WithDefault(Deny.Reason("no_rule_matched"))`, a [reason handle](/reference/go-api/#defining-a-kind), which passes no payload, so every field of that decision needs a default.
 
 A `collect one` kind must declare a default. A collecting kind may leave it out; then an evaluation where nothing fires has an empty outcome.
 

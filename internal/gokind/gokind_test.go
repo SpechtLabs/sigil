@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spechtlabs/sigil/internal/gokind"
+	"github.com/spechtlabs/sigil/internal/kind"
 )
 
 // The README's host types.
@@ -340,6 +341,27 @@ func TestBuild(t *testing.T) {
 		{name: "decision declared twice", mutate: func(o *gokind.Options) {
 			o.Decisions = append(o.Decisions, gokind.Decision{Name: "deny", Payload: typeOf[None](), Reasons: []string{"no_rule_matched"}})
 		}, errs: []string{`decision "deny" is declared twice`, `precedence names "deny" twice`}},
+
+		// Reason rankings.
+		{name: "a ranking", mutate: func(o *gokind.Options) {
+			o.Rankings = []gokind.Ranking{{Decision: "approve", Reasons: []string{"payments_sre", "release_manager"}}}
+		}, want: "precedence approve: payments_sre > release_manager\n"},
+		{name: "a ranking without reasons", mutate: func(o *gokind.Options) {
+			o.Rankings = []gokind.Ranking{{}}
+		}, errs: []string{"WithReasonPrecedence names no reasons"},
+			help: "pass one decision's reasons, highest first, like `WithReasonPrecedence(Approve.Reason(\"release_manager\"), Approve.Reason(\"payments_sre\"))`"},
+		{name: "a ranking with another decision's reasons", mutate: func(o *gokind.Options) {
+			o.Rankings = []gokind.Ranking{{Decision: "approve", Reasons: []string{"release_manager", "payments_sre"},
+				Mixed: []kind.Outcome{{Decision: "deny", Reason: "no_rule_matched"}, {Decision: "review", Reason: "everyone"}}}}
+		}, errs: []string{"precedence approve: reason no_rule_matched belongs to decision deny", "precedence approve: reason everyone belongs to decision review"},
+			help: "a ranking orders the reasons of one decision; rank each decision's reasons in a WithReasonPrecedence of its own"},
+		{name: "a ranking of an undeclared decision", mutate: func(o *gokind.Options) {
+			o.Rankings = []gokind.Ranking{{Decision: "hold", Reasons: []string{"freeze"}}}
+		}, errs: []string{`precedence: undeclared decision "hold"`}, help: "WithReasonPrecedence ranks the reasons of a declared decision"},
+		{name: "a decision ranked twice", mutate: func(o *gokind.Options) {
+			r := gokind.Ranking{Decision: "approve", Reasons: []string{"release_manager", "payments_sre"}}
+			o.Rankings = []gokind.Ranking{r, r}
+		}, errs: []string{"precedence approve is declared twice"}, help: "rank a decision's reasons once"},
 
 		// Functions.
 		{name: "not a function", mutate: func(o *gokind.Options) {

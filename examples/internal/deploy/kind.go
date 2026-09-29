@@ -93,6 +93,19 @@ var (
 	Approve = policy.NewDecision[ApproveData]("approve", "release_manager", "payments_sre")
 )
 
+// The reasons Go code names, as typed handles: the kind's options rank them
+// and pick the default, and the server answers with that default when the
+// deploy policy never ran. A misspelled reason panics here at start-up, with a
+// did-you-mean hint, instead of compiling into a comparison that never matches.
+var (
+	NotEligible   = Deny.Reason("not_eligible")
+	SoakTooShort  = Deny.Reason("soak_too_short")
+	NoRuleMatched = Deny.Reason("no_rule_matched")
+
+	ReleaseManager = Approve.Reason("release_manager")
+	PaymentsSRE    = Approve.Reason("payments_sre")
+)
+
 // Kind is the DeployApproval contract, version 1. Decisions are listed in
 // precedence order: a deny beats a review beats an approval, so a guardrail
 // always wins over a team's approval. The reasons of deny and approve are
@@ -101,8 +114,8 @@ var (
 var Kind = policy.NewKind[Input]("DeployApproval",
 	policy.WithVersion(1),
 	policy.WithDecisions(Deny, Review, Approve),
-	policy.WithReasonPrecedence(Deny, "not_eligible", "soak_too_short", "no_rule_matched"),
-	policy.WithReasonPrecedence(Approve, "release_manager", "payments_sre"),
-	policy.WithDefault(Deny, "no_rule_matched"),
+	policy.WithReasonPrecedence(NotEligible, SoakTooShort, NoRuleMatched),
+	policy.WithReasonPrecedence(ReleaseManager, PaymentsSRE),
+	policy.WithDefault(NoRuleMatched),
 	policy.WithFunc("split", strings.Split),
 )

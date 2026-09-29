@@ -58,15 +58,7 @@ func Build(o Options) (*kind.Kind, *Binding, diag.ErrorList) {
 		b.kind.Precedence = append([]string{}, o.Precedence...)
 	}
 	for _, r := range o.Rankings {
-		d := b.kind.Decision(r.Decision)
-		switch {
-		case d == nil:
-			b.errorf("WithReasonPrecedence ranks the reasons of a declared decision", "precedence %s: undeclared decision", r.Decision)
-		case d.Ranked != nil:
-			b.errorf("rank a decision's reasons once", "precedence %s is declared twice", r.Decision)
-		default:
-			d.Ranked = append([]string{}, r.Reasons...)
-		}
+		b.ranking(r)
 	}
 	b.kind.Exclusive = o.Exclusive
 	if o.Default != nil {
@@ -90,6 +82,31 @@ func collect(o Options) kind.Collect {
 		return kind.CollectOne
 	}
 	return kind.CollectUnset
+}
+
+// ranking sets the reason ranking of one decision. What Validate checks
+// against the decision's reasons is left to it; what the kind model has
+// no room for is checked here: a ranking without reasons, which in a kind
+// file the grammar rules out, and reasons of other decisions.
+func (b *builder) ranking(r Ranking) {
+	if len(r.Reasons) == 0 {
+		b.errorf("pass one decision's reasons, highest first, like `WithReasonPrecedence(Approve.Reason(\"release_manager\"), Approve.Reason(\"payments_sre\"))`",
+			"WithReasonPrecedence names no reasons")
+		return
+	}
+	for _, m := range r.Mixed {
+		b.errorf("a ranking orders the reasons of one decision; rank each decision's reasons in a WithReasonPrecedence of its own",
+			"precedence %s: reason %s belongs to decision %s", r.Decision, m.Reason, m.Decision)
+	}
+	d := b.kind.Decision(r.Decision)
+	switch {
+	case d == nil:
+		b.errorf("WithReasonPrecedence ranks the reasons of a declared decision", "precedence: undeclared decision %q", r.Decision)
+	case d.Ranked != nil:
+		b.errorf("rank a decision's reasons once", "precedence %s is declared twice", r.Decision)
+	default:
+		d.Ranked = append([]string{}, r.Reasons...)
+	}
 }
 
 // accepts is the oldest version the kind accepts: every version, from 1,

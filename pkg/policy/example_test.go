@@ -33,7 +33,7 @@ func Example() {
 	deploy := policy.NewKind[Input]("Deploy",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, approve), // deny outranks approve
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 	)
 
 	p, err := deploy.Compile(`
@@ -99,8 +99,8 @@ func ExampleNewKind() {
 	access := policy.NewKind[Input]("Access",
 		policy.WithVersion(2),
 		policy.WithDecisions(deny, allow),
-		policy.WithReasonPrecedence(allow, "admin", "owner"),
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithReasonPrecedence(allow.Reason("admin"), allow.Reason("owner")),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 		policy.WithFunc("split", strings.Split),
 	)
 	fmt.Print(access.Schema())
@@ -149,7 +149,7 @@ func ExampleKind_Load() {
 	access := policy.NewKind[Input]("Access",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 	)
 
 	fsys := policy.MapFS(map[string]string{
@@ -194,7 +194,7 @@ func ExampleCompileError() {
 	k := policy.NewKind[Input]("Gate",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny),
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 	)
 
 	_, err := k.Compile(`policy gate: Gate@1
@@ -231,7 +231,7 @@ func ExampleParams() {
 	k := policy.NewKind[Input]("Soak",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 	)
 
 	const src = `policy soak: Soak@1
@@ -275,7 +275,7 @@ func ExampleRequire() {
 	k := policy.NewKind[Input]("Deploy",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 	)
 
 	platform := policy.MapFS(map[string]string{"guardrails.sigil": `
@@ -343,7 +343,7 @@ func ExamplePolicy_Eval() {
 	k := policy.NewKind[Input]("Roles",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 	)
 	p, err := k.Compile(`policy roles: Roles@1
 
@@ -379,7 +379,7 @@ func ExampleDecision_Match() {
 	k := policy.NewKind[Input]("Review",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, review),
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 	)
 	p, err := k.Compile(`policy review: Review@1
 
@@ -406,6 +406,62 @@ when team == "payments" {
 	// Output:
 	// service_owner [payments-leads security-leads]
 	// not denied
+}
+
+// A reason handle names a reason once, where it's declared; the options
+// and the host's checks refer to the Go identifier, so a typo is a
+// compile error or, in the string passed to Reason, a panic at init.
+func ExampleOutcome_Is() {
+	type Input struct {
+		Frozen bool `policy:"frozen"`
+		Owner  bool `policy:"owner"`
+	}
+	deny := policy.NewDecision[policy.None]("deny", "change_freeze", "not_owner", "no_rule_matched")
+	var (
+		changeFreeze  = deny.Reason("change_freeze")
+		notOwner      = deny.Reason("not_owner")
+		noRuleMatched = deny.Reason("no_rule_matched")
+	)
+	k := policy.NewKind[Input]("Freeze",
+		policy.WithVersion(1),
+		policy.WithDecisions(deny),
+		policy.WithReasonPrecedence(changeFreeze, notOwner, noRuleMatched),
+		policy.WithDefault(noRuleMatched),
+	)
+	p, err := k.Compile(`policy freeze: Freeze@1
+
+when frozen {
+  deny(change_freeze)
+}
+
+when not owner {
+  deny(not_owner)
+}
+`, "freeze")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	for _, in := range []Input{{Frozen: true}, {Owner: false}, {Owner: true}} {
+		res, err := p.Eval(context.Background(), in)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		switch {
+		case changeFreeze.Is(res):
+			fmt.Println("frozen: retry after the freeze")
+		case notOwner.Is(res):
+			fmt.Println("not an owner: ask the owning team")
+		case noRuleMatched.Is(res):
+			fmt.Println("no rule matched:", res.Decision, res.Reason)
+		}
+	}
+	// Output:
+	// frozen: retry after the freeze
+	// not an owner: ask the owning team
+	// no rule matched: deny no_rule_matched
 }
 
 // A collecting kind applies every decision that fires, so it is read with
@@ -469,7 +525,7 @@ func ExampleAssertionError() {
 	k := policy.NewKind[Input]("Soak",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 	)
 	p, err := k.Compile(`policy soak: Soak@1
 
@@ -543,7 +599,7 @@ func ExampleWithFunc() {
 	k := policy.NewKind[Input]("Ports",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 		policy.WithFunc("port", strconv.Atoi),
 	)
 	p, err := k.Compile(`policy ports: Ports@1
@@ -586,8 +642,8 @@ func ExampleTrace() {
 	k := policy.NewKind[Input]("Deploy",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, approve),
-		policy.WithReasonPrecedence(approve, "hotfix", "standard"),
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithReasonPrecedence(approve.Reason("hotfix"), approve.Reason("standard")),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 	)
 	p, err := k.Compile(`policy deploy: Deploy@1
 
@@ -636,7 +692,7 @@ func Example_reload() {
 	k := policy.NewKind[Input]("Users",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 	)
 
 	var current atomic.Pointer[policy.Policy[Input]]

@@ -192,7 +192,7 @@ precedence approve: release_manager > payments_sre
 
 The first form ranks decisions from highest to lowest. It must name every declared decision exactly once, which makes it a total order. It's required with `collect one` and optional with `collect all`, and a kind declares it at most once. The Go side derives it from the order of `policy.WithDecisions(...)`, which is always total; a `WithCollect` kind ranks its decisions with `policy.WithPrecedence(...)`.
 
-The second form ranks the reasons of one decision, and is optional. It comes into play only when candidates of the same decision compete. A decision takes at most one, and it must name every reason of that decision exactly once. In Go it's `policy.WithReasonPrecedence(decision, reasons...)`. A decision without one has unranked reasons, which is fine wherever ties between them can't matter, and a [conflict](/reference/evaluation/#resolution) under `collect one` where they can. In a `collect all` kind with `precedence`, a decision with ranked reasons at the top rank returns only the candidates with the highest-ranked reason that fired.
+The second form ranks the reasons of one decision, and is optional. It comes into play only when candidates of the same decision compete. A decision takes at most one, and it must name every reason of that decision exactly once. In Go it's `policy.WithReasonPrecedence(reasons...)`, with a reason handle from `Decision[T].Reason` for each reason, all of one decision. A decision without one has unranked reasons, which is fine wherever ties between them can't matter, and a [conflict](/reference/evaluation/#resolution) under `collect one` where they can. In a `collect all` kind with `precedence`, a decision with ranked reasons at the top rank returns only the candidates with the highest-ranked reason that fired.
 
 Reasons of different decisions never rank against each other. `deny > approve.release_manager > review` isn't a valid declaration: the decision line says which decision the host gets, and the reason line says which candidate of it, so reordering decisions stays a one-line change that never touches reasons.
 
@@ -200,12 +200,12 @@ Reasons of different decisions never rank against each other. `deny > approve.re
 
 ```sigil
 exclusive grant_a, grant_b
-exclusive approve.release_manager, approve.lgtm
+exclusive approve.release_manager, approve.payments_sre
 ```
 
 Declares that at most one of the listed outcomes may fire in one evaluation. Candidates from two of them together are a conflict, and evaluation fails with a `*ConflictError`. The host gets the default for `collect one` and an empty outcome for `collect all`. It's the same relation `exclusive in` tests over `outcome`, declared by the host in the kind, where no `when` can gate it and no policy has to be required to carry it.
 
-- Each entry is a decision, matching any of its reasons, or a decision with one reason. In Go, `policy.WithExclusive(GrantA, GrantB)` or `policy.WithExclusive(Approve.Reason("release_manager"), Approve.Reason("lgtm"))`.
+- Each entry is a decision, matching any of its reasons, or a decision with one reason. In Go, `policy.WithExclusive(GrantA, GrantB)` or `policy.WithExclusive(Approve.Reason("release_manager"), Approve.Reason("payments_sre"))`.
 - A set names at least two entries. A kind may declare any number of sets, and one outcome may appear in several.
 - The check happens before ranking, so an exclusive pair is a conflict even when a third decision outranks both. A contradiction between two rules doesn't stop being one because a deny happened to fire too.
 - It works the same under `collect one` and `collect all`. In a `collect all` kind it replaces the pattern of an `exclusive in outcome` assert in a required policy; that assert still works, but it belongs to a policy author, and this line belongs to the host.
@@ -273,7 +273,7 @@ The result when no rule fires. It's a decision constructor with one of the decis
 
 A `collect one` kind must declare a default. A collecting kind may leave it out, and then an evaluation where nothing fires returns no decisions at all.
 
-In Go, `policy.WithDefault(Deny, "no_rule_matched")` takes no payload: every field takes its default, so every payload field of the default decision needs a `default=` tag.
+In Go, `policy.WithDefault(Deny.Reason("no_rule_matched"))` takes no payload: every field takes its default, so every payload field of the default decision needs a `default=` tag.
 
 ## Validity rules
 
@@ -337,7 +337,7 @@ type ApproveData struct {
 }
 ```
 
-`default=` is the only tag option, and only payload fields take it: inputs and the fields of `type` structs have no defaults, in Go as in a kind file, so an option on one of their tags makes `NewKind` panic. A decision without a payload uses `policy.None`. The reason is implicit on every decision and never appears in a payload struct; the reasons are the ones passed to `policy.NewDecision`.
+`default=` is the only tag option, and only payload fields take it: inputs and the fields of `type` structs have no defaults, in Go as in a kind file, so an option on one of their tags makes `NewKind` panic. A decision without a payload uses `policy.None`. The reason is implicit on every decision and never appears in a payload struct; the reasons are the ones passed to `policy.NewDecision`, and Go code names one through a handle from `Decision[T].Reason`, which panics on a reason the decision doesn't declare.
 
 `*Struct` maps to `?Struct`, whose fields a policy reads with [optional chaining](/reference/expressions/#optional-chaining): `release?.soak ?? 0s`. A pointer to a slice or a map is rejected, and so are `?list<T>` and `?map<K, V>` in a kind file: a nil slice or map already reads as empty, so an optional one would add a second way to say "nothing" that policies couldn't tell apart.
 

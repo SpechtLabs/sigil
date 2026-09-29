@@ -43,6 +43,10 @@ type Decision struct {
 type Ranking struct {
 	Decision string
 	Reasons  []string
+	// Mixed holds the reasons of other decisions the ranking was given.
+	// A ranking orders one decision's reasons, so each is an error; the
+	// kind model can't hold them, so Build reports them.
+	Mixed []kind.Outcome
 }
 
 // Func is a host function: its name and the Go function. Fn must be a

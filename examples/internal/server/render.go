@@ -19,13 +19,10 @@ const (
 	roleReleaseManager = "release_manager"
 )
 
-// The fallback a deployment request answers with when the access stage
-// fails: the DeployApproval kind's default. The deploy policy never ran, so
-// there is no result to take it from.
-var (
-	fallbackDecision = deploy.Deny.Name()
-	fallbackReason   = "no_rule_matched"
-)
+// fallbackOutcome is the answer a deployment request gives when the access
+// stage fails: the DeployApproval kind's default. The deploy policy never
+// ran, so there is no result to take it from.
+var fallbackOutcome = deploy.NoRuleMatched
 
 // newDecisionResponse renders a deploy evaluation and the HTTP status its
 // decision maps to. The winner's payload is read through the typed decision
@@ -49,8 +46,8 @@ func fallbackResponse(team, policyName string) DecisionResponse {
 	return DecisionResponse{
 		Team:     team,
 		Policy:   policyName,
-		Decision: fallbackDecision,
-		Reason:   fallbackReason,
+		Decision: fallbackOutcome.Decision(),
+		Reason:   fallbackOutcome.Name(),
 		Payload:  Payload{},
 		Trace:    []CandidateResult{},
 	}

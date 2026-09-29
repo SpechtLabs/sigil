@@ -53,14 +53,32 @@ var (
 
 The reasons are plain strings because `Result.Reason` is one. A handle also reports what it declares: `Name()` returns the decision's name and `Reasons()` its reasons.
 
+Go code that names a reason, to rank it, make it the default or compare a result against it, does so through a reason handle, a `policy.Outcome`. `Reason` returns one and panics when the decision doesn't declare the name, with the hint the checker gives for the same typo in a policy, so a misspelled reason stops the program at init instead of compiling into a comparison that never matches:
+
+```go
+var (
+	NotEligible    = Deny.Reason("not_eligible")
+	SoakTooShort   = Deny.Reason("soak_too_short")
+	NoRuleMatched  = Deny.Reason("no_rule_matched")
+	ReleaseManager = Approve.Reason("release_manager")
+	PaymentsSRE    = Approve.Reason("payments_sre")
+)
+```
+
+```text
+policy: decision deny has no reason "no_rule_mached" (did you mean "no_rule_matched"? deny declares: not_eligible, soak_too_short, no_rule_matched)
+```
+
+`Decision()` and `Name()` return the handle's decision and reason names.
+
 `NewKind` ties it together:
 
 ```go
 var Deploy = policy.NewKind[Input]("DeployApproval",
 	policy.WithVersion(1),
 	policy.WithDecisions(Deny, Review, Approve), // order = precedence
-	policy.WithReasonPrecedence(Approve, "release_manager", "payments_sre"),
-	policy.WithDefault(Deny, "no_rule_matched"),
+	policy.WithReasonPrecedence(ReleaseManager, PaymentsSRE),
+	policy.WithDefault(NoRuleMatched),
 	policy.WithFunc("split", strings.Split),
 )
 ```
@@ -72,9 +90,9 @@ var Deploy = policy.NewKind[Input]("DeployApproval",
 | `policy.WithDecisions(d...)` | `decision ...`, `collect one` and `precedence ...` | Argument order is precedence, highest first |
 | `policy.WithCollect(d...)` | `decision ...` and `collect all` | Instead of `WithDecisions`: every fired decision applies. Argument order is declaration order |
 | `policy.WithPrecedence(d...)` | `precedence ...` in a `collect all` kind | Ranks a `WithCollect` kind's decisions, so the outcome is every candidate at the top rank. Must list every decision |
-| `policy.WithReasonPrecedence(d, reasons...)` | `precedence approve: release_manager > payments_sre` | Ranks one decision's reasons, highest first; must list them all |
+| `policy.WithReasonPrecedence(reasons...)` | `precedence approve: release_manager > payments_sre` | Ranks one decision's reasons, highest first, given as reason handles; must list them all, and only that decision's |
 | `policy.WithExclusive(outcomes...)` | `exclusive grant_a, grant_b` | Outcomes that can't fire together. An outcome is a decision handle, or `GrantA.Reason("x")` for one reason |
-| `policy.WithDefault(d, reason)` | `default deny(no_rule_matched)` | Result when no rule fires; payload fields take their defaults, so every field of `d` needs one. Required for `collect one` |
+| `policy.WithDefault(reason)` | `default deny(no_rule_matched)` | Result when no rule fires, given as a reason handle; payload fields take their defaults, so every payload field of its decision needs one. Required for `collect one` |
 | `policy.WithFunc(name, fn)` | `fn split(string, string) -> list<string>` | One call per function. The Sigil signature is derived from the Go function's type, which returns `T` or `(T, error)`. Host functions must be pure, must terminate and must not panic; see [Evaluating](#evaluating) |
 | `policy.WithRecoverHostPanics()` | none; it's host behavior, not contract | A panic in a host function becomes a `*RuntimeError` instead of unwinding out of `Eval`. Off by default; see [Evaluating](#evaluating) |
 
@@ -338,6 +356,16 @@ if a, ok := Approve.Match(res); ok {
 
 `Match` returns `true` when the outcome is exactly one entry of that decision. It returns `false` if the result is a different decision, and, on a `collect all` kind with `precedence`, when the top rank holds more than one entry. The fallback result that comes with an error holds the kind's default, so `Deny.Match` reports `true` on it: check `err` before matching.
 
+To check the reason as well, use the reason handle's `Is`, which follows the same rules as `Match` and compares the reason too:
+
+```go
+if NoRuleMatched.Is(res) {
+	flagUncovered(p.Name()) // the default: no rule covers this deploy
+}
+```
+
+Comparing `res.Reason` with a string compiles with a typo in it and never matches; `Is` can't, since the handle was checked when it was declared.
+
 A collecting kind can grant a decision more than once, so it matches with `MatchAll`, which returns a `policy.Matched[T]` for every entry of that decision, in outcome order, with its typed `Payload`, `Reason`, `Policy` and `Position`:
 
 ```go
@@ -346,7 +374,7 @@ for _, g := range Admin.MatchAll(res) {
 }
 ```
 
-`Match` on a `collect all` kind without precedence panics, since there's no single decision to match. Use `MatchAll` for that mode. On a `collect one` kind, `MatchAll` returns the winner when it's that decision, and nothing otherwise.
+`Match` and `Is` on a `collect all` kind without precedence panic, since there's no single decision to match. Use `MatchAll` for that mode. On a `collect one` kind, `MatchAll` returns the winner when it's that decision, and nothing otherwise.
 
 ## Dynamic input
 
@@ -471,7 +499,8 @@ Every exported identifier of package `policy`, for reference:
 | `Kind[In].Name`, `.Schema`, `.Load`, `.Compile`, `.Contract` | The kind's name, its kind file, loading and compiling policies, and the tooling hook |
 | `Option`, `WithVersion`, `WithAccepts`, `WithDecisions`, `WithCollect`, `WithPrecedence`, `WithReasonPrecedence`, `WithExclusive`, `WithDefault`, `WithFunc`, `WithRecoverHostPanics` | Options for `NewKind` |
 | `NewDecision[T](name, reasons...) Decision[T]` | Declares a decision with payload struct `T` |
-| `Decision[T].Name`, `.Reasons`, `.Reason`, `.Match`, `.MatchAll` | The decision's name and reasons, one reason as an `Outcome` for `WithExclusive`, and typed matching |
+| `Decision[T].Name`, `.Reasons`, `.Reason`, `.Match`, `.MatchAll` | The decision's name and reasons, one reason as an `Outcome` handle (panics on an undeclared one), and typed matching |
+| `Outcome.Decision`, `.Name`, `.Is` | A reason handle's decision and reason names, and whether a result is exactly that reason |
 | `DecisionRef`, `OutcomeRef`, `Outcome` | Any `Decision[T]`; a decision or one of its reasons; one reason |
 | `None` | The payload of a decision that carries only a reason |
 | `Matched[T]` | One entry `MatchAll` returns |
