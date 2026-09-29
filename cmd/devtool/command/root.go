@@ -1,6 +1,10 @@
 // Package command implements the devtool root command: the repository's
 // own benchmark, fuzzing and CI tooling. Every subcommand lives in its own
 // sub-package and exposes a NewCommand constructor.
+//
+// [NewCommand] builds the tree, with the bench and fuzz groups and a global
+// --color flag, and [Execute] runs it with the same help, usage and error
+// rendering as the sigil command line.
 package command
 
 import (

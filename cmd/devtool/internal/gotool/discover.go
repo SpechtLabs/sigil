@@ -17,14 +17,14 @@ type Target struct {
 	Dir     string
 	// File is the declaring file, relative to the module root.
 	File string
-	Name string
+	Name string // the function's name, e.g. FuzzParse
 }
 
 // Checkout describes the working tree a run measures.
 type Checkout struct {
-	Head  string
-	Dirty bool
-	Go    string
+	Head  string // the full commit ID of HEAD
+	Dirty bool   // the tree has uncommitted changes or untracked files
+	Go    string // the Go version and platform, e.g. go1.27.1 darwin/arm64
 }
 
 // Discover returns the test functions whose names start with prefix in the

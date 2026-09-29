@@ -14,7 +14,9 @@ import (
 // usage errors cobra and pflag produce that Execute didn't translate.
 const usageAdvice = "run the command with --help to see its usage"
 
-// ErrorHandler is a fang.ErrorHandler that renders errors with Printer.Err.
+// ErrorHandler is a [fang.ErrorHandler] that renders errors with
+// [Printer.Err] on a new [Printer] for w. It ignores fang's styles, since
+// the printer has its own.
 func ErrorHandler(w io.Writer, _ fang.Styles, err error) {
 	_ = New(w).Err(err)
 }

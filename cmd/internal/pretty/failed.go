@@ -25,18 +25,20 @@ func Fail(msg string, advice ...string) *Failed {
 	return &Failed{msg: msg, advice: advice}
 }
 
-// Error returns the summary.
+// Error implements the error interface. It returns the summary.
 func (f *Failed) Error() string { return f.msg }
 
-// Display returns the summary with its advice, as humane errors do.
+// Display implements [humane.Error]. It returns the summary with its
+// advice, as humane errors do.
 func (f *Failed) Display() string {
 	return display(f.msg, f.advice)
 }
 
-// Advice returns what to do about it.
+// Advice implements [humane.Error]. It returns what to do about it.
 func (f *Failed) Advice() []string { return f.advice }
 
-// Cause returns nil: a Failed error has no cause beneath it.
+// Cause implements [humane.Error]. It returns nil: a Failed error has no
+// cause beneath it.
 func (f *Failed) Cause() error { return nil } //nolint:humaneerror // humane.Error's own Cause() returns error
 
 // Reported reports whether err is a Failed error, or wraps one.
@@ -49,8 +51,8 @@ func Reported(err error) bool {
 // bundle that checks, given one that doesn't. The handler renders the
 // diagnostics, styled, before the error itself.
 type Diagnostics struct {
-	Errs   diag.ErrorList
-	Src    diag.Sources
+	Errs   diag.ErrorList // the diagnostics, in the order they print
+	Src    diag.Sources   // finds the source line each diagnostic quotes
 	msg    string
 	advice []string
 }
@@ -61,7 +63,8 @@ func Diagnose(errs diag.ErrorList, src diag.Sources, msg string, advice ...strin
 	return &Diagnostics{Errs: errs, Src: src, msg: msg, advice: advice}
 }
 
-// Error returns the diagnostics in their plain form, then the message.
+// Error implements the error interface. It returns the diagnostics in
+// their plain form, then the message.
 func (d *Diagnostics) Error() string {
 	rendered := diag.RenderAll(d.Errs, d.Src, diag.Plain)
 	if rendered == "" {
@@ -70,15 +73,17 @@ func (d *Diagnostics) Error() string {
 	return rendered + "\n\n" + d.msg
 }
 
-// Display returns the diagnostics, the message and the advice.
+// Display implements [humane.Error]. It returns the diagnostics, the
+// message and the advice.
 func (d *Diagnostics) Display() string {
 	return display(d.Error(), d.advice)
 }
 
-// Advice returns what to do about it.
+// Advice implements [humane.Error]. It returns what to do about it.
 func (d *Diagnostics) Advice() []string { return d.advice }
 
-// Cause returns nil: the diagnostics are the whole story.
+// Cause implements [humane.Error]. It returns nil: the diagnostics are the
+// whole story.
 func (d *Diagnostics) Cause() error { return nil } //nolint:humaneerror // humane.Error's own Cause() returns error
 
 // Message returns what the diagnostics prevented, without them.

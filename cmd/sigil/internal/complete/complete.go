@@ -1,4 +1,6 @@
 // Package complete holds shell completion functions shared by sigil commands.
+// Each one is a [cobra.CompletionFunc] a command sets as its
+// ValidArgsFunction.
 package complete
 
 import "github.com/spf13/cobra"

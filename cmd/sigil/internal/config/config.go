@@ -1,5 +1,5 @@
 // Package config reads sigil.yaml, the file a policy repository keeps at
-// its root to configure the tools:
+// its root to configure the tools. It sets the level of each lint:
 //
 //	lints:
 //	  gated-deny: error
@@ -33,8 +33,8 @@ const FileName = "sigil.yaml"
 
 // Config is a repository's configuration.
 type Config struct {
-	Lints map[string]lint.Level
-	File  string // where it was read from; empty for the defaults
+	Lints map[string]lint.Level // the level of each lint the file names; the others keep their defaults
+	File  string                // where it was read from; empty for the defaults
 }
 
 // file is the configuration as written.

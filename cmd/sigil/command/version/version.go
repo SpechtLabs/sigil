@@ -1,4 +1,7 @@
-// Package version implements the `sigil version` command.
+// Package version implements the `sigil version` command. It reports the
+// release version set with [WithVersion], and the commit, commit time,
+// dirty state, Go version and platform from the build info the Go
+// toolchain embeds in the binary.
 package version
 
 import (

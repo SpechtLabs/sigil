@@ -1,6 +1,16 @@
-// Package command implements the sigil root command. Every subcommand lives in
-// its own sub-package, exposes a NewCommand constructor, and receives each of
-// its dependencies through a With* option declared in its options.go.
+// Package command builds the sigil command tree: the root command with its
+// global --output and --color flags, and every subcommand in its help group.
+// [NewCommand] builds the tree and [Execute] runs it, with sigil's styling
+// for help and errors, and turns the outcome into an exit status.
+//
+// Package [github.com/spechtlabs/sigil/pkg/cli] wraps this package for
+// hosts. It re-exports [Option], [WithKind] and [WithVersion], so a host can
+// build its own sigil binary, and cmd/sigil is cli.Main with a version.
+//
+// Every subcommand lives in its own sub-package, exposes a NewCommand
+// constructor, and receives each of its dependencies through a With* option
+// declared in its options.go. The root hands each one a pointer to the
+// --output value cobra parses, and the kinds linked in with [WithKind].
 package command
 
 import (
@@ -30,7 +40,10 @@ var (
 	groupOther  = &cobra.Group{ID: "other", Title: "Other commands"}
 )
 
-// NewCommand returns the sigil root command with every subcommand attached.
+// NewCommand returns the sigil root command with every subcommand attached,
+// configured by opts. Each call builds a new command tree. Run it with
+// [Execute]. Its own [cobra.Command.Execute] runs the same commands, but
+// returns errors without printing them, and --color has no effect.
 func NewCommand(opts ...Option) *cobra.Command {
 	o := &options{}
 	for _, opt := range opts {

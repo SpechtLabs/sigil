@@ -1,4 +1,9 @@
-// Package check implements the `sigil check` command.
+// Package check implements the `sigil check` command. It parses,
+// type-checks and compiles a bundle against a kind, checks the root
+// policies against --require, runs the lints at the levels sigil.yaml
+// sets, and prints the diagnostics with a summary line. As JSON or YAML it
+// prints one [output.Diagnostic] per problem. The command fails when any
+// diagnostic is an error, including a lint set to error.
 package check
 
 import (
@@ -21,7 +26,9 @@ import (
 	"github.com/spechtlabs/sigil/internal/lint"
 )
 
-// NewCommand returns the check command.
+// NewCommand returns the check command, configured by opts. Without
+// [WithOutput] it prints text, and without [WithKinds] every run needs
+// --kind.
 func NewCommand(opts ...Option) *cobra.Command {
 	format := output.Text
 	o := &options{output: &format}

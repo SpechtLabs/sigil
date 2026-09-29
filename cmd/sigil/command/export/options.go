@@ -24,7 +24,8 @@ func WithOutput(format *output.Format) Option {
 	}
 }
 
-// WithKinds sets the kinds linked into the binary.
+// WithKinds sets the kinds linked into the binary, the ones export can
+// write.
 func WithKinds(kinds []project.Linked) Option {
 	return func(o *options) { o.kinds = kinds }
 }

@@ -14,11 +14,11 @@ import (
 
 // The files every command writes.
 const (
-	Summary  = "summary.md"
-	Metadata = "metadata.json"
+	Summary  = "summary.md"    // the Markdown summary CI adds to the job page
+	Metadata = "metadata.json" // what the run measured, as JSON
 )
 
-// Dir is a results directory.
+// Dir is a results directory. Create one with [Reset].
 type Dir struct {
 	path string
 }

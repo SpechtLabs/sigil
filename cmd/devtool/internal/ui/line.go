@@ -25,8 +25,9 @@ type Line struct {
 	shown bool
 }
 
-// NewLine returns a Line that writes through p. Its width is the terminal's,
-// or width when that's positive.
+// NewLine returns a Line that writes through p. Its width is width when
+// that's positive, and otherwise the terminal's, or 80 when stdout isn't
+// one.
 func NewLine(p *pretty.Printer, width int) *Line {
 	if width <= 0 {
 		width = 80

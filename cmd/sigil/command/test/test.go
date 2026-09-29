@@ -1,4 +1,10 @@
-// Package test implements the `sigil test` command.
+// Package test implements the `sigil test` command. It walks its paths for
+// .sigil files and *_test.yaml test files, checks the .sigil files as one
+// bundle, then runs each test file's cases against the policy the file
+// names. A case passes when the evaluation gives the decision, reason and
+// payload it expects, the whole outcome of a collecting kind, or exactly
+// the failing asserts it lists. [SuiteResult] and [CaseResult] are the
+// records it prints as JSON and YAML.
 package test
 
 import (
@@ -29,7 +35,9 @@ import (
 	"github.com/spechtlabs/sigil/internal/testsuite"
 )
 
-// NewCommand returns the test command.
+// NewCommand returns the test command, configured by opts. Without
+// [WithOutput] it prints text, and without [WithKinds] every run needs
+// --kind.
 func NewCommand(opts ...Option) *cobra.Command {
 	format := output.Text
 	o := &options{output: &format}
@@ -100,12 +108,13 @@ sigil test --kind deploy_approval.sigil --run 'freeze'`,
 	return cmd
 }
 
-// SuiteResult is one test file's run.
+// SuiteResult is one test file's run. When Error is set, none of the
+// file's cases ran.
 type SuiteResult struct {
 	File   string       `json:"file" yaml:"file"`
-	Policy string       `json:"policy" yaml:"policy"`
-	Error  string       `json:"error,omitempty" yaml:"error,omitempty"`
-	Cases  []CaseResult `json:"cases" yaml:"cases"`
+	Policy string       `json:"policy" yaml:"policy"`                   // the policy the file tests
+	Error  string       `json:"error,omitempty" yaml:"error,omitempty"` // an unreadable or invalid test file, or a policy that doesn't compile
+	Cases  []CaseResult `json:"cases" yaml:"cases"`                     // the cases --run selects, in file order
 	// What's behind Error, for the text report to render with each hint
 	// on its own line: the test file's problems, or the policy's compile
 	// errors with src finding their source lines.
@@ -117,9 +126,9 @@ type SuiteResult struct {
 // CaseResult is one test case's run.
 type CaseResult struct {
 	Name     string              `json:"name" yaml:"name"`
-	Error    string              `json:"error,omitempty" yaml:"error,omitempty"`
-	Failures []string            `json:"failures,omitempty" yaml:"failures,omitempty"`
-	Line     int                 `json:"line" yaml:"line"`
+	Error    string              `json:"error,omitempty" yaml:"error,omitempty"`       // why the case couldn't run: its input can't be read or doesn't fit the kind
+	Failures []string            `json:"failures,omitempty" yaml:"failures,omitempty"` // how the evaluation differs from what the case expects
+	Line     int                 `json:"line" yaml:"line"`                             // of the case in its test file
 	Passed   bool                `json:"passed" yaml:"passed"`
 	problem  *testsuite.Error    // what's behind Error
 	diffs    []testsuite.Failure // what's behind Failures

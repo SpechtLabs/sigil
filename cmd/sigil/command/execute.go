@@ -17,7 +17,13 @@ import (
 // Execute runs cmd on args, os.Args without the program name when nil,
 // with sigil's styling for help, usage and errors, and returns the
 // process's exit status: 1 when the command failed, after printing why,
-// and 0 otherwise.
+// and 0 otherwise. cmd is normally the tree [NewCommand] returns.
+//
+// Execute sets cmd's arguments and doesn't exit. Before anything is
+// parsed, it applies --color to the process environment, setting NO_COLOR
+// or CLICOLOR_FORCE for never or always. An interrupt or SIGTERM cancels
+// the context the command runs with. Usage errors from cobra and pflag are
+// rewritten to name the command and say how to call it.
 func Execute(ctx context.Context, cmd *cobra.Command, args []string) int {
 	if args == nil {
 		args = os.Args[1:]

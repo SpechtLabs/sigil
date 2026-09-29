@@ -1,5 +1,13 @@
 // Package gotool runs the go and git commands devtool is built around, and
 // finds test functions in the packages go list reports.
+//
+// [Output] runs a command and wraps its standard error into the error when
+// it fails. [Discover] lists the test functions with a name prefix, such as
+// Fuzz or Benchmark, in the packages a set of patterns selects, and
+// [Select] narrows them by --filter. [BindEnv] lets every flag of a command
+// be set from an environment variable. Test functions are found by
+// scanning the test files for top-level func declarations, so methods and
+// commented-out functions don't count.
 package gotool
 
 import (
@@ -28,9 +36,9 @@ type commandOutput string
 // Package is the part of `go list -json` devtool uses.
 type Package struct {
 	ImportPath   string
-	Dir          string
-	TestGoFiles  []string
-	XTestGoFiles []string
+	Dir          string   // absolute
+	TestGoFiles  []string // _test.go files of the package itself, relative to Dir
+	XTestGoFiles []string // _test.go files of its external test package, relative to Dir
 }
 
 // Func is a test function and the file it's declared in, relative to the
@@ -117,7 +125,7 @@ func (p Package) Funcs(prefix string) ([]Func, humane.Error) {
 	return funcs, nil
 }
 
-// Error returns the output.
+// Error implements the error interface. It returns the output.
 func (c commandOutput) Error() string { return string(c) }
 
 // RelDir returns dir relative to root in the ./dir form go and devtool

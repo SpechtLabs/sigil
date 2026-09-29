@@ -1,4 +1,7 @@
-// Package gen implements the `sigil gen` command group.
+// Package gen implements the `sigil gen` command group, which will generate
+// code from a kind file. Each target language is a subcommand in its own
+// package. The only one, `sigil gen go` in package golang, isn't
+// implemented yet. Run on its own, gen prints its help.
 package gen
 
 import (

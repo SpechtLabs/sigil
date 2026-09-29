@@ -1,4 +1,8 @@
-// Package eval implements the `sigil eval` command.
+// Package eval implements the `sigil eval` command. It compiles the root
+// policy of a bundle, decodes a JSON input into the kind's input types,
+// evaluates the policy, and prints the decision with its full trace, as
+// package report renders it. The command fails when the evaluation does:
+// on a runtime error, a conflict or a failing assert.
 package eval
 
 import (
@@ -24,7 +28,9 @@ import (
 	"github.com/spechtlabs/sigil/internal/result"
 )
 
-// NewCommand returns the eval command.
+// NewCommand returns the eval command, configured by opts. Without
+// [WithOutput] it prints text, and without [WithKinds] every run needs
+// --kind.
 func NewCommand(opts ...Option) *cobra.Command {
 	format := output.Text
 	o := &options{output: &format}

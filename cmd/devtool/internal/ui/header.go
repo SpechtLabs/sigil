@@ -14,22 +14,24 @@ import (
 // Plan is what a run is about to do. Header shows it before the slow part
 // starts, with the same rows in the same order for every command.
 type Plan struct {
-	Title    string
-	Checkout gotool.Checkout
+	Title    string          // the box's title on a terminal
+	Checkout gotool.Checkout // the Head and Go rows
 	// Base is the revision a comparison measures against, e.g.
 	// "c4695b6 (main)"; empty when there's none.
 	Base     string
-	Packages []string
-	Filter   string
+	Packages []string // more than three show as a count
+	Filter   string   // the --filter value; its row is left out when empty
 	// Runs says what runs and for how long, e.g. "10 samples of 200ms
 	// each per revision".
 	Runs     string
 	CPU      int
-	Estimate string
-	Results  string
+	Estimate string // how long the run should take; its row is left out when empty
+	Results  string // the results directory, as printed
 }
 
-// Header prints the plan in a box.
+// Header prints the plan as a [pretty.Printer.KeyValues] block: in a box
+// under the plan's title on a terminal, and as plain `key: value` lines
+// anywhere else.
 func Header(p *pretty.Printer, plan Plan) humane.Error {
 	head := plan.Checkout.Short()
 	if plan.Checkout.Dirty {

@@ -1,5 +1,11 @@
 // Package format implements the `sigil fmt` command. It isn't named fmt so it
 // doesn't shadow the standard library package.
+//
+// fmt rewrites policy, module and kind documents in the one canonical
+// style. It prints the result, rewrites the files in place with --write,
+// or lists the files that aren't formatted with --check. A file that
+// doesn't parse is reported and left alone. [File] is the record it prints
+// as JSON and YAML.
 package format
 
 import (
@@ -43,11 +49,11 @@ type source struct {
 // File is one file fmt read, as JSON and YAML print it. A file that
 // doesn't parse has its syntax errors in Diagnostics and nothing else set.
 type File struct {
-	File        string              `json:"file" yaml:"file"`
-	Formatted   bool                `json:"formatted" yaml:"formatted"`                 // it was already in the canonical style
-	Written     bool                `json:"written,omitempty" yaml:"written,omitempty"` // --write rewrote it
-	Source      string              `json:"source,omitempty" yaml:"source,omitempty"`   // the formatted source, when fmt prints it
-	Diagnostics []output.Diagnostic `json:"diagnostics,omitempty" yaml:"diagnostics,omitempty"`
+	File        string              `json:"file" yaml:"file"`                                   // the path, or <stdin>
+	Formatted   bool                `json:"formatted" yaml:"formatted"`                         // it was already in the canonical style
+	Written     bool                `json:"written,omitempty" yaml:"written,omitempty"`         // --write rewrote it
+	Source      string              `json:"source,omitempty" yaml:"source,omitempty"`           // the formatted source, when fmt prints it
+	Diagnostics []output.Diagnostic `json:"diagnostics,omitempty" yaml:"diagnostics,omitempty"` // its syntax errors
 }
 
 // NewCommand returns the fmt command.

@@ -1,6 +1,10 @@
 // Package project loads what the policy commands work on: the kind, from
 // a kind file or linked into a host's own sigil binary, and the bundle of
 // documents named on the command line.
+//
+// [LoadKind] picks the kind, [Kind.Bundle] reads the paths into a bundle
+// for it, and [Match] and [Root] pick the policies a command works on, by
+// name or by pattern.
 package project
 
 import (
@@ -20,33 +24,35 @@ import (
 
 // Kind is the contract a command checks and evaluates against.
 type Kind struct {
-	Model   *kind.Kind
-	Binding *gokind.Binding
+	Model   *kind.Kind      // the kind as the checker sees it
+	Binding *gokind.Binding // its Go types and host functions
 	// Host is set for a kind linked into a host binary, whose host
 	// functions are implemented. A kind loaded from a file has every
 	// function bound to one that fails when it's called.
 	Host bool
 }
 
-// Linked is a kind a host linked into its own sigil binary.
+// Linked is a kind a host linked into its own sigil binary, with
+// github.com/spechtlabs/sigil/pkg/cli.WithKind.
 type Linked struct {
-	Model   *kind.Kind
-	Binding *gokind.Binding
+	Model   *kind.Kind      // the kind as the checker sees it
+	Binding *gokind.Binding // the host's Go types and host functions
 }
 
 // Sources are the command-line paths a bundle is read from.
 type Sources struct {
-	Stdin     io.Reader
-	Paths     []string
-	Trusted   []string // read into a trusted bundle, as policy.From does
-	Recursive bool
+	Stdin     io.Reader // what a "-" path reads
+	Paths     []string  // files, directories, or "-" for stdin
+	Trusted   []string  // read into a trusted bundle, as policy.From does
+	Recursive bool      // directories contribute the .sigil files below them, not only those directly inside
 }
 
 // LoadKind returns the kind a command works against. A kind file named
 // with --kind that matches a linked kind by name must match it exactly,
 // which catches an export that wasn't regenerated, and then evaluates
 // with the host's functions. Any other kind file is loaded on its own.
-// Without a file, the binary's one linked kind is used.
+// Without a file, the binary's one linked kind is used; with none or
+// several linked, that's an error.
 func LoadKind(file string, linked []Linked) (*Kind, humane.Error) {
 	if file == "" {
 		switch len(linked) {
