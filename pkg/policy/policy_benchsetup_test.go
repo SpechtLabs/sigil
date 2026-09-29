@@ -18,7 +18,7 @@ func benchmarkKind(collect bool) *policy.Kind[benchtest.Input] {
 	if collect {
 		opts = append(opts, policy.WithCollect(deny, allow))
 	} else {
-		opts = append(opts, policy.WithDecisions(deny, allow), policy.WithDefault(deny, "fallback"))
+		opts = append(opts, policy.WithDecisions(deny, allow), policy.WithDefault(deny.Reason("fallback")))
 	}
 	return policy.NewKind[benchtest.Input]("Bench", opts...)
 }

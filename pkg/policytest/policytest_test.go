@@ -37,8 +37,8 @@ var (
 	Access = policy.NewKind[Input]("Access",
 		policy.WithVersion(1),
 		policy.WithDecisions(Deny, Allow),
-		policy.WithReasonPrecedence(Allow, "admin", "team_member"),
-		policy.WithDefault(Deny, "no_rule_matched"),
+		policy.WithReasonPrecedence(Allow.Reason("admin"), Allow.Reason("team_member")),
+		policy.WithDefault(Deny.Reason("no_rule_matched")),
 		policy.WithFunc("owner", func(string) string { return "ada" }),
 	)
 )

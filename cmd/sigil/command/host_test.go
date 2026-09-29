@@ -39,8 +39,8 @@ var (
 	hostAccess = policy.NewKind[hostInput]("Access",
 		policy.WithVersion(1),
 		policy.WithDecisions(hostDeny, hostAllows),
-		policy.WithReasonPrecedence(hostAllows, "admin", "team_member"),
-		policy.WithDefault(hostDeny, "no_rule_matched"),
+		policy.WithReasonPrecedence(hostAllows.Reason("admin"), hostAllows.Reason("team_member")),
+		policy.WithDefault(hostDeny.Reason("no_rule_matched")),
 		policy.WithFunc("owner", func(string) string { return "ada" }),
 	)
 )

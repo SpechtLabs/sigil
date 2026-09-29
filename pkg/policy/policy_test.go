@@ -53,8 +53,8 @@ var (
 	Deploy = policy.NewKind[Input]("DeployApproval",
 		policy.WithVersion(1),
 		policy.WithDecisions(Deny, Review, Approve), // order = precedence
-		policy.WithReasonPrecedence(Approve, "release_manager", "payments_sre", "owned", "a"),
-		policy.WithDefault(Deny, "no_rule_matched"),
+		policy.WithReasonPrecedence(Approve.Reason("release_manager"), Approve.Reason("payments_sre"), Approve.Reason("owned"), Approve.Reason("a")),
+		policy.WithDefault(Deny.Reason("no_rule_matched")),
 		policy.WithFunc("split", strings.Split),
 	)
 )
@@ -136,15 +136,15 @@ func TestOptionsCompose(t *testing.T) {
 		policy.WithVersion(1),
 		policy.WithDecisions(Deny),
 		policy.WithDecisions(Review, Approve),
-		policy.WithReasonPrecedence(Approve, "release_manager", "payments_sre", "owned", "a"),
-		policy.WithDefault(Deny, "no_rule_matched"),
+		policy.WithReasonPrecedence(Approve.Reason("release_manager"), Approve.Reason("payments_sre"), Approve.Reason("owned"), Approve.Reason("a")),
+		policy.WithDefault(Deny.Reason("no_rule_matched")),
 		policy.WithFunc("split", strings.Split),
 	)
 	if split.Schema() != Deploy.Schema() {
 		t.Errorf("split declarations differ:\n%s\n%s", split.Schema(), Deploy.Schema())
 	}
 
-	funcs := policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(Deny, "x"),
+	funcs := policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(Deny.Reason("x")),
 		policy.WithFunc("upper", strings.ToUpper), policy.WithFunc("lower", strings.ToLower))
 	if !strings.Contains(funcs.Schema(), "fn upper(string) -> string\nfn lower(string) -> string\n") {
 		t.Errorf("Schema() =\n%s", funcs.Schema())
@@ -152,7 +152,7 @@ func TestOptionsCompose(t *testing.T) {
 }
 
 func TestAccepts(t *testing.T) {
-	k := policy.NewKind[Input]("K", policy.WithVersion(3), policy.WithAccepts(2), policy.WithDecisions(Deny), policy.WithDefault(Deny, "x"))
+	k := policy.NewKind[Input]("K", policy.WithVersion(3), policy.WithAccepts(2), policy.WithDecisions(Deny), policy.WithDefault(Deny.Reason("x")))
 	if !strings.HasPrefix(k.Schema(), "kind K version 3, accepts: 2\n") {
 		t.Errorf("Schema() =\n%s", k.Schema())
 	}
@@ -183,29 +183,62 @@ func TestNewKindPanics(t *testing.T) {
 		{name: "no decisions", fn: func() { policy.NewKind[Input]("K", policy.WithVersion(1)) },
 			want: []string{"policy.NewKind(K): invalid kind:", "kind K declares no decisions", "(declare at least one decision)"}},
 		{name: "default without every field", fn: func() {
-			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny, Review), policy.WithDefault(Review, "x"))
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny, Review), policy.WithDefault(Review.Reason("a")))
 		}, want: []string{`default: field "approvers" is required and has no value`}},
 		{name: "unsupported field", fn: func() {
 			type Bad struct {
 				N int32 `policy:"n"`
 			}
-			policy.NewKind[Bad]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(Deny, "x"))
+			policy.NewKind[Bad]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(Deny.Reason("x")))
 		}, want: []string{"n: unsupported type int32"}},
 		{name: "decisions and collect mixed", fn: func() {
 			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithCollect(Review))
 		}, want: []string{"kind K mixes WithDecisions and WithCollect", "(a kind ranks its decisions with WithDecisions, or applies them all with WithCollect; use one)"}},
 		{name: "no version", fn: func() {
-			policy.NewKind[Input]("K", policy.WithDecisions(Deny), policy.WithDefault(Deny, "x"))
+			policy.NewKind[Input]("K", policy.WithDecisions(Deny), policy.WithDefault(Deny.Reason("x")))
 		}, want: []string{"invalid kind version 0"}},
 		{name: "accepts zero", fn: func() {
-			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithAccepts(0), policy.WithDecisions(Deny), policy.WithDefault(Deny, "x"))
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithAccepts(0), policy.WithDecisions(Deny), policy.WithDefault(Deny.Reason("x")))
 		}, want: []string{"kind K accepts version 0, but versions start at 1"}},
 		{name: "tag option on an input", fn: func() {
 			type Bad struct {
 				Env string `policy:"environment,default=\"prod\""`
 			}
-			policy.NewKind[Bad]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(Deny, "x"))
+			policy.NewKind[Bad]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(Deny.Reason("x")))
 		}, want: []string{`input: field Env has tag option "default=\"prod\"", which only a decision payload field takes`}},
+		{name: "reason precedence without reasons", fn: func() {
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(Deny.Reason("x")),
+				policy.WithReasonPrecedence())
+		}, want: []string{"WithReasonPrecedence names no reasons (pass one decision's reasons, highest first"}},
+		{name: "reason precedence mixes decisions", fn: func() {
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny, Approve), policy.WithDefault(Deny.Reason("x")),
+				policy.WithReasonPrecedence(Approve.Reason("release_manager"), Approve.Reason("payments_sre"), Deny.Reason("x"),
+					Approve.Reason("owned"), Approve.Reason("a")))
+		}, want: []string{"precedence approve: reason x belongs to decision deny (a ranking orders the reasons of one decision"}},
+		{name: "reason precedence names an undeclared reason", fn: func() {
+			// A second handle for approve, declared with a reason the kind's
+			// approve lacks, is the one way to reach this through handles.
+			other := policy.NewDecision[ApproveData]("approve", "release_manager", "payments_sre", "owned", "a", "lgtm")
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny, Approve), policy.WithDefault(Deny.Reason("x")),
+				policy.WithReasonPrecedence(other.Reason("lgtm"), other.Reason("release_manager"), other.Reason("payments_sre"),
+					other.Reason("owned"), other.Reason("a")))
+		}, want: []string{`precedence approve: names undeclared reason "lgtm"`}},
+		{name: "reason precedence misses a reason", fn: func() {
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny, Approve), policy.WithDefault(Deny.Reason("x")),
+				policy.WithReasonPrecedence(Approve.Reason("release_manager"), Approve.Reason("payments_sre")))
+		}, want: []string{`precedence approve: doesn't name reason "owned"`, `precedence approve: doesn't name reason "a"`}},
+		{name: "reason precedence of an undeclared decision", fn: func() {
+			hold := policy.NewDecision[policy.None]("hold", "freeze")
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(Deny.Reason("x")),
+				policy.WithReasonPrecedence(hold.Reason("freeze")))
+		}, want: []string{`precedence: undeclared decision "hold"`}},
+		{name: "reason precedence twice", fn: func() {
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(Deny.Reason("x")),
+				policy.WithReasonPrecedence(Deny.Reason("x")), policy.WithReasonPrecedence(Deny.Reason("x")))
+		}, want: []string{"precedence deny is declared twice"}},
+		{name: "the zero outcome as default", fn: func() {
+			policy.NewKind[Input]("K", policy.WithVersion(1), policy.WithDecisions(Deny), policy.WithDefault(policy.Outcome{}))
+		}, want: []string{`default names undeclared decision ""`}},
 		{name: "every problem is listed", fn: func() {
 			policy.NewKind[Input]("kind", policy.WithDecisions(Deny))
 		}, want: []string{`invalid kind name "kind"`, "invalid kind version 0", "kind kind has no default decision"}},
@@ -499,7 +532,7 @@ func TestHostFunctionPanics(t *testing.T) {
 	k := policy.NewKind[Input]("Panicky",
 		policy.WithVersion(1),
 		policy.WithDecisions(Deny, Review, Approve),
-		policy.WithDefault(Deny, "no_rule_matched"),
+		policy.WithDefault(Deny.Reason("no_rule_matched")),
 		policy.WithFunc("explode", func(s string) string { panic("kaboom: " + s) }),
 	)
 	p, err := k.Compile("policy p: Panicky@1\n\nwhen explode(\"x\") == \"\" {\n  approve(a)\n}\n", "p")

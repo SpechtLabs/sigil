@@ -24,8 +24,8 @@ type (
 
 var (
 	deny  = policy.NewDecision[policy.None]("deny", "no_rule_matched")
-	gate  = policy.NewKind[input]("Gate", policy.WithVersion(1), policy.WithDecisions(deny), policy.WithDefault(deny, "no_rule_matched"))
-	teams = policy.NewKind[other]("Teams", policy.WithVersion(3), policy.WithDecisions(deny), policy.WithDefault(deny, "no_rule_matched"))
+	gate  = policy.NewKind[input]("Gate", policy.WithVersion(1), policy.WithDecisions(deny), policy.WithDefault(deny.Reason("no_rule_matched")))
+	teams = policy.NewKind[other]("Teams", policy.WithVersion(3), policy.WithDecisions(deny), policy.WithDefault(deny.Reason("no_rule_matched")))
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files under testdata")

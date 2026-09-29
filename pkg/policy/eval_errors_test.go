@@ -272,7 +272,7 @@ func haltKind(h *halt, collect bool, opts ...policy.Option) *policy.Kind[HaltInp
 	if collect {
 		opts = append(opts, policy.WithCollect(haltDeny, haltAllow))
 	} else {
-		opts = append(opts, policy.WithDecisions(haltDeny, haltAllow), policy.WithDefault(haltDeny, "no_rule_matched"))
+		opts = append(opts, policy.WithDecisions(haltDeny, haltAllow), policy.WithDefault(haltDeny.Reason("no_rule_matched")))
 	}
 	return policy.NewKind[HaltInput]("Halt", opts...)
 }

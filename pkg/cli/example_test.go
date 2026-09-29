@@ -20,7 +20,7 @@ func ExampleMain() {
 	deploy := policy.NewKind[DeployInput]("DeployApproval",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, approve),
-		policy.WithDefault(deny, "no_rule_matched"),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
 	)
 
 	read := policy.NewDecision[policy.None]("read", "member")

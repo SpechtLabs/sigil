@@ -45,13 +45,21 @@
 //		Approve = policy.NewDecision[ApproveData]("approve", "release_manager", "service_owner")
 //	)
 //
+// Go code names a reason through a handle, an [Outcome] from
+// [Decision.Reason], so each reason is spelled as a string once. Reason
+// panics on a name the decision doesn't declare, with a did-you-mean
+// hint, so a typo stops the program at init instead of compiling into a
+// comparison that never matches:
+//
+//	var NoRuleMatched = Deny.Reason("no_rule_matched")
+//
 // [NewKind] ties the input struct, the decisions and the host functions
 // together. Each [Option] corresponds to one declaration of a kind file:
 //
 //	var Deploy = policy.NewKind[Input]("DeployApproval",
 //		policy.WithVersion(1),
 //		policy.WithDecisions(Deny, Approve), // precedence order, highest first
-//		policy.WithDefault(Deny, "no_rule_matched"),
+//		policy.WithDefault(NoRuleMatched),
 //		policy.WithFunc("split", strings.Split),
 //	)
 //
@@ -126,6 +134,8 @@
 //	if a, ok := Approve.Match(res); ok {
 //		startRollout(a.Bake)
 //	}
+//
+// [Outcome.Is] does the same for one reason: NoRuleMatched.Is(res).
 //
 // # Errors
 //

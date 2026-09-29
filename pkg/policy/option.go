@@ -76,17 +76,29 @@ func WithPrecedence(ds ...DecisionRef) Option {
 
 // WithReasonPrecedence ranks the reasons of one decision, highest first,
 // `precedence approve: release_manager > payments_sre` in a kind file.
-// The ranking decides between two candidates of that decision. It must
-// list every reason of d, once per decision. A decision without a ranking
-// has tied reasons: fine wherever two of them can't fire together, and a
-// [*ConflictError] under `collect one` where they can.
-func WithReasonPrecedence(d DecisionRef, reasons ...string) Option {
-	name := ""
-	if d != nil {
-		name = d.Name()
+// The ranking decides between two candidates of that decision. Each
+// reason is an [Outcome] from [Decision.Reason]; the list must name every
+// reason of one decision and only its reasons, once per decision, since
+// decisions rank against each other through [WithDecisions] or
+// [WithPrecedence]. A decision without a ranking has tied reasons: fine
+// wherever two of them can't fire together, and a [*ConflictError] under
+// `collect one` where they can.
+//
+//	policy.WithReasonPrecedence(Approve.Reason("release_manager"), Approve.Reason("payments_sre"))
+func WithReasonPrecedence(reasons ...Outcome) Option {
+	r := gokind.Ranking{}
+	for i, o := range reasons {
+		switch {
+		case i == 0:
+			r.Decision = o.decision
+		case o.decision != r.Decision:
+			r.Mixed = append(r.Mixed, o.outcome())
+			continue
+		}
+		r.Reasons = append(r.Reasons, o.reason)
 	}
 	return func(o *gokind.Options) {
-		o.Rankings = append(o.Rankings, gokind.Ranking{Decision: name, Reasons: reasons})
+		o.Rankings = append(o.Rankings, r)
 	}
 }
 
@@ -97,7 +109,7 @@ func WithReasonPrecedence(d DecisionRef, reasons ...string) Option {
 // which names at least two outcomes.
 //
 //	policy.WithExclusive(GrantA, GrantB)
-//	policy.WithExclusive(Approve.Reason("release_manager"), Approve.Reason("lgtm"))
+//	policy.WithExclusive(Approve.Reason("release_manager"), Approve.Reason("payments_sre"))
 func WithExclusive(outcomes ...OutcomeRef) Option {
 	set := make([]kind.Outcome, 0, len(outcomes))
 	for _, o := range outcomes {
@@ -111,21 +123,21 @@ func WithExclusive(outcomes ...OutcomeRef) Option {
 }
 
 // WithDefault sets the decision and reason returned when no rule fires,
-// `default deny(no_rule_matched)` in a kind file. Its payload fields take
-// their defaults, so every field of d's payload struct needs a `default=`
-// in its tag. It is required for a [WithDecisions] kind and optional for
-// a [WithCollect] kind. The reason must be one of d's.
+// `default deny(no_rule_matched)` in a kind file, given as an [Outcome]
+// from [Decision.Reason]. Its payload fields take their defaults, so
+// every field of the decision's payload struct needs a `default=` in its
+// tag. It is required for a [WithDecisions] kind and optional for a
+// [WithCollect] kind.
 //
 // [Policy.Eval] also returns the default alongside a runtime error, a
 // conflict or a failed assert, so a host that fails closed can use the
 // result directly.
-func WithDefault(d DecisionRef, reason string) Option {
-	name := ""
-	if d != nil {
-		name = d.Name() // a nil handle fails validation as an undeclared decision
-	}
+//
+//	policy.WithDefault(Deny.Reason("no_rule_matched"))
+func WithDefault(reason Outcome) Option {
 	return func(o *gokind.Options) {
-		o.Default = &gokind.Default{Decision: name, Reason: reason}
+		// The zero Outcome fails validation as an undeclared decision.
+		o.Default = &gokind.Default{Decision: reason.decision, Reason: reason.reason}
 	}
 }
 
