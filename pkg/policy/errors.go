@@ -48,7 +48,7 @@ type RuntimeError struct {
 type ConflictError struct {
 	Message    string      // what conflicts
 	Policy     string      // the policy being evaluated
-	Candidates []Candidate // the candidates that conflict
+	Candidates []Candidate // only those that conflict, the top-rank tie or the exclusive set's members; the trace lists every candidate
 }
 
 // AssertionError is what [Policy.Eval] returns when an assert's condition

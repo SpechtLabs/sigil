@@ -65,6 +65,10 @@ A reason is a stable identifier. You can grep a policy repo for it, and you can 
 policy_decisions_total{decision="review", reason="service_owner"}
 ```
 
+::: tip Count failed evaluations apart
+Check the error before you label from the result. When an evaluation fails, with a conflict, a failed assert or a runtime error, the result of a `collect one` kind holds the kind's default, so a counter labelled from it counts every failure under the default, such as `deny/no_rule_matched`, and a policy defect looks like inputs no rule matched. A `collect all` kind returns an empty outcome, and the failure isn't counted at all. Count failures in their own series, labelled by error type, such as `outcome="error", error="conflict"`, and never under the default's reason. The [failed evaluations](/reference/evaluation/#failed-evaluations) table lists what each failure returns, and [Evaluating](/reference/go-api/#evaluating) in the Go API shows how to tell the errors apart.
+:::
+
 A typo can't create a new series either, which is what a string reason allowed:
 
 ```text
@@ -168,4 +172,4 @@ A collecting kind returns every candidate, not a winner: every distinct candidat
 
 ### Conflicts
 
-A `collect one` kind promises one candidate. When resolution leaves several at its top rank, or when candidates from two members of an `exclusive` set fire together under either collect mode, `Eval` returns a `*ConflictError` naming the candidates involved. The result that comes with it holds the kind's default for `collect one` and an empty outcome for `collect all`, and its trace still lists every candidate. A conflict is a defect in the policy, not in the input: two rules claimed outcomes the kind says can't both stand. See [Resolution](/reference/evaluation/#resolution).
+A `collect one` kind promises one candidate. When resolution leaves several at its top rank, or when candidates from two members of an `exclusive` set fire together under either collect mode, `Eval` returns a `*ConflictError` whose `Candidates` hold only the side that conflicts: the candidates tied at the top rank, or the candidates of the `exclusive` set's members. Other candidates that fired aren't in the error; the result that comes with it has them all in its trace, and holds the kind's default for `collect one` and an empty outcome for `collect all`. A conflict is a defect in the policy, not in the input: two rules claimed outcomes the kind says can't both stand. See [Resolution](/reference/evaluation/#resolution).
