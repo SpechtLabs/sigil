@@ -108,6 +108,9 @@ func TestExpr(t *testing.T) {
 		{src: `[["a"], []]`, want: "list<list<string>>"},
 		{src: `[[], ["a"]]`, want: "list<list<string>>"},
 		{src: `{"a": 1}`, want: "map<string, int>"},
+		{src: "{environment: 1}", want: "map<string, int>"},
+		{src: "{count: environment}", want: "map<int, string>"},
+		{src: `service.labels has {environment: "payments"}`, want: "bool"},
 		{src: `{1: "a", 2: "b"}`, want: "map<int, string>"},
 		{src: `{"a": [], "b": [1]}`, want: "map<string, list<int>>"},
 		{src: "[deny, approve]", assert: true, want: "list<decision>"},
@@ -356,6 +359,21 @@ func TestExpr(t *testing.T) {
 		{src: `{"a": 1, "b": "x"}`, msg: "expected int, found string", help: "every value of a map has the same type", span: "1:15-1:18"},
 		{src: `{"a": 1, 2: 3}`, msg: "expected string, found int", help: "every key of a map has the same type", span: "1:10-1:11"},
 		{src: `{["a"]: 1}`, msg: "list<string> can't be a map key", help: "map keys are scalars: bool, int, float, string, duration or timestamp", span: "1:2-1:7"},
+
+		// A map key is an expression: a bare word nothing declares gets the
+		// quoted string as its fix, and a close name as well when one exists.
+		{src: `{team: "payments"}`, msg: "unknown name `team`", help: "a map key is an expression, so `team` reads as a name; for the string key, write `\"team\"`", span: "1:2-1:6"},
+		{src: `service.labels has {team: "payments"}`, msg: "unknown name `team`", help: "a map key is an expression, so `team` reads as a name; for the string key, write `\"team\"`", span: "1:21-1:25"},
+		{src: `{"env": "prod", team: "payments"}`, msg: "unknown name `team`", help: "a map key is an expression, so `team` reads as a name; for the string key, write `\"team\"`", span: "1:17-1:21"},
+		{src: `{tier: "critical"}`, msg: "unknown name `tier`", help: "a map key is an expression, so `tier` reads as a name; for the string key, write `\"tier\"`, or did you mean `tiers`?", span: "1:2-1:6"},
+		{src: "{team: 1}", as: &types.Map{Key: types.String, Value: types.Int}, msg: "unknown name `team`", help: "a map key is an expression, so `team` reads as a name; for the string key, write `\"team\"`", span: "1:2-1:6"},
+		// Where the key type isn't string, quoting wouldn't compile either,
+		// so the plain name error stands; the same for a parenthesized key.
+		{src: `service.by_id has {team: "a"}`, msg: "unknown name `team`", help: "names come from the kind's inputs, host functions and decisions, and the document's params, lets and imports", span: "1:20-1:24"},
+		{src: `{1: "a", team: "b"}`, msg: "unknown name `team`", help: "names come from the kind's inputs, host functions and decisions, and the document's params, lets and imports", span: "1:10-1:14"},
+		{src: `{(team): "a"}`, msg: "unknown name `team`", help: "names come from the kind's inputs, host functions and decisions, and the document's params, lets and imports", span: "1:3-1:7"},
+		// A bare key that resolves is an ordinary expression.
+		{src: `{tiers: 1}`, msg: "list<string> can't be a map key", span: "1:2-1:7"},
 		{src: `{"a": [], "b": 1}`, msg: "expected int, found an empty list", span: "1:7-1:9"},
 		{src: `{"a": approve}`, assert: true, msg: "a decision can't be a map value", help: "a missing key would read as the zero value, and a decision has none; test decisions with `in outcome`, or collect them in a list like `[deny, approve]`", span: "1:7-1:14"},
 		{src: `{"a": [], "b": deny}`, assert: true, msg: "a decision can't be a map value", span: "1:16-1:20"},
