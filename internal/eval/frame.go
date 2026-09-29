@@ -22,9 +22,8 @@ type Frame struct {
 	// gets back, or the default when nothing fired. The policy evaluator
 	// sets it with Outcome.
 	Candidates []*Candidate
-	run        *run // the evaluation this frame belongs to, nil for a bare frame
-	file       string
-	doc        string // the instance's document name, for runtime errors
+	run        *run      // the evaluation this frame belongs to, nil for a bare frame
+	inst       *instance // the instance it evaluates, whose file and name runtime errors carry; nil for a bare frame
 	slots      []Value
 	lets       []Value // a let's value once evaluated, by let index
 	done       []bool  // whether lets[i] has been evaluated in this frame

@@ -104,8 +104,10 @@ func TestRecoverHostPanics(t *testing.T) {
 		value   string // the panic value as text; empty when nothing panics
 		runtime bool   // the panic value is a runtime.Error
 		assert  bool   // the panic is an assert's cause
+		live    bool   // evaluate under a context that can be done, rather than context.Background()
 	}{
 		{name: "not recovered", src: "when boom(1) { allow(ok) }", value: "kaboom"},
+		{name: "not recovered, under a context that can be done", src: "when boom(1) { allow(ok) }", value: "kaboom", live: true},
 		{name: "recovered", src: "when boom(1) { allow(ok) }", recover: true, value: "kaboom"},
 		{name: "recovered, collect all", src: "when boom(1) { allow(ok) }", recover: true, collect: true, value: "kaboom"},
 		{name: "recovered runtime error", src: "when boom(0) { allow(ok) }", recover: true, value: "runtime error: index out of range [0] with length 0", runtime: true},
@@ -127,7 +129,11 @@ func TestRecoverHostPanics(t *testing.T) {
 					}
 				}()
 			}
-			res, err := p.Eval(context.Background(), HaltInput{})
+			ctx := context.Background()
+			if tt.live {
+				ctx = t.Context()
+			}
+			res, err := p.Eval(ctx, HaltInput{})
 			if !tt.recover {
 				t.Fatalf("Eval() = %v, %v; want a panic", res, err)
 			}
