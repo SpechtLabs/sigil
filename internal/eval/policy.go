@@ -67,16 +67,19 @@ type Requirement struct {
 // run is the mutable state of one evaluation: the frames of every
 // instance reached, indexed by its compiled slot, what the phases
 // collected, and the context that can end it early.
+//
+// Every evaluation allocates a run, so it stays small: the outcome that
+// outcome asserts read lives in the frames, and a frame created late
+// copies it from the root frame rather than from a copy kept here.
 type run struct {
 	// ctx is the evaluation's context, or nil when it can never be done,
 	// like context.Background(), so a poll has nothing to do.
-	ctx     context.Context //nolint:containedctx // one evaluation's context, polled while it runs
-	frames  []*Frame
-	input   Value
-	outcome Value
-	top     []*Candidate // what `outcome.<decision>` reads
-	cands   []*Candidate
-	failed  []Failure
+	ctx    context.Context //nolint:containedctx // one evaluation's context, polled while it runs
+	root   *Frame          // the root instance's frame, the first one created
+	frames []*Frame
+	input  Value
+	cands  []*Candidate
+	failed []Failure
 }
 
 // Default returns the kind's default as a candidate without a position,
@@ -122,6 +125,11 @@ func (p *Policy) Eval(input any) (*Outcome, *diag.Error) {
 func (p *Policy) EvalContext(ctx context.Context, input any) (out *Outcome, err error) { //nolint:humaneerror // a *diag.Error or the context's own error, which callers tell apart
 	if p.static {
 		return nil, &diag.Error{File: p.File, Msg: "policy was compiled for explanation only and can't be evaluated"}
+	}
+	if ctx.Done() == nil {
+		// A context that can never be done, like context.Background(), is
+		// never polled, so nothing can raise a cancellation to recover.
+		return p.evaluate(ctx, input)
 	}
 	if done := ctx.Err(); done != nil {
 		return nil, done //nolint:errorwrap // returned as is, so errors.Is(err, context.Canceled) holds
@@ -187,9 +195,12 @@ func (r *run) frame(inst *instance) *Frame {
 		return f
 	}
 	f := newFrame(r.input, inst.scope)
-	f.run = r
-	f.file, f.doc = inst.file, inst.name
-	f.Outcome, f.Candidates = r.outcome, r.top
+	f.run, f.inst = r, inst
+	if r.root == nil {
+		r.root = f
+	} else {
+		f.Outcome, f.Candidates = r.root.Outcome, r.root.Candidates
+	}
 	r.frames[inst.index] = f
 	return f
 }
@@ -198,10 +209,20 @@ func (r *run) frame(inst *instance) *Frame {
 // *[diag.Error], so every catch passes it on: a cancellation never
 // becomes a runtime error, an assert's failure or a condition's memo,
 // and only [Policy.EvalContext] recovers it.
+//
+// Without a context to watch it's a nil check, which inlines into walk
+// and the host function call; the select and the panic stay in pollCtx.
 func (r *run) poll() {
-	if r.ctx == nil {
-		return
+	if r.ctx != nil {
+		r.pollCtx()
 	}
+}
+
+// pollCtx is poll's slow path, for an evaluation whose context can be
+// done.
+//
+//go:noinline
+func (r *run) pollCtx() {
 	select {
 	case <-r.ctx.Done():
 		panic(&canceled{err: r.ctx.Err()}) //nolint:nopanic // unwinds to EvalContext, which returns the context's error
@@ -210,9 +231,9 @@ func (r *run) poll() {
 }
 
 // setOutcome makes the outcome visible to every frame, for the outcome
-// asserts: the decision values and the candidates behind them.
+// asserts: the decision values and the candidates behind them. A frame
+// created later copies them from the root's.
 func (r *run) setOutcome(v Value, top []*Candidate) {
-	r.outcome, r.top = v, top
 	for _, f := range r.frames {
 		if f != nil {
 			f.Outcome, f.Candidates = v, top
@@ -345,7 +366,7 @@ func (p *Policy) walk(f *Frame, r *run, nodes []*node, ph phase) {
 func (p *Policy) enter(f *Frame, r *run, b *block, ph phase) {
 	held, err := f.cond(b)
 	if err != nil && err.File == "" {
-		err.File, err.Doc = f.file, f.doc
+		err.File, err.Doc = f.inst.file, f.inst.name
 	}
 	switch {
 	case err != nil && ph == phaseRules:

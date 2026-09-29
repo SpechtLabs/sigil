@@ -32,10 +32,6 @@ func ParseDuration(text string) (time.Duration, *diag.Error) {
 	if text == "" {
 		return 0, nil
 	}
-	outOfRange := &diag.Error{
-		Msg:  fmt.Sprintf("duration literal `%s` is out of range", text),
-		Help: "a duration is at most about 292 years",
-	}
 
 	var goText strings.Builder
 	lastRank := -1
@@ -77,7 +73,7 @@ func ParseDuration(text string) (time.Duration, *diag.Error) {
 		if unit == "d" {
 			n, err := strconv.ParseInt(digits, 10, 64)
 			if err != nil || n > math.MaxInt64/24 {
-				return 0, outOfRange
+				return 0, outOfRange(text)
 			}
 			digits, unit = strconv.FormatInt(n*24, 10), "h"
 		}
@@ -87,7 +83,7 @@ func ParseDuration(text string) (time.Duration, *diag.Error) {
 
 	d, err := time.ParseDuration(goText.String())
 	if err != nil {
-		return 0, outOfRange
+		return 0, outOfRange(text)
 	}
 	return d, nil
 }
@@ -138,4 +134,14 @@ func (l *Lexer) unit() bool {
 		return true
 	}
 	return false
+}
+
+// outOfRange is the error for a well-formed duration that doesn't fit in
+// a [time.Duration]. ParseDuration builds it only when it fails, since it
+// runs on every duration literal the lexer scans.
+func outOfRange(text string) *diag.Error {
+	return &diag.Error{
+		Msg:  fmt.Sprintf("duration literal `%s` is out of range", text),
+		Help: "a duration is at most about 292 years",
+	}
 }
