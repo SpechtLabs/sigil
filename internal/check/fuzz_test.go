@@ -62,7 +62,7 @@ func FuzzCheckExpr(f *testing.F) {
 			}
 			other := check.New("fuzz.sigil")
 			other.Expr(x, env())
-			if !reflect.DeepEqual(c.Info(), other.Info()) || !reflect.DeepEqual(c.Errors(), other.Errors()) {
+			if !reflect.DeepEqual(c.Info(), other.Info()) || !reflect.DeepEqual(c.Errors(), other.Errors()) { //nolint:govet // deepequalerrors: diagnostics compare field by field, and a check error has no Cause
 				t.Fatal("checking is not deterministic")
 			}
 		}

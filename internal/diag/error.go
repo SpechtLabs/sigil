@@ -40,6 +40,10 @@ func (s Severity) String() string {
 // can fill in what a stage didn't know: the parser, for one, sets File on
 // the lexer's errors.
 type Error struct {
+	// Cause is the Go error behind a runtime error: what a host function
+	// returned, or the panic it raised when the kind recovers them. Nil
+	// for everything the compiler and the evaluator report themselves.
+	Cause    error
 	File     string    // the file the positions refer to; empty when unknown
 	Doc      string    // the document the position is in, when the stage knows it
 	Msg      string    // what's wrong, one sentence without a trailing period
@@ -59,6 +63,10 @@ type Error struct {
 func (e *Error) Error() string {
 	return e.where() + e.Msg
 }
+
+// Unwrap returns the cause, so errors.Is sees a host function's error
+// through the runtime error it became.
+func (e *Error) Unwrap() error { return e.Cause } //nolint:humaneerror // returns the cause unchanged, as errors.Unwrap expects
 
 // where formats the location prefix of a message: `file:line:col (doc): `,
 // or as much of it as is known, or nothing.

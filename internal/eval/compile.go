@@ -6,6 +6,7 @@ import (
 	"math"
 	"reflect"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -287,19 +288,20 @@ func (c *compiler) ordering(x *ast.BinaryExpr) Expr {
 func (c *compiler) membership(x *ast.BinaryExpr) Expr {
 	l, r := c.expr(x.X), c.expr(x.Y)
 	want := x.Op == ast.OpIn
-	var test func(a, b Value) bool
+	var test func(f *Frame, a, b Value) bool
 	switch rt := c.typeOf(x.Y).(type) {
 	case *types.List:
 		elem := rt.Elem
-		test = func(a, b Value) bool { return contains(elem, b, a) }
+		test = func(f *Frame, a, b Value) bool { return contains(f, elem, b, a) }
 	default:
-		test = func(a, b Value) bool { return strings.Contains(norm(b).String(), norm(a).String()) }
+		test = func(_ *Frame, a, b Value) bool { return strings.Contains(norm(b).String(), norm(a).String()) }
 	}
-	return func(f *Frame) Value { return reflect.ValueOf(test(l(f), r(f)) == want) }
+	return func(f *Frame) Value { return reflect.ValueOf(test(f, l(f), r(f)) == want) }
 }
 
-// contains reports whether list holds an element equal to v.
-func contains(elem types.Type, list, v Value) bool {
+// contains reports whether list holds an element equal to v, counting
+// each element it compares as a step of f.
+func contains(f *Frame, elem types.Type, list, v Value) bool {
 	list = norm(list)
 	if !list.IsValid() {
 		return false
@@ -309,6 +311,7 @@ func contains(elem types.Type, list, v Value) bool {
 		same = decisionMatch
 	}
 	for i := 0; i < list.Len(); i++ {
+		f.step(1)
 		if same(list.Index(i), v) {
 			return true
 		}
@@ -331,44 +334,47 @@ func decisionMatch(a, b Value) bool {
 func (c *compiler) listOp(x *ast.BinaryExpr) Expr {
 	l, r := c.expr(x.X), c.expr(x.Y)
 	elem := c.typeOf(x.X).(*types.List).Elem
-	var test func(a, b Value) bool
+	var test func(f *Frame, a, b Value) bool
 	switch x.Op {
 	case ast.OpAllIn:
-		test = func(a, b Value) bool {
+		test = func(f *Frame, a, b Value) bool {
 			for i := 0; i < a.Len(); i++ {
-				if !contains(elem, b, a.Index(i)) {
+				if !contains(f, elem, b, a.Index(i)) {
 					return false
 				}
 			}
 			return true
 		}
 	case ast.OpAnyIn:
-		test = func(a, b Value) bool {
+		test = func(f *Frame, a, b Value) bool {
 			for i := 0; i < a.Len(); i++ {
-				if contains(elem, b, a.Index(i)) {
+				if contains(f, elem, b, a.Index(i)) {
 					return true
 				}
 			}
 			return false
 		}
 	case ast.OpOneIn:
-		test = func(a, b Value) bool { return distinctIn(elem, a, b) == 1 }
+		test = func(f *Frame, a, b Value) bool { return distinctIn(f, elem, a, b) == 1 }
 	default:
-		test = func(a, b Value) bool { return distinctIn(elem, a, b) <= 1 }
+		test = func(f *Frame, a, b Value) bool { return distinctIn(f, elem, a, b) <= 1 }
 	}
 	return func(f *Frame) Value {
 		a, b := norm(l(f)), norm(r(f))
 		if !a.IsValid() {
 			a = reflect.ValueOf([]any{})
 		}
-		return reflect.ValueOf(test(a, b))
+		return reflect.ValueOf(test(f, a, b))
 	}
 }
 
-// distinctIn counts the distinct elements of a that b contains.
-func distinctIn(elem types.Type, a, b Value) int {
+// distinctIn counts the distinct elements of a that b contains. It
+// compares each element with every one before it, and counts those
+// comparisons as steps of f too.
+func distinctIn(f *Frame, elem types.Type, a, b Value) int {
 	n := 0
 	for i := 0; i < a.Len(); i++ {
+		f.step(i + 1)
 		v := a.Index(i)
 		seen := false
 		for j := 0; j < i; j++ {
@@ -377,7 +383,7 @@ func distinctIn(elem types.Type, a, b Value) int {
 				break
 			}
 		}
-		if !seen && contains(elem, b, v) {
+		if !seen && contains(f, elem, b, v) {
 			n++
 		}
 	}
@@ -398,6 +404,7 @@ func (c *compiler) has(x *ast.BinaryExpr) Expr {
 		}
 		iter := b.MapRange()
 		for iter.Next() {
+			f.step(1)
 			av := mapGet(a, iter.Key())
 			if !av.IsValid() || !equal(m.Value, av, iter.Value()) {
 				return reflect.ValueOf(false)
@@ -709,8 +716,11 @@ func (c *compiler) indexer(x *ast.IndexExpr) func(*Frame, Value) Value {
 
 // call compiles a host function call. Arguments are converted to the Go
 // parameter types when a literal's representation differs; an error
-// result becomes a runtime error. A panic in the function isn't
-// recovered: it isn't a *diag.Error, so catch re-raises it to the host.
+// result becomes a runtime error caused by it, and the context is polled
+// once the function returns. A panic in the function becomes a runtime
+// error caused by a *HostPanic when the binding asks for that. Otherwise
+// it isn't recovered: it isn't a *diag.Error, so catch re-raises it to
+// the host.
 func (c *compiler) call(x *ast.CallExpr) Expr {
 	name := x.Fun.(*ast.Ident).Name
 	var fn reflect.Value
@@ -726,15 +736,24 @@ func (c *compiler) call(x *ast.CallExpr) Expr {
 	for i, a := range x.Args {
 		args[i] = c.expr(a)
 	}
+	invoke := fn.Call
+	if c.scope.binding.RecoverHostPanics {
+		invoke = func(in []Value) []Value { return callRecovered(fn, in, name, x) }
+	}
 	return func(f *Frame) Value {
 		in := make([]Value, len(args))
 		for i, a := range args {
 			in[i] = convert(a(f), ft.In(i))
 		}
-		out := fn.Call(in)
+		out := invoke(in)
+		if f.run != nil {
+			// A host function can take long, and nothing interrupts it:
+			// stop as soon as it returns once the context is done.
+			f.run.poll()
+		}
 		if len(out) == 2 && !out[1].IsNil() {
 			err, _ := reflect.TypeAssert[error](out[1])
-			e := &diag.Error{Msg: fmt.Sprintf("host function %s failed: %v", name, err), Pos: x.Pos(), End: x.End()}
+			e := &diag.Error{Msg: fmt.Sprintf("host function %s failed: %v", name, err), Pos: x.Pos(), End: x.End(), Cause: err}
 			if _, ok := errors.AsType[*gokind.ErrUnbound](err); ok {
 				e.Help = "this sigil binary has only " + name + "'s signature from the kind file; evaluate with the host's own binary, built with sigil's pkg/cli, which links the real function in"
 			}
@@ -742,6 +761,19 @@ func (c *compiler) call(x *ast.CallExpr) Expr {
 		}
 		return out[0]
 	}
+}
+
+// callRecovered calls a host function and turns a panic in it into a
+// runtime error at x. The message names the function and the panic
+// value; the stack goes into the *HostPanic cause, not the message.
+func callRecovered(fn Value, in []Value, name string, x ast.Node) []Value {
+	defer func() {
+		if r := recover(); r != nil {
+			p := &HostPanic{Func: name, Value: r, Stack: debug.Stack()}
+			panic(&diag.Error{Msg: p.Error(), Pos: x.Pos(), End: x.End(), Cause: p}) //nolint:nopanic // runtime errors unwind to Run, which returns them
+		}
+	}()
+	return fn.Call(in)
 }
 
 // quant compiles a quantifier: the variable gets a slot of its own, and
@@ -759,6 +791,7 @@ func (c *compiler) quant(x *ast.QuantExpr) Expr {
 			n = list.Len()
 		}
 		for i := 0; i < n; i++ {
+			f.step(1)
 			f.slots[slot] = list.Index(i)
 			if norm(body(f)).Bool() == isAny {
 				return reflect.ValueOf(isAny)
@@ -783,6 +816,7 @@ func (c *compiler) filter(x *ast.FilterExpr) Expr {
 		}
 		out := reflect.MakeSlice(list.Type(), 0, list.Len())
 		for i := 0; i < list.Len(); i++ {
+			f.step(1)
 			elem := list.Index(i)
 			f.slots[slot] = elem
 			if norm(body(f)).Bool() {

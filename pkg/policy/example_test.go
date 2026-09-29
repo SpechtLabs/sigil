@@ -673,3 +673,42 @@ when user in ["ada", "grace"] { allow(listed) }
 	// grace -> deny
 	// grace -> allow
 }
+
+// A worker that consumes a queue has nothing above it to recover a panic,
+// so its kind recovers host function panics: a bad input fails closed
+// with a *RuntimeError instead of killing the worker, and the stack stays
+// available for the log.
+func ExampleWithRecoverHostPanics() {
+	type Input struct {
+		Service string `policy:"service"`
+	}
+	owners := map[string]*struct{ Team string }{"payments-api": {Team: "payments"}}
+	grant := policy.NewDecision[policy.None]("grant", "owner")
+	k := policy.NewKind[Input]("Access",
+		policy.WithVersion(1),
+		policy.WithCollect(grant),
+		policy.WithFunc("owner", func(service string) string {
+			return owners[service].Team // panics on an unknown service
+		}),
+		policy.WithRecoverHostPanics(),
+	)
+	p, err := k.Compile(`policy access: Access@1
+when owner(service) == "payments" { grant(owner) }
+`, "access")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	for _, service := range []string{"payments-api", "search-api"} {
+		res, err := p.Eval(context.Background(), Input{Service: service})
+		if hp, ok := errors.AsType[*policy.HostPanicError](err); ok {
+			fmt.Println(service, "->", err, "| stack captured:", len(hp.Stack) > 0)
+			continue
+		}
+		fmt.Println(service, "->", len(res.Outcome), "grant")
+	}
+	// Output:
+	// payments-api -> 1 grant
+	// search-api -> 2:6 (access): host function owner panicked: runtime error: invalid memory address or nil pointer dereference | stack captured: true
+}

@@ -29,7 +29,7 @@ func FuzzParseFile(f *testing.F) {
 	f.Fuzz(func(t *testing.T, src []byte) {
 		a, errs := parser.ParseFile("fuzz.sigil", src)
 		b, again := parser.ParseFile("fuzz.sigil", src)
-		if !reflect.DeepEqual(a, b) || !reflect.DeepEqual(errs, again) {
+		if !reflect.DeepEqual(a, b) || !reflect.DeepEqual(errs, again) { //nolint:govet // deepequalerrors: diagnostics compare field by field, and a parse error has no Cause
 			t.Fatal("parsing is not deterministic")
 		}
 		// Partial trees and diagnostics are consumed by editors after errors.

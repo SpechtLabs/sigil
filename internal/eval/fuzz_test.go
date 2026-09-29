@@ -43,7 +43,7 @@ func FuzzEvalExpr(f *testing.F) {
 		in.Count = int(n)
 		v, first := eval.Run(prog, eval.NewFrame(&in, scope))
 		w, second := eval.Run(prog, eval.NewFrame(&in, scope))
-		if !reflect.DeepEqual(first, second) {
+		if !reflect.DeepEqual(first, second) { //nolint:govet // deepequalerrors: a runtime error compares field by field, its Cause included
 			t.Fatalf("runtime errors changed: %v != %v", first, second)
 		}
 		if first == nil && !reflect.DeepEqual(b.Canonical(typ, v), b.Canonical(typ, w)) {

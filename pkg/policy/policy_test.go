@@ -492,8 +492,9 @@ func with(fn func(*Input)) Input {
 	return in
 }
 
-// TestHostFunctionPanics checks that a panic in a host function isn't
-// recovered: it propagates out of Eval unchanged, for the host to handle.
+// TestHostFunctionPanics checks that a panic in a host function of a kind
+// without WithRecoverHostPanics isn't recovered: it propagates out of
+// Eval unchanged, for the host to handle.
 func TestHostFunctionPanics(t *testing.T) {
 	k := policy.NewKind[Input]("Panicky",
 		policy.WithVersion(1),

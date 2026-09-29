@@ -25,6 +25,9 @@ type Binding struct {
 	Payloads map[string]reflect.Type  // decision name to payload type
 	Funcs    map[string]reflect.Value // function name to implementation
 	Fields   map[string][]int         // field path, as above, to the Go field index path
+	// RecoverHostPanics makes a panic in a host function a runtime error,
+	// as [Options.RecoverHostPanics] asks.
+	RecoverHostPanics bool
 }
 
 // TypeOf returns the Sigil type a Go type maps to under the binding,

@@ -1,6 +1,9 @@
 package policy
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // CompileError is what [Kind.Compile] and [Kind.Load] return when the
 // bundle doesn't compile: every diagnostic found, in source order, each
@@ -30,21 +33,45 @@ type Diagnostic struct {
 
 // RuntimeError is what [Policy.Eval] returns when a policy can't be
 // evaluated against an input: a list index out of range, integer overflow,
-// or a host function that returned an error. The result that comes with it
-// holds the kind's default.
+// or a host function that returned an error, or panicked under
+// [WithRecoverHostPanics]. The result that comes with it holds the kind's
+// default.
+//
+// When a host function failed, Err holds what it returned, or a
+// [*HostPanicError] when it panicked, and [errors.Is] and [errors.As]
+// see through the RuntimeError to it:
+//
+//	if errors.Is(err, ErrRegistryDown) {
+//		// the host function's own error, raised inside the policy
+//	}
 type RuntimeError struct {
+	Err      error    // the host function's error or [*HostPanicError]; nil for an error in the policy itself
 	Message  string   // what failed, such as "index 3 out of range for a list of 2"
+	Help     string   // what to do about it, when the evaluator knows; empty otherwise
 	Policy   string   // the policy being evaluated
 	Position Position // the expression that failed
+}
+
+// HostPanicError is the Err of a [RuntimeError] when a host function
+// panicked and the kind sets [WithRecoverHostPanics]. The RuntimeError's
+// message names the function and the panic value; the stack is only
+// here, for the host to log, since it's long and says nothing about the
+// policy.
+type HostPanicError struct {
+	Value any    //nolint:emptyinterface // what the function passed to panic
+	Func  string // the host function's name in the kind
+	Stack []byte // the panicking goroutine's stack, as [runtime/debug.Stack] formats it
 }
 
 // ConflictError is what [Policy.Eval] returns when resolution can't stand:
 // two members of a [WithExclusive] set fired, or a `collect one` kind has
 // several candidates at its top rank, such as two reasons of a decision
 // without a [WithReasonPrecedence], or one reason with different payloads.
-// It names the candidates on each side, and the result that comes with it
-// holds the kind's default. A conflict is a defect in the policy rather
-// than in the input; count it apart from assert failures.
+// It names only the candidates that conflict: the top-rank tie, or the
+// members of the exclusive set that fired; the result's trace has every
+// candidate. The result that comes with it holds the kind's default. A
+// conflict is a defect in the policy rather than in the input; count it
+// apart from assert failures.
 type ConflictError struct {
 	Message    string      // what conflicts
 	Policy     string      // the policy being evaluated
@@ -55,12 +82,34 @@ type ConflictError struct {
 // was false. Asserts run in two phases: input asserts, which read only the
 // inputs, run before any rule, and outcome asserts, which read `outcome`,
 // run once the outcome exists. Every failing assert of the phase that
-// stopped the evaluation is listed, sorted by position. The result that
-// comes with it holds the kind's default for a kind with precedence and
-// an empty outcome for a collecting kind.
+// stopped the evaluation is listed, sorted by position, and Phase says
+// which phase that was. The result that comes with it holds the kind's
+// default for a kind with precedence and an empty outcome for a
+// collecting kind.
+//
+// The phase says whose fault the failure is: a failed input assert
+// rejects the input, and a failed outcome assert means the policy
+// produced an outcome it forbids, a defect in the policy. Read it from
+// Phase rather than from the trace, which is empty both when an input
+// assert failed and when an outcome assert failed with nothing fired.
 type AssertionError struct {
 	Failures []AssertFailure
+	Phase    AssertPhase // which asserts failed: [InputAsserts] or [OutcomeAsserts]
 }
+
+// AssertPhase is the phase whose asserts an [AssertionError] reports.
+type AssertPhase int
+
+// The assert phases, in the order an evaluation runs them. The zero
+// value is no phase, which no AssertionError from [Policy.Eval] has.
+const (
+	// InputAsserts are the asserts that read only the inputs, checked
+	// before any rule runs.
+	InputAsserts AssertPhase = iota + 1
+	// OutcomeAsserts are the asserts that read `outcome`, checked once
+	// the outcome exists.
+	OutcomeAsserts
+)
 
 // AssertFailure is one assert of an [AssertionError] that didn't hold, or
 // that couldn't be checked because its condition, or an enclosing one,
@@ -81,6 +130,22 @@ func (e *CompileError) Error() string { return e.rendered }
 // Error implements the error interface. It returns the position followed
 // by the message.
 func (e *RuntimeError) Error() string { return e.Position.String() + ": " + e.Message }
+
+// Unwrap returns Err, the host function's error or panic.
+func (e *RuntimeError) Unwrap() error { return e.Err }
+
+// Error implements the error interface. It names the function and the
+// panic value, without the stack.
+func (e *HostPanicError) Error() string {
+	return fmt.Sprintf("host function %s panicked: %v", e.Func, e.Value)
+}
+
+// Unwrap returns the panic value when it's an error, such as the
+// [runtime.Error] of a nil dereference, so [errors.As] reaches it.
+func (e *HostPanicError) Unwrap() error {
+	err, _ := e.Value.(error)
+	return err
+}
 
 // Error implements the error interface. It returns the message followed
 // by one line per candidate, as [Candidate.String] renders it.
@@ -113,6 +178,18 @@ func (e *AssertionError) Error() string {
 		}
 	}
 	return b.String()
+}
+
+// String returns "input" or "outcome", a label for metrics and logs, or
+// "none" for the zero value.
+func (p AssertPhase) String() string {
+	switch p {
+	case InputAsserts:
+		return "input"
+	case OutcomeAsserts:
+		return "outcome"
+	}
+	return "none"
 }
 
 // Location renders the failure's call chain and position, as

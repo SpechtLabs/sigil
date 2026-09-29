@@ -76,6 +76,7 @@ var Deploy = policy.NewKind[Input]("DeployApproval",
 | `policy.WithExclusive(outcomes...)` | `exclusive grant_a, grant_b` | Outcomes that can't fire together. An outcome is a decision handle, or `GrantA.Reason("x")` for one reason |
 | `policy.WithDefault(d, reason)` | `default deny(no_rule_matched)` | Result when no rule fires; payload fields take their defaults, so every field of `d` needs one. Required for `collect one` |
 | `policy.WithFunc(name, fn)` | `fn split(string, string) -> list<string>` | One call per function. The Sigil signature is derived from the Go function's type, which returns `T` or `(T, error)`. Host functions must be pure, must terminate and must not panic; see [Evaluating](#evaluating) |
+| `policy.WithRecoverHostPanics()` | none; it's host behavior, not contract | A panic in a host function becomes a `*RuntimeError` instead of unwinding out of `Eval`. Off by default; see [Evaluating](#evaluating) |
 
 ::: warning Planned
 [Host-ordered types](/reference/types/#host-ordered-types), `type Version ordered` in a kind file and `policy.WithOrdered[T](name)` in Go, don't exist yet.
@@ -230,16 +231,36 @@ if err != nil {
 
 | Error | When | Fields |
 | --- | --- | --- |
-| `*policy.RuntimeError` | An index out of range, integer overflow, or a host function that returned an error | `Message`, `Policy` (the root), `Position` (the expression that failed) |
-| `*policy.ConflictError` | A [conflict](/reference/evaluation/#resolution): two members of an `exclusive` set fired, or a `collect one` kind has several candidates at its top rank | `Message`, `Policy`, `Candidates` (the candidates on each side) |
-| `*policy.AssertionError` | An [assert](/reference/evaluation/#assertions) failed | `Failures`, one `AssertFailure` per failing assert |
-| The context's error | `ctx` was already done; nothing is evaluated | `errors.Is(err, context.Canceled)` holds |
+| `*policy.RuntimeError` | An index out of range, integer overflow, or a host function that returned an error, or panicked under `WithRecoverHostPanics` | `Message`, `Help`, `Policy` (the root), `Position` (the expression that failed), `Err` (the host function's error, or a `*HostPanicError`) |
+| `*policy.ConflictError` | A [conflict](/reference/evaluation/#resolution): two members of an `exclusive` set fired, or a `collect one` kind has several candidates at its top rank | `Message`, `Policy`, `Candidates` (only those that conflict: the top-rank tie or the exclusive set's members; the trace has every candidate) |
+| `*policy.AssertionError` | An [assert](/reference/evaluation/#assertions) failed | `Failures`, one `AssertFailure` per failing assert; `Phase`, `policy.InputAsserts` or `policy.OutcomeAsserts` |
+| The context's error | `ctx` was done before or during the evaluation | Unwrapped: `errors.Is(err, context.DeadlineExceeded)` holds for a deadline |
 
-Host functions must terminate and must not panic. `Eval` can't interrupt a function that never returns, and the context isn't checked once evaluation has started. A panic in a host function isn't recovered either: it propagates out of `Eval` and crashes the calling goroutine unless the host recovers it. Report a failure by returning an error, which becomes a `*RuntimeError` with the kind's default in the result.
+`Eval` checks the context before it starts, before every rule and assert, after every host function call, and every few hundred elements a loop goes through, so a deadline cuts off nested quantifiers over a large input. The result is then the kind's default with an empty trace, however far the evaluation got; see [Failed evaluations](/reference/evaluation/#failed-evaluations). Counting loop steps costs about 2.5% in the tightest loop, a quantifier comparing two ints, and nothing measurable on the [evaluation benchmarks](/reference/performance/). Under `context.Background()`, which is never done, nothing is polled.
+
+A `*RuntimeError` keeps its cause: `Err` holds what the host function returned, and `RuntimeError` unwraps to it, so `errors.Is` and `errors.As` find the host's own error through the policy:
+
+```go
+res, err := p.Eval(ctx, input)
+if errors.Is(err, registry.ErrUnavailable) {
+	// a host function couldn't reach the registry; res holds the default
+}
+```
+
+Host functions must terminate and must not panic. `Eval` can't interrupt a function that never returns, but it stops as soon as one returns after the context is done. Report a failure by returning an error, which becomes a `*RuntimeError` with the kind's default in the result.
+
+By default a panic in a host function isn't recovered: it propagates out of `Eval` and crashes the calling goroutine unless something above recovers it. That's the usual Go answer to a bug, and under `net/http` it's what already happens: the server recovers a handler's panic and logs it with the stack. A queue consumer or a reconcile loop has nothing above it, so one bad input would kill the worker. For those, declare the kind with `policy.WithRecoverHostPanics()`: a panic then becomes a `*RuntimeError` whose message names the function and the panic value, the policy fails closed with the kind's default, and `Err` is a `*policy.HostPanicError` carrying the `Value` and the `Stack` for the host to log. The stack stays out of the message.
+
+```go
+var hp *policy.HostPanicError
+if errors.As(err, &hp) {
+	log.Error("host function panicked", "func", hp.Func, "panic", hp.Value, "stack", string(hp.Stack))
+}
+```
 
 A conflict error reads like the trace: which rules, at which positions, claimed what. Count conflicts as policy defects, apart from runtime errors and assert failures.
 
-An `AssertionError` lists every assert that failed in the phase that stopped evaluation, input or outcome, sorted by position, including asserts whose own condition raised a runtime error. Tell it apart from a runtime error with `errors.As`, and count it separately:
+An `AssertionError` lists every assert that failed in the phase that stopped evaluation, input or outcome, sorted by position, including asserts whose own condition raised a runtime error. `Phase` says which phase that was, and with it whose fault the failure is: `policy.InputAsserts` rejects the caller's input, and `policy.OutcomeAsserts` means the policy produced an outcome it forbids, a defect in the policy. Read the phase from `Phase`, not from the trace: the trace is empty after a failed input assert, and also after a failed outcome assert when no rule fired. `Phase.String()` returns `input` or `outcome`, for a metric label. Tell an `AssertionError` apart from a runtime error with `errors.As`, and count it separately:
 
 ```go
 res, err := p.Eval(ctx, input)
@@ -247,8 +268,8 @@ var ae *policy.AssertionError
 switch {
 case errors.As(err, &ae):
 	for _, f := range ae.Failures { // every failing assert, sorted by position
-		assertFailures.WithLabelValues(f.Reason).Inc()
-		log.Error("policy assertion failed", "reason", f.Reason, "at", f.Location())
+		assertFailures.WithLabelValues(ae.Phase.String(), f.Reason).Inc()
+		log.Error("policy assertion failed", "phase", ae.Phase, "reason", f.Reason, "at", f.Location())
 	}
 case err != nil:
 	log.Error("policy evaluation failed", "err", err)
@@ -448,7 +469,7 @@ Every exported identifier of package `policy`, for reference:
 | --- | --- |
 | `NewKind[In](name, opts...) *Kind[In]` | Builds a kind from the input struct `In`; panics on an invalid kind |
 | `Kind[In].Name`, `.Schema`, `.Load`, `.Compile`, `.Contract` | The kind's name, its kind file, loading and compiling policies, and the tooling hook |
-| `Option`, `WithVersion`, `WithAccepts`, `WithDecisions`, `WithCollect`, `WithPrecedence`, `WithReasonPrecedence`, `WithExclusive`, `WithDefault`, `WithFunc` | Options for `NewKind` |
+| `Option`, `WithVersion`, `WithAccepts`, `WithDecisions`, `WithCollect`, `WithPrecedence`, `WithReasonPrecedence`, `WithExclusive`, `WithDefault`, `WithFunc`, `WithRecoverHostPanics` | Options for `NewKind` |
 | `NewDecision[T](name, reasons...) Decision[T]` | Declares a decision with payload struct `T` |
 | `Decision[T].Name`, `.Reasons`, `.Reason`, `.Match`, `.MatchAll` | The decision's name and reasons, one reason as an `Outcome` for `WithExclusive`, and typed matching |
 | `DecisionRef`, `OutcomeRef`, `Outcome` | Any `Decision[T]`; a decision or one of its reasons; one reason |
@@ -460,4 +481,5 @@ Every exported identifier of package `policy`, for reference:
 | `Result`, `Entry`, `Trace`, `Candidate`, `Condition` | What an evaluation produced and why |
 | `Position` | A place in a bundle, with `IsValid` and `String` |
 | `CompileError`, `Diagnostic` | A failed compile and its diagnostics: `Message`, `Help`, `Position`, `End` |
-| `RuntimeError`, `ConflictError`, `AssertionError`, `AssertFailure` | A failed evaluation |
+| `RuntimeError`, `ConflictError`, `AssertionError`, `AssertFailure`, `HostPanicError` | A failed evaluation, and the cause of a runtime error a recovered host panic became |
+| `AssertPhase`, `InputAsserts`, `OutcomeAsserts` | Which asserts an `AssertionError` reports |

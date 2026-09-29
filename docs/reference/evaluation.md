@@ -219,9 +219,9 @@ Static typing removes most failure modes. What's left:
 
 A missing map key isn't an error; it yields the zero value. An absent optional isn't an error either, because the compiler already forced a `??`.
 
-A host function reports a failure by returning an error. A panic isn't a runtime error: Sigil doesn't recover it, so it propagates out of `Eval` and crashes the goroutine that called it unless the host recovers it. Making sure host functions don't panic is the host's job.
+A host function reports a failure by returning an error. By default a panic isn't a runtime error: Sigil doesn't recover it, so it propagates out of `Eval` and crashes the goroutine that called it unless the host recovers it. A kind declared with [`policy.WithRecoverHostPanics()`](/reference/go-api/#evaluating) turns the panic into a runtime error instead, which names the function and the panic value and fails closed like any other. Either way, making sure host functions don't panic is the host's job.
 
-A runtime error in a rule, whether in a `when` condition, a payload or a let either of them reads, aborts the evaluation. `Eval` returns a `*RuntimeError`, with the message, the root `Policy` and the `Position` of the failing expression, together with a result holding the kind's default decision, so a host that fails closed can use the result directly. For a collecting kind the result's outcome is empty, even if the kind declares a default, because a default grant on an error would fail open. The result's trace is empty.
+A runtime error in a rule, whether in a `when` condition, a payload or a let either of them reads, aborts the evaluation. `Eval` returns a `*RuntimeError`, with the message, the root `Policy` and the `Position` of the failing expression, and the host function's own error in `Err` when one failed, together with a result holding the kind's default decision, so a host that fails closed can use the result directly. For a collecting kind the result's outcome is empty, even if the kind declares a default, because a default grant on an error would fail open. The result's trace is empty.
 
 A runtime error in a rule ends the evaluation after the input asserts have passed, so it never hides a failing input assert, and outcome asserts don't run because there's no outcome. A runtime error inside an assert is reported as that assert's failure; see [Assertions](#assertions). Since every block is evaluated, the outcome doesn't depend on block order: an input that triggers a runtime error always does.
 
@@ -237,9 +237,11 @@ Every way an evaluation can fail returns an error together with a result the hos
 | A runtime error in the rules         | `*RuntimeError`   | the kind's default     | empty                  | empty            |
 | Resolution                           | `*ConflictError`  | the kind's default     | empty                  | every candidate  |
 | An outcome assert                    | `*AssertionError` | the kind's default     | empty                  | every candidate  |
-| The context was already done         | `ctx.Err()`       | the kind's default     | empty                  | empty            |
+| The context was done                 | `ctx.Err()`       | the kind's default     | empty                  | empty            |
 
-`Eval` checks the context once, before it starts; a running evaluation isn't interrupted. See [Evaluating](/reference/go-api/#evaluating) in the Go API for the error types.
+The two assert rows return the same error type, and an outcome assert that fails when no rule fired leaves the trace as empty as a failed input assert does. The error's `Phase` field, `InputAsserts` or `OutcomeAsserts`, tells them apart: the first rejects the input, the second is a defect in the policy.
+
+`Eval` checks the context before it starts, before every rule and assert, after every host function call, and every few hundred elements that a quantifier, filter, membership test, list operator or `has` goes through. Once the context is done, the evaluation stops at the next check and returns the context's error, unwrapped, so `errors.Is(err, context.DeadlineExceeded)` holds. The trace is empty even when rules had fired before the check, so the result doesn't depend on how far the evaluation got. A cancellation is never an assert's failure: it stops an assert phase the same way. See [Evaluating](/reference/go-api/#evaluating) in the Go API for the error types.
 
 ## Halting and cost
 
@@ -247,13 +249,15 @@ The language terminates when its host functions terminate:
 
 - There are no loops. Quantifiers and filters iterate over finite input lists.
 - There's no recursion. `let` bindings, imports and policy invocations must each form a DAG, and cycles are compile errors.
-- There are no user-defined functions. Host functions are declared in the kind and must be pure, terminate and not panic. Sigil can't stop a host function that never returns, and doesn't recover one that panics.
+- There are no user-defined functions. Host functions are declared in the kind and must be pure, terminate and not panic. Sigil can't stop a host function that never returns, and recovers one that panics only when the kind asks for it.
 - `matches` uses Go's RE2 engine, which runs in linear time.
 
 Termination doesn't mean evaluation is cheap. Nested quantifiers multiply collection sizes: two nested quantifiers over lists of size `n` can take `n²` comparisons. List membership operators also compare elements across collections, and repeated policy invocations add work.
 
+A deadline on the context passed to `Eval` bounds the time at run time: the loops check the context as they go, so an input that makes nested quantifiers slow ends with `context.DeadlineExceeded` and the kind's default instead of holding the caller. That limits how long one evaluation takes, not the work an input asks for: a slow input still uses the CPU until the deadline.
+
 ::: warning Planned
-Static cost analysis doesn't exist yet. The compiler doesn't compute or enforce a budget and `sigil check` doesn't report one, so hosts must bound their inputs and the work their host functions do. How the budget is expressed, where the maximum collection size gets declared, and what a host function costs are all open. See [Halting by construction](/understanding/halting/) for the reasoning and [Open questions](/project/open-questions/) for what's undecided.
+Static cost analysis doesn't exist yet. The compiler doesn't compute or enforce a budget and `sigil check` doesn't report one, so hosts must bound their inputs and the work their host functions do, and should evaluate under a deadline. How the budget is expressed, where the maximum collection size gets declared, and what a host function costs are all open. See [Halting by construction](/understanding/halting/) for the reasoning and [Open questions](/project/open-questions/) for what's undecided.
 :::
 
 ## Concurrency

@@ -1,6 +1,7 @@
 package diag_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/spechtlabs/sigil/internal/diag"
@@ -25,6 +26,28 @@ func TestErrorString(t *testing.T) {
 		t.Run(tt.want, func(t *testing.T) {
 			if got := tt.err.Error(); got != tt.want {
 				t.Errorf("Error() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestErrorUnwrap(t *testing.T) {
+	cause := errors.New("registry unreachable")
+	tests := []struct {
+		name string
+		err  *diag.Error
+		want error
+	}{
+		{"compiler error", &diag.Error{Msg: "unknown name `team`"}, nil},
+		{"host function error", &diag.Error{Msg: "host function owner failed: registry unreachable", Cause: cause}, cause},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.err.Unwrap(); got != tt.want { //nolint:errorlint // the cause itself, not a match
+				t.Errorf("Unwrap() = %v, want %v", got, tt.want)
+			}
+			if tt.want != nil && !errors.Is(tt.err, tt.want) {
+				t.Errorf("errors.Is(%v, cause) = false", tt.err)
 			}
 		})
 	}

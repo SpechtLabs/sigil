@@ -29,7 +29,7 @@ func FuzzBundle(f *testing.F) {
 			t.Fatal("compiling twice changed diagnostics")
 		}
 		a := lint.Run(b, lint.Options{Kind: k})
-		if !reflect.DeepEqual(a, lint.Run(b, lint.Options{Kind: k})) {
+		if !reflect.DeepEqual(a, lint.Run(b, lint.Options{Kind: k})) { //nolint:govet // deepequalerrors: diagnostics compare field by field, and a lint finding has no Cause
 			t.Fatal("linting is not deterministic")
 		}
 		loaded := bundle.New(k)

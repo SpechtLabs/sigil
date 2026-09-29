@@ -135,15 +135,21 @@
 // of:
 //
 //   - [*RuntimeError]: a list index out of range, integer overflow, or a
-//     host function that returned an error.
+//     host function that returned an error, which [errors.Is] finds
+//     through it.
 //   - [*ConflictError]: two members of an exclusive set fired, or a
 //     `collect one` kind has several candidates at its top rank. This is a
 //     defect in the policy rather than in the input.
 //   - [*AssertionError]: one or more of the policy's asserts didn't hold.
-//   - The context's error, when ctx was done before evaluation started.
+//     Its Phase says whether they were input asserts, which reject the
+//     input, or outcome asserts, which reject the policy's own outcome.
+//   - The context's error, when ctx was done before or during the
+//     evaluation. Eval checks it while it runs, so a deadline bounds the
+//     time a large input can take.
 //
 // Use [errors.As] to tell them apart. Host functions must be pure, must
-// terminate and must not panic: Eval neither interrupts nor recovers them.
+// terminate and must not panic: Eval can't interrupt one, and a panic
+// propagates to the caller unless the kind sets [WithRecoverHostPanics].
 //
 // # Reloading at run time
 //

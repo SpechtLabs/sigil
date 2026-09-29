@@ -14,6 +14,8 @@
 package result
 
 import (
+	"context"
+	"errors"
 	"strconv"
 	"strings"
 
@@ -62,11 +64,18 @@ type Condition struct {
 type Failure struct {
 	Runtime  *Runtime  // a rule raised a runtime error
 	Conflict *Conflict // resolution failed
+	Canceled error     // the context was done before or during the evaluation; ctx.Err()
 	Asserts  []Assert  // the failing asserts of the phase that stopped the evaluation
+	// OutcomeAsserts says which phase Asserts come from: the outcome
+	// asserts, checked once the outcome exists, or when false the input
+	// asserts, checked before any rule. It qualifies Asserts and isn't one
+	// of the fields of which exactly one is set.
+	OutcomeAsserts bool
 }
 
 // Runtime is a runtime error.
 type Runtime struct {
+	Cause    error // the host function's error, or the *eval.HostPanic it raised; nil for an error in the language
 	Msg      string
 	Help     string // what to do about it, when the error knows better than the generic advice
 	Position Position
@@ -100,14 +109,29 @@ type Position struct {
 // struct or a pointer to one, and never returns nil. When the evaluation
 // fails, Failure says why and the outcome is the fallback: the kind's
 // default, or empty for a collecting kind. The trace then holds every
-// candidate the rules produced, which is none after failed input asserts
-// or a runtime error. It's safe for concurrent use, as prog is.
+// candidate the rules produced, which is none after failed input asserts,
+// a runtime error or a cancellation. It's safe for concurrent use, as
+// prog is.
 func Evaluate(prog *eval.Policy, input any) *Result { //nolint:emptyinterface // the input struct, whatever its Go type
+	return EvaluateContext(context.Background(), prog, input)
+}
+
+// EvaluateContext is [Evaluate] under a context, which
+// [eval.Policy.EvalContext] polls while it runs. When ctx is done before
+// or during the evaluation, Failure.Canceled holds ctx.Err() and the
+// result is the fallback with an empty trace: nothing the rules
+// produced before the cancellation is kept, so the result doesn't depend
+// on when it came.
+func EvaluateContext(ctx context.Context, prog *eval.Policy, input any) *Result { //nolint:emptyinterface // the input struct, whatever its Go type
 	b := builder{prog: prog}
-	out, rerr := prog.Eval(input)
-	if rerr != nil {
-		res := b.Fallback(nil)
-		res.Failure = &Failure{Runtime: b.runtime(rerr, prog.Name)}
+	out, err := prog.EvalContext(ctx, input)
+	if err != nil {
+		res := b.fallback(nil)
+		if rerr, ok := errors.AsType[*diag.Error](err); ok {
+			res.Failure = &Failure{Runtime: b.runtime(rerr, prog.Name)}
+		} else {
+			res.Failure = &Failure{Canceled: err}
+		}
 		return res
 	}
 	res := b.result(out)
@@ -116,14 +140,16 @@ func Evaluate(prog *eval.Policy, input any) *Result { //nolint:emptyinterface //
 		for _, cand := range out.Conflict.Candidates {
 			c.Candidates = append(c.Candidates, b.candidate(cand, true))
 		}
-		failed := b.Fallback(res.Trace)
+		failed := b.fallback(res.Trace)
 		failed.Failure = &Failure{Conflict: c}
 		return failed
 	}
 	if len(out.Failed) == 0 {
 		return res
 	}
-	f := &Failure{Asserts: make([]Assert, 0, len(out.Failed))}
+	// Every failure comes from the phase that stopped the evaluation, so
+	// the first says which one it was.
+	f := &Failure{Asserts: make([]Assert, 0, len(out.Failed)), OutcomeAsserts: out.Failed[0].Assert.ReadsOutcome}
 	for _, fl := range out.Failed {
 		a := fl.Assert
 		af := Assert{Reason: a.Reason, Policy: a.Policy, Position: at(a.File, a.Policy, a.Pos), Chain: sites(a.Chain)}
@@ -138,16 +164,9 @@ func Evaluate(prog *eval.Policy, input any) *Result { //nolint:emptyinterface //
 		}
 		f.Asserts = append(f.Asserts, af)
 	}
-	failed := b.Fallback(res.Trace)
+	failed := b.fallback(res.Trace)
 	failed.Failure = f
 	return failed
-}
-
-// Fallback returns the result of an evaluation that failed or never ran,
-// such as one whose context was done: the kind's default, or an empty
-// outcome for a collecting kind, with the given trace and no Failure.
-func Fallback(prog *eval.Policy, trace []Candidate) *Result {
-	return builder{prog: prog}.Fallback(trace)
 }
 
 // IsValid reports whether p names a place in a source.
@@ -192,8 +211,10 @@ type builder struct {
 	prog *eval.Policy
 }
 
-// Fallback is the package-level Fallback.
-func (b builder) Fallback(trace []Candidate) *Result {
+// fallback is the result of an evaluation that failed: the kind's
+// default, or an empty outcome for a collecting kind, with the given
+// trace and no Failure yet.
+func (b builder) fallback(trace []Candidate) *Result {
 	res := b.empty()
 	res.Trace = trace
 	if def := b.prog.Default(); def != nil && !res.Collect {
@@ -259,7 +280,7 @@ func (b builder) runtime(err *diag.Error, fallback string) *Runtime {
 	if doc == "" {
 		doc = fallback
 	}
-	return &Runtime{Msg: err.Msg, Help: err.Help, Position: at(err.File, doc, err.Pos)}
+	return &Runtime{Cause: err.Cause, Msg: err.Msg, Help: err.Help, Position: at(err.File, doc, err.Pos)}
 }
 
 // sites converts a call chain.

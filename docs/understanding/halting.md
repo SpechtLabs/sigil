@@ -7,7 +7,7 @@ permalink: /understanding/halting/
 
 Sigil's language constructs terminate on finite inputs, provided host functions terminate too. The language has no unbounded loops or recursive policies. The compiler does not currently estimate execution cost or enforce a budget.
 
-A policy engine often runs on every request. Termination alone does not protect that request path from expensive policies. Hosts still need to bound input sizes and review host functions while cost analysis remains on the roadmap.
+A policy engine often runs on every request. Termination alone does not protect that request path from expensive policies. Hosts still need to bound input sizes and review host functions while cost analysis remains on the roadmap. At run time, a deadline on the context passed to `Eval` caps how long one evaluation takes: the quantifiers and list operators check it as they go.
 
 ## What's missing, on purpose
 
