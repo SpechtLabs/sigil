@@ -337,7 +337,7 @@ func answerUncounted(c *gin.Context, f failure, where ...zap.Field) bool {
 	switch {
 	case f.status == StatusClientClosedRequest:
 		ctx := c.Request.Context()
-		telemetry.FromContext(ctx).LogContext(ctx, f.logLevel(), "the client closed the request during the evaluation",
+		telemetry.Log(ctx, f.logLevel(), "the client closed the request during the evaluation",
 			f.logFields(where...)...)
 		c.Status(StatusClientClosedRequest)
 		return true

@@ -76,7 +76,7 @@ func (s *Server) grants(c *gin.Context) {
 		}
 		s.metrics.ObserveEvaluationError(telemetry.StageAccess, req.Team, f.kind)
 		ctx := c.Request.Context()
-		telemetry.FromContext(ctx).LogContext(ctx, f.logLevel(), "access evaluation failed, granting nothing",
+		telemetry.Log(ctx, f.logLevel(), "access evaluation failed, granting nothing",
 			f.logFields(where...)...)
 		resp.Error, resp.Asserts, resp.Conflict = NewErrorResponse(f.herr), f.asserts, f.conflict
 		c.JSON(f.status, resp)
