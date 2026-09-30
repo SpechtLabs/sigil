@@ -18,20 +18,20 @@ const (
 input user: string
 
 decision deny {
-  no_rule_matched
+  reason: no_rule_matched
 }
 
 collect one
 precedence deny
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 `
 	rolesKind = `kind Roles version 1
 
 input user: string
 
 decision read {
-  member
+  reason: member
 }
 
 collect all

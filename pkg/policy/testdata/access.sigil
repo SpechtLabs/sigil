@@ -3,16 +3,16 @@
 policy access.engineering: AccessGrant@1
 
 when "engineering" in actor.teams {
-  read(engineering_member)
+  read(reason: engineering_member)
 }
 
 when "platform" in actor.teams {
-  write(platform_member)
-  admin(platform_member, ttl: 1h)
+  write(reason: platform_member)
+  admin(reason: platform_member, ttl: 1h)
 }
 
 when "oncall" in actor.roles {
-  admin(oncall)
+  admin(reason: oncall)
 }
 
 assert("sod_read_admin", [read, admin] exclusive in outcome or "oncall" in actor.roles)

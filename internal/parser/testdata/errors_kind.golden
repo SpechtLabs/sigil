@@ -19,7 +19,7 @@ errors_kind.sigil:14:1: error: expected `{`, found `decision`
    |
 14 | decision nested(ticket: ??string) {
    | ^^^^^^^^
-   = help: a decision is written `decision name(field: type) { reason ... }`, with the payload fields optional
+   = help: a decision is written `decision name { reason: a | b  field: type = default }`, with the payload fields optional
 
 errors_kind.sigil:14:25: error: optional types don't nest
    |
@@ -43,7 +43,7 @@ errors_kind.sigil:22:9: error: expected a decision constructor, found `"no_rule_
    |
 22 | default "no_rule_matched"
    |         ^^^^^^^^^^^^^^^^^
-   = help: the default is written `default deny(no_rule_matched)`
+   = help: the default is written `default deny(reason: no_rule_matched)`
 
 errors_kind.sigil:24:19: error: expected a name after `>`, found `>`
    |

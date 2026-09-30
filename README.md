@@ -22,6 +22,8 @@ The example below gates production deployments: a platform team writes shared po
 ```sigil
 kind DeployApproval version 1
 
+enum Tier: critical | standard | internal
+
 type Release {
   soak: duration
   hotfix: bool
@@ -29,7 +31,7 @@ type Release {
 
 type Service {
   name: string
-  tier: string
+  tier: Tier
   owners: list<string>
   labels: map<string, string>
 }
@@ -49,18 +51,17 @@ input environment: string
 fn split(string, string) -> list<string>
 
 decision deny {
-  not_eligible
-  soak_too_short
-  no_rule_matched
+  reason: not_eligible | soak_too_short | no_rule_matched
 }
 
-decision review(approvers: list<string>) {
-  service_owner
+decision review {
+  reason: service_owner
+  approvers: list<string>
 }
 
-decision approve(bake: duration = 1h) {
-  release_manager
-  payments_sre
+decision approve {
+  reason: release_manager | payments_sre
+  bake: duration = 1h
 }
 
 collect one
@@ -68,7 +69,7 @@ precedence deny > review > approve
 precedence deny: not_eligible > soak_too_short > no_rule_matched
 precedence approve: release_manager > payments_sre
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 ```
 
 **A module** holds shared matchers. `let`s name conditions; a module has nothing else, so importing from it can never change a decision.
@@ -77,10 +78,8 @@ default deny(no_rule_matched)
 module deploy.common: DeployApproval@1
 
 pub let owns_service = actor.teams any in service.owners
-pub let cleared =
-  split(service.labels["regions"], ",") all in actor.regions
-pub let eligible =
-  "deployer" in actor.roles
+pub let cleared = split(service.labels["regions"], ",") all in actor.regions
+pub let eligible = "deployer" in actor.roles
   and environment == "production"
   and service.labels has {
     "app.kubernetes.io/managed-by": "argocd",
@@ -98,11 +97,11 @@ use deploy.common.{eligible}
 param min_soak: duration = 24h
 
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 
@@ -112,20 +111,22 @@ policy deploy.production: DeployApproval@1
 use deploy.common.{cleared, owns_service}
 
 param approvers: list<string>
-param tiers: list<string> = ["standard", "internal"]
+param tiers: list<Tier> = [standard, internal]
 
 when cleared {
-  when service.tier == "critical"
+  when service.tier == critical
     and "release_manager" in actor.roles {
-    approve(release_manager)
+    approve(reason: release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review(service_owner, approvers: approvers)
+    review(reason: service_owner, approvers: approvers)
   }
 }
 ```
+
+`critical`, `standard` and `internal` are values of the kind's `Tier` enum, written bare: `service.tier == critcal` is a compile error, not a rule that never matches.
 
 **A team policy** invokes the platform's policies like decision constructors, with its own values. Inside a `when`, an invocation's rules only apply where the condition holds, so PCI-scoped services get a second approver group. The team also adds a rule of its own.
 
@@ -147,7 +148,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
+  approve(reason: payments_sre, bake: 15m)
 }
 ```
 
@@ -158,8 +159,7 @@ Files are only containers. Imports resolve by the name in each document's header
 The host evaluates the compiled policy and gets a typed result back:
 
 ```go
-p, err := Deploy.Load(policies, "payments.production",
-	policy.Require("deploy.guardrails"))
+p, err := Deploy.Load(policies, "payments.production", policy.Require("deploy.guardrails"))
 if err != nil {
 	log.Fatal(err) // file:line:col plus a fix hint
 }
@@ -176,7 +176,7 @@ if r, ok := Review.Match(res); ok {
 
 - **Readable on first contact.** Terse is fine; Rego-style logic programming isn't.
 - **Finite and halting by design.** No loops, no recursion, no user-defined functions. Quantifiers and filters range over finite collections. Host functions must terminate; static cost budgets are still planned.
-- **Typed against the host's contract.** Unknown fields, type mismatches and wrong payload keys fail at compile time. A typo can't silently switch a deny rule off.
+- **Typed against the host's contract.** Unknown fields, misspelled enum values, type mismatches and wrong payload keys fail at compile time. A typo can't silently switch a deny rule off.
 - **Self-describing decisions.** A mandatory, literal reason on every decision, plus a typed payload the host acts on.
 - **Composable from day one.** Typed `param`s, `use` imports and policy invocation replace text templating for per-team variants, and `sigil explain` flattens any composition back into the rules it adds up to.
 - **Parse once, evaluate many.** A compiled policy is immutable and safe for concurrent use.

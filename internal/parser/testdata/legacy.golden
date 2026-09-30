@@ -1,0 +1,22 @@
+kind Legacy version 1 [4:1-18:27]
+  legacy decision deny { [6:1-9:2]
+    reason: not_eligible | soak_too_short
+  }
+  legacy decision review { [10:1-12:2]
+    reason: service_owner
+    approvers: list<string>
+  }
+  legacy decision approve { [13:1-16:35]
+    reason: release_manager | payments_sre
+    bake: duration = 1h
+    note: string = ""
+  }
+  default deny(not_eligible) [18:1-18:27]
+---
+policy legacy.demo: Legacy@1 [22:1-29:2]
+  when true { [24:1-29:2]
+    deny(soak_too_short) [25:3-25:23]
+    approve(release_manager, bake: 2h) [26:3-26:37]
+    review(service_owner, approvers: ["a"]) [27:3-27:42]
+    approve(reason: payments_sre) [28:3-28:32]
+  }

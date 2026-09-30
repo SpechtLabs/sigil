@@ -1,8 +1,14 @@
 policy team.old: DeployApproval@1
 
-// Written for version 1, before the kind added `input approvers`.
+// Written for version 1, before the kind added `input approvers`, the
+// enums Region and Zone, `fn split` and `decision escalate`.
 let approvers = ["a"]
+let eu = "eu-west-1"
+let us = "us-east-1"
+let split = ","
+let escalate = true
+let Zone = "z"
 
-when "a" in approvers {
-  approve(ok)
+when "a" in approvers and eu != us and split != "" and escalate and Zone != "" {
+  approve(reason: ok)
 }

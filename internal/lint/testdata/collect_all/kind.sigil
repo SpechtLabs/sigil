@@ -3,11 +3,11 @@ kind Roles version 1
 input user: string
 
 decision read {
-  member
+  reason: member
 }
 
 decision write {
-  owner
+  reason: owner
 }
 
 collect all

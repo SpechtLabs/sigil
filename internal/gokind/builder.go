@@ -18,6 +18,7 @@ type builder struct {
 	kind    *kind.Kind
 	binding *Binding
 	structs map[reflect.Type]*types.Struct // Go struct types already converted
+	reached map[*types.Enum]bool           // enums already added to the kind
 	errs    diag.ErrorList
 }
 
@@ -82,8 +83,13 @@ func (b *builder) noOptions(f tagged, where string) {
 }
 
 // convert maps a Go type to a Sigil type, registering struct types as it
-// meets them. path names the field for messages.
+// meets them. A registered enum type is its enum; any other named string
+// type is a string. path names the field for messages.
 func (b *builder) convert(t reflect.Type, path string) types.Type {
+	if e, ok := b.binding.Enums[t]; ok {
+		b.reach(e)
+		return e
+	}
 	if t == durationType {
 		return types.Duration
 	}

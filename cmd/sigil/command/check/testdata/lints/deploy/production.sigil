@@ -5,5 +5,5 @@ use deploy.common.{cleared, owns_service}
 param approvers: list<string>
 
 when cleared and owns_service {
-  review(service_owner, approvers: approvers)
+  review(reason: service_owner, approvers: approvers)
 }

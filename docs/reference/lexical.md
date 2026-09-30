@@ -27,7 +27,7 @@ let cleared = environment == "production" // so is this tail
 identifier = [A-Za-z_][A-Za-z0-9_]*
 ```
 
-- Identifiers name inputs, types, fields, params, lets, host functions, decisions, quantifier and filter variables and names bound by `use`.
+- Identifiers name inputs, types, enums and their values, fields, params, lets, host functions, decisions, reasons, quantifier and filter variables and names bound by `use`.
 - Case-sensitive: `Release` and `release` are different names.
 - ASCII only. No `-` or `.`.
 
@@ -55,21 +55,23 @@ policy_name = identifier ( "." identifier )*
 
 These words are reserved and can't be used as identifiers.
 
-| Group          | Keywords                                                                          |
-| -------------- | --------------------------------------------------------------------------------- |
-| Policy files   | `policy`, `module`, `use`, `as`, `param`, `let`, `pub`, `when`, `assert`          |
-| Kind files     | `kind`, `version`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default`, `conflict` |
-| Operators      | `and`, `or`, `xor`, `not`, `in`, `all`, `any`, `filter`, `one`, `exclusive`, `has`, `like`, `matches`, `present` |
-| Values         | `true`, `false`, `outcome`                                                        |
+| Group        | Keywords                                                                                                         |
+| ------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Policy files | `policy`, `module`, `use`, `as`, `param`, `let`, `pub`, `when`, `assert`                                         |
+| Kind files   | `kind`, `version`, `enum`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default`, `conflict`     |
+| Operators    | `and`, `or`, `xor`, `not`, `in`, `all`, `any`, `filter`, `one`, `exclusive`, `has`, `like`, `matches`, `present` |
+| Values       | `true`, `false`, `outcome`                                                                                       |
 
 Words that aren't keywords:
 
-| Word | Status |
-| --- | --- |
-| `bool`, `int`, `float`, `string`, `duration`, `timestamp`, `list`, `map` | Built-in type names. They only mean a type in type position, so `duration: duration` is a field named `duration` of type `duration`. A kind can't declare a struct type with one of these names |
-| Decision names, such as `deny` or `approve` | Each kind declares its own. They're identifiers in the policy's namespace like inputs and lets; see [Identifiers](/reference/policy-files/#identifiers) |
-| `ordered` | Not reserved |
-| `accepts` | Means something only after the `,` of a kind header, as in `kind DeployApproval version 3, accepts: 2`; a name everywhere else |
+| Word                                                                     | Status                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bool`, `int`, `float`, `string`, `duration`, `timestamp`, `list`, `map` | Built-in type names. They only mean a type in type position, so `duration: duration` is a field named `duration` of type `duration`. A kind can't declare a struct type or an enum with one of these names |
+| Decision names, such as `deny` or `approve`                              | Each kind declares its own. They're identifiers in the policy's namespace like inputs and lets; see [Identifiers](/reference/policy-files/#identifiers)                                                    |
+| Enum names and values, such as `Tier` and `critical`                     | Each kind declares its own, and they join the namespace the same way                                                                                                                                       |
+| `reason`                                                                 | Not reserved. It names the reason field in a `decision` body and the reason argument of a constructor                                                                                                      |
+| `ordered`                                                                | Not reserved                                                                                                                                                                                               |
+| `accepts`                                                                | Means something only after the `,` of a kind header, as in `kind DeployApproval version 3, accepts: 2`; a name everywhere else                                                                             |
 
 ::: warning Planned
 [Host-ordered types](/project/planned/#host-ordered-types) would use `ordered` in `type Version ordered`.
@@ -79,7 +81,7 @@ Words that aren't keywords:
 
 - Keywords are allowed as field and payload names: `service.type` is valid, because the token after `.` is always read as a name.
 - The same holds for field declarations in a `type` body, decision fields and named arguments.
-- Top-level names (inputs, params, lets, imported names, host functions, decisions, types), decision reasons, and quantifier and filter variables must be plain identifiers; see [Keywords as field names](/reference/grammar/#keywords-as-field-names).
+- Top-level names (inputs, params, lets, imported names, host functions, decisions, types, enums and enum values), decision reasons, and quantifier and filter variables must be plain identifiers; see [Keywords as field names](/reference/grammar/#keywords-as-field-names).
 
 ## Literals
 
@@ -116,11 +118,23 @@ Other numeric notations are lexical errors. Each error names the notation and wr
 | `_` digit separator | `1_000` | `1000` |
 
 ```text
-20:21 (r): error: `0x10` is hex notation, which Sigil doesn't have
-   |
-20 | when release.soak < 0x10 or 1e3 > 1_000 {
-   |                     ^^^^
-   = help: write the decimal integer `16`
+deploy/fresh.sigil:3:21: error: `0x10` is hex notation, which Sigil doesn't have
+  |
+3 | when release.soak < 0x10 or 1e3 > 1_000 {
+  |                     ^^^^
+  = help: write the decimal integer `16`
+
+deploy/fresh.sigil:3:29: error: `1e3` uses exponent notation, which Sigil doesn't have
+  |
+3 | when release.soak < 0x10 or 1e3 > 1_000 {
+  |                             ^^^
+  = help: write the decimal integer `1000`
+
+deploy/fresh.sigil:3:35: error: `1_000` uses `_` as a digit separator, which Sigil doesn't have
+  |
+3 | when release.soak < 0x10 or 1e3 > 1_000 {
+  |                                   ^^^^^
+  = help: write the digits without it: `1000`
 ```
 
 ### Strings
@@ -181,7 +195,8 @@ When Sigil prints a duration value, as a param's value in `sigil explain`, a pay
 ### Lists
 
 ```sigil
-["standard", "internal"]
+["eu", "us"]
+[standard, internal]   // enum values
 []
 ```
 
@@ -196,50 +211,52 @@ Every element must have the same type. See [Types](/reference/types/#collections
 
 - Keys and values are expressions.
 - Every key shares one type, and every value shares one type.
-- A key must be a scalar: `bool`, `int`, `float`, `string`, `duration` or `timestamp`.
+- A key must be a scalar, `bool`, `int`, `float`, `string`, `duration` or `timestamp`, or an enum value.
 - A key is parsed at the precedence of `??`, so a comparison used as a key needs parentheses.
 
 ### Trailing commas
 
 A trailing comma is allowed in every comma-separated list:
 
-| Where | Example |
-| --- | --- |
-| List and map literals | `["a", "b",]` |
-| Host function call arguments | `f(a, b,)` |
-| Decision constructors | `review(service_owner, approvers: approvers,)` |
-| Policy invocation arguments | `production(approvers: approvers,)` |
-| `assert` | `assert("no_root", ok,)` |
-| Selective imports | `use deploy.common.{cleared, owns_service,}` |
-| `fn` parameters (kind files) | `fn f(string, int,) -> bool` |
-| Decision payload fields (kind files) | `decision review(approvers: list<string>,) { ... }` |
+| Where                        | Example                                                |
+| ---------------------------- | ------------------------------------------------------ |
+| List and map literals        | `["a", "b",]`                                          |
+| Host function call arguments | `f(a, b,)`                                             |
+| Decision constructors        | `review(reason: service_owner, approvers: approvers,)` |
+| Policy invocation arguments  | `production(approvers: approvers,)`                    |
+| `assert`                     | `assert("no_root", ok,)`                               |
+| Selective imports            | `use deploy.common.{cleared, owns_service,}`           |
+| `fn` parameters (kind files) | `fn f(string, int,) -> bool`                           |
 
 ```sigil
 production(
   approvers: ["payments-leads", "security-leads"],
-  tiers: ["standard"],
+  tiers: [standard],
 )
 ```
 
+Struct and decision bodies in a kind file separate their fields with whitespace, and enum values and reasons are separated by `|`, so none of them takes a comma.
+
 ## Operators and punctuation
 
-| Token                       | Used for                                    |
-| --------------------------- | ------------------------------------------- |
-| `==` `!=` `<` `<=` `>` `>=` | Comparison; `<` `>` also delimit type arguments (`list<T>`), and `>` orders a kind's `precedence` |
-| `+` `-`                     | Arithmetic, unary minus                     |
-| `??`                        | Optional default                            |
-| `?.`                        | Optional chaining                           |
-| `.`                         | Field access, qualified import access, a decision's reason (`approve.release_manager`) |
-| `[` `]`                     | List literals, indexing                     |
-| `{` `}`                     | Map literals, rule bodies, type bodies, reason blocks, selective imports |
-| `(` `)`                     | Grouping, calls, decision constructors, policy invocations |
-| `:`                         | Type annotations, named arguments, quantifier and filter bodies, map entries |
-| `,`                         | Separators                                  |
-| `=`                         | `let` bindings, param and payload defaults  |
-| `->`                        | Return type in `fn` declarations            |
-| `?`                         | Optional type prefix (`?string`)            |
-| `@`                         | Kind version pin in a header (`DeployApproval@2`) |
-| `---`                       | Document separator                          |
+| Token                       | Used for                                                                                                                |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `==` `!=` `<` `<=` `>` `>=` | Comparison; `<` `>` also delimit type arguments (`list<T>`), and `>` orders a kind's `precedence`                       |
+| `+` `-`                     | Arithmetic, unary minus                                                                                                 |
+| `??`                        | Optional default                                                                                                        |
+| `?.`                        | Optional chaining                                                                                                       |
+| `.`                         | Field access, qualified import access, a decision's reason (`approve.release_manager`), an enum value (`Tier.critical`) |
+| `[` `]`                     | List literals, indexing                                                                                                 |
+| `{` `}`                     | Map literals, rule bodies, type and decision bodies, selective imports                                                  |
+| `(` `)`                     | Grouping, calls, decision constructors, policy invocations                                                              |
+| `:`                         | Type annotations, named arguments, quantifier and filter bodies, map entries, an enum's value list                      |
+| `\|`                        | Separates enum values (`critical \| standard`) and a decision's reasons (`reason: a \| b`)                              |
+| `,`                         | Separators                                                                                                              |
+| `=`                         | `let` bindings, param and payload defaults                                                                              |
+| `->`                        | Return type in `fn` declarations                                                                                        |
+| `?`                         | Optional type prefix (`?string`)                                                                                        |
+| `@`                         | Kind version pin in a header (`DeployApproval@2`)                                                                       |
+| `---`                       | Document separator                                                                                                      |
 
 The lexer uses longest match, so `??`, `?.`, `<=`, `->` and `---` are each one token.
 
@@ -271,11 +288,11 @@ use deploy.common.{owns_service}
 | `----` | `---`, `-` | Error |
 
 ```text
-policies.sigil:12:21: error: `---` separates documents and can't appear inside an expression
-   |
-12 | let tight = min_soak---1h
-   |                     ^^^
-   = help: if you meant arithmetic, put spaces between the minus signs
+deploy/tight.sigil:5:21: error: `---` separates documents and can't appear inside an expression
+  |
+5 | let tight = min_soak---1h
+  |                     ^^^
+  = help: if you meant arithmetic, put spaces between the minus signs
 ```
 
 To put a bundle in a YAML block scalar, see [Policies in a ConfigMap](/guides/configmaps/).

@@ -23,6 +23,8 @@ const (
 	FilterVar           // the variable of a `filter`
 	Module              // a whole import of a module: a qualifier for its pub lets
 	Invocable           // a whole import of a policy: a name to invoke
+	EnumValue           // a value of one of the kind's enums, or of several
+	EnumType            // an enum the kind declares, as the qualifier of `Tier.critical`
 )
 
 var entityNames = [...]string{
@@ -36,6 +38,8 @@ var entityNames = [...]string{
 	FilterVar:    "filter variable",
 	Module:       "module",
 	Invocable:    "imported policy",
+	EnumValue:    "enum value",
+	EnumType:     "enum type",
 }
 
 // String implements [fmt.Stringer]. It returns the entity as a message
@@ -51,7 +55,7 @@ func (e Entity) String() string {
 // document it came from: a whole import binds Doc alone, and a
 // selectively imported let binds Doc and Let, the let's name there.
 type Binding struct {
-	Type   types.Type // nil for a host function; see Func
+	Type   types.Type // nil for a host function, and for a value several enums declare
 	Func   *kind.Func // set for a host function
 	Doc    *Exported  // set for an import
 	Let    string     // the imported let's own name, for a selective import
@@ -71,11 +75,24 @@ type Env struct {
 }
 
 // NewEnv returns the scope of a document of kind k, holding the kind's
-// inputs, host functions and decisions.
+// inputs, host functions, decisions, enums and enum values. An enum's name
+// is bound so that `Tier.critical` can qualify a value. An enum value's
+// binding has the enum as its type when only one enum declares the value,
+// and no type when several do; the checker then types it by context.
 func NewEnv(k *kind.Kind) *Env {
 	e := &Env{kind: k, names: map[string]Binding{}}
 	if k == nil {
 		return e
+	}
+	for _, en := range k.Enums {
+		e.names[en.Name] = Binding{Entity: EnumType, Type: en}
+		for _, v := range en.Values {
+			if _, taken := e.names[v]; taken {
+				e.names[v] = Binding{Entity: EnumValue}
+				continue
+			}
+			e.names[v] = Binding{Entity: EnumValue, Type: en}
+		}
 	}
 	for _, in := range k.Inputs {
 		e.names[in.Name] = Binding{Entity: Input, Type: in.Type}

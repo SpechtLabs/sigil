@@ -58,7 +58,7 @@ func TestFailureText(t *testing.T) {
 			}},
 			wantHeadline: "2 asserts failed",
 			wantText: []string{
-				"assert o failed at p:1:1\n  the outcome it read:\n    write(owner)   p:8:3\n    write(oncall)  p:9:3\n",
+				"assert o failed at p:1:1\n  the outcome it read:\n    write(reason: owner)   p:8:3\n    write(reason: oncall)  p:9:3\n",
 				"assert c failed at p:2:1\n  p:2:5: unbound\n    = help: use the host's binary\n",
 				"  = help: h\n",
 			},
@@ -69,7 +69,7 @@ func TestFailureText(t *testing.T) {
 				{Reason: "no_self_review", Position: "p:1:1", Outcome: []Entry{{Decision: "review", Reason: "a", Position: "p:3:3", values: []field{{name: "approvers", value: []any{"alice", "bob"}}}}}},
 			}},
 			wantHeadline: "an assert failed",
-			wantText:     []string{"  the outcome it read:\n    review(a)  p:3:3\n      approvers = [\"alice\", \"bob\"]\n"},
+			wantText:     []string{"  the outcome it read:\n    review(reason: a)  p:3:3\n      approvers = [\"alice\", \"bob\"]\n"},
 		},
 		{
 			name:         "one assert",
@@ -80,7 +80,7 @@ func TestFailureText(t *testing.T) {
 			name:         "conflict",
 			f:            &Failure{Kind: FailConflict, Message: "2 at the top", Candidates: []Entry{{Decision: "deny", Reason: "a", Position: "p:1:1"}, {Decision: "deny", Reason: "longer", Position: "p:2:1"}}},
 			wantHeadline: "the candidates conflict",
-			wantText:     []string{"conflict: 2 at the top\n", "    deny(a)       p:1:1\n", "    deny(longer)  p:2:1\n"},
+			wantText:     []string{"conflict: 2 at the top\n", "    deny(reason: a)       p:1:1\n", "    deny(reason: longer)  p:2:1\n"},
 		},
 		{
 			name:         "runtime",
@@ -120,15 +120,15 @@ func TestText(t *testing.T) {
 		values: []field{{name: "approvers", value: []any{"a"}}}}
 	loser := Entry{Decision: "approve", Reason: "sre", Position: "team.sigil:9:1", Conditions: []string{"on_call"}}
 	r := &Report{Policy: "team", Decision: "review", Reason: "owner", Outcome: []Entry{winner}, Trace: []Entry{winner, loser}}
-	want := "team: review(owner)\n" +
+	want := "team: review(reason: owner)\n" +
 		"  approvers = [\"a\"]\n" +
 		"\n" +
 		"trace: 2 candidates\n" +
-		"  * review(owner)  team.sigil:2:1 → team.sigil:5:1\n" +
+		"  * review(reason: owner)  team.sigil:2:1 → team.sigil:5:1\n" +
 		"      when cleared\n" +
 		"       and owns\n" +
 		"      approvers = [\"a\"]\n" +
-		"    approve(sre)   team.sigil:9:1\n" +
+		"    approve(reason: sre)   team.sigil:9:1\n" +
 		"      when on_call\n"
 	if got := r.Text(theme()); got != want {
 		t.Errorf("Text() =\n%s\nwant\n%s", got, want)
@@ -136,10 +136,10 @@ func TestText(t *testing.T) {
 
 	collect := &Report{Policy: "grants", Collect: true, Outcome: []Entry{loser}, Trace: []Entry{{Decision: "approve", Reason: "sre", Position: "team.sigil:9:1", Outcome: true}}}
 	want = "grants: 1 decision\n" +
-		"  approve(sre)  team.sigil:9:1\n" +
+		"  approve(reason: sre)  team.sigil:9:1\n" +
 		"\n" +
 		"trace: 1 candidate\n" +
-		"  * approve(sre)  team.sigil:9:1\n"
+		"  * approve(reason: sre)  team.sigil:9:1\n"
 	if got := collect.Text(theme()); got != want {
 		t.Errorf("Text() =\n%s\nwant\n%s", got, want)
 	}

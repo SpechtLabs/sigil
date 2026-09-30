@@ -1,0 +1,12 @@
+tiers.main: move(reason: promote)
+  to = critical
+  also = [internal]
+  quota = {critical: 3}
+
+trace: 1 candidate
+  * move(reason: promote)  testdata/tiers/main.sigil:4:3
+      when service.tier == Tier.standard and internal in service.backups
+      to = critical
+      also = [internal]
+      quota = {critical: 3}
+--- ok ---

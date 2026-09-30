@@ -14,17 +14,16 @@ const kindSrc = `kind K version 1
 input name: string
 
 decision deny {
-  no_rule_matched
-  banned
+  reason: no_rule_matched | banned
 }
 
 decision allow {
-  ok
+  reason: ok
 }
 
 collect one
 precedence deny > allow
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 `
 
 // library holds a module, a guardrail and two policies that invoke it,
@@ -40,7 +39,7 @@ policy guard: K@1
 use lib.{banned}
 
 when banned {
-  deny(banned)
+  deny(reason: banned)
 }
 
 ---
@@ -52,7 +51,7 @@ use guard
 guard()
 
 when name != "" {
-  allow(ok)
+  allow(reason: ok)
 }
 
 ---
@@ -73,7 +72,7 @@ const broken = `
 policy broken: K@1
 
 when nam == "x" {
-  allow(ok)
+  allow(reason: ok)
 }
 `
 
@@ -88,7 +87,7 @@ func TestCompileDoesNotLeak(t *testing.T) {
 	good := `policy good: K@1
 
 when name != "" {
-  allow(ok)
+  allow(reason: ok)
 }
 `
 	tests := []struct {

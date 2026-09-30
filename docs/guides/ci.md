@@ -16,7 +16,7 @@ Fail the job on any file that isn't in the canonical style:
 ```text
 $ sigil fmt --check .
 payments/production.sigil
-✗ 1 of 4 files is not formatted
+✗ 1 of 5 files is not formatted
 ```
 
 `--check` lists every file that isn't formatted and exits 1 if there's one. It searches directories recursively, and a file that doesn't parse fails it too. Authors fix their files locally with `sigil fmt --write .`. The exported kind file passes as it is, because `Schema()` prints kinds in the same style. [`sigil fmt`](/reference/cli/#sigil-fmt) lists the rules.

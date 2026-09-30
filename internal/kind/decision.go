@@ -9,12 +9,14 @@ import (
 )
 
 // Decision is a decision constructor: its payload schema and the reasons
-// it can be constructed with. A constructor names one of the reasons
-// first; they're declared names, not strings.
+// it can be constructed with. Every constructor names one of the reasons
+// with `reason:`. Reasons are declared names, not strings, and they're
+// scoped to their decision rather than the kind's namespace, so two
+// decisions may declare the same reason.
 type Decision struct {
 	Name    string
-	Fields  []*Field // the payload fields, in declaration order
-	Reasons []string // the declared reasons; a set, so their order means nothing
+	Fields  []*Field // the payload fields, in declaration order, the reason excluded
+	Reasons []string // the declared reasons; a set, so their order is only the printing order
 	// Ranked holds the reasons in precedence order when the kind ranks
 	// them with a scoped `precedence`; nil when it doesn't.
 	Ranked []string
@@ -79,38 +81,43 @@ func (d *Decision) Field(name string) *Field {
 	return nil
 }
 
-// Signature renders the declaration on one line, for messages like
-// "approve is declared as: decision approve(bake: duration = 1h) {
-// release_manager, payments_sre }".
+// Signature describes the declaration on one line, in prose, for a help
+// like "approve takes reason: release_manager | payments_sre, and bake:
+// duration = 1h", or "deny takes reason: not_eligible" without a payload.
+// It's a whole sentence, not kind-file syntax, so nobody copies it into a
+// kind file.
 func (d *Decision) Signature() string {
-	return d.head() + " { " + strings.Join(d.Reasons, ", ") + " }"
+	fields := d.body()
+	if n := len(fields); n > 1 {
+		fields[n-1] = "and " + fields[n-1]
+	}
+	return d.Name + " takes " + strings.Join(fields, ", ")
 }
 
-// Source renders the declaration as a kind file writes it, one reason
-// per line, ending in a newline.
+// Source renders the declaration as a kind file writes it: the reason
+// first, then the payload fields in declaration order, one per line,
+// ending in a newline.
 func (d *Decision) Source() string {
 	var b strings.Builder
-	b.WriteString(d.head() + " {\n")
-	for _, r := range d.Reasons {
-		b.WriteString("  " + r + "\n")
+	b.WriteString("decision " + d.Name + " {\n")
+	for _, line := range d.body() {
+		b.WriteString("  " + line + "\n")
 	}
 	b.WriteString("}\n")
 	return b.String()
 }
 
-// head renders the name and payload fields: `decision approve(bake:
-// duration = 1h)`, without parentheses when there are no fields.
-func (d *Decision) head() string {
-	s := "decision " + d.Name
-	if len(d.Fields) == 0 {
-		return s
-	}
-	parts := make([]string, len(d.Fields))
-	for i, f := range d.Fields {
-		parts[i] = f.Name + ": " + f.Type.String()
+// body renders the declaration's fields: `reason: a | b`, then each
+// payload field as `bake: duration` or `bake: duration = 1h`.
+func (d *Decision) body() []string {
+	lines := make([]string, 0, 1+len(d.Fields))
+	lines = append(lines, "reason: "+strings.Join(d.Reasons, " | "))
+	for _, f := range d.Fields {
+		line := f.Name + ": " + f.Type.String()
 		if f.HasDefault {
-			parts[i] += " = " + constant.Format(f.Default)
+			line += " = " + constant.Format(f.Default)
 		}
+		lines = append(lines, line)
 	}
-	return s + "(" + strings.Join(parts, ", ") + ")"
+	return lines
 }

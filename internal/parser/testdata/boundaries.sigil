@@ -11,25 +11,22 @@ type Resource {
 
 input resource: Resource
 
-decision review(approvers: list<string>, kind: string = "") {
-  cluster_access
-  owner
-  service_owner
+decision review {
+  approvers: list<string>
+  kind: string = ""
+  in: string = "" // a field named like an operator ends the default before it
+  reason: cluster_access | owner | service_owner
 }
 decision deny {
-  no_rule_matched
-  tmp
-  chain
-  paren
-  unclosed
-  not_eligible
-  soak_too_short
-  no_rules_in_modules
+  reason: no_rule_matched | tmp
+    | chain | paren |
+    unclosed
+    | not_eligible | soak_too_short | no_rules_in_modules
 }
 
 collect one
 precedence deny > review
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 
 // No separator: the next header ends the kind document.
 policy jit.sandbox: JIT_Approval@1
@@ -37,7 +34,7 @@ policy jit.sandbox: JIT_Approval@1
 when resource.kind == "kube_cluster"      // field access after `.`
   and resource.policy != ""
   and resource.module ?? "" == "" {
-  review(cluster_access, approvers: ["sre-leads"], kind: resource.kind)
+  review(reason: cluster_access, approvers: ["sre-leads"], kind: resource.kind)
 }
 ---
 ---

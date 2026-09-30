@@ -190,16 +190,21 @@ func (d *dumper) decl(decl Decl) {
 			params[i] = TypeString(p)
 		}
 		d.linef("fn %s(%s) -> %s %s", decl.Name.Name, strings.Join(params, ", "), TypeString(decl.Result), spanOf(decl))
+	case *EnumDecl:
+		d.linef("enum %s: %s %s", decl.Name.Name, alternatives(decl.Values), spanOf(decl))
 	case *DecisionDecl:
-		head := "decision " + decl.Name.Name
-		if len(decl.Fields) > 0 {
-			head += "(" + fieldsString(decl.Fields) + ")"
+		legacy := ""
+		if decl.Legacy {
+			legacy = "legacy "
 		}
-		reasons := make([]string, len(decl.Reasons))
-		for i, r := range decl.Reasons {
-			reasons[i] = r.Name
+		d.linef("%sdecision %s { %s", legacy, decl.Name.Name, spanOf(decl))
+		d.indent++
+		d.linef("reason: %s", alternatives(decl.Reasons))
+		for _, f := range decl.Fields {
+			d.linef("%s", fieldString(f))
 		}
-		d.linef("%s { %s } %s", head, strings.Join(reasons, " "), spanOf(decl))
+		d.indent--
+		d.linef("}")
 	case *PrecedenceDecl:
 		names := make([]string, len(decl.Names))
 		for i, n := range decl.Names {
@@ -231,15 +236,21 @@ func (d *dumper) decl(decl Decl) {
 	}
 }
 
-func fieldsString(fields []*Field) string {
-	parts := make([]string, len(fields))
-	for i, f := range fields {
-		parts[i] = f.Name.Name + ": " + TypeString(f.Type)
-		if f.Default != nil {
-			parts[i] += " = " + Sprint(f.Default)
-		}
+func fieldString(f *Field) string {
+	s := f.Name.Name + ": " + TypeString(f.Type)
+	if f.Default != nil {
+		s += " = " + Sprint(f.Default)
 	}
-	return strings.Join(parts, ", ")
+	return s
+}
+
+// alternatives joins enum values or reasons with ` | `.
+func alternatives(names []*Ident) string {
+	parts := make([]string, len(names))
+	for i, n := range names {
+		parts[i] = n.Name
+	}
+	return strings.Join(parts, " | ")
 }
 
 // TypeString renders a type as written in source, with canonical spacing:

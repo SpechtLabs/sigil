@@ -12,7 +12,7 @@ import (
 // Every token must consume input, preserve its byte span, and eventually
 // reach a stable EOF, even for invalid UTF-8 and incomplete literals.
 func FuzzLexer(f *testing.F) {
-	for _, src := range []string{"", "policy p: K@1\nwhen true { allow(ok) }", "1h30m 1.25 9223372036854775808", "\"\\u1234\" `raw\ntext` // comment", "---\n?. ?? >= !=", "\x00\xff\r\n"} {
+	for _, src := range []string{"", "policy p: K@1\nwhen true { allow(ok) }", "1h30m 1.25 9223372036854775808", "\"\\u1234\" `raw\ntext` // comment", "---\n?. ?? >= !=", "enum Tier: a | b\n  | c ||| d", "\x00\xff\r\n"} {
 		f.Add([]byte(src))
 	}
 	f.Add([]byte(strings.Repeat("9", 400) + ".0"))

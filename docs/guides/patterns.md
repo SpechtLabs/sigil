@@ -32,7 +32,7 @@ Keys with dots or slashes always go through a map literal or `[...]`. `service.l
 ```sigil
 // Approves services with no team label at all.
 when service.labels["team"] != "payments" {
-  approve(not_payments)
+  approve(reason: not_payments)
 }
 ```
 
@@ -78,7 +78,7 @@ You can't compare an optional directly. Unwrap it with `??` and a fallback:
 
 ```sigil
 when release.hotfix and (release.ticket ?? "") == "" {
-  deny(hotfix_without_ticket)
+  deny(reason: hotfix_without_ticket)
 }
 ```
 
@@ -88,13 +88,84 @@ The rule above treats a missing ticket and an empty one the same way. When the d
 
 ```sigil
 when release.hotfix and not present release.ticket {
-  deny(hotfix_without_ticket)
+  deny(reason: hotfix_without_ticket)
 }
 ```
 
 ::: info Optional structs
 A pointer to a struct, say `?Release`, has no literal to use as a fallback. Read its fields with [optional chaining](/reference/expressions/#optional-chaining) instead: `release?.ticket ?? ""` is absent-safe whether the release or the ticket is missing.
 :::
+
+## Replace a string field with an enum
+
+A `string` field that only ever holds a few known values lets a typo through: `service.tier == "critcal"` compiles and never matches. An enum closes that hole, because the compiler knows every value and rejects any other name ([why](/understanding/strictness/#typos-in-values)). Suppose the kind still declares `tier: string` and the policies compare it with string literals.
+
+1. In Go, give the field a named string type with a constant per value, and register it with `policy.WithEnum`. The field's type changes, which breaks every policy that compares it with a string, so raise `accepts` along with `version`:
+
+   ```go
+   type Tier string
+
+   const (
+   	TierCritical Tier = "critical"
+   	TierStandard Tier = "standard"
+   	TierInternal Tier = "internal"
+   )
+
+   type Service struct {
+   	// ...
+   	Tier Tier `policy:"tier"`
+   }
+
+   var Deploy = policy.NewKind[Input]("DeployApproval",
+   	policy.WithVersion(2),
+   	policy.WithAccepts(2),
+   	policy.WithEnum(TierCritical, TierStandard, TierInternal),
+   	// ...
+   )
+   ```
+
+2. Export the kind. The diff shows the new enum and the field's new type:
+
+   ```diff
+   -kind DeployApproval version 1
+   +kind DeployApproval version 2, accepts: 2
+   +
+   +enum Tier: critical | standard | internal
+
+    type Service {
+      name: string
+   -  tier: string
+   +  tier: Tier
+   ```
+
+3. In the policies, drop the quotes around the values, give params that hold tiers the enum type, and raise every pin to `@2`:
+
+   ```diff
+   -policy deploy.production: DeployApproval@1
+   +policy deploy.production: DeployApproval@2
+
+   -param tiers: list<string> = ["standard", "internal"]
+   +param tiers: list<Tier> = [standard, internal]
+
+   -  when service.tier == "critical"
+   +  when service.tier == critical
+   ```
+
+   Callers change the same way: `production(tiers: ["standard"])` becomes `production(tiers: [standard])`.
+
+4. Run `sigil check` against the new kind file. Every comparison you missed is a compile error, and the help names the bare value:
+
+   ```text
+   deploy/production.sigil:9:8: error: `==` needs operands of the same type, found Tier and string
+     |
+   9 |   when service.tier == "critical"
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: an enum value is a bare name; write `critical`
+   ```
+
+5. Run `sigil test`. Test inputs keep `"tier": "critical"`, since JSON and YAML inputs write an enum value as a string, but a fixture with a value outside the set, such as `"tier": "batch"`, now fails to decode. Decide whether that case still makes sense, and delete or change it.
+
+On the host side, a request can still carry a tier outside the set, which fails the evaluation at run time when a rule reads it. [Declare the enums](/guides/embed-go/#declare-the-enums) shows where to reject it. Ship the change in steps as in [Ship a breaking change](/guides/evolve-a-kind/#ship-a-breaking-change) if other teams' policies compare the field.
 
 ## Test every element, or any element
 
@@ -120,8 +191,7 @@ Both compile, and they disagree for an actor with no roles shipping a hotfix: `a
 `all` over an empty list is true. `all r in actor.regions: r like "eu-*"` holds for an actor with no regions at all. In a rule that grants something, pair it with an `any` over the same list, which is false when the list is empty:
 
 ```sigil
-let eu_only =
-  (any r in actor.regions: r like "eu-*")
+let eu_only = (any r in actor.regions: r like "eu-*")
   and (all r in actor.regions: r like "eu-*")
 ```
 
@@ -151,7 +221,7 @@ fn len(list<string>) -> int
 let has_regions = len(actor.regions) > 0
 
 when len(actor.regions) == 0 {
-  deny(no_regions)
+  deny(reason: no_regions)
 }
 ```
 
@@ -168,11 +238,11 @@ let reviewers = filter a in approvers: a != actor.name
 let has_reviewers = any r in reviewers: true
 
 when has_reviewers {
-  review(service_owner, approvers: reviewers)
+  review(reason: service_owner, approvers: reviewers)
 }
 
 when not has_reviewers {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 ```
 
@@ -193,9 +263,16 @@ assert("no_self_review", all r in outcome.review: actor.name not in r.approvers)
 A reason is a name the kind declares, so it can't carry a service name or anything else from the input. When the person reading one result needs that text, declare an optional `detail: string` payload field on the decision, and fill it from any `string` expression:
 
 ```sigil
-// kind: decision deny(detail: string = "") { not_eligible soak_too_short no_rule_matched }
+// In the kind:
+decision deny {
+  reason: not_eligible | soak_too_short | no_rule_matched
+  detail: string = ""
+}
+```
+
+```sigil
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short, detail: service.name)
+  deny(reason: soak_too_short, detail: service.name)
 }
 ```
 
@@ -207,7 +284,7 @@ type DenyData struct {
 }
 ```
 
-Give it a default. Constructors that don't pass it keep compiling, and the kind's `default deny(no_rule_matched)` passes no payload, so every field of its decision needs one.
+Give it a default. Constructors that don't pass it keep compiling, and the kind's `default deny(reason: no_rule_matched)` passes no payload, so every field of its decision needs one.
 
 `detail` is an ordinary payload field; only the convention is special. The reason is for machines and dashboards, so count and alert by it. The detail is for a human reading one specific result, so show it in the approval UI or the log line, and keep it out of metric labels. There's no `+` on strings, so the value is a single string expression, such as an input field or a label. [Decisions and reasons](/understanding/decisions/) explains why the reason itself is never computed.
 
@@ -241,7 +318,7 @@ Subtracting two timestamps gives a duration, which compares with duration litera
 
 ```sigil
 when now - release.built_at > 30d {
-  deny(stale_build)
+  deny(reason: stale_build)
 }
 ```
 
@@ -256,7 +333,7 @@ A deny is an answer: the deploy was looked at and refused. When the input itself
 ```sigil
 assert("named_actor", actor.name != "")
 
-when service.tier == "critical" {
+when service.tier == critical {
   assert("critical_needs_team_label", service.labels has "team")
 }
 ```
@@ -276,7 +353,7 @@ The eligibility check in `deploy.guardrails` shows the shape:
 
 ```sigil
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 ```
 
@@ -296,7 +373,7 @@ pub let cleared = split(service.labels["regions"], ",") all in actor.regions
 use deploy.common.{cleared}
 
 when cleared and "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
+  approve(reason: payments_sre, bake: 15m)
 }
 ```
 
@@ -351,7 +428,7 @@ A policy calls it like any other host function:
 
 ```sigil
 when version_below(service.labels["version"], "v2.0.0") {
-  deny(version_too_old)
+  deny(reason: version_too_old)
 }
 ```
 
@@ -366,10 +443,12 @@ The error matters. A missing label reads as `""`, which isn't a version, so the 
 String comparison is case-sensitive: `"Production" == "production"` is false. Kubernetes labels and most identifiers in this space are case-sensitive, so that's the default. When the data really is inconsistent, use a regex with RE2's case-insensitive flag:
 
 ```sigil
-when service.tier matches `(?i)^critical$` {
-  review(critical_any_case, approvers: ["sre-leads"])
+when environment matches `(?i)^production$` {
+  review(reason: production_any_case, approvers: ["sre-leads"])
 }
 ```
+
+When the field only ever holds a few known values, make it an enum instead, and case can't vary at all; see [Replace a string field with an enum](#replace-a-string-field-with-an-enum).
 
 ## Choose between globs and regexes
 

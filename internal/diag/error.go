@@ -9,6 +9,8 @@
 // [Severity] and the lint's name in Code. [Render] and [RenderWith] print a
 // diagnostic in the layout the documentation shows, quoting the offending
 // line; a [Theme] styles that layout for a terminal without changing it.
+// [Nearest] picks the name a "did you mean" hint suggests, so every stage
+// suggests the same one.
 package diag
 
 import (

@@ -138,7 +138,7 @@ deploygate answers `202 Accepted`. The body, formatted:
       "conditions": [
         "service.labels[\"compliance\"] == \"pci\"",
         "cleared",
-        "service.tier in [\"standard\", \"internal\"] and owns_service"
+        "service.tier in [standard, internal] and owns_service"
       ],
       "payload": {"approvers": ["payments-leads", "security-leads"]},
       "winner": true
@@ -158,17 +158,17 @@ The review comes from the platform's `deploy.production`, reached through the ca
 
 The HTTP status encodes the decision, so a client can act on the status alone:
 
-| Status | Meaning |
-| --- | --- |
-| `200 OK` | `approve`, with the `bake` time in the payload |
-| `202 Accepted` | `review`, with the `approvers` in the payload |
-| `403 Forbidden` | `deny` |
-| `422 Unprocessable Entity` | The request failed an input assert, in either stage: the policy declared it invalid before any rule ran, and the caller has to fix it. The decision fields hold the kind's default, `deny` / `no_rule_matched`, `asserts` lists what failed and `error` says what went wrong |
+| Status                      | Meaning                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `200 OK`                    | `approve`, with the `bake` time in the payload                                                                                                                                                                                                                                                                                                                       |
+| `202 Accepted`              | `review`, with the `approvers` in the payload                                                                                                                                                                                                                                                                                                                        |
+| `403 Forbidden`             | `deny`                                                                                                                                                                                                                                                                                                                                                               |
+| `422 Unprocessable Entity`  | The request failed an input assert, in either stage: the policy declared it invalid before any rule ran, and the caller has to fix it. The decision fields hold the kind's default, `deny` / `no_rule_matched`, `asserts` lists what failed and `error` says what went wrong                                                                                         |
 | `500 Internal Server Error` | The policy failed on a valid request, in either stage: a conflict, such as the access policy granting two roles the kind declares exclusive, a failed outcome assert, or a runtime error, a panicking host function included. The body is the same as for `422`, with `conflict` naming both sides of a conflict; the policy's owners have to fix it, not the caller |
-| `503 Service Unavailable` | An evaluation ran past the evaluation timeout, one second by default, in either stage: deploygate didn't decide in time. The body is the same as for `500`. Also the answer, with only an `error`, while the two bundles aren't both loaded yet |
-| `400 Bad Request` | The body isn't valid JSON, has an unknown field such as `roles`, or has a duration that doesn't parse, is too long for a Go duration or, for `release.soak`, is negative |
-| `404 Not Found` | deploygate doesn't serve that team |
-| `499` | The client closed the request before the answer. Nothing is written, since no one reads it; the status is for the access log and the request metrics |
+| `503 Service Unavailable`   | An evaluation ran past the evaluation timeout, one second by default, in either stage: deploygate didn't decide in time. The body is the same as for `500`. Also the answer, with only an `error`, while the two bundles aren't both loaded yet                                                                                                                      |
+| `400 Bad Request`           | The body isn't valid JSON, has an unknown field such as `roles`, has a `service.tier` the kind doesn't declare, or has a duration that doesn't parse, is too long for a Go duration or, for `release.soak`, is negative                                                                                                                                              |
+| `404 Not Found`             | deploygate doesn't serve that team                                                                                                                                                                                                                                                                                                                                   |
+| `499`                       | The client closed the request before the answer. Nothing is written, since no one reads it; the status is for the access log and the request metrics                                                                                                                                                                                                                 |
 
 A failed evaluation is `422`, `500` or `503` by whose fault it is, not by which stage it happened in. A `4xx` tells the client to change its request, and most SLOs leave `4xx` out of the error budget, so a conflict in the policy answered with a `4xx` would fail every affected request without ever showing up as deploygate's error. Whether a failed assert is the caller's or the policy's comes from the error's assert phase, not from the trace: an outcome assert that fails when no rule fired leaves the trace as empty as a failed input assert does, and it's still a `500`. When a `500` or a `503` comes from a failed evaluation, its body carries the fallback decision and the details; one without a `policy` field in the body, such as a failed reload, isn't an evaluation.
 
@@ -243,13 +243,12 @@ A deploy policy decides whether this actor may ship this release. It shouldn't a
 
 ```sigil
 decision reader {
-  team_member
-  everyone_in_staging
+  reason: team_member | everyone_in_staging
 }
 
-decision deployer(ttl: duration = 8h) {
-  team_member
-  oncall
+decision deployer {
+  reason: team_member | oncall
+  ttl: duration = 8h
 }
 
 collect all
@@ -377,7 +376,7 @@ Change the payments SRE bake from 15 minutes to 30 in `policies/teams/payments/p
 
 ```sigil
 when cleared and "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 30m)
+  approve(reason: payments_sre, bake: 30m)
 }
 ```
 
@@ -390,7 +389,7 @@ mise run demo deploy sre
 
 The CLI now reports `Bake: 30m`.
 
-The access bundle reloads the same way. Give the on-call SRE three hours instead of two in `policies/access/main.sigil`, `deployer(oncall, ttl: 3h)`, reload, and the same request's `access` block shows `"ttl": "3h"`.
+The access bundle reloads the same way. Give the on-call SRE three hours instead of two in `policies/access/main.sigil`, `deployer(reason: oncall, ttl: 3h)`, reload, and the same request's `access` block shows `"ttl": "3h"`.
 
 Now break the file. Delete the closing `}` of the last `when`, and reload again:
 
@@ -521,35 +520,35 @@ mise run sigilc explain --kind policies/deploy_approval.sigil \
 ```text
 payments.production: 7 rules from 3 policies and 1 module
 
-  deny(not_eligible)        payments.production:7 → deploy.guardrails:8
+  deny(reason: not_eligible)        payments.production:7 → deploy.guardrails:8
     when not eligible
 
-  deny(soak_too_short)      payments.production:7 → deploy.guardrails:12
+  deny(reason: soak_too_short)      payments.production:7 → deploy.guardrails:12
     when release.soak < 4h and not release.hotfix
 
-  approve(release_manager)  payments.production:10 → deploy.production:11
+  approve(reason: release_manager)  payments.production:10 → deploy.production:11
     when service.labels["compliance"] == "pci"
      and cleared
-     and service.tier == "critical" and "release_manager" in actor.roles
+     and service.tier == critical and "release_manager" in actor.roles
 
-  review(service_owner)     payments.production:10 → deploy.production:16
+  review(reason: service_owner)     payments.production:10 → deploy.production:16
     when service.labels["compliance"] == "pci"
      and cleared
-     and service.tier in ["standard", "internal"] and owns_service
+     and service.tier in [standard, internal] and owns_service
     with approvers = ["payments-leads", "security-leads"]
 
-  approve(release_manager)  payments.production:14 → deploy.production:11
+  approve(reason: release_manager)  payments.production:14 → deploy.production:11
     when service.labels["compliance"] != "pci"
      and cleared
-     and service.tier == "critical" and "release_manager" in actor.roles
+     and service.tier == critical and "release_manager" in actor.roles
 
-  review(service_owner)     payments.production:14 → deploy.production:16
+  review(reason: service_owner)     payments.production:14 → deploy.production:16
     when service.labels["compliance"] != "pci"
      and cleared
-     and service.tier in ["standard", "internal"] and owns_service
+     and service.tier in [standard, internal] and owns_service
     with approvers = ["payments-leads"]
 
-  approve(payments_sre)     payments.production:18
+  approve(reason: payments_sre)     payments.production:18
     when cleared and "payments-sre" in actor.teams
     with bake = 15m
 ```
@@ -564,37 +563,37 @@ mise run sigilc explain --kind policies/access_grant.sigil \
 ```text
 access.main: 10 rules from 2 policies and 1 module
 
-  reader(team_member)                    access.main:9
+  reader(reason: team_member)               access.main:9
     when team_member
 
-  deployer(team_member)                  access.main:10
+  deployer(reason: team_member)             access.main:10
     when team_member
 
-  reader(everyone_in_staging)            access.main:14
+  reader(reason: everyone_in_staging)       access.main:14
     when environment == "staging"
 
-  deployer(oncall)                       access.main:19
+  deployer(reason: oncall)                  access.main:19
     when on_call
     with ttl = 2h
 
-  release_manager(platform_member)       access.main:25
+  release_manager(reason: platform_member)  access.main:25
     when platform_member and not admin_cleared
     with ttl = 4h
 
-  admin(clearance)                       access.main:29
+  admin(reason: clearance)                  access.main:29
     when admin_cleared
 
-  admin(break_glass)                     access.main:36
+  admin(reason: break_glass)                access.main:36
     when break_glass
     with ttl = 15m
 
-  auditor(compliance_member)             access.main:40
+  auditor(reason: compliance_member)        access.main:40
     when compliance_member
 
-  assert named_actor (input)             access.main:6 → access.guardrails:6
+  assert named_actor (input)                access.main:6 → access.guardrails:6
     check actor.name != ""
 
-  assert sod_auditor_deployer (outcome)  access.main:6 → access.guardrails:11
+  assert sod_auditor_deployer (outcome)     access.main:6 → access.guardrails:11
     check [auditor, deployer] exclusive in outcome
 ```
 
@@ -685,7 +684,7 @@ examples/
 
 ### deploy
 
-`internal/deploy` is the contract, and nothing else. The `Input` struct and its nested `Release`, `Service` and `Actor` types carry `policy:` tags that name the inputs policies read. `Deny`, `Review` and `Approve` are the decision handles, and `Kind` ties them together with the precedence, the default `deny(no_rule_matched)` and the `split` function, and `policy.WithRecoverHostPanics()`: a host function that panics fails the evaluation closed instead of unwinding into gin; see [server](#server). Every other package imports this one; the kind file in `policies/` is generated from it.
+`internal/deploy` is the contract, and nothing else. The `Input` struct and its nested `Release`, `Service` and `Actor` types carry `policy:` tags that name the inputs policies read. `Tier` is a named string type, and `policy.WithEnum` registers its three constants as the kind's `enum Tier`, so policies write `service.tier == critical`. A tier outside the enum would fail any evaluation that reads it, so the server checks `Tier.Valid` and answers `400` first. `Deny`, `Review` and `Approve` are the decision handles, and `Kind` ties them together with the enum, the precedence, the default `deny(reason: no_rule_matched)` and the `split` function, and `policy.WithRecoverHostPanics()`: a host function that panics fails the evaluation closed instead of unwinding into gin; see [server](#server). Every other package imports this one; the kind file in `policies/` is generated from it.
 
 ### access
 

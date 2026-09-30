@@ -1,6 +1,8 @@
 package format
 
 import (
+	"cmp"
+	"slices"
 	"strings"
 
 	"github.com/spechtlabs/sigil/internal/ast"
@@ -76,6 +78,7 @@ const (
 	groupParam
 	groupLet
 	groupAssert
+	groupEnum
 	groupInput
 	groupFn
 	groupResolution // collect, precedence and exclusive
@@ -92,6 +95,8 @@ func group(n ast.Node) int {
 		return groupLet
 	case *ast.AssertStmt:
 		return groupAssert
+	case *ast.EnumDecl:
+		return groupEnum
 	case *ast.InputDecl:
 		return groupInput
 	case *ast.FnDecl:
@@ -246,7 +251,8 @@ func (p *printer) commentBefore(pos token.Pos) bool {
 
 // call prints a decision constructor or a policy invocation. Its
 // arguments go one per line, with a trailing comma, when the first of
-// them started a new line in the source.
+// them started a new line in the source. A positional first argument, the
+// old form of a constructor's reason, prints as `reason:`.
 func (p *printer) call(s *ast.CallStmt, indent int) {
 	if s == nil {
 		return
@@ -259,7 +265,10 @@ func (p *printer) call(s *ast.CallStmt, indent int) {
 	arg := func(i int) (ast.Node, func(int)) {
 		if s.Positional != nil {
 			if i == 0 {
-				return s.Positional, func(ind int) { p.expr(s.Positional, ind) }
+				return s.Positional, func(ind int) {
+					p.write("reason: ")
+					p.expr(s.Positional, ind)
+				}
 			}
 			i--
 		}
@@ -288,6 +297,10 @@ func (p *printer) decl(d ast.Decl) {
 		}
 		p.close(before(d.End()), 0, 1, len(d.Fields) > 0)
 		p.write("}")
+	case *ast.EnumDecl:
+		p.write("enum " + d.Name.Name + ": ")
+		p.last = d.Name.End().Line
+		p.alternatives(d.Values, 1, func(i int) bool { return d.Values[i].Pos().Line > d.Values[i-1].End().Line })
 	case *ast.InputDecl:
 		p.write("input " + d.Name.Name + ": ")
 		p.typ(d.Type)
@@ -335,28 +348,115 @@ func (p *printer) decl(d ast.Decl) {
 	p.last = d.End().Line
 }
 
-// decision prints a decision: its payload fields, laid out like call
-// arguments, then its reasons, one per line.
+// decision prints a decision in the current syntax, whichever one it was
+// written in: `reason` first, then the payload fields in declaration
+// order, one per line. A legacy decision's reasons go on one line, broken
+// only where a comment sat between two of them.
 func (p *printer) decision(d *ast.DecisionDecl) {
 	if d == nil {
 		return
 	}
-	p.write("decision " + d.Name.Name)
+	if len(d.Reasons) == 0 {
+		return
+	}
+	p.write("decision " + d.Name.Name + " {")
 	p.last = d.Name.End().Line
-	if len(d.Fields) > 0 {
-		field := func(i int) (ast.Node, func(int)) {
-			return d.Fields[i].Name, func(int) { p.field(d.Fields[i]) }
+
+	split := func(i int) bool { return d.Reasons[i].Pos().Line > d.Reasons[i-1].End().Line }
+	from := d.Reasons[0].Pos()
+	if d.Legacy {
+		split = func(i int) bool { return p.commentBefore(d.Reasons[i].Pos()) }
+	} else {
+		from = d.ReasonName.Pos()
+	}
+	items := []item{{from: from, to: d.Reasons[len(d.Reasons)-1].End(), print: func() {
+		p.open(from, 1, 1, false, true)
+		p.write("reason: ")
+		p.alternatives(d.Reasons, 2, split)
+	}}}
+	for _, f := range d.Fields {
+		to := f.Type.End()
+		if f.Default != nil {
+			to = f.Default.End()
 		}
-		p.list("(", ")", d.Name.End().Line, d.Reasons[0].Pos(), len(d.Fields), field, 1)
+		items = append(items, item{from: f.Name.Pos(), to: to, print: func() {
+			p.open(f.Name.Pos(), 1, 1, true, true)
+			p.field(f)
+		}})
 	}
-	p.write(" {")
-	for i, r := range d.Reasons {
-		p.open(r.Pos(), 1, 1, i > 0, true)
-		p.write(r.Name)
-		p.last = r.End().Line
-	}
-	p.close(before(d.End()), 0, 1, true)
+	closing := before(d.End())
+	// A comment on the name's line trails the header, even when a legacy
+	// field on that line came before it.
+	p.trail(closing)
+	p.reorder(items, closing)
+	p.close(closing, 0, 1, true)
 	p.write("}")
+}
+
+// alternatives prints `a | b | c`, the values of an enum or the reasons
+// of a decision, after what the line already holds. Before each value
+// that split says starts a line, it opens one at indent that the `|`
+// leads.
+func (p *printer) alternatives(names []*ast.Ident, indent int, split func(i int) bool) {
+	for i, n := range names {
+		switch {
+		case i == 0:
+			p.trail(n.Pos())
+		case split(i):
+			p.open(n.Pos(), indent, indent, false, false)
+			p.write("| ")
+		default:
+			p.write(" | ")
+		}
+		p.write(n.Name)
+		p.last = n.End().Line
+	}
+}
+
+// item is a part of a declaration that starts its own line and may print
+// out of source order: its source range, and how to print it, opening
+// its line first.
+type item struct {
+	print    func()
+	from, to token.Pos
+}
+
+// reorder prints items in the order given, which may differ from the
+// source's, before end. Each takes the comments that belong to it in the
+// source along: those after the item before it in the source, and the one
+// trailing its last line. The comments after the last item are left for
+// the caller.
+func (p *printer) reorder(items []item, end token.Pos) {
+	order := make([]int, len(items))
+	for i := range order {
+		order[i] = i
+	}
+	slices.SortStableFunc(order, func(a, b int) int { return cmp.Compare(items[a].from.Offset, items[b].from.Offset) })
+
+	// Split the comments up by item, and note the source line each item
+	// follows, for the blank lines and trailing comments open keeps.
+	owned := make([][]token.Token, len(items))
+	after := make([]int, len(items))
+	line := p.last
+	for _, i := range order {
+		after[i] = line
+		line = items[i].to.Line
+		for ; p.next < len(p.comments); p.next++ {
+			c := p.comments[p.next]
+			if c.Pos.Offset >= end.Offset || c.Pos.Offset > items[i].to.Offset && c.Pos.Line != items[i].to.Line {
+				break
+			}
+			owned[i] = append(owned[i], c)
+		}
+	}
+
+	comments, next := p.comments, p.next
+	for i, it := range items {
+		p.comments, p.next, p.last = owned[i], 0, after[i]
+		it.print()
+		p.flush(token.Pos{Offset: end.Offset}, 1, false, true)
+	}
+	p.comments, p.next, p.last = comments, next, line
 }
 
 // field prints `name: type`, with a payload field's default.

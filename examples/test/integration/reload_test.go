@@ -24,20 +24,20 @@ const (
 // What the reload specs write into their copies of the bundles.
 const (
 	paymentsPolicy = "payments/production.sigil"
-	sreRule        = "approve(payments_sre, bake: 15m)"
-	sreRuleEdited  = "approve(payments_sre, bake: 30m)"
+	sreRule        = "approve(reason: payments_sre, bake: 15m)"
+	sreRuleEdited  = "approve(reason: payments_sre, bake: 30m)"
 
 	accessPolicy     = "main.sigil"
-	oncallRule       = "deployer(oncall, ttl: 2h)"
-	oncallRuleEdited = "deployer(oncall, ttl: 3h)"
+	oncallRule       = "deployer(reason: oncall, ttl: 2h)"
+	oncallRuleEdited = "deployer(reason: oncall, ttl: 3h)"
 
 	// brokenDocument has a valid header, so the loader indexes it, and an
 	// unfinished condition, so it fails to parse and takes the whole
 	// bundle down with it.
-	brokenDocument = "policy broken.production: DeployApproval@1\n\nwhen service.tier == {\n  deny(not_eligible)\n}\n"
+	brokenDocument = "policy broken.production: DeployApproval@1\n\nwhen service.tier == {\n  deny(reason: not_eligible)\n}\n"
 
 	// brokenAccessDocument is the same mistake in the access bundle.
-	brokenAccessDocument = "policy access.broken: AccessGrant@1\n\nwhen team == {\n  reader(team_member)\n}\n"
+	brokenAccessDocument = "policy access.broken: AccessGrant@1\n\nwhen team == {\n  reader(reason: team_member)\n}\n"
 
 	// unguarded is a payments policy that leaves the guardrails out, which
 	// the host's Require rejects no matter what else the policy says.
@@ -45,11 +45,11 @@ const (
 
 	// shadowGuardrails claims the platform's policy name from the team
 	// bundle, to turn the guardrails into an approval.
-	shadowGuardrails = "policy deploy.guardrails: DeployApproval@1\n\nwhen release.hotfix {\n  approve(payments_sre)\n}\n"
+	shadowGuardrails = "policy deploy.guardrails: DeployApproval@1\n\nwhen release.hotfix {\n  approve(reason: payments_sre)\n}\n"
 
 	// shadowAccessGuardrails does the same to the access guardrails, to
 	// drop the separation-of-duties assert.
-	shadowAccessGuardrails = "policy access.guardrails: AccessGrant@1\n\nwhen team == \"payments\" {\n  reader(team_member)\n}\n"
+	shadowAccessGuardrails = "policy access.guardrails: AccessGrant@1\n\nwhen team == \"payments\" {\n  reader(reason: team_member)\n}\n"
 )
 
 var _ = Describe("Hot reload", func() {

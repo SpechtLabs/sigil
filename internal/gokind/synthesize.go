@@ -26,7 +26,7 @@ type synth struct {
 // evaluator reads them exactly like a host's own structs. Every host
 // function is bound to one that fails with [*ErrUnbound] when it's called,
 // so a policy that never reaches a call still evaluates. `int` becomes
-// int64, `float` float64, and a decision value a string.
+// int64, `float` float64, and an enum or decision value a string.
 //
 // The kind must be valid; [kind.Kind.Validate] rejects the recursive types
 // StructOf couldn't build, and Synthesize doesn't check again.
@@ -40,6 +40,7 @@ func Synthesize(k *kind.Kind) *Binding {
 		},
 		kind: k,
 	}
+	s.binding.HasEnums = len(k.Enums) > 0
 	for _, t := range k.Types {
 		s.structType(t)
 	}
@@ -125,6 +126,8 @@ func (s *synth) goType(t types.Type) reflect.Type {
 		return reflect.MapOf(s.goType(t.Key), s.goType(t.Value))
 	case *types.Optional:
 		return reflect.PointerTo(s.goType(t.Elem))
+	case *types.Enum:
+		return reflect.TypeFor[string]()
 	case *types.Struct:
 		return s.structType(t)
 	}

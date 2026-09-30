@@ -1,6 +1,41 @@
 warn shadowed-kind-name (team.old)
-old.sigil:4:5 (team.old): warning: approvers shadows the kind's input approvers, added after the version this document pins [shadowed-kind-name]
+old.sigil:5:5 (team.old): warning: approvers shadows the kind's input approvers, added after the version this document pins [shadowed-kind-name]
   |
-4 | let approvers = ["a"]
+5 | let approvers = ["a"]
   |     ^^^^^^^^^
   = help: the kind's input is out of reach here; rename approvers and raise the document's pin to DeployApproval@2
+
+warn shadowed-kind-name (team.old)
+old.sigil:6:5 (team.old): warning: eu shadows the kind's Region and Zone value eu, added after the version this document pins [shadowed-kind-name]
+  |
+6 | let eu = "eu-west-1"
+  |     ^^
+  = help: the kind's Region and Zone value is out of reach here; rename eu and raise the document's pin to DeployApproval@2
+
+warn shadowed-kind-name (team.old)
+old.sigil:7:5 (team.old): warning: us shadows the kind's Region value us, added after the version this document pins [shadowed-kind-name]
+  |
+7 | let us = "us-east-1"
+  |     ^^
+  = help: the kind's Region value is out of reach here; rename us and raise the document's pin to DeployApproval@2
+
+warn shadowed-kind-name (team.old)
+old.sigil:8:5 (team.old): warning: split shadows the kind's host function split, added after the version this document pins [shadowed-kind-name]
+  |
+8 | let split = ","
+  |     ^^^^^
+  = help: the kind's host function is out of reach here; rename split and raise the document's pin to DeployApproval@2
+
+warn shadowed-kind-name (team.old)
+old.sigil:9:5 (team.old): warning: escalate shadows the kind's decision escalate, added after the version this document pins [shadowed-kind-name]
+  |
+9 | let escalate = true
+  |     ^^^^^^^^
+  = help: the kind's decision is out of reach here; rename escalate and raise the document's pin to DeployApproval@2
+
+warn shadowed-kind-name (team.old)
+old.sigil:10:5 (team.old): warning: Zone shadows the kind's enum Zone, added after the version this document pins [shadowed-kind-name]
+   |
+10 | let Zone = "z"
+   |     ^^^^
+   = help: the kind's enum is out of reach here; rename Zone and raise the document's pin to DeployApproval@2

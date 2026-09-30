@@ -1,0 +1,38 @@
+// The syntax before enums, which fmt rewrites: payload fields in
+// parentheses, a block of bare reasons, and positional reasons.
+kind Legacy version 1
+
+decision deny {
+  reason: not_eligible | soak_too_short | no_rule_matched
+}
+
+decision review { // needs a human
+  reason: service_owner
+  approvers: list<string>
+}
+
+decision approve {
+  reason: release_manager // the RM
+    // SRE on call
+    | payments_sre
+  bake: duration = 1h // how long to bake
+  // a note for the log
+  note: string = ""
+}
+
+default deny(reason: no_rule_matched)
+
+---
+
+policy legacy.demo: Legacy@1
+
+when x { deny(reason: not_eligible) }
+
+when y {
+  approve(reason: release_manager, bake: 2h)
+  review(
+    reason: service_owner, // the owner
+    approvers: ["a"],
+  )
+  approve(reason: payments_sre, reason: release_manager)
+}

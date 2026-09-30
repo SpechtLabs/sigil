@@ -12,6 +12,10 @@ import (
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
+// namespaceHelp is the hint on a collision between two of the names a
+// policy reads bare.
+const namespaceHelp = "inputs, host functions, decisions, enums and their values share one namespace; rename one of them"
+
 var identRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // Locator maps a validation key to the source span of the thing it names,
@@ -21,6 +25,8 @@ var identRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 //	kind                          the header
 //	kind.version                  the version number
 //	kind.accepts                  the oldest accepted version
+//	enum E                        an enum's name
+//	enum E.value V                one of its values
 //	type T                        a type's name
 //	type T.field F                a field's name
 //	type T.field F.type           a field's type
@@ -57,6 +63,7 @@ func (k *Kind) Validate(locate Locator) diag.ErrorList {
 	v := &validator{kind: k, locate: locate}
 	v.header()
 	v.types()
+	v.enums()
 	v.inputsAndFuncs()
 	v.decisions()
 	v.resolution()
@@ -177,9 +184,79 @@ func contains(xs []string, x string) bool {
 	return slices.Contains(xs, x)
 }
 
-// typeResolves checks that every struct type inside t is declared, and
-// that t is well-formed: no nested optionals, no optional lists or maps, no decision-typed data,
-// scalar map keys. key locates the type in source; where names it in the
+// enums checks that enum names are unreserved identifiers no other enum,
+// struct type, input, host function or decision has, and that each enum
+// declares at least one value, each a plain identifier and declared once.
+// An enum's name and its values join the kind's namespace, so a value
+// can't be the name of an input, host function, decision or type; two
+// enums may share a value.
+func (v *validator) enums() {
+	seen := map[string]bool{}
+	for _, e := range v.kind.Enums {
+		key := "enum " + e.Name
+		switch {
+		case !isIdent(e.Name):
+			v.errorf(key, "an enum name is an identifier, like `Tier`", "invalid enum name %q", e.Name)
+		case types.IsReserved(e.Name):
+			v.errorf(key, "the built-in type names are reserved; pick another name", "enum %q shadows a built-in type", e.Name)
+		case seen[e.Name] || v.kind.Type(e.Name) != nil:
+			v.errorf(key, "enums and struct types share one namespace; give each type one declaration", "type %q is declared twice", e.Name)
+		case v.kind.Input(e.Name) != nil:
+			v.errorf(key, namespaceHelp, "enum %q collides with input %q", e.Name, e.Name)
+		case v.kind.Func(e.Name) != nil:
+			v.errorf(key, namespaceHelp, "enum %q collides with function %q", e.Name, e.Name)
+		case v.kind.Decision(e.Name) != nil:
+			v.errorf(key, namespaceHelp, "enum %q collides with decision %q", e.Name, e.Name)
+		}
+		seen[e.Name] = true
+
+		if len(e.Values) == 0 {
+			v.errorf(key, "list its values, like `enum "+e.Name+": critical | standard`", "enum %s declares no values", e.Name)
+		}
+		values := map[string]bool{}
+		for _, val := range e.Values {
+			vkey := key + ".value " + val
+			switch holder := v.holder(val); {
+			case !isIdent(val):
+				v.errorf(vkey, "a value is a plain identifier, not a keyword", "enum %s: invalid value %q", e.Name, val)
+			case values[val]:
+				v.errorf(vkey, "declare each value once", "enum %s: value %q is declared twice", e.Name, val)
+			case holder != "":
+				v.errorf(vkey, namespaceHelp, "enum %s: value %q collides with %s %q", e.Name, val, holder, val)
+			}
+			values[val] = true
+		}
+	}
+}
+
+// holder names what else in the kind is called name, for a collision
+// with an enum value: "input", "function", "decision" or "type", or ""
+// when nothing is.
+func (v *validator) holder(name string) string {
+	k := v.kind
+	switch {
+	case k.Input(name) != nil:
+		return "input"
+	case k.Func(name) != nil:
+		return "function"
+	case k.Decision(name) != nil:
+		return "decision"
+	case k.Type(name) != nil, k.Enum(name) != nil:
+		return "type"
+	}
+	return ""
+}
+
+// isTypeName reports whether name is a built-in type or one the kind
+// declares.
+func (v *validator) isTypeName(name string) bool {
+	return types.IsReserved(name) || v.kind.Type(name) != nil || v.kind.Enum(name) != nil
+}
+
+// typeResolves checks that every struct type and enum inside t is
+// declared, and that t is well-formed: no nested optionals, no optional
+// lists or maps, no decision-typed data, scalar or enum map keys, and no
+// enum map values. key locates the type in source; where names it in the
 // message. types.Invalid passes: a loader puts it where a name didn't
 // resolve, and has already reported that at the name.
 func (v *validator) typeResolves(t types.Type, key, where string) {
@@ -192,9 +269,12 @@ func (v *validator) typeResolves(t types.Type, key, where string) {
 		v.typeResolves(t.Elem, key, where)
 	case *types.Map:
 		if !types.IsKey(t.Key) {
-			v.errorf(key, "map keys are scalars, as in Go: bool, int, float, string, duration or timestamp", "%s: map key type can't be %s", where, t.Key)
+			v.errorf(key, "map keys are scalars or enums, as in Go: bool, int, float, string, duration, timestamp or an enum", "%s: map key type can't be %s", where, t.Key)
 		} else {
 			v.typeResolves(t.Key, key, where)
+		}
+		if e, ok := t.Value.(*types.Enum); ok {
+			v.errorf(key, "a missing key would read as the zero value, and an enum has none; key the map by the enum instead, or use a list", "%s: map value type can't be enum %s", where, e.Name)
 		}
 		v.typeResolves(t.Value, key, where)
 	case *types.Optional:
@@ -211,6 +291,10 @@ func (v *validator) typeResolves(t types.Type, key, where string) {
 		if v.kind.Type(t.Name) == nil {
 			v.errorf(key, "declare it with `type "+t.Name+" { ... }`", "%s: undeclared type %s", where, t.Name)
 		}
+	case *types.Enum:
+		if v.kind.Enum(t.Name) == nil {
+			v.errorf(key, "declare it with `enum "+t.Name+": a | b`", "%s: undeclared type %s", where, t.Name)
+		}
 	default:
 		v.errorf(key, "", "%s: invalid type", where)
 	}
@@ -226,7 +310,7 @@ func (v *validator) inputsAndFuncs() {
 			v.errorf(key, "an input name is a plain identifier, not a keyword", "invalid input name %q", in.Name)
 		}
 		if prev, dup := seen[in.Name]; dup {
-			v.errorf(key, "inputs and host functions share one namespace", "input %q collides with %s %q", in.Name, prev, in.Name)
+			v.errorf(key, namespaceHelp, "input %q collides with %s %q", in.Name, prev, in.Name)
 		}
 		seen[in.Name] = "input"
 		v.typeResolves(in.Type, key+".type", fmt.Sprintf("input %q", in.Name))
@@ -237,7 +321,7 @@ func (v *validator) inputsAndFuncs() {
 			v.errorf(key, "a function name is a plain identifier, not a keyword", "invalid function name %q", f.Name)
 		}
 		if prev, dup := seen[f.Name]; dup {
-			v.errorf(key, "inputs and host functions share one namespace", "function %q collides with %s %q", f.Name, prev, f.Name)
+			v.errorf(key, namespaceHelp, "function %q collides with %s %q", f.Name, prev, f.Name)
 		}
 		seen[f.Name] = "function"
 		for i, p := range f.Params {
@@ -251,7 +335,8 @@ func (v *validator) inputsAndFuncs() {
 	}
 }
 
-// decisions checks decision names, payload fields and their defaults.
+// decisions checks decision names, which share the namespace of inputs
+// and host functions, payload fields and their defaults.
 func (v *validator) decisions() {
 	if len(v.kind.Decisions) == 0 {
 		v.errorf("kind", "declare at least one decision", "kind %s declares no decisions", v.kind.Name)
@@ -259,11 +344,15 @@ func (v *validator) decisions() {
 	seen := map[string]bool{}
 	for _, d := range v.kind.Decisions {
 		key := "decision " + d.Name
-		if !isIdent(d.Name) {
+		switch {
+		case !isIdent(d.Name):
 			v.errorf(key, "a decision name is a plain identifier, not a keyword", "invalid decision name %q", d.Name)
-		}
-		if seen[d.Name] {
+		case seen[d.Name]:
 			v.errorf(key, "give each decision one declaration", "decision %q is declared twice", d.Name)
+		case v.kind.Input(d.Name) != nil:
+			v.errorf(key, namespaceHelp, "decision %q collides with input %q", d.Name, d.Name)
+		case v.kind.Func(d.Name) != nil:
+			v.errorf(key, namespaceHelp, "decision %q collides with function %q", d.Name, d.Name)
 		}
 		seen[d.Name] = true
 
@@ -273,7 +362,7 @@ func (v *validator) decisions() {
 			where := fmt.Sprintf("decision %s, field %q", d.Name, f.Name)
 			switch {
 			case f.Name == "reason":
-				v.errorf(fkey, "every constructor names a reason first; declare reasons in the decision's block, not as a field", "%s: reason can't be a payload field", where)
+				v.errorf(fkey, "the reason is the decision's own field, declared as `reason: a | b` with the reasons inline", "%s: reason can't be a payload field", where)
 			case !isName(f.Name):
 				v.errorf(fkey, "a field name is an identifier; keywords are allowed", "%s: invalid field name", where)
 			case fields[f.Name]:
@@ -292,13 +381,24 @@ func (v *validator) decisions() {
 }
 
 // reasons checks a decision's reason set and, when the kind ranks them,
-// that the ranking names every reason exactly once.
+// that the ranking names every reason exactly once. A lone reason can't
+// be spelled like a type: `reason: Tier` reads as naming the reasons'
+// type, which the reason can't have, so it's refused rather than taken as
+// a reason called Tier.
 func (v *validator) reasons(d *Decision, key string) {
 	if d == nil {
 		return
 	}
-	if len(d.Reasons) == 0 {
-		v.errorf(key, "declare at least one reason in the decision's block, like `decision deny { no_rule_matched }`", "decision %s declares no reasons", d.Name)
+	switch {
+	case len(d.Reasons) == 0:
+		v.errorf(key, "declare at least one reason, like `decision deny { reason: no_rule_matched }`", "decision %s declares no reasons", d.Name)
+	case len(d.Reasons) == 1 && v.isTypeName(d.Reasons[0]):
+		r := d.Reasons[0]
+		help := "list the reasons inline, like `reason: a | b`"
+		if e := v.kind.Enum(r); e != nil && len(e.Values) > 0 {
+			help = "list the reasons inline, like `reason: " + strings.Join(e.Values, " | ") + "`"
+		}
+		v.errorf(key+".reason "+r, help, "decision %s: the reason can't name type %s", d.Name, r)
 	}
 	seen := map[string]bool{}
 	for _, r := range d.Reasons {
@@ -373,7 +473,7 @@ func (v *validator) resolution() {
 	case k.Default != nil:
 		v.constructor("default", k.Default)
 	case k.Collect != CollectAll:
-		v.errorf("kind", "declare `default <decision>(<reason>)` for the case where no rule fires", "kind %s has no default decision", k.Name)
+		v.errorf("kind", "declare `default <decision>(reason: <reason>)` for the case where no rule fires", "kind %s has no default decision", k.Name)
 	}
 
 	if k.Conflict == nil {
@@ -430,7 +530,7 @@ func (v *validator) constructor(decl string, c *Default) {
 	for name, val := range c.Args {
 		f := d.Field(name)
 		if f == nil {
-			v.errorf(decl+".arg "+name, d.Name+" is declared as: "+d.Signature(), "%s: decision %s has no payload field %q", decl, d.Name, name)
+			v.errorf(decl+".arg "+name, d.Signature(), "%s: decision %s has no payload field %q", decl, d.Name, name)
 			continue
 		}
 		if !constant.Conforms(val, f.Type) {
@@ -439,7 +539,7 @@ func (v *validator) constructor(decl string, c *Default) {
 	}
 	for _, f := range d.Fields {
 		if _, given := c.Args[f.Name]; !given && !f.HasDefault {
-			v.errorf(decl, d.Name+" is declared as: "+d.Signature(), "%s: field %q is required and has no value", decl, f.Name)
+			v.errorf(decl, d.Signature(), "%s: field %q is required and has no value", decl, f.Name)
 		}
 	}
 }

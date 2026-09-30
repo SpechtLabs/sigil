@@ -14,9 +14,11 @@
 // implementation up front. Values are reflect.Values over the host's own
 // Go data: an input's field is read through the index path the binding
 // recorded, a list is indexed in place, a map is looked up in place.
-// Nothing is converted or copied on the way in. A [Scope] maps the names
-// a document declares to how the compiled code reads them, and a Frame
-// holds the values of one evaluation.
+// Nothing is converted or copied on the way in, except that an enum value
+// becomes its constant once its enum is checked to declare it: the host's
+// Go string can hold anything. A [Scope] maps the names a document
+// declares to how the compiled code reads them, and a Frame holds the
+// values of one evaluation.
 //
 // # Policies
 //
@@ -38,14 +40,14 @@
 //
 // # Runtime errors
 //
-// A runtime error, such as an index out of range, integer overflow or a
-// host function returning an error, unwinds through a recovered panic and
-// comes back from [Run] or [Policy.Eval] as a *diag.Error pointing at the
-// expression that failed. The error a host function returned is its
-// Cause. A panic raised inside a host function isn't recovered and
-// reaches the caller, unless the binding sets RecoverHostPanics: then it
-// becomes a runtime error too, caused by a [*HostPanic] that keeps the
-// stack.
+// A runtime error, such as an index out of range, integer overflow, a
+// host function returning an error or a host value outside its enum,
+// unwinds through a recovered panic and comes back from [Run] or
+// [Policy.Eval] as a *diag.Error pointing at the expression that failed.
+// The error a host function returned is its Cause. A panic raised inside
+// a host function isn't recovered and reaches the caller, unless the
+// binding sets RecoverHostPanics: then it becomes a runtime error too,
+// caused by a [*HostPanic] that keeps the stack.
 //
 // # Cancellation
 //

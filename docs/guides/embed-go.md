@@ -30,7 +30,7 @@ type Release struct {
 
 type Service struct {
 	Name   string            `policy:"name"`
-	Tier   string            `policy:"tier"`
+	Tier   Tier              `policy:"tier"`
 	Owners []string          `policy:"owners"`
 	Labels map[string]string `policy:"labels"`
 }
@@ -44,6 +44,27 @@ type Actor struct {
 ```
 
 [Go type mapping](/reference/go-api/#go-type-mapping) lists which Go types map to which Sigil types.
+
+### Declare the enums
+
+`Service.Tier` above has type `Tier`, not `string`. A field that only ever holds one of a few known values should be an enum, so a policy that compares it with a misspelled value fails to compile instead of never matching. Declare a named string type and a constant for each value:
+
+```go
+// Tier is a service's criticality.
+type Tier string
+
+const (
+	TierCritical Tier = "critical"
+	TierStandard Tier = "standard"
+	TierInternal Tier = "internal"
+)
+```
+
+Then register the type with `policy.WithEnum(TierCritical, TierStandard, TierInternal)` when you [build the kind](#build-the-kind). That declares `enum Tier: critical | standard | internal` in the kind file, named after the Go type, with the values in the order you pass them. Every field of type `Tier` becomes a `Tier` in Sigil, and so do `*Tier` (an optional), `[]Tier` (a list) and map keys of type `Tier`. A named string type you don't register stays a plain `string`.
+
+Policies write the values bare, `service.tier == critical`, and payload fields of type `Tier` come back to Go as `Tier` values.
+
+Go can't stop a caller from putting `Tier("critcal")` or an empty `Tier` into the input. Sigil reads it without complaint until a rule looks at `service.tier`, and then fails the evaluation with a runtime error; the result holds the kind's default, as for any [failed evaluation](/guides/handle-errors/). That's the safe outcome, but it's your caller's mistake reported as a policy failure. Check the value where the request enters your service and answer with a client error there: the [example service](/guides/example-service/) answers 400 for a tier outside the set. The rules for `WithEnum` and the panics it can raise are in [Enums](/reference/go-api/#enums).
 
 ### Give each decision a payload
 
@@ -102,6 +123,7 @@ Tie it together with `policy.NewKind`. The options are the kind file's declarati
 ```go
 var Deploy = policy.NewKind[Input]("DeployApproval",
 	policy.WithVersion(1),
+	policy.WithEnum(TierCritical, TierStandard, TierInternal),
 	policy.WithDecisions(Deny, Review, Approve), // order = precedence
 	policy.WithReasonPrecedence(NotEligible, SoakTooShort, NoRuleMatched),
 	policy.WithReasonPrecedence(ReleaseManager, PaymentsSRE),
@@ -110,6 +132,7 @@ var Deploy = policy.NewKind[Input]("DeployApproval",
 )
 ```
 
+- `WithEnum` declares the `Tier` enum from its constants; see [Declare the enums](#declare-the-enums).
 - `WithDecisions` takes the decisions highest precedence first, so a deny beats a review beats an approval.
 - `WithReasonPrecedence` ranks one decision's reasons, so two denies, or two approvals, never conflict.
 - `WithDefault` is the result when no rule fires, and also what a failed evaluation returns. To return a reason of its own after a conflict, add `WithConflict`, as [Name conflicts in the result](/guides/handle-errors/#name-conflicts-in-the-result) shows.
@@ -122,7 +145,7 @@ For a kind where every decision that fires applies, such as the example service'
 ```text
 policy.NewKind(DeployApproval): invalid kind:
   invalid kind version 0 (the version is a positive integer that changes when the contract does)
-  kind DeployApproval has no default decision (declare `default <decision>(<reason>)` for the case where no rule fires)
+  kind DeployApproval has no default decision (declare `default <decision>(reason: <reason>)` for the case where no rule fires)
 ```
 
 The tooling reads the kind as a kind file that your service exports; [Build a host binary](/guides/host-binary/) sets that up.
@@ -156,7 +179,7 @@ A failed load returns a `*policy.CompileError` whose message quotes the offendin
 ```text
 3:14 (deploy.gate): error: unknown field "teir" on type Service
   |
-3 | when service.teir == "critical" {
+3 | when service.teir == critical {
   |              ^^^^
   = help: did you mean "tier"? Service declares: name, tier, owners, labels
 ```
@@ -185,7 +208,7 @@ Call `Eval` with the request's context and the input. Check the error first, the
 func decide(ctx context.Context, p *policy.Policy[Input], in Input) error {
 	res, err := p.Eval(ctx, in)
 	if err != nil {
-		return reject(res, err) // res holds deny(no_rule_matched); see Handle failed evaluations
+		return reject(res, err) // res holds deny(reason: no_rule_matched); see Handle failed evaluations
 	}
 
 	if r, ok := Review.Match(res); ok {

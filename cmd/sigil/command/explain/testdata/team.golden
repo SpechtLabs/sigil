@@ -1,34 +1,34 @@
 payments.production: 9 rules from 3 policies and 1 module
 
-  deny(not_eligible)                payments.production:7 → deploy.guardrails:8
+  deny(reason: not_eligible)        payments.production:7 → deploy.guardrails:8
     when not eligible
 
-  deny(soak_too_short)              payments.production:7 → deploy.guardrails:12
+  deny(reason: soak_too_short)      payments.production:7 → deploy.guardrails:12
     when release.soak < 4h and not release.hotfix
 
-  approve(release_manager)          payments.production:10 → deploy.production:11
+  approve(reason: release_manager)  payments.production:10 → deploy.production:11
     when service.labels["compliance"] == "pci"
      and cleared
      and service.tier == "critical" and "release_manager" in actor.roles
 
-  review(service_owner)             payments.production:10 → deploy.production:16
+  review(reason: service_owner)     payments.production:10 → deploy.production:16
     when service.labels["compliance"] == "pci"
      and cleared
      and service.tier in ["standard", "internal"] and owns_service
     with approvers = ["payments-leads", "security-leads"]
 
-  approve(release_manager)          payments.production:14 → deploy.production:11
+  approve(reason: release_manager)  payments.production:14 → deploy.production:11
     when service.labels["compliance"] != "pci"
      and cleared
      and service.tier == "critical" and "release_manager" in actor.roles
 
-  review(service_owner)             payments.production:14 → deploy.production:16
+  review(reason: service_owner)     payments.production:14 → deploy.production:16
     when service.labels["compliance"] != "pci"
      and cleared
      and service.tier in ["standard", "internal"] and owns_service
     with approvers = ["payments-leads"]
 
-  approve(payments_sre)             payments.production:18
+  approve(reason: payments_sre)     payments.production:18
     when cleared and "payments-sre" in actor.teams
     with bake = 15m
 

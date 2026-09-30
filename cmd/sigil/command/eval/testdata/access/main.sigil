@@ -3,21 +3,21 @@ policy access.main: Access@1
 assert("named_user", user.name != "")
 
 when user.admin {
-  allow(admin, ttl: 8h, scopes: ["*"])
+  allow(reason: admin, ttl: 8h, scopes: ["*"])
 }
 
 when "platform" in user.teams {
-  allow(team_member)
+  allow(reason: team_member)
 }
 
 when age > 30d {
-  deny(too_old)
+  deny(reason: too_old)
 }
 
 when labels["tier"] > 2 {
-  deny(banned)
+  deny(reason: banned)
 }
 
 when resource == "vault" and owner(resource) == user.name {
-  allow(team_member, ttl: 15m)
+  allow(reason: team_member, ttl: 15m)
 }

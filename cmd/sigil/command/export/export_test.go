@@ -38,7 +38,7 @@ var update = flag.Bool("update", false, "rewrite the golden files under testdata
 // TestExport covers printing, writing and checking the kind file.
 func TestExport(t *testing.T) {
 	// The export from before the host declared its conflict outcome.
-	withoutConflict := strings.TrimSuffix(guarded.Schema(), "conflict deny(conflicting_rules)\n")
+	withoutConflict := strings.TrimSuffix(guarded.Schema(), "conflict deny(reason: conflicting_rules)\n")
 	one := []project.Linked{link(gate)}
 	both := []project.Linked{link(gate), link(teams)}
 	tests := []struct {

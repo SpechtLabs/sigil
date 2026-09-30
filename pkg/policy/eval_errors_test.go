@@ -49,17 +49,17 @@ func TestEvalCancellation(t *testing.T) {
 		before  bool          // cancel before calling Eval
 		err     error         // nil when the evaluation completes
 	}{
-		{name: "done before it starts", src: "when true { allow(ok) }", before: true, err: context.Canceled},
-		{name: "canceled in a rule", src: "when stop(1) { allow(ok) }", err: context.Canceled},
-		{name: "canceled in a rule, collect all", src: "when stop(1) { allow(ok) }", collect: true, err: context.Canceled},
-		{name: "canceled after a candidate fired", src: "when true { allow(ok) }\nwhen stop(1) { deny(blocked) }", err: context.Canceled},
-		{name: "canceled after a candidate fired, collect all", src: "when true { allow(ok) }\nwhen stop(1) { deny(blocked) }", collect: true, err: context.Canceled},
-		{name: "canceled in an input assert", src: "assert(\"stops\", stop(1))\nwhen true { allow(ok) }", err: context.Canceled},
-		{name: "canceled in an outcome assert", src: "when true { allow(ok) }\nassert(\"after\", allow in outcome and stop(1))", err: context.Canceled},
-		{name: "canceled in a quantifier", src: "when all i in items: stop(i) { allow(ok) }", items: []int64{1, 2, 3}, err: context.Canceled},
-		{name: "deadline in a host function", src: "when wait(1) { allow(ok) }", timeout: 10 * time.Millisecond, err: context.DeadlineExceeded},
-		{name: "deadline in nested quantifiers", src: "when all a in items: any b in items: b == a { allow(ok) }", items: many, timeout: 5 * time.Millisecond, err: context.DeadlineExceeded},
-		{name: "live", src: "assert(\"listed\", all i in items: i >= 0)\nwhen all i in items: i >= 0 { allow(ok) }", items: []int64{1, 2, 3}},
+		{name: "done before it starts", src: "when true { allow(reason: ok) }", before: true, err: context.Canceled},
+		{name: "canceled in a rule", src: "when stop(1) { allow(reason: ok) }", err: context.Canceled},
+		{name: "canceled in a rule, collect all", src: "when stop(1) { allow(reason: ok) }", collect: true, err: context.Canceled},
+		{name: "canceled after a candidate fired", src: "when true { allow(reason: ok) }\nwhen stop(1) { deny(reason: blocked) }", err: context.Canceled},
+		{name: "canceled after a candidate fired, collect all", src: "when true { allow(reason: ok) }\nwhen stop(1) { deny(reason: blocked) }", collect: true, err: context.Canceled},
+		{name: "canceled in an input assert", src: "assert(\"stops\", stop(1))\nwhen true { allow(reason: ok) }", err: context.Canceled},
+		{name: "canceled in an outcome assert", src: "when true { allow(reason: ok) }\nassert(\"after\", allow in outcome and stop(1))", err: context.Canceled},
+		{name: "canceled in a quantifier", src: "when all i in items: stop(i) { allow(reason: ok) }", items: []int64{1, 2, 3}, err: context.Canceled},
+		{name: "deadline in a host function", src: "when wait(1) { allow(reason: ok) }", timeout: 10 * time.Millisecond, err: context.DeadlineExceeded},
+		{name: "deadline in nested quantifiers", src: "when all a in items: any b in items: b == a { allow(reason: ok) }", items: many, timeout: 5 * time.Millisecond, err: context.DeadlineExceeded},
+		{name: "live", src: "assert(\"listed\", all i in items: i >= 0)\nwhen all i in items: i >= 0 { allow(reason: ok) }", items: []int64{1, 2, 3}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -80,7 +80,7 @@ func TestEvalCancellation(t *testing.T) {
 			}
 			if tt.err == nil {
 				if err != nil || res.Decision != "allow" && !tt.collect {
-					t.Fatalf("Eval() = %s, %v; want allow(ok)", res.Decision, err)
+					t.Fatalf("Eval() = %s, %v; want allow(reason: ok)", res.Decision, err)
 				}
 				return
 			}
@@ -106,13 +106,13 @@ func TestRecoverHostPanics(t *testing.T) {
 		assert  bool   // the panic is an assert's cause
 		live    bool   // evaluate under a context that can be done, rather than context.Background()
 	}{
-		{name: "not recovered", src: "when boom(1) { allow(ok) }", value: "kaboom"},
-		{name: "not recovered, under a context that can be done", src: "when boom(1) { allow(ok) }", value: "kaboom", live: true},
-		{name: "recovered", src: "when boom(1) { allow(ok) }", recover: true, value: "kaboom"},
-		{name: "recovered, collect all", src: "when boom(1) { allow(ok) }", recover: true, collect: true, value: "kaboom"},
-		{name: "recovered runtime error", src: "when boom(0) { allow(ok) }", recover: true, value: "runtime error: index out of range [0] with length 0", runtime: true},
-		{name: "recovered in an assert", src: "assert(\"safe\", boom(1))\nwhen true { allow(ok) }", recover: true, value: "kaboom", assert: true},
-		{name: "recovered, no panic", src: "when boom(2) { allow(ok) }", recover: true},
+		{name: "not recovered", src: "when boom(1) { allow(reason: ok) }", value: "kaboom"},
+		{name: "not recovered, under a context that can be done", src: "when boom(1) { allow(reason: ok) }", value: "kaboom", live: true},
+		{name: "recovered", src: "when boom(1) { allow(reason: ok) }", recover: true, value: "kaboom"},
+		{name: "recovered, collect all", src: "when boom(1) { allow(reason: ok) }", recover: true, collect: true, value: "kaboom"},
+		{name: "recovered runtime error", src: "when boom(0) { allow(reason: ok) }", recover: true, value: "runtime error: index out of range [0] with length 0", runtime: true},
+		{name: "recovered in an assert", src: "assert(\"safe\", boom(1))\nwhen true { allow(reason: ok) }", recover: true, value: "kaboom", assert: true},
+		{name: "recovered, no panic", src: "when boom(2) { allow(reason: ok) }", recover: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -180,10 +180,10 @@ func TestRuntimeErrorCause(t *testing.T) {
 		cause  error // what errors.Is finds; nil for an error in the policy itself
 		assert bool
 	}{
-		{name: "host error", src: "when lookup(1) { allow(ok) }", msg: "host function lookup failed: lookup 1: registry down", cause: errDown},
-		{name: "host error in an assert", src: "assert(\"up\", lookup(1))\nwhen true { allow(ok) }", msg: "host function lookup failed: lookup 1: registry down", cause: errDown, assert: true},
-		{name: "unbound host function", src: "when lookup(0) { allow(ok) }", msg: "host function lookup failed: ", help: "this sigil binary has only lookup's signature from the kind file"},
-		{name: "index out of range", src: "when items[5] > 0 { allow(ok) }", items: []int64{1}, msg: "index 5 out of range for a list of 1"},
+		{name: "host error", src: "when lookup(1) { allow(reason: ok) }", msg: "host function lookup failed: lookup 1: registry down", cause: errDown},
+		{name: "host error in an assert", src: "assert(\"up\", lookup(1))\nwhen true { allow(reason: ok) }", msg: "host function lookup failed: lookup 1: registry down", cause: errDown, assert: true},
+		{name: "unbound host function", src: "when lookup(0) { allow(reason: ok) }", msg: "host function lookup failed: ", help: "this sigil binary has only lookup's signature from the kind file"},
+		{name: "index out of range", src: "when items[5] > 0 { allow(reason: ok) }", items: []int64{1}, msg: "index 5 out of range for a list of 1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -225,12 +225,12 @@ func TestAssertPhase(t *testing.T) {
 		want    policy.AssertPhase
 		label   string
 	}{
-		{name: "input assert", src: "assert(\"positive\", all i in items: i > 0)\nwhen true { allow(ok) }", items: []int64{0}, want: policy.InputAsserts, label: "input"},
-		{name: "input assert raising", src: "assert(\"third\", items[2] > 0)\nwhen true { allow(ok) }", want: policy.InputAsserts, label: "input"},
-		{name: "outcome assert", src: "when true { allow(ok) }\nassert(\"no grant\", not (allow in outcome))", want: policy.OutcomeAsserts, label: "outcome"},
-		{name: "outcome assert, nothing fired", src: "when all i in items: i > 9 { allow(ok) }\nassert(\"granted\", allow in outcome)", items: []int64{1}, want: policy.OutcomeAsserts, label: "outcome"},
-		{name: "outcome assert, nothing fired, collect all", src: "when all i in items: i > 9 { allow(ok) }\nassert(\"granted\", allow in outcome)", collect: true, items: []int64{1}, want: policy.OutcomeAsserts, label: "outcome"},
-		{name: "outcome assert raising", src: "when true { allow(ok) }\nassert(\"third\", allow in outcome and items[2] > 0)", want: policy.OutcomeAsserts, label: "outcome"},
+		{name: "input assert", src: "assert(\"positive\", all i in items: i > 0)\nwhen true { allow(reason: ok) }", items: []int64{0}, want: policy.InputAsserts, label: "input"},
+		{name: "input assert raising", src: "assert(\"third\", items[2] > 0)\nwhen true { allow(reason: ok) }", want: policy.InputAsserts, label: "input"},
+		{name: "outcome assert", src: "when true { allow(reason: ok) }\nassert(\"no grant\", not (allow in outcome))", want: policy.OutcomeAsserts, label: "outcome"},
+		{name: "outcome assert, nothing fired", src: "when all i in items: i > 9 { allow(reason: ok) }\nassert(\"granted\", allow in outcome)", items: []int64{1}, want: policy.OutcomeAsserts, label: "outcome"},
+		{name: "outcome assert, nothing fired, collect all", src: "when all i in items: i > 9 { allow(reason: ok) }\nassert(\"granted\", allow in outcome)", collect: true, items: []int64{1}, want: policy.OutcomeAsserts, label: "outcome"},
+		{name: "outcome assert raising", src: "when true { allow(reason: ok) }\nassert(\"third\", allow in outcome and items[2] > 0)", want: policy.OutcomeAsserts, label: "outcome"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -319,7 +319,7 @@ func checkFallback(t *testing.T, res *policy.Result, collect bool) {
 	case collect && len(res.Outcome) != 0:
 		t.Errorf("Outcome = %v, want empty", res.Outcome)
 	case !collect && (res.Decision != "deny" || res.Reason != "no_rule_matched" || len(res.Outcome) != 1):
-		t.Errorf("result = %s(%s), want the default deny(no_rule_matched)", res.Decision, res.Reason)
+		t.Errorf("result = %s(%s), want the default deny(reason: no_rule_matched)", res.Decision, res.Reason)
 	}
 	if len(res.Trace.Candidates) != 0 {
 		t.Errorf("Trace = %v, want empty", res.Trace.Candidates)

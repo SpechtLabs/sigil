@@ -108,8 +108,8 @@ cases:
           reason: break_glass
           payload:
             ttl: 15m
-  # A break-glass member who is also in platform gets admin(break_glass) and
-  # release_manager(platform_member), which the kind declares exclusive, so the
+  # A break-glass member who is also in platform gets admin(reason: break_glass) and
+  # release_manager(reason: platform_member), which the kind declares exclusive, so the
   # evaluation fails with a conflict naming both. The test format has no
   # expectation for a conflict: a case expects an outcome, a decision or
   # failing asserts, and a conflict fails any of them. The Go integration

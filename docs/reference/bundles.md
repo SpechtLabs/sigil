@@ -23,7 +23,7 @@ policy deploy.guardrails: DeployApproval@1
 param min_soak: duration = 24h
 
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 

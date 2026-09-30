@@ -13,11 +13,17 @@ import (
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
+// EnumValue is a value of an enum type, holding the value's name, like
+// `critical`. Which enum it belongs to is its Sigil type's business: the
+// same name may be a value of two enums.
+type EnumValue string
+
 // Conforms reports whether v is a constant of type t, in the Go
 // representation constants use: bool, int64, float64, string,
-// [time.Duration], [time.Time], []any for lists, map[any]any for maps and
-// nil for an absent optional. It checks every element of a list or map.
-// No value conforms to a struct type or to decision.
+// [time.Duration], [time.Time], [EnumValue] for an enum, []any for lists,
+// map[any]any for maps and nil for an absent optional. An EnumValue
+// conforms to an enum that declares it. It checks every element of a list
+// or map. No value conforms to a struct type or to decision.
 func Conforms(v any, t types.Type) bool {
 	switch t := t.(type) {
 	case types.Basic:
@@ -41,6 +47,9 @@ func Conforms(v any, t types.Type) bool {
 			_, ok := v.(time.Time)
 			return ok
 		}
+	case *types.Enum:
+		e, ok := v.(EnumValue)
+		return ok && t.Has(string(e))
 	case *types.List:
 		xs, ok := v.([]any)
 		if !ok {
@@ -71,10 +80,10 @@ func Conforms(v any, t types.Type) bool {
 
 // Format renders a constant as a Sigil literal, for signatures and
 // messages. Map entries are sorted, so the output is stable. nil prints
-// as `none`, a timestamp as a quoted RFC 3339 string, and a value outside
-// the representation [Conforms] describes as its Go type in angle
-// brackets. The minimum int64 prints as arithmetic, since its magnitude
-// isn't a valid literal.
+// as `none`, an [EnumValue] as its bare name, a timestamp as a quoted
+// RFC 3339 string, and a value outside the representation [Conforms]
+// describes as its Go type in angle brackets. The minimum int64 prints
+// as arithmetic, since its magnitude isn't a valid literal.
 func Format(v any) string {
 	if v == nil {
 		return "none"
@@ -98,6 +107,8 @@ func Format(v any) string {
 		return s
 	case string:
 		return fmt.Sprintf("%q", v)
+	case EnumValue:
+		return string(v)
 	case time.Duration:
 		return FormatDuration(v)
 	case time.Time:
@@ -153,8 +164,10 @@ func FormatDuration(d time.Duration) string {
 }
 
 // Compare orders two constants of one ordered type with a literal, int64,
-// float64 or [time.Duration]: negative when a is less than b, zero when
-// they're equal, positive when a is greater. Values of any other Go type
+// float64 or [time.Duration], or two [EnumValue]s by name: negative when a
+// is less than b, zero when they're equal, positive when a is greater. Enums
+// have no order in the language; ordering their names only makes output
+// that lists them, such as a map's keys, stable. Values of any other Go type
 // compare equal. b must have the same Go type as a, or Compare panics.
 func Compare(a, b any) int { //nolint:emptyinterface // constants are typed by their Sigil type; see Conforms
 	switch a := a.(type) {
@@ -164,6 +177,8 @@ func Compare(a, b any) int { //nolint:emptyinterface // constants are typed by t
 		return cmp.Compare(a, b.(float64))
 	case time.Duration:
 		return cmp.Compare(a, b.(time.Duration))
+	case EnumValue:
+		return cmp.Compare(a, b.(EnumValue))
 	}
 	return 0
 }

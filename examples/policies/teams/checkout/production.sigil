@@ -7,4 +7,4 @@ assert("named_actor", actor.name != "")
 
 guardrails()
 
-production(approvers: ["checkout-leads"], tiers: ["standard"])
+production(approvers: ["checkout-leads"], tiers: [standard])

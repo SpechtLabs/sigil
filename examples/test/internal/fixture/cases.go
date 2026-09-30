@@ -213,6 +213,7 @@ func BadRequestCases() []BadRequestCase {
 		{Name: "a lone minus sign as a duration", Body: OwnerRequest(Soak("-")).JSON()},
 		{Name: "a day count longer than a duration holds", Body: OwnerRequest(Soak("9999999999d")).JSON()},
 		{Name: "a negative soak", Body: OwnerRequest(Soak("-1h")).JSON()},
+		{Name: "a tier the kind doesn't declare", Body: OwnerRequest(Tier("critcal")).JSON()},
 	}
 }
 

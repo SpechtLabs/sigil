@@ -28,7 +28,7 @@ config:
     features:
       - title: Typed against a contract
         icon: mdi:file-certificate-outline
-        details: The host defines a kind in Go (its inputs, functions and decisions). A typo like service.teir fails at compile time with a fix hint instead of silently switching a deny rule off.
+        details: The host defines a kind in Go (its inputs, enums, functions and decisions). A typo like service.teir, or a tier spelled critcal, fails at compile time with a fix hint instead of silently switching a rule off.
 
       - title: Halts by construction
         icon: mdi:timer-sand-complete
@@ -98,18 +98,17 @@ input actor: Actor
 input environment: string
 
 decision deny {
-  not_eligible
-  soak_too_short
-  no_rule_matched
+  reason: not_eligible | soak_too_short | no_rule_matched
 }
 
-decision review(approvers: list<string>) {
-  service_owner
+decision review {
+  reason: service_owner
+  approvers: list<string>
 }
 
-decision approve(bake: duration = 1h) {
-  release_manager
-  payments_sre
+decision approve {
+  reason: release_manager | payments_sre
+  bake: duration = 1h
 }
 
 collect one
@@ -117,7 +116,7 @@ precedence deny > review > approve
 precedence deny: not_eligible > soak_too_short > no_rule_matched
 precedence approve: release_manager > payments_sre
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 ```
 
 A platform team writes rules against it. Each `when` block that holds produces a candidate decision, and the highest-precedence candidate wins. That's `collect one`: a single winner. A kind that says `collect all` instead returns every decision that holds, for decisions that combine rather than compete, such as the roles someone holds at once; see [Collecting kinds](/reference/kind-files/#collecting-kinds).
@@ -130,7 +129,7 @@ policy deploy.guardrails: DeployApproval@1
 param min_soak: duration = 24h
 
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 
@@ -142,7 +141,7 @@ policy deploy.production: DeployApproval@1
 param approvers: list<string>
 
 when actor.teams any in service.owners {
-  review(service_owner, approvers: approvers)
+  review(reason: service_owner, approvers: approvers)
 }
 ```
 
@@ -165,7 +164,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
+  approve(reason: payments_sre, bake: 15m)
 }
 ```
 
@@ -204,11 +203,11 @@ use deploy.common.{eligible}
 param min_soak: duration = 24h
 
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 
@@ -220,17 +219,17 @@ policy deploy.production: DeployApproval@1
 use deploy.common.{cleared, owns_service}
 
 param approvers: list<string>
-param tiers: list<string> = ["standard", "internal"]
+param tiers: list<Tier> = [standard, internal]
 
 when cleared {
-  when service.tier == "critical"
+  when service.tier == critical
     and "release_manager" in actor.roles {
-    approve(release_manager)
+    approve(reason: release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review(service_owner, approvers: approvers)
+    review(reason: service_owner, approvers: approvers)
   }
 }
 ```
@@ -255,7 +254,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
+  approve(reason: payments_sre, bake: 15m)
 }
 ```
 
@@ -370,7 +369,7 @@ ExtraRules:
 What the `[1]` to `[4]` markers point at:
 
 1. **Order decides the outcome.** The team's approve has to sit below the denies, or it overrides them. Where it lands relative to `service-owner` changes behavior, too: a service owner who's also in `payments-sre` gets approved here, because the team rule matches first. In Sigil every rule runs, `deny > review > approve` picks the winner, and that owner gets a review.
-2. **Nothing is typed.** `"4h"` stays a string until the engine parses it at evaluation time, and a misspelled path such as `service.teir` resolves to nothing, so its rule quietly stops matching. Sigil checks both against the kind at compile time: `min_soak: 4h` is a `duration`, and `service.teir` is an [error with a fix hint](/understanding/strictness/).
+2. **Nothing is typed.** `"4h"` stays a string until the engine parses it at evaluation time, and a misspelled path such as `service.teir` resolves to nothing, so its rule quietly stops matching. So does a misspelled value such as `critcal`, which no service ever has. Sigil checks all three against the kind at compile time: `min_soak: 4h` is a `duration`, and `service.teir` and `critcal` are [errors with a fix hint](/understanding/strictness/).
 3. **Templating is text.** The team's rules get spliced in as text, so a wrong `indent` produces a different YAML file instead of an error, and every team's values file has to know the template's internals. Sigil's invocations bind [typed params](/understanding/composition/), a team can only add candidates, and the guardrails the host requires can't be gated off.
 4. **Nothing is named or shared.** The regions check is pasted into every rule that needs it, even into the team's values file, and the engine grew a one-off `splitSubsetOf` operator to express it. Giving PCI services other approvers means a second copy of the whole `service-owner` rule behind an `if`. Sigil names the check once as `let cleared` in a module, builds it from `split` and the general `all in`, and adds a condition to a shared policy by invoking it inside a `when`.
 

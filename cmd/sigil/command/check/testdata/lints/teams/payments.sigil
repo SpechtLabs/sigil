@@ -16,5 +16,5 @@ production(approvers: ["a", "b"])
 production(approvers: ["a", "b"])
 
 when cleared and not critical {
-  approve(payments_sre)
+  approve(reason: payments_sre)
 }

@@ -1,22 +1,21 @@
 kind Broken version 1
 
 decision deny {
-  conflicting_rules
-  no_rule_matched
+  reason: conflicting_rules | no_rule_matched
 }
 
 // A broken declaration before a conflict doesn't swallow it.
 collect
-conflict deny(conflicting_rules)
+conflict deny(reason: conflicting_rules)
 
-conflit deny(conflicting_rules)
+conflit deny(reason: conflicting_rules)
 
 conflict deny
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 
 conflict "conflicting_rules"
 
-conflict(conflicting_rules)
+conflict(reason: conflicting_rules)
 
 ---
 
@@ -26,6 +25,5 @@ kind Reserved version 1
 input conflict: bool
 
 decision deny {
-  conflict
-  no_rule_matched
+  reason: conflict | no_rule_matched
 }

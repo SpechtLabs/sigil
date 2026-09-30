@@ -13,7 +13,7 @@ import (
 
 // TestCompilePolicyErrors checks what CompilePolicy rejects.
 func TestCompilePolicyErrors(t *testing.T) {
-	const src = "policy p: Test@1\nparam approvers: list<string>\nwhen true { review(a, approvers: approvers) }"
+	const src = "policy p: Test@1\nparam approvers: list<string>\nwhen true { review(reason: a, approvers: approvers) }"
 	tests := []struct {
 		name    string
 		params  map[string]eval.Value

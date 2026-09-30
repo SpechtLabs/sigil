@@ -33,14 +33,18 @@ func Build(o Options) (*kind.Kind, *Binding, diag.ErrorList) {
 			Payloads: map[string]reflect.Type{},
 			Funcs:    map[string]reflect.Value{},
 			Fields:   map[string][]int{},
+			Enums:    map[reflect.Type]*types.Enum{},
 		},
 		structs: map[reflect.Type]*types.Struct{},
+		reached: map[*types.Enum]bool{},
 	}
 	b.binding.RecoverHostPanics = o.RecoverHostPanics
 	if o.Ranked && o.Collect {
 		b.errorf("a kind ranks its decisions with WithDecisions, or applies them all with WithCollect; use one",
 			"kind %s mixes WithDecisions and WithCollect", o.Name)
 	}
+	registered := b.registerEnums(o.Enums)
+	b.binding.HasEnums = len(registered) > 0
 	b.inputs(o.Input)
 	for _, f := range o.Funcs {
 		b.fn(f)
@@ -50,6 +54,11 @@ func Build(o Options) (*kind.Kind, *Binding, diag.ErrorList) {
 		if !o.Collect {
 			b.kind.Precedence = append(b.kind.Precedence, d.Name)
 		}
+	}
+	// What nothing reached prints after what something did, in
+	// registration order.
+	for _, e := range registered {
+		b.reach(e)
 	}
 	switch {
 	case len(o.Precedence) > 0 && !o.Collect:
@@ -109,6 +118,40 @@ func (b *builder) ranking(r Ranking) {
 		b.errorf("rank a decision's reasons once", "precedence %s is declared twice", r.Decision)
 	default:
 		d.Ranked = append([]string{}, r.Reasons...)
+	}
+}
+
+// registerEnums records the host's enum types, so convert maps a field of
+// one to its enum, and returns them in registration order. A kind file
+// can't make `string` itself an enum or declare an enum twice, so those
+// are checked here; every other rule of an enum is Validate's.
+func (b *builder) registerEnums(enums []Enum) []*types.Enum {
+	out := make([]*types.Enum, 0, len(enums))
+	for _, e := range enums {
+		switch {
+		case e.Type == nil || e.Type.Name() == "" || e.Type.PkgPath() == "":
+			b.errorf("declare a named type, like `type Tier string`; its name becomes the enum's name in policies",
+				"WithEnum: %v is not a named type", e.Type)
+			continue
+		case b.binding.Enums[e.Type] != nil:
+			b.errorf("pass each enum type to WithEnum once, with all its values",
+				"enum %s is registered twice", e.Type.Name())
+			continue
+		}
+		en := &types.Enum{Name: e.Type.Name(), Values: append([]string{}, e.Values...)}
+		b.binding.Enums[e.Type] = en
+		out = append(out, en)
+	}
+	return out
+}
+
+// reach adds an enum to the kind the first time something reaches it, so
+// enums print in the order the kind's inputs, functions and payloads
+// first use them.
+func (b *builder) reach(e *types.Enum) {
+	if !b.reached[e] {
+		b.reached[e] = true
+		b.kind.Enums = append(b.kind.Enums, e)
 	}
 }
 

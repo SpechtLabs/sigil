@@ -45,10 +45,17 @@ type infixOp struct {
 
 // infix classifies the current token as an infix operator, or reports
 // false when it isn't one, which is how an expression ends: at `)`, `,`,
-// `{`, a statement keyword or anything else that can't continue it.
+// `{`, a statement keyword or anything else that can't continue it. In a
+// decision field's default, a keyword followed by `:` ends it too: that's
+// the next field, named like a keyword.
 func (p *parser) infix() (infixOp, bool) {
 	cmp := func(op ast.Op) (infixOp, bool) { return infixOp{bpCmp, 1, op, none}, true }
+	if p.inField && p.tok.Kind.IsKeyword() && p.peek().Kind == token.Colon {
+		return infixOp{}, false
+	}
 	switch p.tok.Kind {
+	case token.Pipe:
+		p.errorTok(p.tok, "`|` can't join two conditions", "use `or`; `|` only separates enum values and reasons")
 	case token.KwOr:
 		return infixOp{lowest, 1, ast.OpOr, left}, true
 	case token.KwXor:
@@ -372,7 +379,7 @@ func (p *parser) parseMap() ast.Expr {
 	p.next()
 	var entries []ast.MapEntry
 	for p.tok.Kind != token.RBrace {
-		if len(entries) == 0 && startsBodyStmt(p.tok.Kind) {
+		if len(entries) == 0 && (startsBodyStmt(p.tok.Kind) || p.atConstructor()) {
 			p.missingOperand(op, opPos, open)
 		}
 		p.after = ast.OpInvalid
@@ -407,6 +414,17 @@ func (p *parser) missingOperand(op ast.Op, pos token.Pos, brace token.Token) {
 	end := token.Pos{Offset: pos.Offset + len(op.String()), Line: pos.Line, Column: pos.Column + len(op.String())}
 	p.errorAt(pos, end, fmt.Sprintf("`%s` has no right operand", op),
 		"the `{` after it was read as a map literal; finish the condition before the rule's `{`")
+}
+
+// atConstructor reports whether the current token starts a call whose
+// first argument is named, `deny(reason: a)`, which is a statement: an
+// expression's call takes no named arguments.
+func (p *parser) atConstructor() bool {
+	if p.tok.Kind != token.Ident || p.peekAt(1).Kind != token.LParen {
+		return false
+	}
+	name := p.peekAt(2).Kind
+	return (name == token.Ident || name.IsKeyword()) && p.peekAt(3).Kind == token.Colon
 }
 
 // startsBodyStmt reports whether k starts a statement of a `when` body

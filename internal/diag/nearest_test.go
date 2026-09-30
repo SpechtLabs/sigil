@@ -1,4 +1,4 @@
-package check
+package diag
 
 import "testing"
 
@@ -32,9 +32,9 @@ func TestNearest(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := nearest(tt.name, tt.candidates)
+			got, ok := Nearest(tt.name, tt.candidates)
 			if got != tt.want || ok != tt.ok {
-				t.Errorf("nearest(%q) = %q, %v; want %q, %v", tt.name, got, ok, tt.want, tt.ok)
+				t.Errorf("Nearest(%q) = %q, %v; want %q, %v", tt.name, got, ok, tt.want, tt.ok)
 			}
 		})
 	}

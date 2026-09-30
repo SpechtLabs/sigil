@@ -7,10 +7,10 @@ policy deploy.guardrails: DeployApproval@1 [16:1-28:2]
   use deploy.common.{eligible} [18:1-18:29]
   param min_soak: duration = 24h [20:1-20:31]
   when (not eligible) { [22:1-24:2]
-    deny(not_eligible) [23:3-23:21]
+    deny(reason: not_eligible) [23:3-23:29]
   }
   when ((release.soak < min_soak) and (not release.hotfix)) { [26:1-28:2]
-    deny(soak_too_short) [27:3-27:23]
+    deny(reason: soak_too_short) [27:3-27:31]
   }
 ---
 policy deploy.production: DeployApproval@1 [32:1-49:2]
@@ -19,9 +19,9 @@ policy deploy.production: DeployApproval@1 [32:1-49:2]
   param tiers: list<string> = ["standard", "internal"] [37:1-37:53]
   when cleared { [39:1-49:2]
     when ((service.tier == "critical") and ("release_manager" in actor.roles)) { [40:3-43:4]
-      approve(release_manager) [42:5-42:29]
+      approve(reason: release_manager) [42:5-42:37]
     }
     when ((service.tier in tiers) and owns_service) { [45:3-48:4]
-      review(service_owner, approvers: approvers) [47:5-47:48]
+      review(reason: service_owner, approvers: approvers) [47:5-47:56]
     }
   }

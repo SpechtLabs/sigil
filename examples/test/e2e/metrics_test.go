@@ -69,7 +69,7 @@ var _ = Describe("Metrics", func() {
 			Expect(after.Value(fixture.MetricEvalErrors, labels) - before.Value(fixture.MetricEvalErrors, labels)).
 				To(BeNumerically("==", 1))
 			// The deploy policy never ran, so no decision series moved, the
-			// fallback's deny(no_rule_matched) included.
+			// fallback's deny(reason: no_rule_matched) included.
 			Expect(after.Sum(fixture.MetricDecisions, nil)).To(Equal(before.Sum(fixture.MetricDecisions, nil)))
 		},
 		Entry("a failed separation-of-duties assert", "assertion", fixture.ComplianceMember, http.StatusInternalServerError),

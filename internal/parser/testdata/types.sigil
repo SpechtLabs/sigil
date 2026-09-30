@@ -1,5 +1,11 @@
 kind Shapes version 2
 
+enum Tier: critical | standard | internal
+enum Plan:
+  free
+  | pro |
+  enterprise
+
 type Nested {
   matrix: list<list<string>>
   lookup: map<string, list<int>>
@@ -9,18 +15,22 @@ type Nested {
 
 input nested: Nested
 input flag: bool
+input tiers: map<Tier, list<?Tier>>
 
 fn keys(map<string, string>,) -> list<string>
 fn now() -> timestamp
+fn tier_of(string) -> Tier
 
-decision allow(weights: map<string, int> = {}, tags: list<string> = [],) {
-  none
-  ok
+decision allow {
+  reason: none | ok
+  weights: map<string, int> = {}
+  tier: Tier = standard
+  tags: list<string> = []
 }
 
 collect one
 precedence allow
-default allow(none)
+default allow(reason: none)
 
 ---
 
@@ -31,7 +41,9 @@ param names: list<string>= ["a"]
 param nested: list<list<string>> = [["a"], []]
 param limit: int = -3
 param timeout: duration = 1h + 30m
+param tier: Tier = critical
+param allowed: list<Tier> = [standard, internal]
 
 when flag {
-  allow(ok, weights: m, tags: names,)
+  allow(reason: ok, weights: m, tags: names,)
 }

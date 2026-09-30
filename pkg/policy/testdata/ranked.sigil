@@ -3,13 +3,13 @@
 policy p: DeployApproval@1
 
 when "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
+  approve(reason: payments_sre, bake: 15m)
 }
 
 when "release_manager" in actor.roles {
-  approve(release_manager)
+  approve(reason: release_manager)
 }
 
 when "release_manager" in actor.roles and service.tier == "critical" {
-  approve(release_manager)
+  approve(reason: release_manager)
 }

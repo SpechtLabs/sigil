@@ -3,7 +3,7 @@
   cases:
     - name: wrong reason
       failures:
-        - got allow(admin), want allow(team_member)
+        - 'got allow(reason: admin), want allow(reason: team_member)'
       line: 3
       passed: false
     - name: wrong payload
@@ -13,7 +13,7 @@
       passed: false
     - name: vault needs the owner function
       failures:
-        - 'got a runtime error (testdata/access/main.sigil:21:30: host function owner failed: no implementation in this sigil binary; build a host binary with owner linked in (see sigil''s pkg/cli)), want allow(team_member)'
+        - 'got a runtime error (testdata/access/main.sigil:21:30: host function owner failed: no implementation in this sigil binary; build a host binary with owner linked in (see sigil''s pkg/cli)), want allow(reason: team_member)'
       line: 17
       passed: false
     - name: typo in the input
@@ -22,7 +22,7 @@
       passed: false
     - name: expected an assert
       failures:
-        - got deny(no_rule_matched), want failing asserts named_user
+        - 'got deny(reason: no_rule_matched), want failing asserts named_user'
       line: 30
       passed: false
 --- error ---

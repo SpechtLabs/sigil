@@ -7,7 +7,7 @@ assert("negative_soak", release.soak >= 0s)
 assert("must_deny", deny in outcome)
 
 when true {
-  approve(a, bake: 5m)
+  approve(reason: a, bake: 5m)
   assert("has_team", service.labels has "team")
   assert("approved", approve in outcome)
 }

@@ -223,14 +223,15 @@ func (c *Checker) invocation(s *ast.CallStmt, doc *Exported, env *Env) {
 
 // static reports anything in an invocation argument that isn't known
 // when the policy compiles: inputs, lets, quantifiers and host function
-// calls. Only constants and the invoking policy's own params are.
+// calls. Only constants, enum values among them, and the invoking
+// policy's own params are.
 func (c *Checker) static(x ast.Expr, env *Env) {
 	const help = "an invocation is bound when the policy compiles, so its arguments are constants and the invoking policy's params; use a `when` around the call, or a param, for anything that depends on input"
 	ast.Inspect(x, func(n ast.Expr) bool {
 		switch n := n.(type) {
 		case *ast.Ident:
 			b, ok := env.Lookup(n.Name)
-			if !ok || b.Entity == Param {
+			if !ok || b.Entity == Param || b.Entity == EnumValue || b.Entity == EnumType {
 				return true
 			}
 			if b.Entity == Let && b.Doc != nil {

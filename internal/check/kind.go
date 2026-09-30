@@ -52,14 +52,15 @@ func (c *Checker) KindFile(f *ast.File) *kind.Kind {
 
 // Kind builds the kind a kind document declares. It resolves type names,
 // evaluates the constant defaults and checks the rules only source can
-// break: `precedence`, `collect`, `default` and `conflict` declared at most
-// once, a scoped `precedence` that names a declared decision and is its
-// only one, and a default or conflict outcome whose reason is a bare name
-// and whose arguments each name a payload field once. Everything else is
-// [kind.Kind.Validate]'s job; the checker records where each declaration
-// is so those diagnostics point at the right line, and drops one at a
-// place it has already reported. The kind is nil when anything is wrong,
-// and [Checker.Errors] says what.
+// break: a decision in the old syntax, `precedence`, `collect`, `default`
+// and `conflict` declared at most once, a scoped `precedence` that names a
+// declared decision and is its only one, and a default or conflict
+// outcome that names its reason with `reason:`, as a constructor does,
+// and each payload field once. Everything else is [kind.Kind.Validate]'s
+// job; the checker records where each declaration is so those
+// diagnostics point at the right line, and drops one at a place it has
+// already reported. The kind is nil when anything is wrong, and
+// [Checker.Errors] says what.
 func (c *Checker) Kind(doc *ast.KindDoc) *kind.Kind {
 	if doc == nil {
 		return nil
@@ -78,11 +79,14 @@ func (c *Checker) Kind(doc *ast.KindDoc) *kind.Kind {
 		l.set("kind.accepts", doc.Accepts)
 	}
 
-	// Struct types can refer to each other in any order, so their shells
-	// exist before any field type is resolved.
+	// Struct types can refer to each other and to enums in any order, so
+	// their shells, and the enums, exist before any field type is resolved.
 	for _, d := range doc.Decls {
-		if t, ok := d.(*ast.TypeDecl); ok {
-			l.declareType(t)
+		switch d := d.(type) {
+		case *ast.TypeDecl:
+			l.declareType(d)
+		case *ast.EnumDecl:
+			l.enum(d)
 		}
 	}
 	for _, d := range doc.Decls {

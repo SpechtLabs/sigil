@@ -35,7 +35,7 @@ Whitespace and comments may appear between any two tokens. The parser ignores bo
 Ident       ::= [A-Za-z_] [A-Za-z0-9_]* - Keyword
 Keyword     ::= "policy" | "module" | "use" | "as" | "param" | "let" | "pub"
               | "when" | "assert"
-              | "kind" | "version" | "type" | "input" | "fn" | "decision"
+              | "kind" | "version" | "enum" | "type" | "input" | "fn" | "decision"
               | "precedence" | "collect" | "default" | "conflict"
               | "and" | "or" | "xor" | "not" | "in" | "all" | "any" | "filter"
               | "one" | "exclusive" | "has" | "like" | "matches" | "present"
@@ -55,7 +55,7 @@ Comment     ::= "//" [^#xA#xD]*
 Separator   ::= "---"
 ```
 
-The lexer takes the longest match. A run of digits followed directly by a unit is a `Duration`; `ms` wins over `m` followed by `s`. A number followed directly by any other letter or `_` is a lexical error, and so is a `Float` followed by a unit (`1.5h`). `??`, `?.`, `==`, `!=`, `<=`, `>=`, `->` and `---` are single tokens. A float needs digits on both sides of its point, so `?.` never splits into `?` and a number.
+The lexer takes the longest match. A run of digits followed directly by a unit is a `Duration`; `ms` wins over `m` followed by `s`. A number followed directly by any other letter or `_` is a lexical error, and so is a `Float` followed by a unit (`1.5h`). `??`, `?.`, `==`, `!=`, `<=`, `>=`, `->` and `---` are single tokens. `|` is a token of its own, used only in kind files. A float needs digits on both sides of its point, so `?.` never splits into `?` and a number.
 
 `Ident` excludes keywords, but field names don't: see `Name` below.
 
@@ -81,20 +81,19 @@ type Resource {
 
 input resource: Resource
 
-decision review(approvers: list<string>) {
-  cluster_access
+decision review {
+  reason: cluster_access
+  approvers: list<string>
 }
 
 decision deny {
-  not_eligible
-  soak_too_short
-  no_rule_matched
+  reason: not_eligible | soak_too_short | no_rule_matched
 }
 
 collect one
 precedence deny > review
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 
 ---
 
@@ -102,7 +101,7 @@ policy jit.sandbox: JIT_Approval@1
 
 when resource.kind == "kube_cluster" // field access after `.`
   and resource.policy != "" {
-  review(cluster_access, approvers: ["sre-leads"])
+  review(reason: cluster_access, approvers: ["sre-leads"])
 }
 ```
 
@@ -129,8 +128,8 @@ RuleItem     ::= WhenStmt | LetStmt | AssertStmt | Call
 AssertStmt   ::= "assert" "(" String "," Expr ","? ")"
 
 Call         ::= Ident "(" CallArgs? ")"
-CallArgs     ::= Expr ( "," NamedArg )* ","?       /* decision constructor: the reason first */
-               | NamedArgs                         /* policy invocation */
+CallArgs     ::= NamedArgs
+               | Expr ( "," NamedArg )* ","?       /* old positional reason; the checker rejects it */
 
 NamedArgs    ::= NamedArg ( "," NamedArg )* ","?
 NamedArg     ::= Name ":" Expr
@@ -139,17 +138,17 @@ Name         ::= Ident | Keyword          /* field and payload names */
 
 A `Call` is either a decision constructor or a policy invocation, and the parser doesn't need to know which. The checker decides by the name:
 
-| Name is | `Call` is | Arguments |
-| --- | --- | --- |
-| A decision of the kind | Decision constructor | First a bare name, one of the decision's declared reasons, then named payload fields |
-| An imported policy | Policy invocation | All named |
-| Anything else | Compile error | |
+| Name is                | `Call` is            | Arguments                                                                                              |
+| ---------------------- | -------------------- | ------------------------------------------------------------------------------------------------------ |
+| A decision of the kind | Decision constructor | All named, in any order: `reason:` with one of the decision's declared reasons, and the payload fields |
+| An imported policy     | Policy invocation    | All named                                                                                              |
+| Anything else          | Compile error        |                                                                                                        |
 
-The parser accepts any expression as the first, positional argument; the checker requires a bare reason name, so `deny("soak_too_short")` parses and then fails with a hint to drop the quotes.
+The parser still accepts a positional first argument, the old way to pass the reason. The checker rejects it with the labeled call as the fix, and `sigil fmt` rewrites it to `reason:` placed first. The value of `reason:` may be any expression to the parser; the checker requires a bare reason name, so `deny(reason: "soak_too_short")` parses and then fails with a hint to drop the quotes.
 
 A `LetStmt` in a `RuleItem` is a scoped let and can't be `pub`; the parser reports a `pub` there and keeps the let, so its uses still resolve. That scoped let names are unique per document, and that a `pub let` in a policy can't read a param, are checked after parsing. See [Scoped lets](/reference/policy-files/#scoped-lets).
 
-An `AssertStmt` takes the reason first, like a decision constructor, and the reason is a plain string literal, never a raw string. The `)` ends the condition, including a quantifier body that would otherwise run on. An assert takes nothing else: no named arguments. See [Assertions](/reference/evaluation/#assertions).
+An `AssertStmt` takes its reason first and unlabeled, unlike a decision constructor, and the reason is a plain string literal, never a raw string. The `)` ends the condition, including a quantifier body that would otherwise run on. An assert takes nothing else: no named arguments. See [Assertions](/reference/evaluation/#assertions).
 
 `UseStmt`s come before every other statement. A `use` after a `param`, `let`, rule or invocation is a parse error with a hint to move it up.
 
@@ -170,16 +169,21 @@ A module contains nothing but imports and `let`s. A `param`, `when`, `assert` or
 KindDoc      ::= KindHeader KindStmt*
 KindHeader   ::= "kind" Ident "version" Int ( "," "accepts" ":" Int )?   /* "accepts" is an identifier */
 
-KindStmt     ::= TypeDecl | InputDecl | FnDecl | DecisionDecl
+KindStmt     ::= EnumDecl | TypeDecl | InputDecl | FnDecl | DecisionDecl
                | PrecedenceDecl | ExclusiveDecl | CollectDecl | DefaultDecl
                | ConflictDecl
 
+EnumDecl     ::= "enum" Ident ":" Ident ( "|" Ident )*
 TypeDecl     ::= "type" Ident "{" FieldDecl* "}"
 FieldDecl    ::= Name ":" Type
 InputDecl    ::= "input" Ident ":" Type
 FnDecl       ::= "fn" Ident "(" ( Type ( "," Type )* ","? )? ")" "->" Type
-DecisionDecl ::= "decision" Ident ( "(" ( DecisionField ( "," DecisionField )* ","? )? ")" )? "{" Ident+ "}"
-DecisionField ::= Name ":" Type ( "=" Expr )?
+DecisionDecl ::= "decision" Ident "{" DecisionField* "}"
+               | "decision" Ident ( "(" ( PayloadField ( "," PayloadField )* ","? )? ")" )? "{" Ident+ "}"
+                                                      /* old form; the kind loader rejects it */
+DecisionField ::= ReasonField | PayloadField
+ReasonField  ::= "reason" ":" Ident ( "|" Ident )*    /* "reason" is an identifier */
+PayloadField ::= Name ":" Type ( "=" Expr )?
 PrecedenceDecl ::= "precedence" ( Ident ":" )? Ident ( ">" Ident )*   /* "d:" scopes it to d's reasons */
 ExclusiveDecl ::= "exclusive" Outcome ( "," Outcome )+
 Outcome      ::= Ident ( "." Ident )?                 /* a decision, or one of its reasons */
@@ -192,7 +196,7 @@ ConflictDecl ::= "conflict" Call
 `type Version ordered`, for [host-ordered types](/project/planned/#host-ordered-types), doesn't parse yet.
 :::
 
-That a kind declares `collect` once, that `collect one` comes with a `precedence` over decisions, that `precedence` names every decision (or every reason of its decision) once, that an `ExclusiveDecl` names declared outcomes, that defaults, and the payloads of `default` and `conflict`, are constants, and that only a `collect one` kind declares a `conflict`, at most once, are semantic rules, checked after parsing. See [Kind files](/reference/kind-files/).
+That an enum's values are unique, that a decision has exactly one `ReasonField` and that it doesn't name a type, that a kind declares `collect` once, that `collect one` comes with a `precedence` over decisions, that `precedence` names every decision (or every reason of its decision) once, that an `ExclusiveDecl` names declared outcomes, that defaults, and the payloads of `default` and `conflict`, are constants, and that only a `collect one` kind declares a `conflict`, at most once, are semantic rules, checked after parsing. See [Kind files](/reference/kind-files/).
 
 ## Types
 
@@ -200,7 +204,7 @@ That a kind declares `collect` once, that `collect one` comes with a `precedence
 Type         ::= "?" BaseType | BaseType
 BaseType     ::= "list" "<" Type ">"
                | "map" "<" Type "," Type ">"
-               | Ident                    /* bool, int, ..., or a struct type */
+               | Ident                    /* bool, int, ..., a struct type or an enum */
 ```
 
 `??T` doesn't parse, so optionals don't nest. Optional types only appear in kind files in practice, since params can't be optional.
@@ -237,15 +241,17 @@ MapEntry     ::= Coalesce ":" Expr
 
 Syntax alone accepts a few things the checker rejects:
 
-| Construct | Parses | Rejected by the checker with |
-| --- | --- | --- |
-| `outcome` | Anywhere an expression can appear | A compile error outside an `assert` condition |
-| Call expression `f(...)` | On any postfix expression | A compile error unless `f` is a host function name |
-| Call statement | On any identifier | A compile error unless the name is a decision or an imported policy |
-| Pattern after `like` or `matches` | Any expression | A compile error unless it's a string literal |
-| Constructor reason | Any expression | A compile error unless it's a declared reason name |
-| Header without `@N` | Yes | A compile error that suggests the kind's current version |
-| `.name` | On any postfix expression | A compile error unless the left side is a struct, a decision in an `assert`, or a whole import |
+| Construct                                 | Parses                            | Rejected by the checker with                                                                                              |
+| ----------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `outcome`                                 | Anywhere an expression can appear | A compile error outside an `assert` condition                                                                             |
+| Call expression `f(...)`                  | On any postfix expression         | A compile error unless `f` is a host function name                                                                        |
+| Call statement                            | On any identifier                 | A compile error unless the name is a decision or an imported policy                                                       |
+| Pattern after `like` or `matches`         | Any expression                    | A compile error unless it's a string literal                                                                              |
+| `reason:` value                           | Any expression                    | A compile error unless it's a declared reason name                                                                        |
+| Positional reason, `deny(soak_too_short)` | Yes                               | A compile error whose help is the labeled call; `sigil fmt` rewrites it                                                   |
+| `decision name(fields) { reasons }`       | Yes                               | A kind loader error whose help is the new form; `sigil fmt` rewrites it                                                   |
+| Header without `@N`                       | Yes                               | A compile error that suggests the kind's current version                                                                  |
+| `.name`                                   | On any postfix expression         | A compile error unless the left side is a struct, a decision in an `assert`, a whole import, or an enum (`Tier.critical`) |
 
 A `MapEntry` key is an expression like any other, so the `team` in `{team: "payments"}` is a name, not a string. When no name `team` is declared, the error's help suggests `"team"`, the mirror of the hint that drops the quotes from a constructor reason.
 
@@ -314,11 +320,11 @@ It stops at a token that can't continue an expression: `)`, `]`, `}`, `,`, `{` i
 
 Newlines never end anything. Every top-level statement starts with one of these:
 
-| Document | Statement starters |
-| --- | --- |
-| Policy | `policy`, `use`, `param`, `let`, `pub`, `when`, `assert`, or an identifier followed by `(` (a decision constructor or policy invocation) |
-| Module | `module`, `use`, `let`, `pub` |
-| Kind | `kind`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default`, `conflict` |
+| Document | Statement starters                                                                                                                       |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Policy   | `policy`, `use`, `param`, `let`, `pub`, `when`, `assert`, or an identifier followed by `(` (a decision constructor or policy invocation) |
+| Module   | `module`, `use`, `let`, `pub`                                                                                                            |
+| Kind     | `kind`, `enum`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default`, `conflict`                                        |
 
 - None of those keywords can continue an expression, and an expression never continues with a bare identifier. When the parser is inside a `let` expression and meets `let`, `when` or `guardrails(`, the expression is over.
 - A header keyword or a `---` ends the whole document the same way.
@@ -327,7 +333,7 @@ Newlines never end anything. Every top-level statement starts with one of these:
 Why: [Why the language looks like this](/understanding/language-choices/).
 
 ```sigil
-let a = environment == "production" let b = "deployer" in actor.roles guardrails(min_soak: 4h) when a and b { review(service_owner, approvers: approvers) }
+let a = environment == "production" let b = "deployer" in actor.roles guardrails(min_soak: 4h) when a and b { review(reason: service_owner, approvers: approvers) }
 ```
 
 That line parses the same as the formatted version, although `sigil fmt` would never produce it.
@@ -336,14 +342,15 @@ Two other boundaries work the same way:
 
 - A `when` condition ends at a `{` in operator position. A `{` in operand position starts a map literal instead, which is how `when service.labels has {"team": "payments"} { ... }` parses: the first `{` follows `has`, the second follows a complete expression.
 - In a `type` body, a field's type ends where the next `Name :` begins, because a type never continues with a name.
+- An enum's value list, and a decision's `reason:` list, end at the first token after a value that isn't `|`. A list can break across lines, and `|` may start a line.
 
 ### Calls
 
-A `Call`'s arguments are either one positional reason followed by named payload fields, or named arguments only. The parser tells the two apart at the first argument: a `Name` followed by `:` starts a named argument, and anything else is parsed as an expression, the reason. That's the one place the grammar needs two tokens of lookahead, and it's never ambiguous, because no expression starts with a name followed by `:`.
+A `Call`'s arguments are named, but the parser still accepts the old positional reason as the first argument, so `sigil fmt` can rewrite it. It tells the two apart at the first argument: a `Name` followed by `:` starts a named argument, and anything else is parsed as an expression, the reason. That's the one place the grammar needs two tokens of lookahead, and it's never ambiguous, because no expression starts with a name followed by `:`.
 
 ### Keywords as field names
 
-The grammar allows any keyword wherever a field or payload name appears: after `.`, in `type` bodies, in decision fields and in named arguments. If `Service` declared a `type` field, `service.type` would parse, because the token after `.` is always a name. Top-level names (inputs, params, lets, imported names, host functions, decisions, types), decision reasons, and quantifier and filter variables must still be plain identifiers.
+The grammar allows any keyword wherever a field or payload name appears: after `.`, in `type` bodies, in decision fields and in named arguments. If `Service` declared a `type` field, `service.type` would parse, because the token after `.` is always a name. Top-level names (inputs, params, lets, imported names, host functions, decisions, types, enums and enum values), decision reasons, and quantifier and filter variables must still be plain identifiers.
 
 ### Closing angle brackets
 

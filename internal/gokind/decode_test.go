@@ -8,11 +8,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/gokind"
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
+// hostTier is a host's Go type for decodeKind's Tier.
+type hostTier string
+
 const decodeKind = `kind D version 1
+
+enum Tier: critical | standard | internal
 
 type S {
   n: int
@@ -28,6 +34,10 @@ type S {
   mb: map<bool, int>
   md: map<duration, int>
   inner: ?Inner
+  tier: Tier
+  tiers: list<Tier>
+  mt: map<Tier, int>
+  ot: ?Tier
 }
 
 type Inner {
@@ -38,13 +48,13 @@ input s: S
 input env: string
 
 decision deny {
-  r
+  reason: r
 }
 
 collect one
 precedence deny
 
-default deny(r)
+default deny(reason: r)
 `
 
 func TestDecodeInput(t *testing.T) {
@@ -88,6 +98,17 @@ func TestDecodeInput(t *testing.T) {
 		{name: "map with a bad int key", raw: `{"s": {"mi": {"x": "c"}}}`, err: `s.mi["x"]: expected an int, found a number`},
 		{name: "map with bool keys", raw: `{"s": {"mb": {"true": 1}}}`, field: "S.mb", want: map[bool]int64{true: 1}},
 		{name: "map with duration keys", raw: `{"s": {"md": {"1h": 2}}}`, field: "S.md", want: map[time.Duration]int64{time.Hour: 2}},
+		{name: "enum", raw: `{"s": {"tier": "standard"}}`, field: "S.tier", want: "standard"},
+		{name: "enum outside the set", raw: `{"s": {"tier": "critcal"}}`, err: `s.tier: "critcal" is not a value of Tier`,
+			advice: "did you mean `critical`? Tier declares: critical, standard, internal"},
+		{name: "enum far from every value", raw: `{"s": {"tier": "zzzzzz"}}`, err: `s.tier: "zzzzzz" is not a value of Tier`, advice: "Tier declares: critical, standard, internal"},
+		{name: "enum from a number", raw: `{"s": {"tier": 1}}`, err: "s.tier: expected a Tier value, found a number", advice: `write an enum value as a string, like "critical"`},
+		{name: "enum list", raw: `{"s": {"tiers": ["critical", "internal"]}}`, field: "S.tiers", want: []string{"critical", "internal"}},
+		{name: "enum list element", raw: `{"s": {"tiers": ["critical", "gold"]}}`, err: `s.tiers[1]: "gold" is not a value of Tier`},
+		{name: "enum map keys", raw: `{"s": {"mt": {"internal": 2}}}`, field: "S.mt", want: map[string]int64{"internal": 2}},
+		{name: "enum map key outside the set", raw: `{"s": {"mt": {"standrd": 2}}}`, err: `s.mt["standrd"]: "standrd" is not a value of Tier`, advice: "did you mean `standard`?"},
+		{name: "optional enum", raw: `{"s": {"ot": "critical"}}`, field: "S.ot", want: new("critical")},
+		{name: "optional enum null", raw: `{"s": {"ot": null}}`, field: "S.ot", want: (*string)(nil)},
 		{name: "missing field is zero", raw: `{"s": {}}`, field: "S.n", want: int64(0)},
 		{name: "missing input is zero", raw: `{}`, field: "S.s", want: ""},
 		{name: "null scalar", raw: `{"s": {"n": null}}`, err: "s.n: null for an int", advice: "only optionals, lists and maps may be null"},
@@ -209,6 +230,8 @@ func TestCanonical(t *testing.T) {
 		{name: "optional pointer and value", t: &types.Optional{Elem: types.Int}, a: new(int64(4)), b: int64(4)},
 		{name: "absent optional", t: &types.Optional{Elem: types.Int}, a: (*int64)(nil), b: nil},
 		{name: "duration", t: types.Duration, a: time.Hour, b: 60 * time.Minute},
+		{name: "enum from a named string and a string", t: k.Enum("Tier"), a: hostTier("critical"), b: "critical"},
+		{name: "enum list", t: &types.List{Elem: k.Enum("Tier")}, a: []hostTier{"standard"}, b: []any{"standard"}},
 		{name: "struct by field name", t: k.Type("Inner"), a: reflect.New(b.Structs["Inner"]).Elem().Interface(), b: reflect.New(b.Structs["Inner"]).Elem().Interface()},
 	}
 	for _, tt := range tests {
@@ -220,6 +243,9 @@ func TestCanonical(t *testing.T) {
 		})
 	}
 
+	if got := b.Canonical(k.Enum("Tier"), reflect.ValueOf(hostTier("internal"))); got != constant.EnumValue("internal") {
+		t.Errorf("Canonical(enum) = %#v, want constant.EnumValue(\"internal\")", got)
+	}
 	if got := b.Canonical(types.Int, reflect.ValueOf(uint(7))); got != int64(7) {
 		t.Errorf("Canonical(uint) = %#v, want int64(7)", got)
 	}

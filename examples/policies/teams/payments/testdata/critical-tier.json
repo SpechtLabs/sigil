@@ -2,7 +2,7 @@
   "release": {"soak": "6h", "hotfix": false},
   "service": {
     "name": "ledger",
-    "tier": "batch",
+    "tier": "critical",
     "owners": ["payments"],
     "labels": {
       "app.kubernetes.io/managed-by": "argocd",

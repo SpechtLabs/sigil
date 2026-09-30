@@ -38,7 +38,17 @@ Default `warn`. Fires when a `use` binds a name nothing references. Invoking an 
 
 ### `shadowed-kind-name`
 
-Default `warn`. Fires when a document pinned to an older kind version keeps a name the kind has since given to an input, host function or decision. Rename it and raise the pin; see [Adding a name never breaks a policy](/understanding/kinds/#adding-a-name-never-breaks-a-policy).
+Default `warn`. Fires when a document pinned to an older kind version keeps a name the kind has since given to an input, host function, decision, [enum](/reference/kind-files/#enum) or enum value. Rename it and raise the pin; see [Adding a name never breaks a policy](/understanding/kinds/#adding-a-name-never-breaks-a-policy).
+
+A document pinned to `DeployApproval@1` keeps its `let batch` after version 2 adds `batch` to `enum Tier`:
+
+```text
+deploy/production.sigil:6:5: warning: batch shadows the kind's Tier value batch, added after the version this document pins [shadowed-kind-name]
+  |
+6 | let batch = service.labels["schedule"] == "nightly"
+  |     ^^^^^
+  = help: the kind's Tier value is out of reach here; rename batch and raise the document's pin to DeployApproval@2
+```
 
 ### `unused-let`
 

@@ -18,6 +18,7 @@ func TestRunCase(t *testing.T) {
 		return testsuite.Got{Decision: "read", Reason: "member", Position: "r.sigil:1:1", Payload: map[string]any{"scope": scope}}
 	}
 	write := testsuite.Got{Decision: "write", Reason: "owner", Position: "r.sigil:2:1", Payload: map[string]any{}}
+	high := testsuite.Got{Decision: "allow", Reason: "admin", Position: "p.sigil:3:3", Payload: map[string]any{"level": "high"}}
 
 	tests := []struct {
 		name   string
@@ -43,7 +44,7 @@ func TestRunCase(t *testing.T) {
 			kind:   accessKind,
 			expect: testsuite.Expect{Decision: "allow", Reason: "team_member"},
 			got:    testsuite.Outcome{Entries: []testsuite.Got{allowAdmin}},
-			want:   []string{"got allow(admin), want allow(team_member)"},
+			want:   []string{"got allow(reason: admin), want allow(reason: team_member)"},
 		},
 		{
 			name:   "wrong payload",
@@ -51,6 +52,26 @@ func TestRunCase(t *testing.T) {
 			expect: testsuite.Expect{Decision: "allow", Reason: "admin", Payload: map[string]any{"ttl": "1h", "scopes": []any{"a", "b"}}},
 			got:    testsuite.Outcome{Entries: []testsuite.Got{allowAdmin}},
 			want:   []string{"payload ttl = 8h, want 1h", `payload scopes = ["*"], want ["a", "b"]`},
+		},
+		{
+			name:   "an enum payload",
+			kind:   accessKind,
+			expect: testsuite.Expect{Decision: "allow", Reason: "admin", Payload: map[string]any{"level": "high"}},
+			got:    testsuite.Outcome{Entries: []testsuite.Got{high}},
+		},
+		{
+			name:   "a wrong enum payload",
+			kind:   accessKind,
+			expect: testsuite.Expect{Decision: "allow", Reason: "admin", Payload: map[string]any{"level": "low"}},
+			got:    testsuite.Outcome{Entries: []testsuite.Got{high}},
+			want:   []string{"payload level = high, want low"},
+		},
+		{
+			name:   "an expected enum payload outside the enum",
+			kind:   accessKind,
+			expect: testsuite.Expect{Decision: "allow", Reason: "admin", Payload: map[string]any{"level": "hgh"}},
+			got:    testsuite.Outcome{Entries: []testsuite.Got{high}},
+			want:   []string{`expected payload level: "hgh" is not a value of Level`},
 		},
 		{
 			name:   "expected payload of the wrong type",
@@ -63,21 +84,21 @@ func TestRunCase(t *testing.T) {
 			name:   "no decision",
 			kind:   accessKind,
 			expect: testsuite.Expect{Decision: "allow", Reason: "admin"},
-			want:   []string{"got no decision, want allow(admin)"},
+			want:   []string{"got no decision, want allow(reason: admin)"},
 		},
 		{
 			name:   "an error instead of a decision",
 			kind:   accessKind,
 			expect: testsuite.Expect{Decision: "allow", Reason: "admin"},
 			got:    testsuite.Outcome{Err: "a conflict (collect one: 2 candidates at the top rank)"},
-			want:   []string{"got a conflict (collect one: 2 candidates at the top rank), want allow(admin)"},
+			want:   []string{"got a conflict (collect one: 2 candidates at the top rank), want allow(reason: admin)"},
 		},
 		{
 			name:   "failing asserts instead of a decision",
 			kind:   accessKind,
 			expect: testsuite.Expect{Decision: "allow", Reason: "admin"},
 			got:    testsuite.Outcome{Asserts: []string{"named"}},
-			want:   []string{"got failing asserts named, want allow(admin)"},
+			want:   []string{"got failing asserts named, want allow(reason: admin)"},
 		},
 		{
 			name:   "asserts in any order",
@@ -97,14 +118,14 @@ func TestRunCase(t *testing.T) {
 			kind:   accessKind,
 			expect: testsuite.Expect{Asserts: []string{"named"}},
 			got:    testsuite.Outcome{Entries: []testsuite.Got{{Decision: "deny", Reason: "too_old"}}},
-			want:   []string{"got deny(too_old), want failing asserts named"},
+			want:   []string{"got deny(reason: too_old), want failing asserts named"},
 		},
 		{
 			name:   "an outcome instead of asserts",
 			kind:   rolesKind,
 			expect: testsuite.Expect{Asserts: []string{"named"}},
 			got:    testsuite.Outcome{Entries: []testsuite.Got{read("all"), write}},
-			want:   []string{"got the outcome [read(member), write(owner)], want failing asserts named"},
+			want:   []string{"got the outcome [read(reason: member), write(reason: owner)], want failing asserts named"},
 		},
 		{
 			name:   "outcome in any order",
@@ -124,9 +145,9 @@ func TestRunCase(t *testing.T) {
 			expect: testsuite.Expect{Outcome: &[]testsuite.Entry{{Decision: "read", Reason: "member", Payload: map[string]any{"scope": "docs"}}}},
 			got:    testsuite.Outcome{Entries: []testsuite.Got{read("all"), write}},
 			want: []string{
-				"missing from the outcome: read(member) {scope: docs}",
-				"not expected in the outcome: read(member) at r.sigil:1:1",
-				"not expected in the outcome: write(owner) at r.sigil:2:1",
+				"missing from the outcome: read(reason: member) {scope: docs}",
+				"not expected in the outcome: read(reason: member) at r.sigil:1:1",
+				"not expected in the outcome: write(reason: owner) at r.sigil:2:1",
 			},
 		},
 		{
@@ -140,7 +161,7 @@ func TestRunCase(t *testing.T) {
 			kind:   rolesKind,
 			expect: testsuite.Expect{Outcome: &[]testsuite.Entry{{Decision: "write", Reason: "owner"}}},
 			got:    testsuite.Outcome{Err: "a runtime error (boom)"},
-			want:   []string{"got a runtime error (boom), want the outcome [write(owner)]"},
+			want:   []string{"got a runtime error (boom), want the outcome [write(reason: owner)]"},
 		},
 		{
 			name:   "an error instead of an empty outcome",

@@ -1,25 +1,36 @@
-kind Shapes version 2 [1:1-23:20]
-  type Nested { [3:1-8:2]
+kind Shapes version 2 [1:1-33:28]
+  enum Tier: critical | standard | internal [3:1-3:42]
+  enum Plan: free | pro | enterprise [4:1-7:13]
+  type Nested { [9:1-14:2]
     matrix: list<list<string>>
     lookup: map<string, list<int>>
     maybe: ?string
     deep: map<string, map<string, ?Nested>>
   }
-  input nested: Nested [10:1-10:21]
-  input flag: bool [11:1-11:17]
-  fn keys(map<string, string>) -> list<string> [13:1-13:46]
-  fn now() -> timestamp [14:1-14:22]
-  decision allow(weights: map<string, int> = {}, tags: list<string> = []) { none ok } [16:1-19:2]
-  collect one [21:1-21:12]
-  precedence allow [22:1-22:17]
-  default allow(none) [23:1-23:20]
+  input nested: Nested [16:1-16:21]
+  input flag: bool [17:1-17:17]
+  input tiers: map<Tier, list<?Tier>> [18:1-18:36]
+  fn keys(map<string, string>) -> list<string> [20:1-20:46]
+  fn now() -> timestamp [21:1-21:22]
+  fn tier_of(string) -> Tier [22:1-22:27]
+  decision allow { [24:1-29:2]
+    reason: none | ok
+    weights: map<string, int> = {}
+    tier: Tier = standard
+    tags: list<string> = []
+  }
+  collect one [31:1-31:12]
+  precedence allow [32:1-32:17]
+  default allow(reason: none) [33:1-33:28]
 ---
-policy shapes.demo: Shapes@1 [27:1-37:2]
-  param m: map<string, int> = {} [29:1-29:30]
-  param names: list<string> = ["a"] [30:1-30:33]
-  param nested: list<list<string>> = [["a"], []] [31:1-31:47]
-  param limit: int = (-3) [32:1-32:22]
-  param timeout: duration = (1h + 30m) [33:1-33:35]
-  when flag { [35:1-37:2]
-    allow(ok, weights: m, tags: names) [36:3-36:38]
+policy shapes.demo: Shapes@1 [37:1-49:2]
+  param m: map<string, int> = {} [39:1-39:30]
+  param names: list<string> = ["a"] [40:1-40:33]
+  param nested: list<list<string>> = [["a"], []] [41:1-41:47]
+  param limit: int = (-3) [42:1-42:22]
+  param timeout: duration = (1h + 30m) [43:1-43:35]
+  param tier: Tier = critical [44:1-44:28]
+  param allowed: list<Tier> = [standard, internal] [45:1-45:49]
+  when flag { [47:1-49:2]
+    allow(reason: ok, weights: m, tags: names) [48:3-48:46]
   }

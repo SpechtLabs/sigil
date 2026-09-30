@@ -125,18 +125,23 @@ func TestSummarize(t *testing.T) {
 		name     string
 		changes  []change
 		failures []string
+		report   string
+		added    []string
+		removed  []string
 		want     []string
 		wantNot  []string
 	}{
 		{
 			name:    "no changes",
 			changes: []change{noise},
+			report:  "report\n",
 			want:    []string{"No confirmed regressions above 10%.", "<summary>benchstat report</summary>", "report\n```"},
 			wantNot: []string{"## Significant changes"},
 		},
 		{
 			name:     "regression and improvement",
 			changes:  []change{improved, regressed},
+			report:   "report\n",
 			failures: []string{"example.com/m: Eval-2 sec/op +20.00% (p=0.000 n=10)"},
 			want: []string{
 				"- example.com/m: Eval-2 sec/op +20.00%",
@@ -144,10 +149,28 @@ func TestSummarize(t *testing.T) {
 			},
 			wantNot: []string{"No confirmed regressions"},
 		},
+		{
+			name:    "benchmarks only one revision measured",
+			changes: []change{noise},
+			report:  "report\n",
+			added:   []string{"policy New", "policy Other"},
+			removed: []string{"policy Old"},
+			want: []string{
+				"## Not compared",
+				"- 2 new benchmarks, not compared: policy New, policy Other",
+				"- 1 benchmark only on the base revision, not compared: policy Old",
+			},
+		},
+		{
+			name:    "nothing to compare",
+			added:   []string{"policy New"},
+			want:    []string{"No confirmed regressions above 10%.", "- 1 new benchmark, not compared: policy New"},
+			wantNot: []string{"benchstat report", "## Significant changes"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := summarize(tt.changes, tt.failures, "report\n", n)
+			got := summarize(tt.changes, tt.failures, tt.report, n, tt.added, tt.removed)
 			for _, w := range tt.want {
 				if !strings.Contains(got, w) {
 					t.Errorf("summary doesn't contain %q:\n%s", w, got)

@@ -2,8 +2,9 @@ kind Reviews version 1
 
 input requestor: string
 
-decision review(approvers: list<string>) {
-  manager
+decision review {
+  reason: manager
+  approvers: list<string>
 }
 
 collect all

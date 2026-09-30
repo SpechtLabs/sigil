@@ -132,7 +132,7 @@ func deployInput(c fixture.DecisionCase) deploy.Input {
 		Release: deploy.Release{Soak: soak, Hotfix: r.Release.Hotfix},
 		Service: deploy.Service{
 			Name:   r.Service.Name,
-			Tier:   r.Service.Tier,
+			Tier:   deploy.Tier(r.Service.Tier),
 			Owners: r.Service.Owners,
 			Labels: r.Service.Labels,
 		},

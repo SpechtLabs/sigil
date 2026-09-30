@@ -86,8 +86,8 @@ cases:
       reason: service_owner
 
   # deny no_rule_matched: eligible, but no rule fires, so the kind's default wins.
-  - name: an owner's deploy of a tier outside tiers matches no rule
-    input_file: testdata/batch-tier.json
+  - name: an owner's deploy of a critical service, outside the default tiers, matches no rule
+    input_file: testdata/critical-tier.json
     expect:
       decision: deny
       reason: no_rule_matched

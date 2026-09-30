@@ -1,0 +1,29 @@
+// The syntax before enums, which the parser still reads so `sigil fmt`
+// can rewrite it: decisions with payload fields in parentheses and a
+// block of bare reasons, and constructors with a positional reason.
+kind Legacy version 1
+
+decision deny {
+  not_eligible
+  soak_too_short
+}
+decision review(approvers: list<string>) {
+  service_owner
+}
+decision approve(
+  bake: duration = 1h,
+  note: string = "",
+) { release_manager payments_sre }
+
+default deny(not_eligible)
+
+---
+
+policy legacy.demo: Legacy@1
+
+when true {
+  deny(soak_too_short)
+  approve(release_manager, bake: 2h)
+  review(service_owner, approvers: ["a"])
+  approve(reason: payments_sre)
+}

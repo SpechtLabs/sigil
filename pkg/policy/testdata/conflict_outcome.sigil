@@ -6,19 +6,19 @@
 policy p: Compartments@1
 
 when "a" in actor.teams {
-  grant_a(member)
+  grant_a(reason: member)
 }
 
 when "b" in actor.teams {
-  grant_b(member)
+  grant_b(reason: member)
 }
 
 when "suspended" in actor.roles {
-  deny(suspended)
+  deny(reason: suspended)
 }
 
 when "expired" in actor.roles {
-  deny(expired)
+  deny(reason: expired)
 }
 
 assert("someone", actor.name != "")

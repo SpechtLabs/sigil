@@ -11,26 +11,26 @@ input team: string
 input environment: string
 
 decision reader {
-  team_member
-  everyone_in_staging
+  reason: team_member | everyone_in_staging
 }
 
-decision deployer(ttl: duration = 8h) {
-  team_member
-  oncall
+decision deployer {
+  reason: team_member | oncall
+  ttl: duration = 8h
 }
 
-decision release_manager(ttl: duration = 8h) {
-  platform_member
+decision release_manager {
+  reason: platform_member
+  ttl: duration = 8h
 }
 
-decision admin(ttl: duration = 1h) {
-  clearance
-  break_glass
+decision admin {
+  reason: clearance | break_glass
+  ttl: duration = 1h
 }
 
 decision auditor {
-  compliance_member
+  reason: compliance_member
 }
 
 collect all

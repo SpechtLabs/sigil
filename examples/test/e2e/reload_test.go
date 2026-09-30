@@ -20,19 +20,19 @@ import (
 // What the hot reload specs change in the bind-mounted bundles.
 const (
 	paymentsPolicy = "payments/production.sigil"
-	sreRule        = "approve(payments_sre, bake: 15m)"
-	sreRuleEdited  = "approve(payments_sre, bake: 30m)"
+	sreRule        = "approve(reason: payments_sre, bake: 15m)"
+	sreRuleEdited  = "approve(reason: payments_sre, bake: 30m)"
 
 	accessPolicy     = "main.sigil"
-	oncallRule       = "deployer(oncall, ttl: 2h)"
-	oncallRuleEdited = "deployer(oncall, ttl: 3h)"
+	oncallRule       = "deployer(reason: oncall, ttl: 2h)"
+	oncallRuleEdited = "deployer(reason: oncall, ttl: 3h)"
 
 	brokenFile = "broken.sigil"
 
 	// brokenDocument has a valid header, so the loader indexes it, and an
 	// unfinished condition, so it fails to parse and takes the whole
 	// bundle down with it.
-	brokenDocument = "policy broken.production: DeployApproval@1\n\nwhen service.tier == {\n  deny(not_eligible)\n}\n"
+	brokenDocument = "policy broken.production: DeployApproval@1\n\nwhen service.tier == {\n  deny(reason: not_eligible)\n}\n"
 )
 
 // Serial because these specs change what every other spec is evaluated

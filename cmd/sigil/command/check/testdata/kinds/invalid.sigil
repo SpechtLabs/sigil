@@ -1,0 +1,14 @@
+kind DeployApproval version 1
+
+enum Tier: critical | standard | standard
+
+input environment: Tier
+
+decision deny {
+  reason: no_rule_matched
+}
+
+collect one
+precedence deny
+
+default deny(reason: no_rule_matched)

@@ -44,6 +44,8 @@ Params with an order, such as durations and numbers, are covered by [bounds](/re
 
 Host-ordered types are designed to decode from JSON through `encoding.TextUnmarshaler` when the Go type implements it. Should a string literal in a policy be parsed into the type the same way, at load time? That would allow `param min_version: Version = "1.4.0"`.
 
+[Enums](/reference/types/#enums) answered the same question the other way: a string literal never converts to an enum, and a policy writes the bare value name. That works because an enum's values are names. A version has no names to write, so the enum answer doesn't carry over.
+
 ## Vacuous `all in`
 
 **Blocks:** a lint for it.
@@ -70,9 +72,9 @@ A single quantifier costs time linear in its list, but a quantifier nested in an
 
 **Blocks:** nothing.
 
-Reasons are declared per decision in the kind, and constructors name one of them (see [Kind files](/reference/kind-files/#decision) and [Decisions](/reference/decisions/#the-reason)). What's open:
+The shape is settled. A decision declares its reasons as an inline enum field, `decision deny { reason: not_eligible | soak_too_short }`, every constructor labels one, `deny(reason: soak_too_short)`, and the reason can't name a declared enum type (see [Kind files](/reference/kind-files/#decision), [Decisions](/reference/decisions/#the-reason) and [Why the reason is the decision's own enum](/understanding/decisions/#why-the-reason-is-the-decision-s-own-enum)). What's open:
 
-- **Assert reasons.** They're string literals, because an assert belongs to its policy and the kind has no say in it. Whether they should be declared too, so a typo can't create a new metric series, is open; nothing needs it yet.
+- **Assert reasons.** They're string literals, because an assert belongs to its policy and the kind has no say in it. Whether they should be declared too, so a typo can't create a new metric series, is open; nothing needs it yet. An enum in the kind would give a declared set an obvious form, but that hands the kind a say over every policy's asserts, which is the coupling string reasons avoid.
 - **A lint for unranked reasons.** In a `collect one` kind, two reasons of one decision that the kind doesn't rank are a conflict when both fire. A lint could flag unranked reasons whose branches can overlap, but that's the solver-style analysis the language avoids, so it would only catch identical conditions.
 
 ## Invoking the same policy twice
@@ -81,7 +83,7 @@ Reasons are declared per decision in the kind, and constructors name one of them
 
 A policy may invoke the same policy more than once with different arguments, for example `deploy.regional` once for `eu-1` and once for `us-1`. Each call is a separate instantiation, and each candidate records its call chain, so the trace tells the instances apart. The [`duplicate-invocation`](/reference/lints/) lint catches two calls with identical arguments.
 
-One problem remains, because composition is a union: any rule the invoked policy doesn't scope to its params fires for every call. If `deploy.regional` had `when not in_scope { deny(out_of_region) }`, the `eu-1` call would deny every deploy the `us-1` call was meant to review. Policies meant to be invoked more than once have to scope every rule to their own params, or callers have to gate each call, and nothing enforces either. A lint for unscoped denies in a policy that's invoked twice could.
+One problem remains, because composition is a union: any rule the invoked policy doesn't scope to its params fires for every call. If `deploy.regional` had `when not in_scope { deny(reason: out_of_region) }`, the `eu-1` call would deny every deploy the `us-1` call was meant to review. Policies meant to be invoked more than once have to scope every rule to their own params, or callers have to gate each call, and nothing enforces either. A lint for unscoped denies in a policy that's invoked twice could.
 
 ## Host-layered bases
 

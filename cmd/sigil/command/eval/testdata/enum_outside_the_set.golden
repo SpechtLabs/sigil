@@ -1,0 +1,4 @@
+--- error ---
+testdata/inputs/tier_typo.json: service.tier: "standrd" is not a value of Tier
+advice: did you mean `standard`? Tier declares: critical, standard, internal
+advice: the input is a JSON object with one key per input the kind declares

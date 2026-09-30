@@ -68,21 +68,22 @@ release.hotfix xor release.scheduled
 
 ## Comparison
 
-| Operators         | Operand types                                                                                         |
-| ----------------- | ----------------------------------------------------------------------------------------------------- |
-| `==` `!=`         | `bool`, `int`, `float`, `string`, `duration`, `timestamp`, [`decision`](#decision-values-and-outcome) |
-| `<` `<=` `>` `>=` | `int`, `float`, `duration`, `timestamp`                                                               |
+| Operators         | Operand types                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `==` `!=`         | `bool`, `int`, `float`, `string`, `duration`, `timestamp`, [`decision`](#decision-values-and-outcome), an [enum](#enum-values) |
+| `<` `<=` `>` `>=` | `int`, `float`, `duration`, `timestamp`                                                                                        |
 
 - Both operands must have the same type. `3 == 3.0` is a compile error (`int` against `float`), and so is `release.soak == 30` (`duration` against `int`).
 - String comparison is case-sensitive: `"Prod" == "prod"` is false.
 - Comparing an optional (`?T`) value is a compile error until it's unwrapped with `??`.
 - `==` and `!=` don't apply to lists, maps or structs. For lists, use the [membership](#membership-in-and-not-in) and [set](#list-set-operators) operators.
 - `!=` isn't defined for lists, so `xs != []` is a compile error that suggests `any x in xs: true`; see [Test whether a list is empty](/guides/patterns/#test-whether-a-list-is-empty).
+- Enums aren't ordered either. `<` on an enum is a compile error, whatever the declaration order.
 - Strings aren't ordered. `<` on strings is a compile error. To compare versions, declare a host function in the kind; see [Compare versions](/guides/patterns/#compare-versions).
 
 ```sigil
 release.soak >= min_soak
-service.tier == "critical"
+service.tier == critical
 ```
 
 ```text
@@ -115,9 +116,10 @@ The type of the right-hand side picks the meaning of `in`:
 ```sigil
 "deployer" in actor.roles                    // list element
 "payments" in service.name                   // substring
-service.tier in ["critical", "standard"]     // list literal
+service.tier in [critical, standard]         // list of enum values
 ```
 
+- An enum value is tested against a list only. There's no substring form for enums.
 - A map key is tested with [`has`](#map-containment-has), never with `in`. `"env" in service.labels` is a compile error that suggests `service.labels has "env"`.
 - `x not in y` is exactly `not (x in y)`.
 - The parser reads `not in` as one operator when `not` follows an operand, and as unary `not` when it starts an expression.
@@ -166,6 +168,7 @@ service.labels has "app.kubernetes.io/managed-by"
 ```
 
 - The right-hand map doesn't have to be a literal.
+- On a map keyed by an enum, the key is a bare value: `quotas has critical`.
 - An empty right-hand map makes `has` true.
 - `m has k` is the only way to test for a key. Neither `in` nor `not in` applies to maps; write `not m has k`, which parses as `not (m has k)`.
 
@@ -236,7 +239,7 @@ release.parent?.merged_by?.name ?? ""      // `merged_by` is optional itself, so
 `present x` is `true` when the optional `x` holds a value and `false` when it's absent. It tells absence apart from a zero value.
 
 ```sigil
-when not present release { deny(no_release) }
+when not present release { deny(reason: no_release) }
 when present release.ticket { ... }                 // an empty ticket is present
 when present release.parent?.merged_by { ... }      // any optional, including a chain
 ```
@@ -282,7 +285,7 @@ These are postfix and bind tightest.
 ```text
 deploy/production.sigil:9:16: error: unknown field "teir" on type Service
   |
-9 |   when service.teir == "critical" { approve(release_manager) }
+9 |   when service.teir == critical { approve(reason: release_manager) }
   |                ^^^^
   = help: did you mean "tier"? Service declares: name, tier, owners, labels
 ```
@@ -350,6 +353,54 @@ let approvers = filter a in managers: a != requestor.name
 ```
 
 For the approver recipe, including what to do when the filter leaves nobody, see [Keep the requestor off the approvers](/guides/patterns/#keep-the-requestor-off-the-approvers).
+
+## Enum values
+
+```sigil
+service.tier == critical
+service.tier in [standard, internal]
+let fallback = internal
+let plan = Plan.standard   // with `enum Plan: standard | premium` declared too
+```
+
+An enum value is written as its bare name, or qualified with its enum's name, `Tier.critical`. A bare name that isn't a local name (a `let`, param, import, quantifier or filter variable, input, host function or decision) resolves against the kind's [enums](/reference/types/#enums):
+
+| Form             | Rule                                                                                                                      | Example                                                  |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| 1. Expected type | Where the context expects an enum `E`, `?E`, `list<E>` or a map keyed by `E`, and `E` declares the name, it's `E`'s value | `service.tier == standard`                               |
+| 2. Unique enum   | Otherwise, when exactly one enum declares the name, it's that enum's value                                                | `let t = critical`                                       |
+| 3. Ambiguous     | Otherwise it's a compile error; qualify the name                                                                          | `let p = standard`, with `standard` in `Tier` and `Plan` |
+| Qualified        | `E.x` is always `E`'s value `x`, whatever the context                                                                     | `let p = Plan.standard`                                  |
+
+The contexts that expect a type are the ones that give an empty `[]` its type:
+
+- the other operand of `==`, `!=`, `in`, `not in`, the list operators, `has` and `??`,
+- another element of the same list or map literal,
+- the declared type of a param default, payload field, host function parameter, invocation argument or map index key.
+
+Rules:
+
+- When the expected enum doesn't declare the name, the error names the enum, suggests the closest value and lists the declared ones, instead of reporting an undefined name. `Tier.critcal` gets the same error.
+- A qualified value must still have the type its context expects: `service.tier == Plan.standard` is a compile error.
+- A string literal is never an enum value: `service.tier == "critical"` is a compile error.
+- A policy's own names can't share an enum value's name or an enum's name, except in a document pinned below the version that added it; see [Identifiers](/reference/policy-files/#identifiers).
+- The `reason:` of a decision constructor names one of that decision's reasons and never resolves to an enum value. It takes no qualified form; see [The reason](/reference/decisions/#the-reason).
+
+```text
+deploy/production.sigil:9:24: error: Tier has no value `critcal`
+  |
+9 |   when service.tier == critcal
+  |                        ^^^^^^^
+  = help: did you mean `critical`? Tier declares: critical, standard, internal
+
+deploy/production.sigil:5:9: error: `standard` is a value of Plan and Tier
+  |
+5 | let p = standard
+  |         ^^^^^^^^
+  = help: write `Tier.standard` or `Plan.standard`
+```
+
+Why values are bare by default, and when to qualify them: [Why enum values are bare names](/understanding/language-choices/#why-enum-values-are-bare-names).
 
 ## Decision values and `outcome`
 

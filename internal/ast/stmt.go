@@ -27,9 +27,9 @@ type Stmt interface {
 	stmtNode()
 }
 
-// Decl is a declaration in a kind document: type, input, fn, decision,
-// precedence, exclusive, collect or default. Only the declaration types in
-// this package implement it.
+// Decl is a declaration in a kind document: type, enum, input, fn,
+// decision, precedence, exclusive, collect or default. Only the
+// declaration types in this package implement it.
 type Decl interface {
 	Node
 	declNode()
@@ -147,11 +147,13 @@ type AssertStmt struct {
 	Span
 }
 
-// CallStmt is a decision constructor or a policy invocation: a name, an
-// optional positional first argument (the reason of a constructor) and
-// named arguments. The parser doesn't know which of the two it is; the
-// checker decides by the name. The span runs from the name to just after
-// `)`.
+// CallStmt is a decision constructor or a policy invocation: a name and
+// named arguments. A constructor names its reason like any other argument,
+// `deny(reason: soak_too_short)`. Positional holds a first argument written
+// without a name, the old form of a constructor's reason, which the checker
+// rejects and `sigil fmt` rewrites to `reason:`. The parser doesn't know
+// which of the two a call is; the checker decides by the name. The span
+// runs from the name to just after `)`.
 type CallStmt struct {
 	Name       *Ident
 	Positional Expr // nil when every argument is named
@@ -221,13 +223,26 @@ type FnDecl struct {
 	Span
 }
 
-// DecisionDecl is `decision name(fields...) { reasons }`. The payload
-// fields are optional; the reason block isn't.
-type DecisionDecl struct {
-	Name    *Ident
-	Fields  []*Field
-	Reasons []*Ident
+// EnumDecl is `enum Name: a | b | c`. Values keep their declaration
+// order.
+type EnumDecl struct {
+	Name   *Ident
+	Values []*Ident
 	Span
+}
+
+// DecisionDecl is `decision name { reason: a | b  field: type = default }`:
+// the reason's inline values and the payload fields, in any order in the
+// source. Legacy marks the old form `decision name(fields) { reasons }`,
+// which the parser still reads so that `sigil fmt` can rewrite it and the
+// kind loader can reject it with the rewrite as help.
+type DecisionDecl struct {
+	Name       *Ident
+	ReasonName *Ident   // the `reason` field's name; nil in the legacy form
+	Reasons    []*Ident // the values after `reason:`, or the legacy reason block
+	Fields     []*Field // the payload fields, in declaration order
+	Span
+	Legacy bool
 }
 
 // PrecedenceDecl is `precedence a > b > c`, ranking decisions, or
@@ -278,13 +293,13 @@ type CollectDecl struct {
 	Span
 }
 
-// DefaultDecl is `default deny(no_rule_matched)`.
+// DefaultDecl is `default deny(reason: no_rule_matched)`.
 type DefaultDecl struct {
 	Call *CallStmt
 	Span
 }
 
-// ConflictDecl is `conflict deny(conflicting_rules)`, the outcome a
+// ConflictDecl is `conflict deny(reason: conflicting_rules)`, the outcome a
 // `collect one` kind returns when resolution ends in a conflict. `conflict`
 // isn't a keyword: the parser reads the identifier as this declaration
 // only where a kind declaration can start, and the span starts at it.
@@ -322,6 +337,7 @@ func (*ListType) typeNode()     {}
 func (*MapType) typeNode()      {}
 
 func (*TypeDecl) declNode()       {}
+func (*EnumDecl) declNode()       {}
 func (*InputDecl) declNode()      {}
 func (*FnDecl) declNode()         {}
 func (*DecisionDecl) declNode()   {}

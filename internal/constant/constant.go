@@ -2,9 +2,10 @@
 // in a few places: payload field defaults and the default decision's
 // arguments in a kind, a `default=` tag option on a Go payload field,
 // param defaults and their `min` and `max` bounds, and invocation
-// arguments. A constant is a literal, a list or map literal of constants,
-// or `+`, `-` and unary minus applied to constants, as the reference
-// specifies for param defaults at https://sigil.specht-labs.de/reference/policy-files/.
+// arguments. A constant is a literal, an enum value, bare or qualified
+// by its enum, a list or map literal of constants, or `+`, `-` and unary
+// minus applied to constants, as the reference specifies for param
+// defaults at https://sigil.specht-labs.de/reference/policy-files/.
 //
 // Evaluation is checked against the type the constant must have, which
 // every one of those places knows: the field's, the param's. That's what
@@ -33,11 +34,12 @@ const help = "a constant is a literal, a list or map of literals, or `+` and `-`
 
 // Eval evaluates x as a constant of type want and returns its value in
 // the representation [Conforms] accepts: bool, int64, float64, string,
-// [time.Duration], []any and map[any]any. An optional type takes a
-// constant of its element type. A timestamp, a decision or a struct has
-// no constant, so wanting one is an error. The error, if any, spans the
-// part of x that's wrong and has no File set; the caller fills it in. x
-// must not be nil.
+// [time.Duration], [EnumValue], []any and map[any]any. An optional type
+// takes a constant of its element type. An enum takes one of its values,
+// bare, `critical`, or qualified, `Tier.critical`. A timestamp, a
+// decision or a struct has no constant, so wanting one is an error. The
+// error, if any, spans the part of x that's wrong and has no File set;
+// the caller fills it in. x must not be nil.
 func Eval(x ast.Expr, want types.Type) (any, *diag.Error) {
 	if opt, ok := want.(*types.Optional); ok {
 		want = opt.Elem
@@ -49,6 +51,8 @@ func Eval(x ast.Expr, want types.Type) (any, *diag.Error) {
 		return evalList(x, want)
 	case *types.Map:
 		return evalMap(x, want)
+	case *types.Enum:
+		return evalEnum(x, want)
 	case *types.Struct:
 		return nil, errorf(x, "", "%s has no literal form, so a constant can't be one", want.Name)
 	}
@@ -75,6 +79,22 @@ func AddInt(a, b int64, sub bool) (int64, bool) {
 		return 0, false
 	}
 	return sum, true
+}
+
+// EnumHelp returns the help for a name that isn't a value of e: a "did
+// you mean" when a value is close, then the values e declares, like
+// "did you mean `critical`? Tier declares: critical, standard, internal".
+// The checker, constant evaluation and input decoding all use it, so the
+// hint reads the same wherever the name comes from.
+func EnumHelp(e *types.Enum, name string) string {
+	if e == nil {
+		return ""
+	}
+	declares := e.Name + " declares: " + e.ValueNames()
+	if closest, ok := diag.Nearest(name, e.Values); ok {
+		return fmt.Sprintf("did you mean `%s`? %s", closest, declares)
+	}
+	return declares
 }
 
 func errorf(at ast.Node, hint, format string, args ...any) *diag.Error {
@@ -287,4 +307,73 @@ func evalMap(x ast.Expr, want *types.Map) (any, *diag.Error) {
 		return nil, mismatch(x, want)
 	}
 	return nil, errorf(x, help, "`%s` isn't a constant", ast.Sprint(x))
+}
+
+// evalEnum evaluates a value of want: a bare name, `standard`, or one
+// qualified by its enum, `Tier.standard`. A string literal is the likely
+// slip, so its error names the bare value to write instead.
+func evalEnum(x ast.Expr, want *types.Enum) (any, *diag.Error) {
+	if want == nil {
+		return nil, errorf(x, "", "invalid type")
+	}
+	switch x := x.(type) {
+	case *ast.ParenExpr:
+		return evalEnum(x.X, want)
+	case *ast.Ident:
+		if !want.Has(x.Name) {
+			return nil, errorf(x, EnumHelp(want, x.Name), "%s has no value `%s`", want.Name, x.Name)
+		}
+		return EnumValue(x.Name), nil
+	case *ast.SelectorExpr:
+		return evalQualified(x, want)
+	case *ast.StringLit:
+		hint := want.Name + " declares: " + want.ValueNames()
+		if want.Has(x.Value) {
+			hint = fmt.Sprintf("an enum value is a bare name; write `%s`", x.Value)
+		}
+		return nil, errorf(x, hint, "expected %s, found string", want.Name)
+	case *ast.UnaryExpr:
+		if x.Op == ast.OpNeg {
+			return nil, errorf(x, "", "expected %s, found a negated value", want.Name)
+		}
+		return nil, errorf(x, help, "`%s` isn't a constant", x.Op)
+	case *ast.BinaryExpr:
+		if x.Op == ast.OpAdd || x.Op == ast.OpSub {
+			return nil, errorf(x, "", "expected %s, found `%s` arithmetic", want.Name, x.Op)
+		}
+		return nil, errorf(x, help, "`%s` isn't a constant", x.Op)
+	case *ast.BoolLit, *ast.IntLit, *ast.FloatLit, *ast.DurationLit, *ast.ListLit, *ast.MapLit:
+		return nil, mismatch(x, want)
+	}
+	return nil, errorf(x, help, "`%s` isn't a constant", ast.Sprint(x))
+}
+
+// evalQualified evaluates `E.v`, which must name want and one of its
+// values. Only a plain name qualifies a value, so anything else, like
+// `service.tier` or `Tier?.standard`, isn't a constant when its qualifier
+// isn't an identifier, and isn't a value of want when it names something
+// other than want.
+func evalQualified(x *ast.SelectorExpr, want *types.Enum) (any, *diag.Error) {
+	if x == nil {
+		return nil, nil
+	}
+	if want == nil {
+		return nil, errorf(x, "", "invalid type")
+	}
+	qual, ok := x.X.(*ast.Ident)
+	if !ok || x.Optional || x.Sel == nil {
+		return nil, errorf(x, help, "`%s` isn't a constant", ast.Sprint(x))
+	}
+	name := x.Sel.Name
+	if qual.Name != want.Name {
+		hint := want.Name + " declares: " + want.ValueNames()
+		if want.Has(name) {
+			hint = fmt.Sprintf("%s declares %s too; write `%s.%s`, or `%s`", want.Name, name, want.Name, name, name)
+		}
+		return nil, errorf(x, hint, "`%s` isn't a value of %s", ast.Sprint(x), want.Name)
+	}
+	if !want.Has(name) {
+		return nil, errorf(x.Sel, EnumHelp(want, name), "%s has no value `%s`", want.Name, name)
+	}
+	return EnumValue(name), nil
 }

@@ -40,23 +40,23 @@ func TestSource(t *testing.T) {
 		{name: "comments only", src: "// a\n\n\n// b", want: "// a\n\n// b\n"},
 		{
 			name: "spacing and indentation",
-			src:  "policy  a.b :K@1\nwhen x==1{deny( r )}",
-			want: "policy a.b: K@1\n\nwhen x == 1 { deny(r) }\n",
+			src:  "policy  a.b :K@1\nwhen x==1{deny( reason:r )}",
+			want: "policy a.b: K@1\n\nwhen x == 1 { deny(reason: r) }\n",
 		},
 		{
 			name: "blank lines collapse to one and leave block edges",
-			src:  "policy a: K@1\n\n\n\nwhen x {\n\n  deny(r)\n\n}\n",
-			want: "policy a: K@1\n\nwhen x {\n  deny(r)\n}\n",
+			src:  "policy a: K@1\n\n\n\nwhen x {\n\n  deny(reason: r)\n\n}\n",
+			want: "policy a: K@1\n\nwhen x {\n  deny(reason: r)\n}\n",
 		},
 		{
 			name: "the conflict outcome goes right under the default",
-			src:  "kind K version 1\ndecision d { x y }\ncollect one\nprecedence d\ndefault d(x)\n\n\nconflict d(y)\n",
-			want: "kind K version 1\n\ndecision d {\n  x\n  y\n}\n\ncollect one\nprecedence d\n\ndefault d(x)\nconflict d(y)\n",
+			src:  "kind K version 1\ndecision d { reason: x | y }\ncollect one\nprecedence d\ndefault d(reason: x)\n\n\nconflict d(reason: y)\n",
+			want: "kind K version 1\n\ndecision d {\n  reason: x | y\n}\n\ncollect one\nprecedence d\n\ndefault d(reason: x)\nconflict d(reason: y)\n",
 		},
 		{
 			name: "a conflict outcome away from the default stands apart",
-			src:  "kind K version 1\nconflict d(y)\ndecision d { x y }\ncollect one\nprecedence d\ndefault d(x)\n",
-			want: "kind K version 1\n\nconflict d(y)\n\ndecision d {\n  x\n  y\n}\n\ncollect one\nprecedence d\n\ndefault d(x)\n",
+			src:  "kind K version 1\nconflict d(reason: y)\ndecision d { reason: x | y }\ncollect one\nprecedence d\ndefault d(reason: x)\n",
+			want: "kind K version 1\n\nconflict d(reason: y)\n\ndecision d {\n  reason: x | y\n}\n\ncollect one\nprecedence d\n\ndefault d(reason: x)\n",
 		},
 		{
 			name: "separators: one between documents, none around them",
@@ -125,8 +125,8 @@ func TestSource(t *testing.T) {
 		},
 		{
 			name: "a one-line rule with two statements is expanded",
-			src:  "policy a: K@1\nwhen x { deny(a) deny(b) }\n",
-			want: "policy a: K@1\n\nwhen x {\n  deny(a)\n  deny(b)\n}\n",
+			src:  "policy a: K@1\nwhen x { deny(reason: a) deny(reason: b) }\n",
+			want: "policy a: K@1\n\nwhen x {\n  deny(reason: a)\n  deny(reason: b)\n}\n",
 		},
 		{
 			name: "param bounds print min before max",
@@ -137,6 +137,71 @@ func TestSource(t *testing.T) {
 			name: "closing type argument before a default",
 			src:  "policy a: K@1\nparam m: map<string, int>= {}\n",
 			want: "policy a: K@1\n\nparam m: map<string, int> = {}\n",
+		},
+		{
+			name: "enum on one line",
+			src:  "kind K version 1\nenum  Tier :critical|standard\n",
+			want: "kind K version 1\n\nenum Tier: critical | standard\n",
+		},
+		{
+			name: "enum breaks where the source broke, before or after the pipe",
+			src:  "kind K version 1\nenum Tier: a |\nb\n| c | d\n",
+			want: "kind K version 1\n\nenum Tier: a\n  | b\n  | c | d\n",
+		},
+		{
+			name: "consecutive enums group together",
+			src:  "kind K version 1\nenum A: a\nenum B: b\ninput x: A\n",
+			want: "kind K version 1\n\nenum A: a\nenum B: b\n\ninput x: A\n",
+		},
+		{
+			name: "decision on one line gets a line per field, reason first",
+			src:  "kind K version 1\ndecision review { approvers: list<string> reason: owner }\n",
+			want: "kind K version 1\n\ndecision review {\n  reason: owner\n  approvers: list<string>\n}\n",
+		},
+		{
+			name: "field named like an operator after a default",
+			src:  "kind K version 1\ndecision d {\nreason: r\nnote: string = \"\"\nin: int\n}\n",
+			want: "kind K version 1\n\ndecision d {\n  reason: r\n  note: string = \"\"\n  in: int\n}\n",
+		},
+		{
+			name: "legacy decision without fields",
+			src:  "kind K version 1\ndecision deny { a\nb }\n",
+			want: "kind K version 1\n\ndecision deny {\n  reason: a | b\n}\n",
+		},
+		{
+			name: "legacy decision with fields",
+			src:  "kind K version 1\ndecision approve(bake: duration = 1h, note: string,) {\n  lgtm\n}\n",
+			want: "kind K version 1\n\ndecision approve {\n  reason: lgtm\n  bake: duration = 1h\n  note: string\n}\n",
+		},
+		{
+			name: "legacy decision keeps a comment between reasons with the reason before it",
+			src:  "kind K version 1\ndecision deny {\n  a // first\n  b\n}\n",
+			want: "kind K version 1\n\ndecision deny {\n  reason: a // first\n    | b\n}\n",
+		},
+		{
+			name: "legacy fields keep their comments when the reason moves ahead",
+			src:  "kind K version 1\ndecision approve(\n  // how long\n  bake: duration, // at least\n) { // then\n  lgtm\n}\n",
+			want: "kind K version 1\n\ndecision approve {\n  // then\n  reason: lgtm\n  // how long\n  bake: duration // at least\n}\n",
+		},
+		{
+			name: "a comment after the closing brace stays there",
+			src:  "kind K version 1\ndecision deny { reason: a } // done\n",
+			want: "kind K version 1\n\ndecision deny {\n  reason: a\n} // done\n",
+		},
+		{
+			name: "positional reason becomes a named argument",
+			src:  "policy a: K@1\nwhen x { approve(lgtm, bake: 1h) }\n",
+			want: "policy a: K@1\n\nwhen x { approve(reason: lgtm, bake: 1h) }\n",
+		},
+		{
+			name: "positional reason in a broken argument list",
+			src:  "policy a: K@1\nwhen x {\n  review(\n    owner,\n    approvers: [\"a\"])\n}\n",
+			want: "policy a: K@1\n\nwhen x {\n  review(\n    reason: owner,\n    approvers: [\"a\"],\n  )\n}\n",
+		},
+		{
+			name: "positional reason of the default",
+			src:  "kind K version 1\ndefault deny(no_rule_matched)\n",
+			want: "kind K version 1\n\ndefault deny(reason: no_rule_matched)\n",
 		},
 		{
 			name: "file without a trailing newline gets one",
@@ -171,7 +236,8 @@ func TestSource(t *testing.T) {
 // sigil block in the documentation that parses on its own, and checks
 // that formatting is idempotent and keeps the tree: the formatted source
 // parses to the same AST, apart from the parentheses fmt adds around
-// quantifier and filter bodies.
+// quantifier and filter bodies and the migration to the current decision
+// and constructor syntax.
 func TestCorpus(t *testing.T) {
 	for name, src := range corpus(t) {
 		t.Run(name, func(t *testing.T) {
@@ -282,7 +348,8 @@ func corpus(t *testing.T) map[string][]byte {
 }
 
 // tree dumps the AST of src without positions, with the parentheses fmt
-// adds around quantifier and filter bodies removed.
+// adds around quantifier and filter bodies removed, and the old decision
+// and constructor syntax migrated as fmt does it.
 func tree(t *testing.T, name string, src []byte) string {
 	t.Helper()
 	f, errs := parser.ParseFile(name, src)
@@ -290,6 +357,7 @@ func tree(t *testing.T, name string, src []byte) string {
 		t.Fatalf("doesn't parse: %v\n%s", errs, src)
 	}
 	for _, d := range f.Docs {
+		migrate(d)
 		for _, x := range exprsOf(d) {
 			ast.Inspect(x, func(x ast.Expr) bool {
 				switch q := x.(type) {
@@ -314,6 +382,46 @@ func bare(body ast.Expr) ast.Expr {
 		}
 	}
 	return body
+}
+
+// migrate rewrites the old syntax in d the way fmt prints it: a legacy
+// decision becomes a current one, and a positional reason a leading
+// `reason:` argument. The order of a decision's fields doesn't show in
+// the dump, which prints the reason first.
+func migrate(d ast.Doc) {
+	call := func(c *ast.CallStmt) {
+		if c.Positional != nil {
+			reason := &ast.Ident{Name: "reason"}
+			c.Args = append([]*ast.NamedArg{{Name: reason, Value: c.Positional}}, c.Args...)
+			c.Positional = nil
+		}
+	}
+	var stmts func([]ast.Stmt)
+	stmts = func(ss []ast.Stmt) {
+		for _, s := range ss {
+			switch s := s.(type) {
+			case *ast.WhenStmt:
+				stmts(s.Body)
+			case *ast.CallStmt:
+				call(s)
+			}
+		}
+	}
+	switch d := d.(type) {
+	case *ast.PolicyDoc:
+		stmts(d.Stmts)
+	case *ast.KindDoc:
+		for _, decl := range d.Decls {
+			switch decl := decl.(type) {
+			case *ast.DecisionDecl:
+				decl.Legacy = false
+			case *ast.DefaultDecl:
+				call(decl.Call)
+			case *ast.ConflictDecl:
+				call(decl.Call)
+			}
+		}
+	}
 }
 
 // exprsOf returns the top-level expressions of a document.

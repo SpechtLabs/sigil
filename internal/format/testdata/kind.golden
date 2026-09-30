@@ -1,9 +1,17 @@
 kind DeployApproval version 3, accepts: 2
 
+enum Tier: critical | standard
+  | internal
+enum Plan: free | pro
+  | enterprise // the top plan
+
+enum Region: eu
+
 type Release {
   soak: duration
   hotfix: bool
   ticket: ?string
+  tier: Tier
 }
 
 type Resource {
@@ -21,21 +29,21 @@ fn split(string, string) -> list<string>
 fn now() -> timestamp
 
 decision deny {
-  not_eligible
-  soak_too_short
-  no_rule_matched
+  reason: not_eligible | soak_too_short
+    | no_rule_matched
 }
 
-decision review(approvers: list<string>) {
-  service_owner
+decision review {
+  reason: service_owner
+  approvers: list<string>
 }
 
-decision approve(
-  bake: duration = 1h,
-  note: string = "",
-) {
-  release_manager
-  payments_sre
+decision approve {
+  // the approvers
+  reason: release_manager
+    | payments_sre
+  bake: duration = 1h // how long
+  note: string = ""
 }
 
 collect one
@@ -43,7 +51,7 @@ precedence deny > review > approve
 precedence approve: release_manager > payments_sre
 exclusive approve.release_manager, approve.payments_sre
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 conflict deny(
-  soak_too_short,
+  reason: soak_too_short,
 )

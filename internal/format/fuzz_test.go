@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -29,6 +30,8 @@ func FuzzFormat(f *testing.F) {
 	}
 	f.Add([]byte("// comment only\n"))
 	f.Add([]byte("policy p: K@1\nlet x = 0 .field\n"))
+	f.Add([]byte("kind K version 1\nenum T: a |\n  b // x\ndecision d(f: int = 1, // y\n) { r // z\n s }\ndefault d(r)\n"))
+	f.Add([]byte("kind K version 1\ndecision d {\n  f: T = a // y\n  in: int\n  reason: r\n    | s\n}\n"))
 	f.Fuzz(func(t *testing.T, src []byte) {
 		out, errs := format.Source("fuzz.sigil", src)
 		if errs != nil {
@@ -50,14 +53,16 @@ func FuzzFormat(f *testing.F) {
 	})
 }
 
+// comments lists the comments in src, sorted: moving a decision's
+// reason ahead of its payload fields moves the comments that go with it.
 func comments(src []byte) string {
-	var out bytes.Buffer
+	var out []string
 	l := lexer.New(src)
 	for tok := l.Next(); tok.Kind != token.EOF; tok = l.Next() {
 		if tok.Kind == token.Comment {
-			out.WriteString(strings.TrimRight(tok.Text, " \t\r"))
-			out.WriteByte('\n')
+			out = append(out, strings.TrimRight(tok.Text, " \t\r"))
 		}
 	}
-	return out.String()
+	slices.Sort(out)
+	return strings.Join(out, "\n")
 }

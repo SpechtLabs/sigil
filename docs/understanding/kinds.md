@@ -55,17 +55,33 @@ For a change that still compiles, raising `accepts` is the only protection there
 
 ## Adding a name never breaks a policy
 
-A kind's inputs, host functions and decisions share one flat namespace with a policy's own params, lets, imports and quantifier variables, and nothing shadows anything; [Why a name has exactly one meaning](/understanding/language-choices/#why-a-name-has-exactly-one-meaning) explains that rule. It has an awkward consequence. Without some escape, a host that adds `input approvers` would break every policy that already declares `param approvers`, and adding an input would be a breaking change.
+A kind's inputs, host functions, decisions, enums and enum values share one flat namespace with a policy's own params, lets, imports and quantifier variables, and nothing shadows anything; [Why a name has exactly one meaning](/understanding/language-choices/#why-a-name-has-exactly-one-meaning) explains that rule. It has an awkward consequence. Without some escape, a host that adds `input approvers` would break every policy that already declares `param approvers`, and adding an input would be a breaking change.
 
-The version pin makes the collision safe to resolve. A document pinned to `@N` compiled against version N, where any collision was an error. So when a document pinned below the current version collides with an input, host function or decision, the kind must have added that name after the document was written. The document's own name wins, the kind's new name is out of reach in that document, and the `shadowed-kind-name` [lint](/reference/lints/) says so. The team renames its param and raises the pin at its own pace. A document pinned to the current version gets the usual collision error, because its author wrote it knowing the name was taken.
+The version pin makes the collision safe to resolve. A document pinned to `@N` compiled against version N, where any collision was an error. So when a document pinned below the current version collides with an input, host function, decision, enum or enum value, the kind must have added that name after the document was written. The document's own name wins, the kind's new name is out of reach in that document, and the `shadowed-kind-name` [lint](/reference/lints/) says so. The team renames its param and raises the pin at its own pace. A document pinned to the current version gets the usual collision error, because its author wrote it knowing the name was taken.
 
 This is why every change to the kind bumps `version`, including compatible ones: the rule depends on the pin telling the compiler which names existed when the document was written. Payload fields aren't in the namespace, so adding one never collides with anything. The precise rule is under [Identifiers](/reference/policy-files/#identifiers).
+
+## Enums and versions
+
+```sigil
+enum Tier: critical | standard | internal
+```
+
+An enum's values are names in the kind's namespace, next to its inputs, host functions and decisions, so the rule above covers them. Adding an enum, or a value to one, is compatible as long as no other enum declares the same value. Suppose version 2 adds `batch` to `Tier`: a document pinned to `@1` that declares its own `let batch` keeps it, gets the `shadowed-kind-name` lint, and can't write `batch` as a tier until its team renames the `let` and raises the pin. A document that never used the name doesn't notice the change at all.
+
+Removing or renaming a value breaks, like removing any other name. `service.tier == internal` stops compiling once `internal` is gone, and the host raises `accepts` so the error tells each team why. A removed value can also break things no policy shows: if the host's data still holds it, a rule that reads it gets a runtime error and the evaluation fails closed. The kind is the last place a value should disappear from, after the host stops producing it.
+
+Turning a `string` field into an enum is a type change, so it breaks too. Every `service.tier == "critical"` stops compiling, because a string never converts to an enum. The fix is mechanical, drop the quotes, but every team has to make it, which is what a raised `accepts` announces. [Replace a string field with an enum](/guides/patterns/#replace-a-string-field-with-an-enum) walks through that change, and [Add an enum value](/guides/evolve-a-kind/#add-an-enum-value) the compatible one.
+
+A value that another enum already declares is the exception, and it's breaking. A bare value with nothing around it to fix its type resolves only when a single enum declares it, so if a kind adds `enum Plan: standard | premium` next to `Tier`, a policy's `let t = standard` becomes ambiguous and stops compiling. The pin can't help, because both meanings come from the kind, not from the document. So the host raises `accepts`, and the error's help tells each team to write `Tier.standard`. `service.tier == standard` isn't affected, because `service.tier` fixes the type, and neither is a policy that already wrote the qualified form.
 
 ## Why some types can't be declared
 
 Go allows `type Node struct { Next *Node }`. A kind doesn't. Policies can't loop or recurse, so a recursive type could only ever be read to a fixed depth. `NewKind` and the kind loader reject a recursive type and name the cycle.
 
 A kind also can't declare an optional list or map, `?list<T>` or `?map<K, V>`, and `NewKind` rejects a Go pointer to a slice or map. A nil slice or map already reads as empty, so an optional one would add a second way to say "nothing" that policies couldn't tell apart. Optionals are for scalars and structs, where Go's pointer really does say that absence means something; see [Optionals must be unwrapped](/understanding/strictness/#optionals-must-be-unwrapped).
+
+An enum can't be a map's value type either, so there's no `map<string, Tier>`, and `NewKind` rejects a Go map whose values are a registered enum type. Indexing a map with a missing key yields the value type's zero value, the way Go does it ([Absent data follows Go](/understanding/strictness/#absent-data-follows-go)), and an enum has no zero value: `Tier("")` isn't a tier. A missing key would have to produce a value the enum doesn't declare, or fail where every other map read succeeds. An enum works as a map key, where a missing key is simply absent and `has` asks about it.
 
 ## Why `collect` is always spelled out
 

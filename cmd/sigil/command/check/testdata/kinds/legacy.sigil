@@ -1,0 +1,17 @@
+kind DeployApproval version 1
+
+input environment: string
+
+decision deny {
+  no_rule_matched
+}
+
+decision approve(bake: duration = 1h) {
+  release_manager
+  payments_sre
+}
+
+collect one
+precedence deny > approve
+
+default deny(no_rule_matched)

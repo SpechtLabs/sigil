@@ -38,7 +38,7 @@ flowchart LR
 
 Resolution runs in four steps. None of them looks at where a candidate came from.
 
-1. **Fold.** Candidates with the same decision, reason and payload are one outcome. Two branches that both say `deny(soak_too_short)`, or a policy invoked twice with the same params, produce one candidate here. The trace still lists every constructor that fired.
+1. **Fold.** Candidates with the same decision, reason and payload are one outcome. Two branches that both say `deny(reason: soak_too_short)`, or a policy invoked twice with the same params, produce one candidate here. The trace still lists every constructor that fired.
 2. **Check `exclusive` sets.** If candidates remain from two members of one [`exclusive`](/reference/kind-files/#exclusive) set, the evaluation fails with a conflict, whatever else fired.
 3. **Rank.** Candidates are ordered by their decision's position in `precedence`, then by their reason's position in the decision's scoped `precedence` when it has one. The top rank is the highest-ranked decision that has a candidate, narrowed to its highest-ranked reason when its reasons are ranked; unranked reasons of that decision share the top rank. Without `precedence`, in a `collect all` kind, every candidate is at the top rank.
 4. **Count.** What's left at the top rank is the outcome. A `collect all` kind returns all of it. A `collect one` kind returns it when it's one candidate, and fails with a conflict when it's more: two candidates with the same decision and reason but different payloads, or two reasons the kind didn't rank.
@@ -70,16 +70,16 @@ use access.guardrails
 guardrails()
 
 when "engineering" in actor.groups {
-  read(engineering_member)
+  read(reason: engineering_member)
 }
 
 when "platform" in actor.groups {
-  write(platform_member)
-  development_environment_writer(platform_member)
+  write(reason: platform_member)
+  development_environment_writer(reason: platform_member)
 }
 ```
 
-For a member of both groups, the outcome is `read(engineering_member)`, `write(platform_member)` and `development_environment_writer(platform_member)`, in that order.
+For a member of both groups, the outcome is `read(reason: engineering_member)`, `write(reason: platform_member)` and `development_environment_writer(reason: platform_member)`, in that order.
 
 ## Assertions
 
@@ -106,10 +106,10 @@ Evaluation runs in three phases:
 - Every failing assert of the phase is reported, sorted by source position.
 - A failed phase ends the evaluation. A failed input assert hides outcome asserts.
 
-A failed assert fails the evaluation with an `*AssertionError`; see [Failed evaluations](#failed-evaluations) for the result. Its `Phase` is `InputAsserts` or `OutcomeAsserts`, and its `Failures` hold one entry per failing assert; the fields are in [Errors](/reference/go-api/#errors).
+A failed assert fails the evaluation with an `*AssertionError`; see [Failed evaluations](#failed-evaluations) for the result. Its `Phase` is `InputAsserts` or `OutcomeAsserts`, and its `Failures` hold one entry per failing assert; the fields are in [Errors](/reference/go-api/#errors). Its `Error()` names the failing assert and the call chain that reached it, here a guardrail invoked on line 5 of `access.main`:
 
 ```text
-assertion "sod_customer_dev" failed at platform/access/guardrails.sigil:3:1
+assertion "sod_customer_dev" failed at access/main.sigil:5:1 → platform/access/guardrails.sigil:3:1
 ```
 
 Some details of assertions are still open; see [Assertions](/project/open-questions/#assertions).
@@ -129,14 +129,14 @@ behaves exactly as if `deploy.production`'s rules were pasted inside the block, 
 ```sigil
 when service.labels["compliance"] != "pci" {
   when cleared {
-    when service.tier == "critical"
+    when service.tier == critical
       and "release_manager" in actor.roles {
-      approve(release_manager)
+      approve(reason: release_manager)
     }
 
-    when service.tier in ["standard", "internal"]
+    when service.tier in [standard, internal]
       and owns_service {
-      review(service_owner, approvers: ["payments-leads"])
+      review(reason: service_owner, approvers: ["payments-leads"])
     }
   }
 }
@@ -188,17 +188,19 @@ Why protection is explicit: [Composition without templating](/understanding/comp
 
 ## Runtime errors
 
-| Error                   | Example                                             |
-| ----------------------- | --------------------------------------------------- |
-| List index out of range | `actor.roles[5]` on a list of three                 |
-| Integer overflow        | `int` or `duration` arithmetic that leaves 64 bits  |
-| Host function error     | a bound Go function returns a non-nil `error`       |
+| Error                   | Example                                                                                                                                                                |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| List index out of range | `actor.roles[5]` on a list of three                                                                                                                                    |
+| Integer overflow        | `int` or `duration` arithmetic that leaves 64 bits                                                                                                                     |
+| Value outside its enum  | a rule reads `service.tier` and the host passed `Tier("critcal")`; see [Enums](/reference/go-api/#enums)                                                               |
+| Host function error     | a bound Go function returns a non-nil `error`                                                                                                                          |
 | Recovered host panic    | a host function panics in a kind declared with [`policy.WithRecoverHostPanics()`](/reference/go-api/#kind-options); the message names the function and the panic value |
-| Unbound host function   | the stock `sigil` CLI reaches a call to a host function it has no implementation for |
+| Unbound host function   | the stock `sigil` CLI reaches a call to a host function it has no implementation for                                                                                   |
 
 Not errors:
 
 - A missing map key yields the zero value.
+- A host value outside its enum that no rule reads. The check happens on the read, for each value a list, map key or optional holds.
 - An absent optional can't be read without `??`, which the compiler enforces.
 - Without `WithRecoverHostPanics`, a host function's panic isn't recovered: it propagates out of `Eval` and crashes the calling goroutine unless the host recovers it. Host functions report a failure by returning an error.
 

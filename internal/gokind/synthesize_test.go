@@ -17,6 +17,8 @@ import (
 // every type constructor Synthesize maps.
 const synthKind = `kind Synth version 1
 
+enum Tier: critical | standard
+
 type Outer {
   inner: Inner
   maybe: ?Inner
@@ -24,6 +26,7 @@ type Outer {
   counts: map<int, float>
   flags: map<bool, duration>
   seen: ?timestamp
+  tier: Tier
 }
 
 type Inner {
@@ -37,17 +40,19 @@ input env: string
 fn lookup(string, int) -> list<string>
 
 decision deny {
-  no_rule_matched
+  reason: no_rule_matched
 }
 
-decision allow(ttl: duration = 1h, who: Inner) {
-  ok
+decision allow {
+  reason: ok
+  ttl: duration = 1h
+  who: Inner
 }
 
 collect one
 precedence deny > allow
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 `
 
 func TestSynthesizeFieldPaths(t *testing.T) {
@@ -94,6 +99,7 @@ func TestSynthesizeTypes(t *testing.T) {
 		{name: "map with int keys", got: outer.Field(3).Type, want: reflect.TypeFor[map[int64]float64]()},
 		{name: "map with bool keys", got: outer.Field(4).Type, want: reflect.TypeFor[map[bool]time.Duration]()},
 		{name: "optional timestamp", got: outer.Field(5).Type, want: reflect.TypeFor[*time.Time]()},
+		{name: "enum", got: outer.Field(6).Type, want: reflect.TypeFor[string]()},
 		{name: "payload duration", got: b.Payloads["allow"].Field(0).Type, want: reflect.TypeFor[time.Duration]()},
 		{name: "payload struct", got: b.Payloads["allow"].Field(1).Type, want: inner},
 		{name: "empty payload", got: b.Payloads["deny"], want: reflect.TypeFor[struct{}]()},
@@ -142,19 +148,25 @@ func TestSynthesizedEvaluation(t *testing.T) {
 	}{
 		{
 			name:   "no function call",
-			policy: `when outer.inner.name == "ada" and outer.counts[2] > 1.5 { allow(ok, who: outer.inner) }`,
+			policy: `when outer.inner.name == "ada" and outer.counts[2] > 1.5 { allow(reason: ok, who: outer.inner) }`,
 			input:  map[string]any{"outer": map[string]any{"inner": map[string]any{"name": "ada"}, "counts": map[string]any{"2": 2.0}}},
 			want:   "allow",
 		},
 		{
 			name:   "optional absent",
-			policy: `when present outer.maybe { allow(ok, who: outer.inner) }`,
+			policy: `when present outer.maybe { allow(reason: ok, who: outer.inner) }`,
 			input:  map[string]any{},
 			want:   "deny",
 		},
 		{
+			name:   "enum",
+			policy: `when outer.tier == critical { allow(reason: ok, who: outer.inner) }`,
+			input:  map[string]any{"outer": map[string]any{"tier": "critical"}},
+			want:   "allow",
+		},
+		{
 			name:   "unbound function",
-			policy: `when "x" in lookup(env, 1) { allow(ok, who: outer.inner) }`,
+			policy: `when "x" in lookup(env, 1) { allow(reason: ok, who: outer.inner) }`,
 			input:  map[string]any{"env": "prod"},
 			err:    "host function lookup failed: no implementation in this sigil binary",
 		},

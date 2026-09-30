@@ -224,21 +224,21 @@ func conds(cs []*eval.Cond) []string {
 }
 
 // writeText prints an explanation in the layout the documentation shows,
-// styled by t: each rule as it's written in a policy, `deny(reason)`,
-// with the conditions it fires under, its payload, and the call chain
-// that reaches it.
+// styled by t: each rule as it's written in a policy,
+// `deny(reason: not_eligible)`, with the conditions it fires under, its
+// payload, and the call chain that reaches it.
 //
 //	payments.production: 9 rules from 3 policies and 1 module
 //
-//	  deny(not_eligible)           payments.production:7 → deploy.guardrails:8
+//	  deny(reason: not_eligible)     payments.production:7 → deploy.guardrails:8
 //	    when not eligible
 //
-//	  review(service_owner)        payments.production:10 → deploy.production:16
+//	  review(reason: service_owner)  payments.production:10 → deploy.production:16
 //	    when service.labels["compliance"] == "pci"
 //	     and cleared
 //	    with approvers = ["payments-leads", "security-leads"]
 //
-//	  assert named_actor (input)   payments.production:21
+//	  assert named_actor (input)     payments.production:21
 //	    check actor.name != ""
 func writeText(b *strings.Builder, t pretty.Theme, e Explanation) {
 	summary := count(len(e.Rules), "rule", "rules") + " from " + count(e.Policies, "policy", "policies")
@@ -283,13 +283,13 @@ func count(n int, one, many string) string {
 	return fmt.Sprintf("%d %s", n, many)
 }
 
-// head names a rule the way a policy writes it: `deny(not_eligible)`,
+// head names a rule the way a policy writes it: `deny(reason: not_eligible)`,
 // or `assert named_actor (input)`.
 func head(r Entry) string {
 	if r.Kind == kindAssert {
 		return "assert " + r.Reason + " (" + r.Phase + ")"
 	}
-	return r.Decision + "(" + r.Reason + ")"
+	return r.Decision + "(reason: " + r.Reason + ")"
 }
 
 // writeConditions writes the conditions a rule fires under, `when` the

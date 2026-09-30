@@ -4,7 +4,7 @@
 policy p: DeployApproval@1
 
 when actor.regions != [] {
-  deny(a)
+  deny(reason: a)
 }
 
 ---
@@ -18,5 +18,5 @@ assert("expected", {"payments": approve}["payments"] in outcome)
 policy r: DeployApproval@1
 
 when release.soak < 0x10 or 1e3 > 1_000 {
-  deny(a)
+  deny(reason: a)
 }

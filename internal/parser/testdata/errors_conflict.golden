@@ -1,61 +1,63 @@
-kind Broken version 1 [1:1-15:30]
-  decision deny { conflicting_rules no_rule_matched } [3:1-6:2]
-  conflict deny(conflicting_rules) [10:1-10:33]
-  default deny(no_rule_matched) [15:1-15:30]
+kind Broken version 1 [1:1-14:38]
+  decision deny { [3:1-5:2]
+    reason: conflicting_rules | no_rule_matched
+  }
+  conflict deny(reason: conflicting_rules) [9:1-9:41]
+  default deny(reason: no_rule_matched) [14:1-14:38]
 ---
-kind Reserved version 1 [24:1-24:24]
+kind Reserved version 1 [23:1-23:24]
 
 == diagnostics ==
 
-errors_conflict.sigil:10:1: error: expected `one` or `all`, found `conflict`
-   |
-10 | conflict deny(conflicting_rules)
-   | ^^^^^^^^
-   = help: `collect one` returns the highest-ranked decision, `collect all` every decision that fired
+errors_conflict.sigil:9:1: error: expected `one` or `all`, found `conflict`
+  |
+9 | conflict deny(reason: conflicting_rules)
+  | ^^^^^^^^
+  = help: `collect one` returns the highest-ranked decision, `collect all` every decision that fired
 
-errors_conflict.sigil:12:1: error: expected a declaration (`type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect`, `default` or `conflict`), found `conflit`
+errors_conflict.sigil:11:1: error: expected a declaration (`type`, `enum`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect`, `default` or `conflict`), found `conflit`
    |
-12 | conflit deny(conflicting_rules)
+11 | conflit deny(reason: conflicting_rules)
    | ^^^^^^^
 
-errors_conflict.sigil:14:10: error: expected a decision constructor, found `deny`
+errors_conflict.sigil:13:10: error: expected a decision constructor, found `deny`
    |
-14 | conflict deny
+13 | conflict deny
    |          ^^^^
-   = help: the conflict outcome is written `conflict deny(conflicting_rules)`
+   = help: the conflict outcome is written `conflict deny(reason: conflicting_rules)`
 
-errors_conflict.sigil:17:10: error: expected a decision constructor, found `"conflicting_rules"`
+errors_conflict.sigil:16:10: error: expected a decision constructor, found `"conflicting_rules"`
    |
-17 | conflict "conflicting_rules"
+16 | conflict "conflicting_rules"
    |          ^^^^^^^^^^^^^^^^^^^
-   = help: the conflict outcome is written `conflict deny(conflicting_rules)`
+   = help: the conflict outcome is written `conflict deny(reason: conflicting_rules)`
 
-errors_conflict.sigil:19:9: error: expected a decision constructor, found `(`
+errors_conflict.sigil:18:9: error: expected a decision constructor, found `(`
    |
-19 | conflict(conflicting_rules)
+18 | conflict(reason: conflicting_rules)
    |         ^
-   = help: the conflict outcome is written `conflict deny(conflicting_rules)`
+   = help: the conflict outcome is written `conflict deny(reason: conflicting_rules)`
 
-errors_conflict.sigil:26:7: error: expected a name after `input`, found `conflict`
+errors_conflict.sigil:25:7: error: expected a name after `input`, found `conflict`
    |
-26 | input conflict: bool
+25 | input conflict: bool
    |       ^^^^^^^^
    = help: an input is written `input name: type`
 
-errors_conflict.sigil:26:15: error: expected a decision constructor, found `:`
+errors_conflict.sigil:25:15: error: expected a decision constructor, found `:`
    |
-26 | input conflict: bool
+25 | input conflict: bool
    |               ^
-   = help: the conflict outcome is written `conflict deny(conflicting_rules)`
+   = help: the conflict outcome is written `conflict deny(reason: conflicting_rules)`
 
-errors_conflict.sigil:28:15: error: decision deny declares no reasons
+errors_conflict.sigil:28:11: error: expected a reason, found `conflict`
    |
-28 | decision deny {
-   |               ^
-   = help: every decision needs at least one reason in its block
+28 |   reason: conflict | no_rule_matched
+   |           ^^^^^^^^
+   = help: the reasons are listed inline, like `reason: not_eligible | soak_too_short`
 
-errors_conflict.sigil:30:3: error: expected a decision constructor, found `no_rule_matched`
+errors_conflict.sigil:28:20: error: expected a decision constructor, found `|`
    |
-30 |   no_rule_matched
-   |   ^^^^^^^^^^^^^^^
-   = help: the conflict outcome is written `conflict deny(conflicting_rules)`
+28 |   reason: conflict | no_rule_matched
+   |                    ^
+   = help: the conflict outcome is written `conflict deny(reason: conflicting_rules)`

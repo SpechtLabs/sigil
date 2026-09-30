@@ -135,32 +135,35 @@ sigil fmt [PATH...] [flags]
 - `--check` prints the path of every file that isn't formatted.
 - `--write` and `--check` can't be combined, and `--write` can't write back to stdin.
 - A file that doesn't parse is reported with its syntax errors and left alone, and fails the run.
+- It rewrites the old decision syntax, `decision approve(bake: duration = 1h) { release_manager }`, and a positional reason, `deny(soak_too_short)`, into the forms `check` accepts; see [Migrate to the new decision syntax](/guides/evolve-a-kind/#migrate-to-the-new-decision-syntax).
 
 The canonical style:
 
-| Construct | Canonical form |
-| --- | --- |
-| Indentation | Two spaces |
-| Binary operators | One space around them |
-| Line ends | No trailing whitespace; one newline at the end of the file |
-| Document header | Followed by a blank line |
-| Top-level statement groups | A blank line between groups: `use`s, `param`s, `let`s and `assert`s in policies and modules; `input`s, `fn`s, and the `collect`, `precedence` and `exclusive` lines in kinds |
-| `when` block, invocation, `type`, `decision` | Stands alone, with a blank line around it |
-| `default` and `conflict` in a kind | Together, with a blank line around them and none between them |
-| Blank lines inside a `when` body | Only the author's, never more than one in a row |
-| Several documents in one file | One `---` line between each pair, with a blank line on each side; none before the first or after the last |
-| Line breaks | Follow the author, the way `gofmt` does |
-| `and`, `or`, `xor` chain | Breaks only where the source broke next to the operator, always before the operator; continuation lines one level deeper than the statement |
-| `let` value on the line after `let x =` | Stays there, one level in |
-| List, map or argument list whose first item started a new line | One item per line and a trailing comma |
-| Any other list, map or argument list | Joined onto one line |
-| `when` with a single decision, invocation or assert on one line | Stays on one line: `when frozen { deny(freeze) }` |
-| Quantifier or filter body whose top level is `and`, `or` or `xor` | Gets parentheses: `any r in actor.roles: (r like "sre-*" and release.hotfix)`. They change nothing, since a body extends as far right as possible |
-| Other parentheses | Neither added nor removed |
-| Literals | Keep their source text, so a raw string stays raw |
-| Comment on the same line as code | Stays there |
-| Any other comment | Its own line, at the indentation of what follows it |
-| Trailing comments on consecutive lines | Aligned |
+| Construct                                                         | Canonical form                                                                                                                                                               |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Indentation                                                       | Two spaces                                                                                                                                                                   |
+| Binary operators                                                  | One space around them                                                                                                                                                        |
+| Line ends                                                         | No trailing whitespace; one newline at the end of the file                                                                                                                   |
+| Document header                                                   | Followed by a blank line                                                                                                                                                     |
+| Top-level statement groups                                        | A blank line between groups: `use`s, `param`s, `let`s and `assert`s in policies and modules; `input`s, `fn`s, and the `collect`, `precedence` and `exclusive` lines in kinds |
+| `when` block, invocation, `enum`, `type`, `decision`              | Stands alone, with a blank line around it                                                                                                                                    |
+| `default` and `conflict` in a kind                                | Together, with a blank line around them and none between them                                                                                                                |
+| `decision` body                                                   | `reason:` first, then the payload fields in declaration order, one per line                                                                                                  |
+| Decision constructor with a positional reason                     | The reason labeled and placed first: `deny(reason: soak_too_short)`                                                                                                          |
+| Blank lines inside a `when` body                                  | Only the author's, never more than one in a row                                                                                                                              |
+| Several documents in one file                                     | One `---` line between each pair, with a blank line on each side; none before the first or after the last                                                                    |
+| Line breaks                                                       | Follow the author, the way `gofmt` does                                                                                                                                      |
+| `and`, `or`, `xor` chain                                          | Breaks only where the source broke next to the operator, always before the operator; continuation lines one level deeper than the statement                                  |
+| `let` value on the line after `let x =`                           | Stays there, one level in                                                                                                                                                    |
+| List, map or argument list whose first item started a new line    | One item per line and a trailing comma                                                                                                                                       |
+| Any other list, map or argument list                              | Joined onto one line                                                                                                                                                         |
+| `when` with a single decision, invocation or assert on one line   | Stays on one line: `when frozen { deny(reason: freeze) }`                                                                                                                    |
+| Quantifier or filter body whose top level is `and`, `or` or `xor` | Gets parentheses: `any r in actor.roles: (r like "sre-*" and release.hotfix)`. They change nothing, since a body extends as far right as possible                            |
+| Other parentheses                                                 | Neither added nor removed                                                                                                                                                    |
+| Literals                                                          | Keep their source text, so a raw string stays raw                                                                                                                            |
+| Comment on the same line as code                                  | Stays there                                                                                                                                                                  |
+| Any other comment                                                 | Its own line, at the indentation of what follows it                                                                                                                          |
+| Trailing comments on consecutive lines                            | Aligned                                                                                                                                                                      |
 
 `Schema()` prints kinds in this style, so an exported kind file passes `sigil fmt --check` as it is. Why there's one style: [Why the language looks like this](/understanding/language-choices/).
 
@@ -288,22 +291,22 @@ sigil eval PATH... --input FILE [flags]
 | `-p`, `--policy` | the bundle's only policy | Name of the policy to evaluate; required when the bundle holds more than one |
 | `-R`, `--recursive` | off | Reads `.sigil` files in subdirectories of directory arguments too |
 
-- Candidates read the way a policy writes them, `review(service_owner)`, with the conditions that held after `when` and the payload beneath. The ones in the outcome are marked with `*`.
+- Candidates read the way a policy writes them, `review(reason: service_owner)`, with the conditions that held after `when` and the payload beneath. The ones in the outcome are marked with `*`.
 - Diagnostics and trace entries name the document as well as the position, `policies.sigil:42:5 (payments.production)`. The name is left out when the file's path matches the name, as in `deploy/production.sigil:16:5`. This is the text form of [`policy.Position`](/reference/go-api/#positions).
 - A policy that reaches a host function call needs a [host binary](#host-functions-and-host-binaries).
 
 ```text
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
-payments.production: review(service_owner)
+payments.production: review(reason: service_owner)
   approvers = ["payments-leads"]
 
 trace: 2 candidates
-  * review(service_owner)  payments/production.sigil:14:3 → deploy/production.sigil:16:5
+  * review(reason: service_owner)  payments/production.sigil:14:3 → deploy/production.sigil:16:5
       when service.labels["compliance"] != "pci"
        and cleared
-       and service.tier in ["standard", "internal"] and owns_service
+       and service.tier in [standard, internal] and owns_service
       approvers = ["payments-leads"]
-    approve(payments_sre)  payments/production.sigil:18:3
+    approve(reason: payments_sre)  payments/production.sigil:18:3
       bake = 15m
 ```
 
@@ -311,20 +314,27 @@ trace: 2 candidates
 
 The input is a JSON object with one key per input the kind declares.
 
-| Input | Rule |
-| --- | --- |
-| A key the kind doesn't declare, at any depth | An error with a did-you-mean hint |
-| A missing key | Its type's zero value, as after `encoding/json` decoded into the host's struct |
-| A `duration` | A string in Sigil's syntax, `"1h30m"`. A number is an error: `90` could mean seconds or nanoseconds |
-| A `timestamp` | An RFC 3339 string, `"2026-09-28T14:00:00Z"` |
-| `null` | Allowed for optionals, lists and maps |
-| A map key of a non-string type | Written the way its values are: `"3"` for an `int` key |
+| Input                                        | Rule                                                                                                                                                                                         |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A key the kind doesn't declare, at any depth | An error with a did-you-mean hint                                                                                                                                                            |
+| A missing key                                | Its type's zero value, as after `encoding/json` decoded into the host's struct. For an enum that's the empty string, which isn't a value, so a rule that reads it fails with a runtime error |
+| A `duration`                                 | A string in Sigil's syntax, `"1h30m"`. A number is an error: `90` could mean seconds or nanoseconds                                                                                          |
+| A `timestamp`                                | An RFC 3339 string, `"2026-09-28T14:00:00Z"`                                                                                                                                                 |
+| An [enum](/reference/types/#enums)           | A string naming one of its values, `"critical"`. Any other string is an error with a did-you-mean hint                                                                                       |
+| `null`                                       | Allowed for optionals, lists and maps                                                                                                                                                        |
+| A map key of a non-string type               | Written the way its values are: `"3"` for an `int` key                                                                                                                                       |
 
 ```text
 Error: bad.json: actor.nmae: unknown field "nmae" on type Actor
 
 What you can do
   • did you mean "name"? declared: name, teams, roles, regions
+  • the input is a JSON object with one key per input the kind declares
+
+Error: badtier.json: service.tier: "standrd" is not a value of Tier
+
+What you can do
+  • did you mean `standard`? Tier declares: critical, standard, internal
   • the input is a JSON object with one key per input the kind declares
 ```
 
@@ -337,7 +347,7 @@ When the evaluation fails, with a runtime error, a conflict or a failing assert,
 - A failing outcome assert lists the candidates that formed the outcome it read, with their payloads.
 
 ```text
-payments.production: a runtime error stopped the evaluation, the host falls back to deny(no_rule_matched), the kind's default
+payments.production: a runtime error stopped the evaluation, the host falls back to deny(reason: no_rule_matched), the kind's default
 
 runtime error: deploy/common.sigil:5:3: host function split failed: no implementation in this sigil binary; build a host binary with split linked in (see sigil's pkg/cli)
   = help: this sigil binary has only split's signature from the kind file; evaluate with the host's own binary, built with sigil's pkg/cli, which links the real function in
@@ -353,17 +363,36 @@ access.main: an assert failed, the host falls back to no decisions
 
 assert sod_auditor_deployer failed at access/main.sigil:6:1 → platform/access/guardrails.sigil:11:1
   the outcome it read:
-    deployer(oncall)            access/main.sigil:19:3
+    deployer(reason: oncall)            access/main.sigil:19:3
       ttl = 2h
-    auditor(compliance_member)  access/main.sigil:40:3
+    auditor(reason: compliance_member)  access/main.sigil:40:3
   = help: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong
 
 trace: 2 candidates
-    deployer(oncall)            access/main.sigil:19:3
+    deployer(reason: oncall)            access/main.sigil:19:3
       when on_call
       ttl = 2h
-    auditor(compliance_member)  access/main.sigil:40:3
+    auditor(reason: compliance_member)  access/main.sigil:40:3
       when compliance_member
+```
+
+A kind that declares `conflict deny(reason: conflicting_rules)` and leaves two deny reasons unranked, with both firing:
+
+```text
+$ sigil eval --kind access_grant.sigil --input conflict.json --policy access.main access
+access.main: the candidates conflict, the host falls back to deny(reason: conflicting_rules), the kind's conflict outcome
+
+conflict: collect one: 2 candidates at the top rank
+    deny(reason: too_old)            access/main.sigil:14:3
+    deny(reason: banned)             access/main.sigil:18:3
+  = help: a conflict is a defect in the policy: rank the reasons with precedence, or keep the exclusive outcomes' conditions apart
+
+trace: 3 candidates
+    deny(reason: too_old)            access/main.sigil:14:3
+    deny(reason: banned)             access/main.sigil:18:3
+    allow(reason: team_member)       access/main.sigil:10:3
+      ttl = 1h
+      scopes = []
 ```
 
 ### Records
@@ -390,6 +419,8 @@ Each `outcome` and `trace` entry:
 | `chain` | The invocations it was reached through, outermost first |
 | `conditions` | The `when` conditions that held, for a candidate of a winning decision |
 | `outcome` | `true` when it's in the outcome the host acts on |
+
+An enum value in a payload is a string holding the value's name, `"critical"`.
 
 The `error` record:
 
@@ -421,46 +452,46 @@ sigil explain PATH... [flags]
 $ sigil explain --kind deploy_approval.sigil --policy payments.production deploy/ payments/
 payments.production: 7 rules from 3 policies and 1 module
 
-  deny(not_eligible)        payments.production:7 → deploy.guardrails:8
+  deny(reason: not_eligible)        payments.production:7 → deploy.guardrails:8
     when not eligible
 
-  deny(soak_too_short)      payments.production:7 → deploy.guardrails:12
+  deny(reason: soak_too_short)      payments.production:7 → deploy.guardrails:12
     when release.soak < 4h and not release.hotfix
 
-  approve(release_manager)  payments.production:10 → deploy.production:11
+  approve(reason: release_manager)  payments.production:10 → deploy.production:11
     when service.labels["compliance"] == "pci"
      and cleared
-     and service.tier == "critical" and "release_manager" in actor.roles
+     and service.tier == critical and "release_manager" in actor.roles
 
-  review(service_owner)     payments.production:10 → deploy.production:16
+  review(reason: service_owner)     payments.production:10 → deploy.production:16
     when service.labels["compliance"] == "pci"
      and cleared
-     and service.tier in ["standard", "internal"] and owns_service
+     and service.tier in [standard, internal] and owns_service
     with approvers = ["payments-leads", "security-leads"]
 
-  approve(release_manager)  payments.production:14 → deploy.production:11
+  approve(reason: release_manager)  payments.production:14 → deploy.production:11
     when service.labels["compliance"] != "pci"
      and cleared
-     and service.tier == "critical" and "release_manager" in actor.roles
+     and service.tier == critical and "release_manager" in actor.roles
 
-  review(service_owner)     payments.production:14 → deploy.production:16
+  review(reason: service_owner)     payments.production:14 → deploy.production:16
     when service.labels["compliance"] != "pci"
      and cleared
-     and service.tier in ["standard", "internal"] and owns_service
+     and service.tier in [standard, internal] and owns_service
     with approvers = ["payments-leads"]
 
-  approve(payments_sre)     payments.production:18
+  approve(reason: payments_sre)     payments.production:18
     when cleared and "payments-sre" in actor.teams
     with bake = 15m
 ```
 
-| Part | Shows |
-| --- | --- |
-| Header | The rules, the policies they come from (the explained policy and every policy it invokes), and the modules those policies import from |
-| Rule name | The rule the way a policy writes it, `deny(not_eligible)` |
-| Chain | Every document on the call chain by its full name and line, `payments.production:7 → deploy.guardrails:8`, whatever name the `use` bound it to |
-| `when` | Every `when` around every call on the chain, joined with `and`. A rule with no condition reads `always` |
-| `with` | The payload |
+| Part           | Shows                                                                                                                                           |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Header         | The rules, the policies they come from (the explained policy and every policy it invokes), and the modules those policies import from           |
+| Rule name      | The rule the way a policy writes it, `deny(reason: not_eligible)`                                                                               |
+| Chain          | Every document on the call chain by its full name and line, `payments.production:7 → deploy.guardrails:8`, whatever name the `use` bound it to  |
+| `when`         | Every `when` around every call on the chain, joined with `and`. A rule with no condition reads `always`                                         |
+| `with`         | The payload                                                                                                                                     |
 | Assert entries | `assert named_actor (input)` or `(outcome)`, with the condition under which it's checked after `when` and the condition it checks after `check` |
 
 - Params show as their bound values. A policy explained on its own, without a policy that invokes it, shows a required param by its name, `approvers = approvers`, since nothing binds it.
@@ -510,8 +541,8 @@ The output follows `go test`. Here the second case expects the wrong reason:
 ```text
 $ sigil test --kind deploy_approval.sigil
 --- FAIL: payments/production_test.yaml:10: a short soak is denied
-      want deny(not_eligible)
-      got  deny(soak_too_short)
+      want deny(reason: not_eligible)
+      got  deny(reason: soak_too_short)
 FAIL  payments/production_test.yaml  1 of 3 cases failed
 ✗ 1 of 3 test cases failed in 1 file
 ```
@@ -572,6 +603,8 @@ file: ../../policies/deploy_approval.sigil
 status: stale
 source: |
   kind DeployApproval version 1
+
+  enum Tier: critical | standard | internal
   ...
 ```
 
@@ -641,13 +674,13 @@ Error messages follow the format of [filt-rs](https://github.com/SierraSoftworks
 
 - Unless the file's path matches the document's name, the name follows the position: `policies.sigil:42:5 (payments.production): error: ...`.
 - Several diagnostics are separated by a blank line.
-- A missing payload field quotes the decision's declaration from the kind in its help.
+- A missing payload field lists the decision's reasons and fields from the kind in its help.
 - The same format applies to every tool and to errors returned from the Go API's `Load` and `Compile`.
 
 ```text
 deploy/production.sigil:9:16: error: unknown field "teir" on type Service
   |
-9 |   when service.teir == "critical"
+9 |   when service.teir == critical
   |                ^^^^
   = help: did you mean "tier"? Service declares: name, tier, owners, labels
 ```
@@ -655,7 +688,7 @@ deploy/production.sigil:9:16: error: unknown field "teir" on type Service
 ```text
 payments/production.sigil:8:3: error: decision review needs field "approvers"
   |
-8 |   review(service_owner)
-  |   ^^^^^^^^^^^^^^^^^^^^^
-  = help: review is declared as: decision review(approvers: list<string>) { service_owner }
+8 |   review(reason: service_owner)
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: review takes reason: service_owner, and approvers: list<string>
 ```

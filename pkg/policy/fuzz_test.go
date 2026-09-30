@@ -13,7 +13,7 @@ import (
 )
 
 func FuzzCompileEval(f *testing.F) {
-	for _, src := range []string{"", "policy p: DeployApproval@1", "policy p: DeployApproval@1\nwhen release.hotfix { approve(a) }", "policy p: DeployApproval@1\nassert(\"named\", service.name != \"\")\nreview(a, approvers: service.owners)", "module m: DeployApproval@1\npub let ok = release.hotfix\n---\npolicy p: DeployApproval@1\nuse m.{ok}\nwhen ok { approve(a) }"} {
+	for _, src := range []string{"", "policy p: DeployApproval@1", "policy p: DeployApproval@1\nwhen release.hotfix { approve(reason: a) }", "policy p: DeployApproval@1\nassert(\"named\", service.name != \"\")\nreview(reason: a, approvers: service.owners)", "module m: DeployApproval@1\npub let ok = release.hotfix\n---\npolicy p: DeployApproval@1\nuse m.{ok}\nwhen ok { approve(reason: a) }"} {
 		f.Add(src, "production", true)
 	}
 	f.Fuzz(func(t *testing.T, src, env string, hotfix bool) {
@@ -66,9 +66,9 @@ func FuzzPolicyOrder(f *testing.F) {
 	f.Add(false, true, uint8(3))
 	f.Fuzz(func(t *testing.T, hotfix, blocked bool, permutation uint8) {
 		rules := []string{
-			"when release.hotfix { approve(a) }",
-			"when environment == \"blocked\" { deny(b) }",
-			"when not release.hotfix { review(a, approvers: []) }",
+			"when release.hotfix { approve(reason: a) }",
+			"when environment == \"blocked\" { deny(reason: b) }",
+			"when not release.hotfix { review(reason: a, approvers: []) }",
 		}
 		for i := len(rules) - 1; i > 0; i-- {
 			j := int(permutation) % (i + 1)
@@ -99,12 +99,12 @@ func FuzzComposition(f *testing.F) {
 	f.Add("production", true, false)
 	f.Add("blocked", false, true)
 	f.Fuzz(func(t *testing.T, env string, hotfix, gated bool) {
-		guard := "policy guard: DeployApproval@1\nwhen environment == \"blocked\" { deny(b) }"
+		guard := "policy guard: DeployApproval@1\nwhen environment == \"blocked\" { deny(reason: b) }"
 		call := "guard()"
 		if gated {
 			call = "when release.hotfix { guard() }"
 		}
-		root := "policy p: DeployApproval@1\nuse guard\n" + call + "\nwhen true { approve(a) }"
+		root := "policy p: DeployApproval@1\nuse guard\n" + call + "\nwhen true { approve(reason: a) }"
 		// MapFS is deliberately not a comparable Go value. From accepts any
 		// fs.FS, including one backed by a map.
 		trusted := policy.MapFS(map[string]string{"guard.sigil": guard})
@@ -145,8 +145,8 @@ func FuzzCollect(f *testing.F) {
 			opts = append(opts, policy.WithExclusive(read, write))
 		}
 		k := policy.NewKind[policy.None]("Roles", opts...)
-		src := fmt.Sprintf("policy p: Roles@1\nwhen %t { read(member) }\nwhen %t { write(owner) }\n", member, owner)
-		src += strings.Repeat(fmt.Sprintf("when %t { read(member) }\n", member), int(duplicates%16))
+		src := fmt.Sprintf("policy p: Roles@1\nwhen %t { read(reason: member) }\nwhen %t { write(reason: owner) }\n", member, owner)
+		src += strings.Repeat(fmt.Sprintf("when %t { read(reason: member) }\n", member), int(duplicates%16))
 		p, err := k.Compile(src, "p")
 		if err != nil {
 			t.Fatal(err)

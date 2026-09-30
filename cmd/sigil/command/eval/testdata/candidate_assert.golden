@@ -2,12 +2,12 @@ reviews: an assert failed, the host falls back to no decisions
 
 assert no_self_review failed at testdata/reviews/reviews.sigil:8:1
   the outcome it read:
-    review(manager)  testdata/reviews/reviews.sigil:4:3
+    review(reason: manager)  testdata/reviews/reviews.sigil:4:3
       approvers = ["cedric", "alice"]
   = help: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong
 
 trace: 1 candidate
-    review(manager)  testdata/reviews/reviews.sigil:4:3
+    review(reason: manager)  testdata/reviews/reviews.sigil:4:3
       when true
       approvers = ["cedric", "alice"]
 --- error ---

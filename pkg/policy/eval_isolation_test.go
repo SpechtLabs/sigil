@@ -24,7 +24,7 @@ policy child: Frames@1
 use shared.{allowed}
 use unused
 param delay: duration
-when allowed { approve(a, bake: delay) }
+when allowed { approve(reason: a, bake: delay) }
 ---
 policy root: Frames@1
 use child

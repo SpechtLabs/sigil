@@ -24,7 +24,7 @@ import (
 	"github.com/sierrasoftworks/humane-errors-go"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/spechtlabs/sigil/internal/check"
+	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/lint"
 )
 
@@ -78,7 +78,7 @@ func Parse(path string, src []byte) (*Config, humane.Error) {
 	for _, name := range keys {
 		if !slices.Contains(names, name) {
 			help := "lints: " + strings.Join(names, ", ")
-			if near, ok := check.Nearest(name, names); ok {
+			if near, ok := diag.Nearest(name, names); ok {
 				help = fmt.Sprintf("did you mean %q? %s", near, help)
 			}
 			return nil, humane.New(fmt.Sprintf("%s: unknown lint %q", path, name), help)

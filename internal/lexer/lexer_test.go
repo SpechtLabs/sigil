@@ -182,6 +182,19 @@ func TestLex(t *testing.T) {
 		{name: "minus before arrow", src: "-->", want: []tok{{kind: token.Minus}, {kind: token.Arrow}}},
 		{name: "minus then separator", src: "- ---", want: []tok{{kind: token.Minus}, {kind: token.Separator}}},
 
+		// Enum values and reasons.
+		{name: "enum declaration", src: "enum Tier: critical | standard", want: []tok{
+			{kind: token.KwEnum},
+			{token.Ident, "Tier"},
+			{kind: token.Colon},
+			{token.Ident, "critical"},
+			{kind: token.Pipe},
+			{token.Ident, "standard"},
+		}},
+		{name: "pipes without spaces", src: "a|b|\n|c", want: []tok{
+			{token.Ident, "a"}, {kind: token.Pipe}, {token.Ident, "b"}, {kind: token.Pipe}, {kind: token.Pipe}, {token.Ident, "c"},
+		}},
+
 		// Larger samples.
 		{name: "policy document", src: `
 policy deploy.guardrails: DeployApproval
@@ -507,6 +520,10 @@ func TestLexErrors(t *testing.T) {
 		{
 			name: "pipes", src: "a || b", want: []tok{{token.Ident, "a"}, {token.Illegal, "||"}, {token.Ident, "b"}},
 			msg: "unexpected character `||`", help: "use `or`", pos: "1:3-1:5",
+		},
+		{
+			name: "three pipes", src: "|||", want: []tok{{token.Illegal, "||"}, {kind: token.Pipe}},
+			msg: "unexpected character `||`", help: "use `or`", pos: "1:1-1:3",
 		},
 
 		// Anything else.

@@ -74,23 +74,23 @@ input environment: string
 fn split(string, string) -> list<string>
 
 decision deny {
-  no_rule_matched
+  reason: no_rule_matched
 }
 
-decision review(approvers: list<string>) {
-  service_owner
-  everyone
+decision review {
+  reason: service_owner | everyone
+  approvers: list<string>
 }
 
-decision approve(bake: duration = 1h) {
-  release_manager
-  payments_sre
+decision approve {
+  reason: release_manager | payments_sre
+  bake: duration = 1h
 }
 
 collect one
 precedence deny > review > approve
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 `
 
 func typeOf[T any]() reflect.Type { return reflect.TypeFor[T]() }
@@ -248,7 +248,7 @@ func TestBuild(t *testing.T) {
 		{name: "defaults of every shape", mutate: func(o *gokind.Options) {
 			o.Decisions = []gokind.Decision{{Name: "d", Payload: typeOf[Defaults](), Reasons: []string{"x"}}}
 			o.Default = &gokind.Default{Decision: "d", Reason: "x"}
-		}, want: "decision d(bake: duration = 1h30m, tags: list<string> = [\"a\", \"b\"], limit: int = -3, tiers: map<string, int> = {\"a\": 1}, ratio: float = 0.75, flag: bool = true, opt: ?string = \"x\") {\n  x\n}\n\ncollect one\nprecedence d\n\ndefault d(x)\n"},
+		}, want: "decision d {\n  reason: x\n  bake: duration = 1h30m\n  tags: list<string> = [\"a\", \"b\"]\n  limit: int = -3\n  tiers: map<string, int> = {\"a\": 1}\n  ratio: float = 0.75\n  flag: bool = true\n  opt: ?string = \"x\"\n}\n\ncollect one\nprecedence d\n\ndefault d(reason: x)\n"},
 		{name: "collecting kind", mutate: func(o *gokind.Options) {
 			o.Collect = true
 			o.Default = nil
@@ -330,16 +330,16 @@ func TestBuild(t *testing.T) {
 		}, help: "write the default as a Sigil literal, like `default=1h` or `default=[\"a\"]`"},
 		{name: "default needs every payload field", mutate: func(o *gokind.Options) {
 			o.Default = &gokind.Default{Decision: "review", Reason: "everyone"}
-		}, errs: []string{`default: field "approvers" is required and has no value`}, help: "review is declared as: decision review(approvers: list<string>) { service_owner, everyone }"},
+		}, errs: []string{`default: field "approvers" is required and has no value`}},
 		{name: "default names an unknown decision", mutate: func(o *gokind.Options) {
 			o.Default = &gokind.Default{Decision: "escalate", Reason: "x"}
 		}, errs: []string{`default names undeclared decision "escalate"`}},
 		{name: "conflict outcome", mutate: func(o *gokind.Options) {
 			o.Conflict = &gokind.Default{Decision: "approve", Reason: "payments_sre"}
-		}, want: "default deny(no_rule_matched)\nconflict approve(payments_sre)\n"},
+		}, want: "default deny(reason: no_rule_matched)\nconflict approve(reason: payments_sre)\n"},
 		{name: "conflict outcome needs every payload field", mutate: func(o *gokind.Options) {
 			o.Conflict = &gokind.Default{Decision: "review", Reason: "everyone"}
-		}, errs: []string{`conflict: field "approvers" is required and has no value`}, help: "review is declared as: decision review(approvers: list<string>) { service_owner, everyone }"},
+		}, errs: []string{`conflict: field "approvers" is required and has no value`}, help: "review takes reason: service_owner | everyone, and approvers: list<string>"},
 		{name: "conflict outcome with an undeclared reason", mutate: func(o *gokind.Options) {
 			o.Conflict = &gokind.Default{Decision: "deny", Reason: "conflicting_rules"}
 		}, errs: []string{`conflict: decision deny has no reason "conflicting_rules"`}},
@@ -445,6 +445,173 @@ func TestBuild(t *testing.T) {
 			}
 			if !strings.Contains(src, tt.want) {
 				t.Errorf("Source() =\n%s\nwant it to contain\n%s", src, tt.want)
+			}
+		})
+	}
+}
+
+// Enum types for TestBuildEnums.
+type (
+	Tier    string
+	Plan    string
+	Unused  string
+	Region  string // never registered: a plain string
+	string_ = string
+
+	EnumService struct {
+		Tier   Tier         `policy:"tier"`
+		Tiers  []Tier       `policy:"tiers"`
+		Limits map[Tier]int `policy:"limits"`
+		Backup *Tier        `policy:"backup"`
+		Region Region       `policy:"region"`
+	}
+	EnumInput struct {
+		Service EnumService `policy:"service"`
+	}
+	PlanData struct {
+		Plan Plan `policy:"plan,default=basic"`
+	}
+	TierValues struct {
+		ByName map[string]Tier `policy:"by_name"`
+	}
+)
+
+func TestBuildEnums(t *testing.T) {
+	enums := func(o *gokind.Options) {
+		o.Input = typeOf[EnumInput]()
+		o.Decisions = []gokind.Decision{
+			{Name: "deny", Payload: typeOf[None](), Reasons: []string{"no_rule_matched"}},
+			{Name: "upgrade", Payload: typeOf[PlanData](), Reasons: []string{"asked"}},
+		}
+		o.Default = &gokind.Default{Decision: "deny", Reason: "no_rule_matched"}
+		o.Funcs = []gokind.Func{{Name: "plan_of", Fn: func(Tier) Plan { return "" }}}
+		o.Enums = []gokind.Enum{
+			{Type: typeOf[Unused](), Values: []string{"nothing"}},
+			{Type: typeOf[Plan](), Values: []string{"basic", "pro"}},
+			{Type: typeOf[Tier](), Values: []string{"critical", "standard", "internal"}},
+		}
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(o *gokind.Options)
+		want   string   // schema, when valid
+		errs   []string // messages, when not
+		help   string   // of the first error, when it's the point
+	}{
+		{name: "first reached first, unreached last", mutate: enums,
+			want: "enum Tier: critical | standard | internal\nenum Plan: basic | pro\nenum Unused: nothing\n\ntype EnumService {\n" +
+				"  tier: Tier\n  tiers: list<Tier>\n  limits: map<Tier, int>\n  backup: ?Tier\n  region: string\n}\n\n" +
+				"input service: EnumService\n\nfn plan_of(Tier) -> Plan\n\ndecision deny {\n  reason: no_rule_matched\n}\n\n" +
+				"decision upgrade {\n  reason: asked\n  plan: Plan = basic\n}\n"},
+		{name: "a payload reaches an enum", mutate: func(o *gokind.Options) {
+			enums(o)
+			o.Input = typeOf[struct{}]()
+			o.Funcs = nil
+		}, want: "enum Plan: basic | pro\nenum Unused: nothing\nenum Tier: critical | standard | internal\n\ndecision deny"},
+		{name: "unregistered named string", mutate: func(o *gokind.Options) {
+			enums(o)
+			o.Enums = []gokind.Enum{{Type: typeOf[Plan](), Values: []string{"basic", "pro"}}}
+			o.Funcs = nil
+		}, want: "  tier: string\n  tiers: list<string>\n  limits: map<string, int>\n  backup: ?string\n"},
+		{name: "not a named type", mutate: func(o *gokind.Options) {
+			enums(o)
+			o.Enums = append(o.Enums, gokind.Enum{Type: typeOf[string_](), Values: []string{"a"}}, gokind.Enum{Values: []string{"b"}})
+		}, errs: []string{"WithEnum: string is not a named type", "WithEnum: <nil> is not a named type"},
+			help: "declare a named type, like `type Tier string`; its name becomes the enum's name in policies"},
+		{name: "registered twice", mutate: func(o *gokind.Options) {
+			enums(o)
+			o.Enums = append(o.Enums, gokind.Enum{Type: typeOf[Tier](), Values: []string{"gold"}})
+		}, errs: []string{"enum Tier is registered twice"}, help: "pass each enum type to WithEnum once, with all its values"},
+		{name: "an enum as a map value", mutate: func(o *gokind.Options) {
+			enums(o)
+			o.Input = typeOf[TierValues]()
+		}, errs: []string{`input "by_name": map value type can't be enum Tier`}},
+		{name: "no values", mutate: func(o *gokind.Options) {
+			enums(o)
+			o.Enums[0].Values = nil
+		}, errs: []string{"enum Unused declares no values"}},
+		{name: "a duplicate value", mutate: func(o *gokind.Options) {
+			enums(o)
+			o.Enums[1].Values = []string{"basic", "pro", "basic"}
+		}, errs: []string{`enum Plan: value "basic" is declared twice`}},
+		{name: "a value that isn't an identifier", mutate: func(o *gokind.Options) {
+			enums(o)
+			o.Enums[1].Values = []string{"basic", "pro-plus", "when"}
+		}, errs: []string{`enum Plan: invalid value "pro-plus"`, `enum Plan: invalid value "when"`}},
+		{name: "an enum named like a struct type", mutate: func(o *gokind.Options) {
+			type Release string
+			o.Enums = []gokind.Enum{{Type: typeOf[Release](), Values: []string{"x"}}}
+		}, errs: []string{`type "Release" is declared twice`}},
+		{name: "a value named like a decision", mutate: func(o *gokind.Options) {
+			enums(o)
+			o.Enums[0].Values = []string{"deny", "service", "plan_of"}
+		}, errs: []string{`enum Unused: value "deny" collides with decision "deny"`, `enum Unused: value "service" collides with input "service"`, `enum Unused: value "plan_of" collides with function "plan_of"`}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := deploy()
+			tt.mutate(&o)
+			k, b, errs := gokind.Build(o)
+			got := make([]string, len(errs))
+			for i, e := range errs {
+				got[i] = e.Msg
+			}
+			if g, w := strings.Join(got, "\n"), strings.Join(tt.errs, "\n"); g != w {
+				t.Errorf("errors:\n%s\nwant:\n%s", g, w)
+			}
+			if tt.help != "" && (len(errs) == 0 || errs[0].Help != tt.help) {
+				t.Errorf("help = %v\nwant   %q", errs, tt.help)
+			}
+			if tt.want == "" {
+				return
+			}
+			if k == nil {
+				t.Fatal("Build() returned no kind")
+			}
+			if src := k.Source(); !strings.Contains(src, tt.want) {
+				t.Errorf("Source() =\n%s\nwant it to contain\n%s", src, tt.want)
+			}
+			for _, e := range o.Enums {
+				if got, ok := b.TypeOf(e.Type); !ok || got != k.Enum(e.Type.Name()) {
+					t.Errorf("TypeOf(%v) = %v, %v, want the kind's enum", e.Type, got, ok)
+				}
+			}
+		})
+	}
+}
+
+func TestHasEnums(t *testing.T) {
+	type Tier string
+	type withEnum struct {
+		Tier Tier `policy:"tier"`
+	}
+	type withoutEnum struct {
+		Name string `policy:"name"`
+	}
+	for _, tt := range []struct {
+		name string
+		o    gokind.Options
+		want bool
+	}{
+		{name: "an enum", o: gokind.Options{Input: reflect.TypeFor[withEnum](), Enums: []gokind.Enum{{Type: reflect.TypeFor[Tier](), Values: []string{"a", "b"}}}}, want: true},
+		{name: "no enum", o: gokind.Options{Input: reflect.TypeFor[withoutEnum]()}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.o.Name, tt.o.Version, tt.o.Collect = "K", 1, true
+			tt.o.Decisions = []gokind.Decision{{Name: "ok", Payload: reflect.TypeFor[struct{}](), Reasons: []string{"yes"}}}
+			k, b, errs := gokind.Build(tt.o)
+			if errs != nil {
+				t.Fatal(errs)
+			}
+			if b.HasEnums != tt.want {
+				t.Errorf("Build: HasEnums = %v, want %v", b.HasEnums, tt.want)
+			}
+			// The stock CLI's binding, synthesized from the kind file, says
+			// the same, so it checks enum values too.
+			if s := gokind.Synthesize(k); s.HasEnums != tt.want {
+				t.Errorf("Synthesize: HasEnums = %v, want %v", s.HasEnums, tt.want)
 			}
 		})
 	}

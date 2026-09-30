@@ -65,7 +65,7 @@ func TestHostBinary(t *testing.T) {
 		want    string // in the output
 		wantErr string
 	}{
-		{name: "eval calls the host function", args: []string{"eval", "-i", "-", access}, stdin: vault, want: "access.main: allow(team_member)\n  ttl = 15m"},
+		{name: "eval calls the host function", args: []string{"eval", "-i", "-", access}, stdin: vault, want: "access.main: allow(reason: team_member)\n  ttl = 15m"},
 		{name: "eval with the matching kind file", args: []string{"eval", "-k", kindSrc, "-i", "-", access}, stdin: vault, want: "ttl = 15m"},
 		{name: "eval with a stale kind file", args: []string{"eval", "-k", stale, "-i", "-", access}, stdin: vault, wantErr: "doesn't match the kind Access linked into this binary"},
 		{name: "a kind file for another kind is loaded on its own", args: []string{"eval", "-k", "eval/testdata/grants.sigil", "-i", "eval/testdata/inputs/grants.json", "eval/testdata/grants"}, want: "grants: 3 decisions"},

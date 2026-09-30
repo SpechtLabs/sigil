@@ -5,7 +5,7 @@ use team.lib
 let unused = release.hotfix
 
 when release.hotfix {
-  approve(payments_sre)
+  approve(reason: payments_sre)
 }
 
 ---

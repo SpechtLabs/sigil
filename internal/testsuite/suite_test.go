@@ -15,6 +15,8 @@ import (
 const (
 	accessKind = `kind Access version 1
 
+enum Level: low | high
+
 type User {
   name: string
   admin: bool
@@ -24,30 +26,32 @@ input user: User
 input age: duration
 
 decision deny {
-  too_old
-  no_rule_matched
+  reason: too_old | no_rule_matched
 }
 
-decision allow(ttl: duration = 1h, scopes: list<string> = []) {
-  admin
-  team_member
+decision allow {
+  reason: admin | team_member
+  ttl: duration = 1h
+  scopes: list<string> = []
+  level: Level = low
 }
 
 collect one
 precedence deny > allow
 
-default deny(no_rule_matched)
+default deny(reason: no_rule_matched)
 `
 	rolesKind = `kind Roles version 1
 
 input user: string
 
-decision read(scope: string = "all") {
-  member
+decision read {
+  reason: member
+  scope: string = "all"
 }
 
 decision write {
-  owner
+  reason: owner
 }
 
 collect all

@@ -8,17 +8,17 @@ use deploy.common.{cleared}
 // `pub` on a let inside a body; the let is kept.
 when cleared {
   pub let tmp = release.soak
-  deny(tmp)
+  deny(reason: tmp)
 }
 
 // A chained comparison; the statement is skipped, the next one isn't.
 when release.soak < min_soak < 2h {
-  deny(chain)
+  deny(reason: chain)
 }
 
 // An unclosed parenthesis.
 when (release.hotfix or cleared {
-  deny(paren)
+  deny(reason: paren)
 }
 
 // A bare name where a statement should be.
@@ -26,18 +26,18 @@ guardrails
 
 // A second positional argument.
 when cleared {
-  review(owner, "extra", approvers: approvers)
+  review(reason: owner, "extra", approvers: approvers)
 }
 
 // Everything after the errors still parses.
 when cleared {
-  approve(fine, bake: 15m)
+  approve(reason: fine, bake: 15m)
 }
 
 // A condition that stops short: the rule's `{` reads as a map literal,
 // so the error points at the operator with no right operand.
 when release.soak < {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 when release.hotfix and {
   let x = 1

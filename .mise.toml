@@ -102,6 +102,7 @@ run = """
 git ls-files --cached --others --exclude-standard -z -- '*.sigil' \
   ':!:internal/parser/testdata' ':!:internal/format/testdata' \
   ':!:pkg/policy/testdata/errors_check.sigil' ':!:pkg/policy/testdata/errors_diagnostics.sigil' \
+  ':!:cmd/sigil/command/check/testdata/kinds/legacy.sigil' \
   | xargs -0 go run ./cmd/sigil fmt --write
 """
 
@@ -148,6 +149,7 @@ run = """
 git ls-files --cached --others --exclude-standard -z -- '*.sigil' \
   ':!:internal/parser/testdata' ':!:internal/format/testdata' \
   ':!:pkg/policy/testdata/errors_check.sigil' ':!:pkg/policy/testdata/errors_diagnostics.sigil' \
+  ':!:cmd/sigil/command/check/testdata/kinds/legacy.sigil' \
   | xargs -0 go run ./cmd/sigil fmt --check
 """
 

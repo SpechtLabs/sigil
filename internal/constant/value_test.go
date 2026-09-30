@@ -41,6 +41,14 @@ func TestConforms(t *testing.T) {
 		{"a", &types.Optional{Elem: types.String}, true},
 		{int64(1), &types.Optional{Elem: types.String}, false},
 		{"a", &types.Struct{Name: "S"}, false},
+		{constant.EnumValue("critical"), tier, true},
+		{constant.EnumValue("gold"), tier, false},
+		{"critical", tier, false}, // a string is never an enum value
+		{constant.EnumValue("critical"), types.String, false},
+		{[]any{constant.EnumValue("internal")}, &types.List{Elem: tier}, true},
+		{map[any]any{constant.EnumValue("standard"): int64(1)}, &types.Map{Key: tier, Value: types.Int}, true},
+		{map[any]any{constant.EnumValue("gold"): int64(1)}, &types.Map{Key: tier, Value: types.Int}, false},
+		{nil, &types.Optional{Elem: tier}, true},
 	}
 	for _, tt := range tests {
 		t.Run(constant.Format(tt.v)+" as "+tt.t.String(), func(t *testing.T) {
@@ -81,6 +89,9 @@ func TestFormat(t *testing.T) {
 		{[]any{"a", int64(1)}, `["a", 1]`},
 		{map[any]any{"b": int64(2), "a": "x"}, `{"a": "x", "b": 2}`},
 		{map[any]any{int64(10): "x", int64(9): "y"}, `{10: "x", 9: "y"}`},
+		{constant.EnumValue("critical"), "critical"},
+		{[]any{constant.EnumValue("critical"), constant.EnumValue("internal")}, "[critical, internal]"},
+		{map[any]any{constant.EnumValue("standard"): int64(2), constant.EnumValue("critical"): int64(1)}, "{critical: 1, standard: 2}"},
 		{[]int{1}, "<[]int>"},
 	}
 	for _, tt := range tests {
@@ -89,5 +100,25 @@ func TestFormat(t *testing.T) {
 				t.Errorf("Format(%v) = %q, want %q", tt.v, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCompare(t *testing.T) {
+	tests := []struct {
+		a, b any
+		want int
+	}{
+		{int64(1), int64(2), -1},
+		{2.5, 2.5, 0},
+		{time.Hour, time.Minute, 1},
+		{constant.EnumValue("critical"), constant.EnumValue("standard"), -1},
+		{constant.EnumValue("standard"), constant.EnumValue("critical"), 1},
+		{constant.EnumValue("internal"), constant.EnumValue("internal"), 0},
+		{"b", "a", 0}, // strings aren't ordered constants
+	}
+	for _, tt := range tests {
+		if got := constant.Compare(tt.a, tt.b); got != tt.want {
+			t.Errorf("Compare(%v, %v) = %d, want %d", tt.a, tt.b, got, tt.want)
+		}
 	}
 }

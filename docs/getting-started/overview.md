@@ -17,7 +17,7 @@ The language, the Go API, composition and the CLI are implemented, and fuzz test
 
 Most applications that make access or approval decisions grow a rule engine by accident. It usually starts as a YAML file with a list of rules, each rule a label selector plus an outcome. Then someone needs "any of these roles", so a new matcher type appears. Then a team needs its own version of the file, so the YAML goes through `text/template`. Then a typo in a field name makes one deny rule silently match nothing, and nobody notices until an audit.
 
-Sigil takes that recurring pile of matchers and turns it into a language with a type checker. A typo like `service.teir` fails when the policy compiles, not months later. Per-team versions are ordinary policies that bind typed parameters, so no text templating is involved. And the result of every evaluation says which rule fired and why.
+Sigil takes that recurring pile of matchers and turns it into a language with a type checker. A typo like `service.teir` fails when the policy compiles, not months later, and so does a misspelled value such as `service.tier == critcal`. Per-team versions are ordinary policies that bind typed parameters, so no text templating is involved. And the result of every evaluation says which rule fired and why.
 
 ## What a setup looks like
 
@@ -35,15 +35,15 @@ Two rules from the platform's guardrails give a feel for the syntax:
 
 ```sigil
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 
-Declarations start with keywords, rules are `when` blocks, and decision constructors name a reason declared in the kind. There are no loops, no user-defined functions and no `else`. A team policy reuses these rules by importing the policy with `use` and invoking it like a constructor, `guardrails(min_soak: 4h)`. The host can require that call so no team can switch the denies off.
+Declarations start with keywords, rules are `when` blocks, and a decision constructor passes its reason by name, `reason: soak_too_short`, picking one the kind declares. There are no loops, no user-defined functions and no `else`. A team policy reuses these rules by importing the policy with `use` and invoking it like a constructor, `guardrails(min_soak: 4h)`. The host can require that call so no team can switch the denies off.
 
 ## Who writes what
 

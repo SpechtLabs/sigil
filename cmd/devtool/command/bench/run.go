@@ -17,7 +17,7 @@ import (
 
 // outputs are the files bench run writes to --results besides the summary
 // and metadata.
-var outputs = []string{"base.txt", "head.txt", "benchstat.txt", "benchstat.csv"}
+var outputs = []string{"base.txt", "head.txt", comparedBase, comparedHead, "benchstat.txt", "benchstat.csv"}
 
 // metadata records what a run measured, next to its results.
 type metadata struct {
@@ -31,6 +31,9 @@ type metadata struct {
 	Samples   int      `json:"samples"`
 	Packages  []string `json:"packages"`
 	Workloads []string `json:"workloads"`
+	// OwnFixtures lists the packages the base revision runs with its own
+	// fixtures, because the checkout's don't build or run on it.
+	OwnFixtures []string `json:"own_fixtures,omitempty"`
 }
 
 func newRunCommand(o options) *cobra.Command {
@@ -45,10 +48,13 @@ PACKAGE patterns select) and samples each benchmark --count times.
 Without --baseline, it prints each benchmark's median time, bytes and
 allocations per operation. With --baseline, the base revision is exported to a
 temporary directory and the current *_bench_test.go files and shared fixtures
-are copied onto it, so both revisions run identical workloads. Samples
-alternate between base-first and head-first. It then lists the significant
-changes and fails when one is an increase above 10% in time, bytes or
-allocations per operation.
+are copied onto it, so both revisions run identical workloads. A benchmark the
+base revision doesn't declare is new: it runs on the checkout only and is
+listed as not compared, so it can't fail the gate. A package whose workloads
+don't build or run on the base with the current fixtures runs there with the
+base's own. Samples alternate between base-first and head-first. It then lists
+the significant changes and fails when one is an increase above 10% in time,
+bytes or allocations per operation.
 
 On a terminal, each round of samples gets a status line with the time left,
 and a line once it's done; --verbose prints go test's output instead. The raw

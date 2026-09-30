@@ -22,7 +22,9 @@ type Options struct {
 	Precedence []string
 	Exclusive  [][]kind.Outcome // sets of outcomes that can't fire together
 	Funcs      []Func
-	Version    int // the contract's version, from 1
+	// Enums are the enum types a host registered, in registration order.
+	Enums   []Enum
+	Version int // the contract's version, from 1
 	// Ranked and Collect record which of WithDecisions and WithCollect
 	// added the decisions; both is an error.
 	Ranked  bool
@@ -48,6 +50,14 @@ type Ranking struct {
 	// A ranking orders one decision's reasons, so each is an error; the
 	// kind model can't hold them, so Build reports them.
 	Mixed []kind.Outcome
+}
+
+// Enum is an enum type: a named Go type whose underlying type is string,
+// and its values in declaration order. The enum is named after the Go
+// type.
+type Enum struct {
+	Type   reflect.Type
+	Values []string
 }
 
 // Func is a host function: its name and the Go function. Fn must be a

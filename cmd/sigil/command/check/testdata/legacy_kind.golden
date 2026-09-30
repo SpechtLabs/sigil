@@ -1,0 +1,22 @@
+testdata/kinds/legacy.sigil:5:10: error: old decision syntax; write `decision deny { reason: … }`
+  |
+5 | decision deny {
+  |          ^^^^
+  = help: write `decision deny { reason: no_rule_matched }`, or run `sigil fmt --write`
+
+testdata/kinds/legacy.sigil:9:10: error: old decision syntax; write `decision approve { reason: … bake: … }`
+  |
+9 | decision approve(bake: duration = 1h) {
+  |          ^^^^^^^
+  = help: write `decision approve { reason: release_manager | payments_sre  bake: duration = 1h }`, or run `sigil fmt --write`
+
+testdata/kinds/legacy.sigil:17:14: error: the reason is a named argument
+   |
+17 | default deny(no_rule_matched)
+   |              ^^^^^^^^^^^^^^^
+   = help: write `deny(reason: no_rule_matched)`
+
+✗ the kind file doesn't load, so nothing was checked
+--- error ---
+the kind file has 3 errors
+advice: fix the kind file, or regenerate it from the host's Schema(); `sigil fmt --write` rewrites the old decision syntax

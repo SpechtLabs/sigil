@@ -33,6 +33,7 @@ func New(file string) *Checker {
 		Params:       map[*ast.ParamStmt]types.Type{},
 		Constructors: map[*ast.CallStmt]*kind.Decision{},
 		Invocations:  map[*ast.CallStmt]string{},
+		Reasons:      map[*ast.CallStmt]*ast.Ident{},
 		Reads:        map[ast.Expr]Read{},
 	}}
 }
@@ -60,7 +61,14 @@ func (c *Checker) Errors() diag.ErrorList {
 // [Info.Types]. An empty list or map literal has no type of its own and
 // is an error here; where the context knows the type, use [Checker.ExprAs].
 func (c *Checker) Expr(x ast.Expr, env *Env) types.Type {
-	t := c.expr(x, env, nil)
+	return c.exprWith(x, env, nil)
+}
+
+// exprWith is [Checker.Expr] with a hint for the parts of x that take
+// their type from context, such as a bare enum value. Unlike
+// [Checker.ExprAs], it doesn't require x to have the hinted type.
+func (c *Checker) exprWith(x ast.Expr, env *Env, hint types.Type) types.Type {
+	t := c.expr(x, env, hint)
 	if untyped(t) {
 		c.errorf(x, "add an element, or use the literal where a typed list or map is expected", "cannot infer the type of `%s`", ast.Sprint(x))
 		return c.record(x, types.Invalid)
@@ -109,6 +117,8 @@ func (c *Checker) mismatch(x ast.Expr, want, got types.Type) {
 		help = "int and float don't convert implicitly"
 	case isOptional(got):
 		help = fmt.Sprintf("unwrap it with `??`, like `%s ?? <default>`", ast.Sprint(x))
+	default:
+		help = enumHint(x, want, got)
 	}
 	c.errorf(x, help, "expected %s, found %s", want, got)
 }
@@ -229,6 +239,8 @@ func describe(t types.Type) string {
 func isNumber(t types.Type) bool { return t == types.Int || t == types.Float }
 
 func isOptional(t types.Type) bool { _, ok := t.(*types.Optional); return ok }
+
+func isEnum(t types.Type) bool { _, ok := t.(*types.Enum); return ok }
 
 // elemOf returns the type inside an optional, or t itself.
 func elemOf(t types.Type) types.Type { //nolint:returninterface // a type is any of five kinds

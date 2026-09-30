@@ -3,9 +3,11 @@ package check
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/spechtlabs/sigil/internal/ast"
+	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/kind"
 	"github.com/spechtlabs/sigil/internal/types"
 )
@@ -15,10 +17,17 @@ const (
 	candidateHelp = "candidates can only be ranged over with `any`, `all` or `filter`, and read field by field, like `all r in outcome.<decision>: r.<field> ...`"
 	// candidateEquality is the help for comparing candidates.
 	candidateEquality = "candidates have no equality; compare a field of each, such as `reason`"
+	// keyHelp says which types can be map keys.
+	keyHelp = "map keys are bool, int, float, string, duration, timestamp or an enum"
+	// enumValueHelp says why an enum can't be a map value.
+	enumValueHelp = "a missing key would read as the zero value, and an enum has none; key the map by the enum instead, or use a list"
+	// reasonField is the name of a constructor's reason argument.
+	reasonField = "reason"
 )
 
 // expr types x, using hint, when given, to type an empty list or map
-// literal. It records the type of every node it visits.
+// literal or a bare enum value. It records the type of every node it
+// visits.
 func (c *Checker) expr(x ast.Expr, env *Env, hint types.Type) types.Type {
 	return c.record(x, c.exprNode(x, env, hint))
 }
@@ -28,7 +37,7 @@ func (c *Checker) exprNode(x ast.Expr, env *Env, hint types.Type) types.Type {
 	case *ast.BadExpr:
 		return types.Invalid
 	case *ast.Ident:
-		return c.ident(x, env)
+		return c.ident(x, env, hint)
 	case *ast.BoolLit:
 		return types.Bool
 	case *ast.IntLit:
@@ -72,11 +81,21 @@ func (c *Checker) exprNode(x ast.Expr, env *Env, hint types.Type) types.Type {
 }
 
 // ident resolves a name. Host functions aren't values, so a bare function
-// name is an error that says how to call it.
-func (c *Checker) ident(x *ast.Ident, env *Env) types.Type {
+// name is an error that says how to call it. A name that isn't a local
+// name is an enum value when hint is an enum, or an optional one: the
+// hint's value of that name, or an error listing what the enum declares.
+// Without such a hint, see enumValue.
+func (c *Checker) ident(x *ast.Ident, env *Env, hint types.Type) types.Type {
 	b, ok := env.Lookup(x.Name)
+	if e, isEnum := elemOf(hint).(*types.Enum); isEnum && (!ok || b.Entity == EnumValue) {
+		if e.Has(x.Name) {
+			return e
+		}
+		c.errorf(x, constant.EnumHelp(e, x.Name), "%s has no value `%s`", e.Name, x.Name)
+		return types.Invalid
+	}
 	if !ok {
-		help := "names come from the kind's inputs, host functions and decisions, and the document's params, lets and imports"
+		help := "names come from the kind's inputs, host functions, decisions and enum values, and the document's params, lets and imports"
 		if closest, ok := env.Closest(x.Name); ok {
 			help = fmt.Sprintf("did you mean `%s`?", closest)
 		}
@@ -84,6 +103,12 @@ func (c *Checker) ident(x *ast.Ident, env *Env) types.Type {
 		return types.Invalid
 	}
 	switch b.Entity {
+	case EnumValue:
+		return c.enumValue(x, b, env)
+	case EnumType:
+		e := b.Type.(*types.Enum)
+		c.errorf(x, fmt.Sprintf("name one of its values, such as `%s.%s`", e.Name, e.Values[0]), "%s is an enum type", e.Name)
+		return types.Invalid
 	case Function:
 		c.errorf(x, fmt.Sprintf("call it with its arguments; it's declared as: %s", b.Func.Signature()),
 			"`%s` is a host function, not a value", x.Name)
@@ -116,7 +141,7 @@ func (c *Checker) ident(x *ast.Ident, env *Env) types.Type {
 		// A decision's name is a value only where outcome is: an assert
 		// condition. Anywhere else it's a constructor that lost its call.
 		if !env.InAssert {
-			c.errorf(x, fmt.Sprintf("to produce the decision, construct it inside a rule: `when <condition> { %s(<reason>) }`; its bare name is only a value in an assert condition", x.Name),
+			c.errorf(x, fmt.Sprintf("to produce the decision, construct it inside a rule: `when <condition> { %s(reason: <reason>) }`; its bare name is only a value in an assert condition", x.Name),
 				"`%s` is a decision, not a value here", x.Name)
 			return types.Invalid
 		}
@@ -124,10 +149,52 @@ func (c *Checker) ident(x *ast.Ident, env *Env) types.Type {
 	return b.Type
 }
 
+// enumValue types a bare enum value whose context doesn't name an enum:
+// the one enum that declares it, or an error when several do, since
+// nothing says which the author meant. The fix is the qualified form.
+func (c *Checker) enumValue(x *ast.Ident, b Binding, env *Env) types.Type {
+	if b.Type != nil {
+		return b.Type
+	}
+	enums := env.Kind().EnumsWith(x.Name)
+	names := make([]string, len(enums))
+	qualified := make([]string, len(enums))
+	for i, e := range enums {
+		names[i] = e.Name
+		qualified[i] = "`" + e.Name + "." + x.Name + "`"
+	}
+	slices.Sort(names)
+	c.errorf(x, "write "+join(qualified, "or"), "`%s` is a value of %s", x.Name, join(names, "and"))
+	return types.Invalid
+}
+
+// qualifiedEnum types `Tier.critical`, a value named with its enum, which
+// needs no context to be typed.
+func (c *Checker) qualifiedEnum(x *ast.SelectorExpr, e *types.Enum) types.Type {
+	if x.Optional {
+		c.errorf(x.Sel, fmt.Sprintf("write `%s.%s`; `?.` reads a field of an optional struct", e.Name, x.Sel.Name), "`%s` isn't optional", e.Name)
+		return types.Invalid
+	}
+	if !e.Has(x.Sel.Name) {
+		c.errorf(x.Sel, constant.EnumHelp(e, x.Sel.Name), "%s has no value `%s`", e.Name, x.Sel.Name)
+		return types.Invalid
+	}
+	return e
+}
+
+// join joins two or more items for a sentence with conj: "A and B",
+// "A, B or C".
+func join(items []string, conj string) string {
+	return strings.Join(items[:len(items)-1], ", ") + " " + conj + " " + items[len(items)-1]
+}
+
 // list types a list literal. With a hint, every element is checked
 // against the hinted element type, so a wrong element is reported where
 // it is. Without one, the elements must share a type, and an empty
-// literal stays untyped for the context to resolve.
+// literal stays untyped for the context to resolve. An element that takes
+// its type from context, such as a bare enum value, waits until a sibling
+// has set the element type, so `[standard, service.tier]` is a list of
+// the tier's enum.
 func (c *Checker) list(x *ast.ListLit, env *Env, hint types.Type) types.Type {
 	if l, ok := elemOf(hint).(*types.List); ok && l.Elem != nil {
 		for _, e := range x.Elems {
@@ -138,30 +205,114 @@ func (c *Checker) list(x *ast.ListLit, env *Env, hint types.Type) types.Type {
 		return &types.List{Elem: l.Elem}
 	}
 	var elem types.Type
-	for i, e := range x.Elems {
-		t := c.expr(e, env, nil)
-		switch {
-		case t == types.Invalid:
+	var waiting []ast.Expr
+	for _, e := range x.Elems {
+		if (elem == nil || untyped(elem)) && c.needsHint(e, env) {
+			waiting = append(waiting, e)
+			continue
+		}
+		if !c.listElem(x, e, env, &elem) {
 			return types.Invalid
-		case c.looseCandidate(e, t, "a list element"):
+		}
+	}
+	slices.SortStableFunc(waiting, func(a, b ast.Expr) int { return c.need(a, env) - c.need(b, env) })
+	for _, e := range waiting {
+		if !c.listElem(x, e, env, &elem) {
 			return types.Invalid
-		case elem == nil || untyped(elem) && !untyped(t):
-			// The first typed element sets the type; earlier empty ones follow it.
-			if !c.resolveEarlier(x.Elems[:i], t, "every element of a list has the same type") {
-				return types.Invalid
-			}
-			elem = t
-		default:
-			if _, ok := c.unifyElem(e, t, elem); !ok {
-				return types.Invalid
-			}
 		}
 	}
 	return &types.List{Elem: elem}
 }
 
+// listElem types element e of the list literal x against the element type
+// so far, *elem, which the first typed element sets. It reports whether e
+// fits, after reporting why it doesn't.
+func (c *Checker) listElem(x *ast.ListLit, e ast.Expr, env *Env, elem *types.Type) bool {
+	var sibling types.Type
+	if *elem != nil && !untyped(*elem) {
+		sibling = *elem
+	}
+	t := c.expr(e, env, c.hintFor(e, env, sibling))
+	switch {
+	case t == types.Invalid:
+		return false
+	case c.looseCandidate(e, t, "a list element"):
+		return false
+	case *elem == nil || untyped(*elem) && !untyped(t):
+		// The first typed element sets the type; empty ones follow it.
+		if !c.resolveEarlier(x.Elems, t, "every element of a list has the same type") {
+			return false
+		}
+		*elem = t
+	default:
+		if _, ok := c.unifyElem(e, t, *elem); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// How much an expression depends on its context for its type, from
+// least to most. The checker types the operand or element that depends
+// least first, and hands its type to the others.
+const (
+	ownType   = iota // x has a type of its own
+	aloneType        // x is an enum value only one enum declares, so the context can only confirm it
+	hintType         // x is a value several enums declare, or a name nothing declares
+)
+
+// needsHint reports whether x takes its type from context: a bare name
+// that isn't a local name, which is an enum value or nothing at all, or a
+// list or map literal holding one. An empty literal is typed by context
+// too, but through the untyped placeholder unify resolves.
+func (c *Checker) needsHint(x ast.Expr, env *Env) bool {
+	return c.need(x, env) > ownType
+}
+
+// need says how much x depends on its context for its type: ownType,
+// aloneType or hintType. A list or map literal depends as much as its
+// most dependent part.
+func (c *Checker) need(x ast.Expr, env *Env) int {
+	switch x := x.(type) {
+	case *ast.ParenExpr:
+		return c.need(x.X, env)
+	case *ast.Ident:
+		b, ok := env.Lookup(x.Name)
+		switch {
+		case !ok || b.Entity == EnumValue && b.Type == nil:
+			return hintType
+		case b.Entity == EnumValue:
+			return aloneType
+		}
+	case *ast.ListLit:
+		n := ownType
+		for _, e := range x.Elems {
+			n = max(n, c.need(e, env))
+		}
+		return n
+	case *ast.MapLit:
+		n := ownType
+		for _, e := range x.Entries {
+			n = max(n, c.need(e.Key, env), c.need(e.Value, env))
+		}
+		return n
+	}
+	return ownType
+}
+
+// hintFor returns t as the hint for x when x takes its type from
+// context, and nil otherwise, so an expression that has a type of its own
+// is typed and reported the same with or without a context.
+func (c *Checker) hintFor(x ast.Expr, env *Env, t types.Type) types.Type { //nolint:returninterface // a type is any of five kinds
+	if t == nil || t == types.Invalid || untyped(t) || !c.needsHint(x, env) {
+		return nil
+	}
+	return t
+}
+
 // resolveEarlier gives the untyped literals among xs the type t, now that
-// a later element has settled it, reporting the first that can't take it.
+// an element has settled it, reporting the first that can't take it.
+// Elements not typed yet are left alone.
 func (c *Checker) resolveEarlier(xs []ast.Expr, t types.Type, help string) bool {
 	for _, prev := range xs {
 		if _, ok := c.resolve(prev, t); !ok && untyped(c.info.Types[prev]) {
@@ -199,18 +350,27 @@ func (c *Checker) mapLit(x *ast.MapLit, env *Env, hint types.Type) types.Type {
 		return &types.Map{Key: m.Key, Value: m.Value}
 	}
 	var key, val types.Type
+	// A hint with only a key type, from the key `has` tests, types the keys.
+	var hintKey types.Type
+	if m, ok := elemOf(hint).(*types.Map); ok {
+		hintKey = m.Key
+	}
 	for i, e := range x.Entries {
-		if c.bareKey(e.Key, env, key) {
+		keyHint := key
+		if keyHint == nil {
+			keyHint = hintKey
+		}
+		if c.bareKey(e.Key, env, keyHint) {
 			return types.Invalid
 		}
-		kt := c.expr(e.Key, env, nil)
+		kt := c.expr(e.Key, env, c.hintFor(e.Key, env, keyHint))
 		if kt == types.Invalid {
 			return types.Invalid
 		}
 		switch {
 		case key == nil:
 			if !types.IsKey(kt) {
-				c.errorf(e.Key, "map keys are scalars: bool, int, float, string, duration or timestamp", "%s can't be a map key", describe(kt))
+				c.errorf(e.Key, keyHelp, "%s can't be a map key", describe(kt))
 				return types.Invalid
 			}
 			key = kt
@@ -219,7 +379,11 @@ func (c *Checker) mapLit(x *ast.MapLit, env *Env, hint types.Type) types.Type {
 			return types.Invalid
 		}
 
-		vt := c.expr(e.Value, env, nil)
+		var sibling types.Type
+		if !untyped(val) {
+			sibling = val
+		}
+		vt := c.expr(e.Value, env, c.hintFor(e.Value, env, sibling))
 		switch {
 		case vt == types.Invalid:
 			return types.Invalid
@@ -230,6 +394,9 @@ func (c *Checker) mapLit(x *ast.MapLit, env *Env, hint types.Type) types.Type {
 			// decision has none.
 			c.errorf(e.Value, "a missing key would read as the zero value, and a decision has none; test decisions with `in outcome`, or collect them in a list like `[deny, approve]`",
 				"a decision can't be a map value")
+			return types.Invalid
+		case isEnum(vt):
+			c.errorf(e.Value, enumValueHelp, "an enum can't be a map value")
 			return types.Invalid
 		case val == nil || untyped(val) && !untyped(vt):
 			earlier := make([]ast.Expr, i)
@@ -365,8 +532,7 @@ func (c *Checker) binary(x *ast.BinaryExpr, env *Env) types.Type {
 // other side first, so `actor.regions != []` is reported as the list
 // comparison it is, not as a literal without a type.
 func (c *Checker) comparison(x *ast.BinaryExpr, env *Env, allowed func(types.Type) bool, why string) types.Type {
-	l := c.expr(x.X, env, nil)
-	r := c.expr(x.Y, env, nil)
+	l, r := c.operands(x, env, same, same)
 	if l == types.Invalid || r == types.Invalid {
 		return types.Invalid
 	}
@@ -386,6 +552,9 @@ func (c *Checker) comparison(x *ast.BinaryExpr, env *Env, allowed func(types.Typ
 			if hint := c.emptinessHint(x, l, r, env); hint != "" {
 				help = hint
 			}
+			if isEnum(elemOf(side.t)) {
+				help = "an enum's values have no order; test them with `==` or `in`"
+			}
 			c.errorf(x, help, "`%s` isn't defined for %s", x.Op, describe(side.t))
 			return types.Invalid
 		}
@@ -397,10 +566,84 @@ func (c *Checker) comparison(x *ast.BinaryExpr, env *Env, allowed func(types.Typ
 		}
 	}
 	if !types.Identical(l, r) {
-		c.errorf(x, sameTypeHint(l, r), "`%s` needs operands of the same type, found %s and %s", x.Op, l, r)
+		help := sameTypeHint(l, r)
+		if h := enumHint(x.Y, l, r); h != "" {
+			help = h
+		} else if h := enumHint(x.X, r, l); h != "" {
+			help = h
+		}
+		c.errorf(x, help, "`%s` needs operands of the same type, found %s and %s", x.Op, l, r)
 		return types.Invalid
 	}
 	return types.Bool
+}
+
+// operands types the two sides of a binary operator. The side that depends
+// more on its context, such as a bare enum value, is typed after the
+// other one, and hintX or hintY turns the other side's type into its
+// hint, so `standard == service.tier` reads the tier first.
+func (c *Checker) operands(x *ast.BinaryExpr, env *Env, hintX, hintY func(types.Type) types.Type) (types.Type, types.Type) {
+	if c.need(x.X, env) > c.need(x.Y, env) {
+		r := c.expr(x.Y, env, nil)
+		return c.expr(x.X, env, c.lazyHint(x.X, env, hintX, r)), r
+	}
+	l := c.expr(x.X, env, nil)
+	return l, c.expr(x.Y, env, c.lazyHint(x.Y, env, hintY, l))
+}
+
+// lazyHint is [Checker.hintFor] the hint hint derives from t, derived only
+// for an operand that needs one, since deriving it can allocate.
+func (c *Checker) lazyHint(x ast.Expr, env *Env, hint func(types.Type) types.Type, t types.Type) types.Type { //nolint:returninterface // a type is any of five kinds
+	if !c.needsHint(x, env) {
+		return nil
+	}
+	return c.hintFor(x, env, hint(t))
+}
+
+// same is the hint for an operand of the other operand's type.
+func same(t types.Type) types.Type { return t } //nolint:returninterface // a type is any of five kinds
+
+// elemHint is the hint for the element on the left of `in`: the element
+// type of the list on the right.
+func elemHint(t types.Type) types.Type { //nolint:returninterface // a type is any of five kinds
+	if l, ok := t.(*types.List); ok {
+		return l.Elem
+	}
+	return nil
+}
+
+// listHint is the hint for the list on the right of `in`: a list of the
+// element on the left.
+func listHint(t types.Type) types.Type { //nolint:returninterface // a type is any of five kinds
+	if t == nil || t == types.Invalid || untyped(t) {
+		return nil
+	}
+	return &types.List{Elem: t}
+}
+
+// enumHint is the hint for x of type got where an enum want is expected,
+// or an optional one. A string literal gets the bare value to write, or
+// what the enum declares. A value qualified with another enum, like
+// `Plan.standard` for a Tier, gets want's value of that name when it has
+// one. It's empty for anything else.
+func enumHint(x ast.Expr, want, got types.Type) string {
+	e, ok := elemOf(want).(*types.Enum)
+	if !ok {
+		return ""
+	}
+	if q, isSel := x.(*ast.SelectorExpr); isSel && isEnum(got) && e.Has(q.Sel.Name) {
+		if _, isIdent := q.X.(*ast.Ident); isIdent {
+			return fmt.Sprintf("%s declares %s too; write `%s.%s`, or `%s`", e.Name, q.Sel.Name, e.Name, q.Sel.Name, q.Sel.Name)
+		}
+	}
+	lit, isLit := patternLit(x)
+	if !isLit || got != types.String {
+		return ""
+	}
+	if e.Has(lit.Value) {
+		return fmt.Sprintf("an enum value is a bare name; write `%s`", lit.Value)
+	}
+	return "an enum value is a bare name; " + constant.EnumHelp(e, lit.Value)
 }
 
 // emptinessHint is the hint for `==` or `!=` between a list or map and an
@@ -445,8 +688,7 @@ func sameTypeHint(l, r types.Type) string {
 // membership checks `x in y` and `x not in y`: an element in a list, a
 // key in a map, or a substring in a string.
 func (c *Checker) membership(x *ast.BinaryExpr, env *Env) types.Type {
-	l := c.expr(x.X, env, nil)
-	r := c.expr(x.Y, env, nil)
+	l, r := c.operands(x, env, elemHint, listHint)
 	if l == types.Invalid || r == types.Invalid {
 		return types.Invalid
 	}
@@ -468,7 +710,7 @@ func (c *Checker) membership(x *ast.BinaryExpr, env *Env) types.Type {
 			return types.Invalid
 		}
 		if !types.Identical(l, elem) {
-			c.errorf(x, sameTypeHint(l, elem), "`%s` needs an element of the list's type, found %s in list<%s>", x.Op, l, elem)
+			c.errorf(x, elemMismatchHint(x, l, elem), "`%s` needs an element of the list's type, found %s in list<%s>", x.Op, l, elem)
 			return types.Invalid
 		}
 		if !c.comparable(x, elem) {
@@ -496,11 +738,50 @@ func (c *Checker) membership(x *ast.BinaryExpr, env *Env) types.Type {
 	return types.Bool
 }
 
+// elemMismatchHint is the hint for `x in xs` where x isn't of the list's
+// element type elem. An enum tested against a literal list of strings
+// gets the list of bare values to write instead.
+func elemMismatchHint(x *ast.BinaryExpr, l, elem types.Type) string {
+	if h := enumHint(x.X, elem, l); h != "" {
+		return h
+	}
+	lit, ok := listLit(x.Y)
+	e, isEnum := l.(*types.Enum)
+	if !ok || !isEnum || elem != types.String {
+		return sameTypeHint(l, elem)
+	}
+	names := make([]string, len(lit.Elems))
+	for i, el := range lit.Elems {
+		s, isStr := el.(*ast.StringLit)
+		if !isStr {
+			return sameTypeHint(l, elem)
+		}
+		if !e.Has(s.Value) {
+			return "an enum value is a bare name; " + constant.EnumHelp(e, s.Value)
+		}
+		names[i] = s.Value
+	}
+	return fmt.Sprintf("an enum value is a bare name; write `[%s]`", strings.Join(names, ", "))
+}
+
+// listLit returns the list literal x is, looking through parentheses.
+func listLit(x ast.Expr) (*ast.ListLit, bool) {
+	for {
+		switch v := x.(type) {
+		case *ast.ParenExpr:
+			x = v.X
+		case *ast.ListLit:
+			return v, true
+		default:
+			return nil, false
+		}
+	}
+}
+
 // listOp checks `all in`, `any in`, `one in` and `exclusive in`: two
 // lists of one element type.
 func (c *Checker) listOp(x *ast.BinaryExpr, env *Env) types.Type {
-	l := c.expr(x.X, env, nil)
-	r := c.expr(x.Y, env, nil)
+	l, r := c.operands(x, env, same, same)
 	if l == types.Invalid || r == types.Invalid {
 		return types.Invalid
 	}
@@ -543,9 +824,25 @@ func (c *Checker) comparable(x *ast.BinaryExpr, elem types.Type) bool {
 	return false
 }
 
-// has checks `m has {...}` and `m has k`.
+// has checks `m has {...}` and `m has k`. A map literal on the left that
+// needs its key type from context, like `{standard: 1} has t`, takes it
+// from the right, which is typed first.
 func (c *Checker) has(x *ast.BinaryExpr, env *Env) types.Type {
-	l := c.Expr(x.X, env)
+	var l, r types.Type
+	if c.need(x.X, env) > c.need(x.Y, env) && !isMapLit(x.Y) {
+		if r = c.Expr(x.Y, env); r == types.Invalid {
+			return types.Invalid
+		}
+		// Only the key type is known when the right is a key, so the hint
+		// is a map without a value type, which hintFor wouldn't pass on.
+		hint := r
+		if _, isMap := r.(*types.Map); !isMap {
+			hint = &types.Map{Key: r}
+		}
+		l = c.exprWith(x.X, env, hint)
+	} else {
+		l = c.Expr(x.X, env)
+	}
 	if l == types.Invalid {
 		return types.Invalid
 	}
@@ -563,7 +860,9 @@ func (c *Checker) has(x *ast.BinaryExpr, env *Env) types.Type {
 		}
 		return types.Bool
 	}
-	r := c.Expr(x.Y, env)
+	if r == nil {
+		r = c.exprWith(x.Y, env, c.hintFor(x.Y, env, m.Key))
+	}
 	switch {
 	case r == types.Invalid:
 		return types.Invalid
@@ -737,8 +1036,12 @@ func (c *Checker) link(x ast.Expr, env *Env) (types.Type, bool) {
 	switch x := x.(type) {
 	case *ast.SelectorExpr:
 		if id, ok := x.X.(*ast.Ident); ok {
-			if b, found := env.Lookup(id.Name); found && (b.Entity == Module || b.Entity == Invocable) {
+			b, found := env.Lookup(id.Name)
+			if found && (b.Entity == Module || b.Entity == Invocable) {
 				return c.qualified(x, b), false
+			}
+			if found && b.Entity == EnumType {
+				return c.qualifiedEnum(x, b.Type.(*types.Enum)), false
 			}
 		}
 		base, short := c.linkBase(x.X, env)
@@ -1075,7 +1378,7 @@ func (c *Checker) binder(kw, what string, ent Entity, v *ast.Ident, rng, body as
 }
 
 func article(e Entity) string {
-	if e == Input {
+	if e == Input || e == EnumValue || e == EnumType {
 		return "an"
 	}
 	return "a"

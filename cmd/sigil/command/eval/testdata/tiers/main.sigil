@@ -1,0 +1,5 @@
+policy tiers.main: Tiers@1
+
+when service.tier == Tier.standard and internal in service.backups {
+  move(reason: promote, to: critical, also: service.backups, quota: {critical: service.limits[standard]})
+}

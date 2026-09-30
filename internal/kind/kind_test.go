@@ -1,6 +1,7 @@
 package kind_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -30,18 +31,22 @@ func TestLookups(t *testing.T) {
 	if d := k.Decision("approve"); d.Field("bake") == nil || d.Field("bak") != nil {
 		t.Error("Field lookup")
 	}
+	if k.Enum("Tier") == nil || k.Enum("Service") != nil {
+		t.Error("Enum lookup")
+	}
 }
 
 // deploy builds the DeployApproval kind from the README, fresh for each
 // test so a table entry can mutate it.
 func deploy() *kind.Kind {
+	tier := &types.Enum{Name: "Tier", Values: []string{"critical", "standard", "internal"}}
 	release := &types.Struct{Name: "Release", Fields: []*types.Field{
 		{Name: "soak", Type: types.Duration},
 		{Name: "hotfix", Type: types.Bool},
 	}}
 	service := &types.Struct{Name: "Service", Fields: []*types.Field{
 		{Name: "name", Type: types.String},
-		{Name: "tier", Type: types.String},
+		{Name: "tier", Type: tier},
 		{Name: "owners", Type: strList},
 		{Name: "labels", Type: strMap},
 	}}
@@ -55,6 +60,7 @@ func deploy() *kind.Kind {
 		Name:    "DeployApproval",
 		Version: 1,
 		Accepts: 1,
+		Enums:   []*types.Enum{tier},
 		Types:   []*types.Struct{release, service, actor},
 		Inputs: []*kind.Input{
 			{Name: "release", Type: release},
@@ -97,5 +103,34 @@ func access() *kind.Kind {
 			{Name: "development_environment_writer", Reasons: []string{"member"}},
 		},
 		Collect: kind.CollectAll,
+	}
+}
+
+func TestEnumsWith(t *testing.T) {
+	k := deploy()
+	k.Enums = append(k.Enums,
+		&types.Enum{Name: "Plan", Values: []string{"free", "standard"}},
+		&types.Enum{Name: "Region", Values: []string{"eu", "us"}},
+	)
+	tests := []struct {
+		value string
+		want  []string
+	}{
+		{"critical", []string{"Tier"}},
+		{"standard", []string{"Tier", "Plan"}}, // declaration order
+		{"eu", []string{"Region"}},
+		{"gold", nil},
+		{"Tier", nil}, // an enum's name isn't its value
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			var got []string
+			for _, e := range k.EnumsWith(tt.value) {
+				got = append(got, e.Name)
+			}
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") || (got == nil) != (tt.want == nil) {
+				t.Errorf("EnumsWith(%q) = %v, want %v", tt.value, got, tt.want)
+			}
+		})
 	}
 }

@@ -17,7 +17,9 @@
 // https://sigil.specht-labs.de/reference/go-api/#go-type-mapping describes: bool, int and int64, float64, string, [time.Duration] and
 // [time.Time] are scalars, slices are lists, maps are maps, a pointer is
 // an optional, and a named struct is a struct type called by its Go name.
-// A pointer to a pointer, a slice or a map is rejected.
+// A named string type registered in [Options.Enums] is an enum called by
+// its Go name; any other named string type is a string. A pointer to a
+// pointer, a slice or a map is rejected.
 //
 // # Bindings
 //

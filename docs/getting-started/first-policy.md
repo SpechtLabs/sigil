@@ -73,14 +73,14 @@ A policy with no rules is valid. Evaluate it:
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
-deploy.production: deny(no_rule_matched), the kind's default
+deploy.production: deny(reason: no_rule_matched), the kind's default
 
 trace: no rule fired
 ```
 
 :::
 
-No rule fired, so the kind's `default deny(no_rule_matched)` applies. That's your safety net for everything that follows: a deploy nobody wrote a rule for gets denied.
+No rule fired, so the kind's `default deny(reason: no_rule_matched)` applies. That's your safety net for everything that follows: a deploy nobody wrote a rule for gets denied.
 
 ## Step 2: one deny rule
 
@@ -90,7 +90,7 @@ Require releases to soak in staging for a day before they reach production, unle
 policy deploy.production: DeployApproval@1
 
 when release.soak < 24h and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 
@@ -100,10 +100,10 @@ when release.soak < 24h and not release.hotfix {
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
-deploy.production: deny(soak_too_short)
+deploy.production: deny(reason: soak_too_short)
 
 trace: 1 candidate
-  * deny(soak_too_short)  deploy/production.sigil:4:3
+  * deny(reason: soak_too_short)  deploy/production.sigil:4:3
       when release.soak < 24h and not release.hotfix
 ```
 
@@ -126,23 +126,23 @@ let eligible = "deployer" in actor.roles
   }
 
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 
 when release.soak < 24h and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 
-There's a typo on line 6. Check the file:
+There's a typo on line 5. Check the file:
 
 ::: terminal Check the policy
 
 ```shell
 $ sigil check --kind deploy_approval.sigil deploy/production.sigil
-deploy/production.sigil:6:15: error: unknown field "lables" on type Service
+deploy/production.sigil:5:15: error: unknown field "lables" on type Service
   |
-6 |   and service.lables has {
+5 |   and service.lables has {
   |               ^^^^^^
   = help: did you mean "labels"? Service declares: name, tier, owners, labels
 
@@ -157,12 +157,12 @@ In a YAML matcher, or in a language where unknown fields resolve to `null`, this
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input wrong-lifecycle.json deploy/production.sigil
-deploy.production: deny(not_eligible)
+deploy.production: deny(reason: not_eligible)
 
 trace: 2 candidates
-  * deny(not_eligible)    deploy/production.sigil:12:3
+  * deny(reason: not_eligible)    deploy/production.sigil:11:3
       when not eligible
-    deny(soak_too_short)  deploy/production.sigil:16:3
+    deny(reason: soak_too_short)  deploy/production.sigil:15:3
       when release.soak < 24h and not release.hotfix
 ```
 
@@ -189,11 +189,11 @@ param min_soak: duration = 24h
 // let eligible = ... unchanged
 
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 
@@ -201,14 +201,14 @@ Behavior doesn't change: nobody has bound `min_soak` yet, so it's `24h`. But now
 
 ## Step 5: approvals and reviews
 
-The interesting part of the policy only applies when the actor is cleared for every region the service runs in. Add two more lets, two params, and a rule with nested rules inside it. Here's the complete file, with a mistake left in:
+The interesting part of the policy only applies when the actor is cleared for every region the service runs in. Add two more lets, two params, and a rule with nested rules inside it. Here's the complete file, with two mistakes left in:
 
 ```sigil
 policy deploy.production: DeployApproval@1
 
 param min_soak: duration = 24h
 param approvers: list<string>
-param tiers: list<string> = ["standard", "internal"]
+param tiers: list<Tier> = [standard, internal]
 
 let owns_service = actor.teams any in service.owners
 let cleared = split(service.labels["regions"], ",") all in actor.regions
@@ -220,22 +220,22 @@ let eligible = "deployer" in actor.roles
   }
 
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 
 when cleared {
-  when service.tier == "critical"
+  when service.tier == critcal
     and "release_manager" in actor.roles {
-    approve(release_manager)
+    approve(reason: release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review(service_owner, approver: approvers)
+    review(reason: service_owner, approver: approvers)
   }
 }
 ```
@@ -244,30 +244,39 @@ when cleared {
 
 ```shell
 $ sigil check --kind deploy_approval.sigil deploy/production.sigil
-deploy/production.sigil:34:5: error: decision review needs field "approvers"
+deploy/production.sigil:25:24: error: Tier has no value `critcal`
    |
-34 |     review(service_owner, approver: approvers)
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   = help: review is declared as: decision review(approvers: list<string>) { service_owner }
+25 |   when service.tier == critcal
+   |                        ^^^^^^^
+   = help: did you mean `critical`? Tier declares: critical, standard, internal
 
-deploy/production.sigil:34:27: error: decision review has no payload field "approver"
+deploy/production.sigil:32:5: error: decision review needs field "approvers"
    |
-34 |     review(service_owner, approver: approvers)
-   |                           ^^^^^^^^
-   = help: did you mean "approvers"? review is declared as: decision review(approvers: list<string>) { service_owner }
+32 |     review(reason: service_owner, approver: approvers)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: review takes reason: service_owner, and approvers: list<string>
 
-✗ checked 1 file, 2 errors
+deploy/production.sigil:32:35: error: decision review has no payload field "approver"
+   |
+32 |     review(reason: service_owner, approver: approvers)
+   |                                   ^^^^^^^^
+   = help: did you mean "approvers"? review takes reason: service_owner, and approvers: list<string>
+
+✗ checked 1 file, 3 errors
 ```
 
 :::
 
-One misspelled argument, two errors: `approver` isn't a field of `review`, and the `approvers` it was meant to be is missing. Payload fields come from the kind, and both errors quote the signature so you don't have to go looking for it. Rename the argument to `approvers:` and the file is the finished base policy.
+`service.tier` is a `Tier`, an enum the kind declares, so `critical` is written bare and the compiler knows every value it may take. Had the kind declared `tier: string`, the rule would read `service.tier == "critcal"`, compile, and never match: release managers would quietly lose their approval path. [Typos in values](/understanding/strictness/#typos-in-values) has more on that.
+
+The other mistake is one misspelled argument with two errors: `approver` isn't a field of `review`, and the `approvers` it was meant to be is missing. Payload fields come from the kind, and both errors list what `review` takes, so you don't have to go looking for it. Correct `critcal` to `critical`, rename the argument to `approvers:`, and the file is the finished base policy.
 
 Some notes on what you just wrote:
 
 - The outer `when cleared` has no decision of its own. It only scopes the two rules inside it: a nested rule fires only when every enclosing condition holds.
 - `split` is the host function declared in the kind. `all in` checks that every region listed on the service appears in the actor's regions, and `any in` in `owns_service` checks that the actor's teams and the service's owners overlap.
-- `approve(release_manager)` passes no payload, so `bake` takes the kind's default of `1h`. Writing `approve(release_manager, bake: 2h)` would override it.
+- `tiers` is a `list<Tier>`, so its default lists bare values too, and `service.tier in tiers` compares a `Tier` with `Tier`s.
+- Every argument of a constructor is named, the reason included. `approve(reason: release_manager)` passes no payload, so `bake` takes the kind's default of `1h`. Writing `approve(reason: release_manager, bake: 2h)` would override it.
 - `approvers` has no default, so it's required. That matters in the next step.
 
 ## Step 6: invoke it from a team policy
@@ -305,7 +314,7 @@ production(
 )
 
 when "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
+  approve(reason: payments_sre, bake: 15m)
 }
 ```
 
@@ -315,15 +324,15 @@ when "payments-sre" in actor.teams {
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
-payments.production: review(service_owner)
+payments.production: review(reason: service_owner)
   approvers = ["payments-leads"]
 
 trace: 2 candidates
-  * review(service_owner)  payments/production.sigil:5:1 → deploy/production.sigil:34:5
+  * review(reason: service_owner)  payments/production.sigil:5:1 → deploy/production.sigil:32:5
       when cleared
-       and service.tier in ["standard", "internal"] and owns_service
+       and service.tier in [standard, internal] and owns_service
       approvers = ["payments-leads"]
-    approve(payments_sre)  payments/production.sigil:11:3
+    approve(reason: payments_sre)  payments/production.sigil:11:3
       bake = 15m
 ```
 
@@ -331,7 +340,7 @@ trace: 2 candidates
 
 The team policy imports `deploy.production`, so the command passes both directories. The CLI reads every document in them into one bundle and resolves the import by name. The bundle now holds two policies, so `--policy` says which one to evaluate.
 
-With `min_soak` lowered to four hours, the six-hour soak no longer trips `soak_too_short`. The base policy asks for review, the team's rule offers an approval, and review wins because it ranks higher in the kind's `precedence`. The first candidate's position is a call chain: the invocation on line 5 of the team file, then the rule on line 34 of the base.
+With `min_soak` lowered to four hours, the six-hour soak no longer trips `soak_too_short`. The base policy asks for review, the team's rule offers an approval, and review wins because it ranks higher in the kind's `precedence`. The first candidate's position is a call chain: the invocation on line 5 of the team file, then the rule on line 32 of the base.
 
 ::: tip Checking a base policy on its own
 `sigil check` accepts `deploy/production.sigil` on its own: it type-checks and compiles a base policy with its required params unbound, the way `sigil explain` shows it. Checking a policy that invokes it checks the base again, with the arguments bound.
@@ -374,11 +383,11 @@ use deploy.common.{eligible}
 param min_soak: duration = 24h
 
 when not eligible {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 
 when release.soak < min_soak and not release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }
 ```
 
@@ -390,17 +399,17 @@ policy deploy.production: DeployApproval@1
 use deploy.common.{cleared, owns_service}
 
 param approvers: list<string>
-param tiers: list<string> = ["standard", "internal"]
+param tiers: list<Tier> = [standard, internal]
 
 when cleared {
-  when service.tier == "critical"
+  when service.tier == critical
     and "release_manager" in actor.roles {
-    approve(release_manager)
+    approve(reason: release_manager)
   }
 
   when service.tier in tiers
     and owns_service {
-    review(service_owner, approvers: approvers)
+    review(reason: service_owner, approvers: approvers)
   }
 }
 ```
@@ -442,7 +451,7 @@ when service.labels["compliance"] != "pci" {
 }
 
 when cleared and "payments-sre" in actor.teams {
-  approve(payments_sre, bake: 15m)
+  approve(reason: payments_sre, bake: 15m)
 }
 ```
 
@@ -452,16 +461,16 @@ Here the `when` around `production(...)` is exactly what you want: the block's c
 
 ```shell
 $ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
-payments.production: review(service_owner)
+payments.production: review(reason: service_owner)
   approvers = ["payments-leads"]
 
 trace: 2 candidates
-  * review(service_owner)  payments/production.sigil:14:3 → deploy/production.sigil:16:5
+  * review(reason: service_owner)  payments/production.sigil:14:3 → deploy/production.sigil:16:5
       when service.labels["compliance"] != "pci"
        and cleared
-       and service.tier in ["standard", "internal"] and owns_service
+       and service.tier in [standard, internal] and owns_service
       approvers = ["payments-leads"]
-    approve(payments_sre)  payments/production.sigil:18:3
+    approve(reason: payments_sre)  payments/production.sigil:18:3
       bake = 15m
 ```
 
@@ -502,7 +511,7 @@ ok    payments/production_test.yaml  2 cases
 
 :::
 
-`sigil test` finds every `*_test.yaml` under the current directory and runs it against all the `.sigil` files it finds there. Each case names the decision and the reason; since reasons are declared in the kind, a case that expects a reason nobody can construct fails before anything runs, and a dashboard grouping by reason keeps working as long as the tests pass. The first case also pins the payload, which is what tells it apart from a PCI deploy: that one is `review(service_owner)` too, with `security-leads` added to the approvers. The host's own test suite can run the same file from `go test` with [`policytest`](/reference/go-api/#package-policytest).
+`sigil test` finds every `*_test.yaml` under the current directory and runs it against all the `.sigil` files it finds there. Each case names the decision and the reason; since reasons are declared in the kind, a case that expects a reason nobody can construct fails before anything runs, and a dashboard grouping by reason keeps working as long as the tests pass. The first case also pins the payload, which is what tells it apart from a PCI deploy: that one is `review(reason: service_owner)` too, with `security-leads` added to the approvers. The host's own test suite can run the same file from `go test` with [`policytest`](/reference/go-api/#package-policytest).
 
 ## Where you are now
 

@@ -3,5 +3,5 @@ policy p: DeployApproval@1
 param approvers: list<string>
 
 when true {
-  review(a, approvers: approvers)
+  review(reason: a, approvers: approvers)
 }

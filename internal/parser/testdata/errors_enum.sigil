@@ -1,0 +1,39 @@
+kind Broken version 1
+
+enum Tier critical | standard
+enum Plan: free, pro
+enum Mode: one | all
+enum Region: eu |
+enum Empty {}
+
+decision none {}
+decision twice {
+  reason: a
+  reason: b
+}
+decision optional { reason: ?string }
+decision listed { reason: list<string> }
+decision defaulted { reason: a = a }
+decision commas { reason: a, b }
+decision mixed(bake: duration) {
+  reason: a
+}
+decision untyped {
+  reason: a
+  bake duration
+}
+decision old(reason: string) {
+  a
+}
+decision unclosed {
+  reason: a
+
+input x: int
+
+---
+
+policy p: Broken@1
+
+enum Tier: a | b
+
+when x == 1 | x == 2 { deny(reason: a, b) }

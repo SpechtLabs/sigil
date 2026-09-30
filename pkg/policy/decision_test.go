@@ -44,11 +44,11 @@ func TestReason(t *testing.T) {
 // follows Match: exactly one entry with the handle's decision and
 // reason, false for a nil result, and a panic where Match panics.
 func TestOutcomeIs(t *testing.T) {
-	one := compileSrc(t, Deploy, "policy p: DeployApproval@1\n\nwhen release.hotfix {\n  deny(soak_too_short)\n}\n\nwhen release.soak < 1h {\n  approve(a)\n}\n")
+	one := compileSrc(t, Deploy, "policy p: DeployApproval@1\n\nwhen release.hotfix {\n  deny(reason: soak_too_short)\n}\n\nwhen release.soak < 1h {\n  approve(reason: a)\n}\n")
 	top := compileSrc(t, Reviews, "policy p: Reviews@1\n\n"+
-		"when service.tier == \"critical\" {\n  review(security, approvers: [\"security-leads\"])\n}\n\n"+
-		"when \"payments\" in service.owners {\n  review(owner, approvers: [\"payments-leads\"])\n}\n")
-	all := compileSrc(t, Access, "policy p: AccessGrant@1\n\nwhen \"engineering\" in actor.teams {\n  read(engineering_member)\n}\n")
+		"when service.tier == \"critical\" {\n  review(reason: security, approvers: [\"security-leads\"])\n}\n\n"+
+		"when \"payments\" in service.owners {\n  review(reason: owner, approvers: [\"payments-leads\"])\n}\n")
+	all := compileSrc(t, Access, "policy p: AccessGrant@1\n\nwhen \"engineering\" in actor.teams {\n  read(reason: engineering_member)\n}\n")
 
 	var (
 		soakTooShort  = Deny.Reason("soak_too_short")

@@ -4,17 +4,17 @@
 policy p: DeployApproval@1
 
 when service.tier == "critical" {
-  review(service_owner, approvers: ["a"])
+  review(reason: service_owner, approvers: ["a"])
 }
 
 when "payments-sre" in actor.teams {
-  review(service_owner, approvers: ["b"])
+  review(reason: service_owner, approvers: ["b"])
 }
 
 when release.hotfix {
-  deny(not_eligible)
+  deny(reason: not_eligible)
 }
 
 when release.hotfix {
-  deny(soak_too_short)
+  deny(reason: soak_too_short)
 }

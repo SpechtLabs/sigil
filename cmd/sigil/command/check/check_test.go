@@ -22,6 +22,7 @@ func TestCheck(t *testing.T) {
 	tests := []struct {
 		name     string
 		config   string // under testdata/config; defaults.yaml when empty
+		kind     string // the kind file; testdata/deploy_approval.sigil when empty
 		format   output.Format
 		paths    []string
 		trusted  []string
@@ -35,6 +36,9 @@ func TestCheck(t *testing.T) {
 		{name: "errors_yaml", format: output.YAML, paths: []string{"testdata/errors"}},
 		{name: "compile", paths: []string{"testdata/compile"}},
 		{name: "stale_kind", paths: []string{"testdata/stale"}},
+		{name: "legacy_kind", kind: "testdata/kinds/legacy.sigil", paths: []string{"testdata/compile"}},
+		{name: "legacy_kind_json", kind: "testdata/kinds/legacy.sigil", format: output.JSON, paths: []string{"testdata/compile"}},
+		{name: "invalid_kind", kind: "testdata/kinds/invalid.sigil", paths: []string{"testdata/compile"}},
 		{name: "config_typo", config: "typo.yaml", paths: []string{"testdata/lints"}},
 		{name: "require_ok", paths: []string{"testdata/require"}, trusted: []string{"testdata/lints/deploy"}, patterns: []string{"teams.*"}, requires: []string{"deploy.guardrails"}},
 		{name: "require_gated", paths: []string{"testdata/lints/teams"}, trusted: []string{"testdata/lints/deploy"}, patterns: []string{"teams.payments"}, requires: []string{"deploy.guardrails"}},
@@ -52,9 +56,13 @@ func TestCheck(t *testing.T) {
 			if config == "" {
 				config = "defaults.yaml"
 			}
+			kindFile := tt.kind
+			if kindFile == "" {
+				kindFile = filepath.Join("testdata", "deploy_approval.sigil")
+			}
 			var out bytes.Buffer
 			src := project.Sources{Paths: tt.paths, Trusted: tt.trusted, Recursive: true, Stdin: strings.NewReader("")}
-			err := run(&out, &options{output: &format}, filepath.Join("testdata", "config", config), filepath.Join("testdata", "deploy_approval.sigil"), src, tt.patterns, tt.requires)
+			err := run(&out, &options{output: &format}, filepath.Join("testdata", "config", config), kindFile, src, tt.patterns, tt.requires)
 			golden(t, tt.name, render(out.String(), err))
 		})
 	}

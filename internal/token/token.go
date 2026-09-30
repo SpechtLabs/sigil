@@ -66,6 +66,7 @@ const (
 	Colon     // :
 	Assign    // =
 	Arrow     // ->, before a host function's result type
+	Pipe      // |, between the values of an enum or the reasons of a decision
 	LParen    // (
 	RParen    // )
 	LBracket  // [
@@ -94,6 +95,7 @@ const (
 	KwType
 	KwInput
 	KwFn
+	KwEnum
 	KwDecision
 	KwPrecedence
 	KwCollect
@@ -155,6 +157,7 @@ var names = [...]string{
 	Colon:     ":",
 	Assign:    "=",
 	Arrow:     "->",
+	Pipe:      "|",
 	LParen:    "(",
 	RParen:    ")",
 	LBracket:  "[",
@@ -177,6 +180,7 @@ var names = [...]string{
 	KwType:       "type",
 	KwInput:      "input",
 	KwFn:         "fn",
+	KwEnum:       "enum",
 	KwDecision:   "decision",
 	KwPrecedence: "precedence",
 	KwCollect:    "collect",
