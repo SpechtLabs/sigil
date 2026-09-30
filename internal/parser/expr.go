@@ -115,6 +115,12 @@ func (p *parser) compound(op ast.Op) (infixOp, bool) {
 // parseExpr parses an expression whose infix operators all bind at least
 // as tightly as minBP.
 func (p *parser) parseExpr(minBP int) ast.Expr {
+	if p.exprDepth == 0 {
+		p.exprStart = p.brackets
+	}
+	p.exprDepth++
+	defer p.leaveExpr()
+	p.nest("this expression", p.skipExpr)
 	x := p.parsePrefix(minBP)
 	for {
 		op, ok := p.infix()

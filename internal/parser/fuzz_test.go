@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/spechtlabs/sigil/internal/ast"
@@ -26,6 +27,10 @@ func FuzzParseFile(f *testing.F) {
 	}
 	f.Add([]byte{})
 	f.Add([]byte("\xff\x00"))
+	// Nesting past MaxNesting, which fails with one diagnostic instead
+	// of recursing.
+	f.Add([]byte("policy a.b: K@1\n\nwhen " + strings.Repeat("(", 20_000) + "x" + strings.Repeat(")", 20_000) + " {\n  allow(reason: y)\n}\n"))
+	f.Add([]byte("policy a.b: K@1\n\n" + strings.Repeat("when x {\n", parser.MaxNesting+1) + strings.Repeat("}\n", parser.MaxNesting+1)))
 	f.Fuzz(func(t *testing.T, src []byte) {
 		a, errs := parser.ParseFile("fuzz.sigil", src)
 		b, again := parser.ParseFile("fuzz.sigil", src)
@@ -47,6 +52,8 @@ func FuzzParseExpr(f *testing.F) {
 	for _, src := range []string{"", "1 + 2 - 3", "not false and true", "all x in [1, 2]: x > 0", "filter x in [1, 2]: x > 0", "a?.b[0] ?? 1", `{"a": [1]}["a"]`, `"abc" like "a*"`, "a one in b", "a | b", "a and: b", "(((", "\xff"} {
 		f.Add(src)
 	}
+	f.Add(strings.Repeat("[", parser.MaxNesting) + strings.Repeat("]", parser.MaxNesting))
+	f.Add(strings.Repeat("not ", 20_000) + "a")
 	f.Fuzz(func(t *testing.T, src string) {
 		x, errs := parser.ParseExpr("fuzz.sigil", []byte(src))
 		if errs != nil {

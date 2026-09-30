@@ -36,6 +36,15 @@ import (
 	"github.com/spechtlabs/sigil/internal/token"
 )
 
+// MaxImportDepth is how long a chain of imports may be: a document that
+// imports one that imports another, and so on, counting the first. Every
+// pass that follows an invocation or a use, the compiler linking a
+// policy's instances, the evaluator and explain, goes one level deeper
+// per document, and a stack is finite, most of all in a WebAssembly host,
+// so a longer chain is an error at the import that makes it too long
+// rather than a crash. Real bundles stay far below it.
+const MaxImportDepth = 64
+
 // Bundle is a set of documents against one kind, indexed by name.
 type Bundle struct {
 	kind    *kind.Kind
@@ -264,20 +273,32 @@ func uses(d ast.Doc) []*ast.UseStmt {
 
 // topological orders the bundle's own documents so that every document
 // comes after the ones it imports, leaving out documents in an import
-// cycle, which it reports.
+// cycle, which it reports, and reports a chain of imports longer than
+// MaxImportDepth.
 func (b *Bundle) topological() []string {
-	s := &sorter{b: b, state: map[string]int{}}
+	s := &sorter{b: b, state: map[string]int{}, depth: map[string]int{}}
 	for _, name := range b.order {
-		s.visit(name, nil)
+		s.visit(name)
 	}
 	return s.out
 }
 
-// sorter is one depth-first pass over the import graph.
+// sorter is one depth-first pass over the import graph. It keeps its own
+// stack rather than recursing, so a chain of imports of any length is
+// sorted and measured without growing the goroutine's stack.
 type sorter struct {
 	b     *Bundle
 	state map[string]int // unseen, visiting or done, by document name
+	depth map[string]int // the longest chain of imports from a document, itself included, once it's done
 	out   []string
+}
+
+// frame is a document on the sorter's path, and how far through its
+// imports the sorter is.
+type frame struct {
+	doc  *Document
+	uses []*ast.UseStmt
+	next int
 }
 
 const (
@@ -286,27 +307,80 @@ const (
 	done
 )
 
-// visit orders name after its imports, reporting a cycle when an import
-// leads back to a document on the current path.
-func (s *sorter) visit(name string, path []string) {
-	if s.state[name] != unseen {
+// visit orders root and every document it imports after their imports,
+// reporting a cycle when an import leads back to a document on the
+// current path.
+func (s *sorter) visit(root string) {
+	if s.state[root] != unseen {
 		return
 	}
-	s.state[name] = visiting
-	d := s.b.docs[name]
-	for _, u := range uses(d.Node) {
-		dep := u.Path.String()
-		if _, own := s.b.docs[dep]; !own || s.b.docs[dep].Kind {
-			continue // trusted, unknown or a kind: the checker reports it
-		}
-		if s.state[dep] == visiting {
-			s.cycle(d, u, append(append([]string{}, path...), name, dep))
+	path := []*frame{s.enter(root)}
+	for len(path) > 0 {
+		f := path[len(path)-1]
+		if f.next == len(f.uses) {
+			s.leave(f)
+			path = path[:len(path)-1]
 			continue
 		}
-		s.visit(dep, append(append([]string{}, path...), name))
+		u := f.uses[f.next]
+		f.next++
+		dep := u.Path.String()
+		ok := s.own(dep)
+		switch {
+		case !ok:
+			// trusted, unknown or a kind: the checker reports it
+		case s.state[dep] == visiting:
+			names := make([]string, 0, len(path)+1)
+			for _, p := range path {
+				names = append(names, p.doc.Name)
+			}
+			s.cycle(f.doc, u, append(names, dep))
+		case s.state[dep] == unseen:
+			path = append(path, s.enter(dep))
+		}
 	}
+}
+
+// own reports whether dep, the name a use imports, is one of the bundle's
+// own policies or modules, the documents the sorter orders.
+func (s *sorter) own(dep string) bool {
+	d, ok := s.b.docs[dep]
+	return ok && !d.Kind
+}
+
+// enter puts a document on the path.
+func (s *sorter) enter(name string) *frame {
+	s.state[name] = visiting
+	d := s.b.docs[name]
+	return &frame{doc: d, uses: uses(d.Node)}
+}
+
+// leave orders a document whose imports are all ordered, and measures
+// the longest chain of imports from it. The document where a chain first
+// grows longer than MaxImportDepth reports it, at the import that
+// continues the chain, and fails with a stub export like a document in a
+// cycle, so the documents that import it don't repeat the error.
+func (s *sorter) leave(f *frame) {
+	name := f.doc.Name
 	s.state[name] = done
 	s.out = append(s.out, name)
+	depth, deepest := 1, (*ast.UseStmt)(nil)
+	for _, u := range f.uses {
+		if dep := u.Path.String(); s.own(dep) && s.state[dep] == done && s.depth[dep]+1 > depth {
+			depth, deepest = s.depth[dep]+1, u
+		}
+	}
+	s.depth[name] = depth
+	if depth != MaxImportDepth+1 {
+		return
+	}
+	s.b.errs = append(s.b.errs, &diag.Error{
+		File: f.doc.File, Pos: deepest.Pos(), End: deepest.End(),
+		Msg:  fmt.Sprintf("imports nest more than %d levels deep: %s starts a chain of %d documents, each importing the next", MaxImportDepth, name, depth),
+		Help: fmt.Sprintf("a chain of imports may be at most %d documents long; import the documents deep in the chain directly, from one nearer its start", MaxImportDepth),
+	})
+	f.doc.failed = true
+	f.doc.Exported = &check.Exported{Name: name, Module: f.doc.Module(), Failed: true}
 }
 
 // cycle reports the import cycle that ends the path, at the import that
