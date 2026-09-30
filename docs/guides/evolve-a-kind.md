@@ -194,7 +194,7 @@ The old forms still parse, so nothing has to change by hand. They don't check an
 2. In the policy repo, run `sigil check` against the new kind file. It reports every positional reason:
 
    ```text
-   $ sigil check --kind deploy_approval.sigil deploy/ payments/
+   $ sigil check deploy_approval.sigil deploy/ payments/
    deploy/guardrails.sigil:8:8: error: the reason is a named argument
      |
    8 |   deny(not_eligible)

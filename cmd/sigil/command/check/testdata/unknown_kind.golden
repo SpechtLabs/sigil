@@ -1,0 +1,10 @@
+testdata/unknown_kind/main.sigil:1:20 (roles.main): error: policy roles.main is written against kind Role, but no kind Role was found
+  |
+1 | policy roles.main: Role@1
+  |                    ^^^^
+  = help: did you mean `Roles`? add its kind file to the paths or name it with --kind
+
+✗ checked 2 files, 1 error
+--- error ---
+check found 1 error
+advice: each diagnostic above says where the problem is and how to fix it

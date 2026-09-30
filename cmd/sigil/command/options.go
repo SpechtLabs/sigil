@@ -24,13 +24,15 @@ func WithVersion(version string) Option {
 
 // WithKind links k, a host's kind, into the binary. eval and test then
 // decode inputs into the host's own Go types and call its host functions,
-// and every command uses the kind without --kind. A --kind file for a
-// linked kind, matched by name, must match it exactly, which catches a
-// stale export. A --kind file for any other kind is loaded on its own,
-// with host functions that fail when called. A nil k is ignored.
+// and every command uses the kind for the documents written against it,
+// with no kind file. A kind file for a linked kind, matched by name,
+// whether named with --kind or among the paths, must match it exactly,
+// which catches a stale export. A kind file for any other kind is loaded
+// on its own, with host functions that fail when called. A nil k is
+// ignored.
 //
-// Repeat it for a host with several kinds. Commands then need --kind to
-// pick one, and `sigil export` a KIND argument.
+// Repeat it for a host with several kinds. Each document uses the kind its
+// header names, and `sigil export` takes a KIND argument.
 func WithKind[In any](k *policy.Kind[In]) Option {
 	return func(o *options) {
 		if k != nil {

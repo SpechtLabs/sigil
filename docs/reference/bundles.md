@@ -84,7 +84,7 @@ The CLI takes files, directories and stdin; see [Inputs](/reference/cli/#inputs)
 ## Kind documents in a bundle
 
 - Kind documents aren't part of the name index.
-- A kind document is never taken as the contract. The kind always comes from the host's Go definition, or from `--kind` in the CLI.
+- A kind document is never taken as the contract. The kind always comes from the host's Go definition. The CLI, which has no Go definition unless it's a host binary, is the exception; see [Kinds](/reference/cli/#kinds).
 - A kind document with the host kind's name must match that contract (`Deploy.Schema()`) exactly, or the load fails. This catches a stale export.
 - A kind document for another kind is ignored.
 

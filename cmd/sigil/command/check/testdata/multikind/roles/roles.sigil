@@ -1,0 +1,9 @@
+kind Roles version 1
+
+input user: string
+
+decision read {
+  reason: member
+}
+
+collect all

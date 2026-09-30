@@ -72,18 +72,18 @@ A case can't expect a conflict. Test one from Go, as [Test a conflict](#test-a-c
 
 ## Run them with sigil test
 
-Run `sigil test` from the root of the policy repository with the exported kind file:
+Run `sigil test` from the root of the policy repository, next to the exported kind file:
 
 ```text
-sigil test --kind deploy_approval.sigil
+sigil test
 ```
 
-It searches the current directory recursively, reads every `.sigil` file it finds into one bundle, and runs every test file against it. To run a subset, pass the directories, and include the ones the tested policies import: `sigil test --kind deploy_approval.sigil deploy/ payments/`. A bundle without `deploy/` fails, because `payments.production` invokes `deploy.guardrails`.
+It searches the current directory recursively, reads every `.sigil` file it finds into one bundle, and runs every test file against it. To run a subset, pass the directories, and include the ones the tested policies import: `sigil test deploy_approval.sigil deploy/ payments/`. A bundle without `deploy/` fails, because `payments.production` invokes `deploy.guardrails`.
 
 A failing case prints what it wanted and what it got. Had the second case above expected `not_eligible`:
 
 ```text
-$ sigil test --kind deploy_approval.sigil
+$ sigil test
 --- FAIL: payments/production_test.yaml:10: a short soak is denied
       want deny(reason: not_eligible)
       got  deny(reason: soak_too_short)
@@ -94,7 +94,7 @@ FAIL  payments/production_test.yaml  1 of 3 cases failed
 The command exits 1, so a CI step fails with it. While you work on one case, `--run 'soak'` runs only the cases whose name matches the regular expression. `-v` lists the passing cases too:
 
 ```text
-$ sigil test --kind deploy_approval.sigil -v
+$ sigil test -v
 --- PASS: payments/production_test.yaml:3: an owner's deploy goes to review
 --- PASS: payments/production_test.yaml:10: a short soak is denied
 --- PASS: payments/production_test.yaml:15: an unnamed actor fails the assert

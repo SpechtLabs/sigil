@@ -1,11 +1,8 @@
 package bundle
 
 import (
-	"io"
 	"io/fs"
-	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -64,84 +61,4 @@ func walkFS(fsys fs.FS, dir string) ([]string, humane.Error) {
 		}
 	}
 	return files, nil
-}
-
-// LoadPaths reads the command line's inputs: each path is a file, a
-// directory, whose `.sigil` files are read (every one below it with
-// recursive), or "-" for stdin. Entries whose names start with `.` are
-// skipped, as Load does. Files are named by their slash-separated path,
-// and stdin as `<stdin>`. The error reports only a path that can't be
-// read; parse errors stay in the bundle.
-func (b *Bundle) LoadPaths(paths []string, recursive bool, stdin io.Reader) humane.Error {
-	for _, p := range paths {
-		if p == "-" {
-			src, err := io.ReadAll(stdin)
-			if err != nil {
-				return humane.Wrap(err, "stdin couldn't be read", "pipe a policy bundle in, or name files instead of `-`")
-			}
-			b.Add("<stdin>", src)
-			continue
-		}
-		info, err := os.Stat(p)
-		if err != nil {
-			return humane.Wrap(err, p+" can't be read", "name a `.sigil` file, a directory or `-` for stdin")
-		}
-		if info.IsDir() {
-			if err := b.addDir(p, recursive); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := b.addFile(p); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (b *Bundle) addFile(p string) humane.Error {
-	src, err := os.ReadFile(p) //nolint:gosec // the path comes from the command line, which is the point
-	if err != nil {
-		return humane.Wrap(err, p+" couldn't be read", "check the file's permissions")
-	}
-	b.Add(filepath.ToSlash(p), src)
-	return nil
-}
-
-// addDir reads the `.sigil` files directly in dir, and below it when
-// recursive is set.
-func (b *Bundle) addDir(dir string, recursive bool) humane.Error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return humane.Wrap(err, dir+" couldn't be read", "check the directory's permissions")
-	}
-	var files, dirs []string
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		p := filepath.Join(dir, e.Name())
-		info, err := os.Stat(p)
-		if err != nil {
-			return humane.Wrap(err, p+" can't be read", "check the entry's permissions")
-		}
-		switch {
-		case info.IsDir() && recursive:
-			dirs = append(dirs, p)
-		case !info.IsDir() && strings.HasSuffix(e.Name(), ".sigil"):
-			files = append(files, p)
-		}
-	}
-	sort.Strings(files)
-	for _, f := range files {
-		if err := b.addFile(f); err != nil {
-			return err
-		}
-	}
-	for _, d := range dirs {
-		if err := b.addDir(d, true); err != nil {
-			return err
-		}
-	}
-	return nil
 }

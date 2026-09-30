@@ -56,9 +56,15 @@ It's still a review aid, not a security control. It helps in a repository whose 
 
 ## Why a kind document must match the host's kind
 
-A policy repository usually keeps the exported kind file, `deploy_approval.sigil`, next to the policies, and sometimes it ends up in the bundle. The loader never takes a kind document as the contract. The contract is the host's Go definition, as [Kinds as contracts](/understanding/kinds/#why-the-contract-comes-from-go) explains, or the file named by `--kind` in the CLI.
+A policy repository usually keeps the exported kind file, `deploy_approval.sigil`, next to the policies, and sometimes it ends up in the bundle. The loader never takes a kind document as the contract. The contract is the host's Go definition, as [Kinds as contracts](/understanding/kinds/#why-the-contract-comes-from-go) explains. The CLI is the exception, [below](#why-the-cli-finds-kinds-among-its-inputs).
 
 A kind document isn't ignored either, when it carries the host's kind name. The loader compares it with the host's `Schema()` and fails on any difference. That catches a stale export: a policy repository that forgot to regenerate `deploy_approval.sigil` after a kind change fails to load, instead of its CI having checked the policies against an outdated contract. A kind document for another kind is ignored, since it describes a contract this host doesn't have.
+
+## Why the CLI finds kinds among its inputs
+
+The stock `sigil` binary has no Go definition to take the contract from, so for the CLI the exported kind file is the contract. Its header names the kind, and so does the header of every policy written against it. Asking for the kind file with a flag as well would say the same thing twice. So the CLI reads kind documents from its inputs, like any other document, and joins each policy to the kind its header names. That makes a repository holding two kinds one `sigil check` run, and a self-contained file, the kind and its policies separated by `---`, something every command can read.
+
+The guarantee the Go loader gives still holds where it matters: the same kind from two sources must be identical, and a host binary compares every kind file with the kind linked into it. A stale export fails there as it fails in `Load`. `--kind` stays for a kind file kept outside the paths, such as one vendored from the host's repository.
 
 ## Related
 

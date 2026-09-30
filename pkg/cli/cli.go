@@ -21,9 +21,10 @@
 //	}
 //
 // That binary is the whole sigil CLI, with every subcommand of the stock
-// one. Commands use the linked kind without --kind, and `sigil export`
-// writes its kind file, which is what the go:generate line above keeps
-// current. A --kind file for a linked kind must match it exactly, which
+// one. Commands use the linked kind for every document whose header names
+// it, with no kind file, and `sigil export` writes its kind file, which is
+// what the go:generate line above keeps current. A kind file for a linked
+// kind, named with --kind or among the paths, must match it exactly, which
 // catches a stale export.
 //
 // The command reference is at https://sigil.specht-labs.de/reference/cli/.
@@ -50,11 +51,11 @@ func Main(opts ...Option) {
 
 // WithKind links k into the binary. `sigil eval` and `sigil test` then
 // decode inputs into k's Go input type and call its real host functions,
-// and every command uses k without --kind. A nil k is ignored.
+// and every command uses k, with no kind file, for the documents written
+// against it. A nil k is ignored.
 //
-// Repeat it for a host with several kinds. Commands then pick one by its
-// kind file, passed with --kind and matched by the kind's name, and
-// `sigil export` takes the kind's name as its argument.
+// Repeat it for a host with several kinds. Each document uses the kind its
+// header names, and `sigil export` takes the kind's name as its argument.
 func WithKind[In any](k *policy.Kind[In]) Option { return command.WithKind(k) }
 
 // WithVersion sets the version `sigil version` reports, typically set at

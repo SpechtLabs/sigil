@@ -25,6 +25,7 @@ func TestTest(t *testing.T) {
 		format  output.Format
 		paths   []string
 		verbose bool
+		noKind  bool // no --kind: the kind comes from the paths
 	}{
 		{name: "pass", paths: []string{"testdata/access"}},
 		{name: "pass_verbose", paths: []string{"testdata/access"}, verbose: true},
@@ -40,6 +41,7 @@ func TestTest(t *testing.T) {
 		{name: "broken_bundle", paths: []string{"testdata/broken"}},
 		{name: "no_test_files", paths: []string{policies}},
 		{name: "invalid_run", paths: []string{"testdata/access"}, run: "("},
+		{name: "kind_among_paths", paths: []string{"testdata/access.sigil", "testdata/access"}, noKind: true},
 		{name: "missing_path", paths: []string{"testdata/nope"}},
 	}
 	for _, tt := range tests {
@@ -48,8 +50,12 @@ func TestTest(t *testing.T) {
 			if format == "" {
 				format = output.Text
 			}
+			kinds := []string{filepath.Join("testdata", "access.sigil")}
+			if tt.noKind {
+				kinds = nil
+			}
 			var out bytes.Buffer
-			err := runTests(context.Background(), &out, &options{output: &format}, filepath.Join("testdata", "access.sigil"), tt.run, tt.verbose, tt.paths)
+			err := runTests(context.Background(), &out, &options{output: &format}, kinds, tt.run, tt.verbose, tt.paths)
 			golden(t, tt.name, render(out.String(), err))
 		})
 	}

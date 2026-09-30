@@ -25,8 +25,8 @@ import (
 )
 
 // NewCommand returns the explain command, configured by opts. Without
-// [WithOutput] it prints text, and without [WithKinds] every run needs
-// --kind.
+// [WithOutput] it prints text, and without [WithKinds] the kinds come from
+// the paths and --kind.
 func NewCommand(opts ...Option) *cobra.Command {
 	format := output.Text
 	o := &options{output: &format}
@@ -50,28 +50,34 @@ every one below it with --recursive. --policy names the policy to explain, or
 a pattern such as 'payments.*' to explain several; without it, explain explains
 every policy in the bundle, one after another.
 
+Each document's header names its kind, and the kind is found among the
+inputs: a kind file among the paths, or a kind document in the same file as the
+policies. --kind adds a kind file the paths don't hold, and a host binary has
+its kinds linked in. The same kind from two sources must be identical, which
+catches a stale export.
+
 A policy is explained with its params as declared, so a policy whose params
 have no defaults is explained only through the policies that invoke it.
 
-explain needs only the kind file, not implementations of the host functions it
+explain needs only the kind files, not implementations of the host functions it
 declares.`,
 		Example: `# List every decision a team policy can produce, and under which conditions
-sigil explain --kind deploy_approval.sigil --policy payments.production deploy/ payments/
+sigil explain --policy payments.production deploy_approval.sigil deploy/ payments/
 
-# Review every policy in a ConfigMap's bundle at once
+# Review every policy in a ConfigMap's bundle against a kind file kept elsewhere
 sigil explain --kind deploy_approval.sigil policies.sigil`,
 		Args:              usage.AtLeast(1, "PATH"),
 		ValidArgsFunction: complete.SigilFiles,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			kindFile, _ := cmd.Flags().GetString("kind")
+			kindFiles, _ := cmd.Flags().GetStringSlice("kind")
 			pattern, _ := cmd.Flags().GetString("policy")
 			recursive, _ := cmd.Flags().GetBool("recursive")
-			src := project.Sources{Paths: args, Recursive: recursive, Stdin: cmd.InOrStdin()}
-			return run(cmd.OutOrStdout(), o, kindFile, pattern, src)
+			src := project.Sources{Paths: args, Kinds: kindFiles, Recursive: recursive, Stdin: cmd.InOrStdin()}
+			return run(cmd.OutOrStdout(), o, pattern, src)
 		},
 	}
 
-	cmd.Flags().StringP("kind", "k", "", "Kind file the policy is written against; optional in a binary with the kind linked in")
+	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policies' kinds are found among the paths and the kinds linked in (repeatable)")
 	cmd.Flags().StringP("policy", "p", "", "Name or pattern of the policies to explain; every policy in the bundle when omitted")
 	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories of directory arguments too")
 	// These only fail for an undefined flag, which the tests would catch.
@@ -103,28 +109,25 @@ type Entry struct {
 	Payload    []string `json:"payload,omitempty" yaml:"payload,omitempty"`   // a rule's payload arguments, as `name = expression`
 }
 
-func run(out io.Writer, o *options, kindFile, pattern string, src project.Sources) humane.Error {
-	k, err := project.LoadKind(kindFile, o.kinds)
+func run(out io.Writer, o *options, pattern string, src project.Sources) humane.Error {
+	proj, err := project.Load(src, o.kinds)
 	if err != nil {
 		return err
 	}
-	b, err := k.Bundle(src)
-	if err != nil {
-		return err
+	proj.Check()
+	if errs := proj.Errors(); errs != nil {
+		return pretty.Diagnose(proj.Resolve(errs), proj.SourceOf, "the bundle doesn't check, so nothing was explained", "fix the errors above; sigil check reports every problem in a bundle at once")
 	}
-	b.Check()
-	if errs := b.Errors(); errs != nil {
-		return pretty.Diagnose(b.Resolve(errs), b.SourceOf, "the bundle doesn't check, so nothing was explained", "fix the errors above; sigil check reports every problem in a bundle at once")
-	}
-	roots, serr := selectRoots(b.Policies(), pattern)
+	roots, serr := selectRoots(proj.Policies(), pattern)
 	if serr != nil {
 		return serr
 	}
 	var explanations []Explanation
 	for _, root := range roots {
+		b := proj.Group(root).Bundle
 		prog, errs := b.Compile(root, bundle.Options{Static: true})
 		if errs != nil {
-			return pretty.Diagnose(b.Resolve(errs), b.SourceOf, "policy "+root+" doesn't compile, so it wasn't explained", "fix the errors above; sigil check reports every problem in a bundle at once")
+			return pretty.Diagnose(proj.Resolve(errs), proj.SourceOf, "policy "+root+" doesn't compile, so it wasn't explained", "fix the errors above; sigil check reports every problem in a bundle at once")
 		}
 		explanations = append(explanations, explain(prog, b))
 	}

@@ -477,12 +477,12 @@ cli.Main(cli.WithKind(deploy.Kind), cli.WithKind(access.Kind), cli.WithVersion(v
 go generate ./cmd/sigilc
 ```
 
-With two kinds linked in, every policy command needs `--kind` with the exported kind file, so `sigilc` knows which contract to check against; without it, it stops and lists the kinds it links. Run these from `examples/`. `mise run policies` runs the checks and the tests for both kinds, the way the examples CI job does.
+With both kinds linked in, no command needs `--kind`: each document is checked against the kind its header names, and a kind file among the paths must match the linked kind exactly, which is how a stale export fails the check. Run these from `examples/`. `mise run policies` runs the checks and the tests for both kinds, the way the examples CI job does.
 
-Check every team policy against its kind, with the platform's deploy documents as the trusted source, the same `Require` the service makes, and the lint levels from `policies/sigil.yaml`. The trusted source is `policies/platform/deploy`, not `policies/platform`: a bundle that mixes documents of two kinds doesn't load.
+Check every team policy against its kind, with the platform's deploy documents as the trusted source, the same `Require` the service makes, and the lint levels from `policies/sigil.yaml`:
 
 ```bash
-mise run sigilc check --kind policies/deploy_approval.sigil --config policies/sigil.yaml \
+mise run sigilc check --config policies/sigil.yaml \
   --require deploy.guardrails --trusted policies/platform/deploy \
   --policy 'payments.*' --policy 'checkout.*' -R policies/teams
 ```
@@ -490,30 +490,28 @@ mise run sigilc check --kind policies/deploy_approval.sigil --config policies/si
 The access policy gets the same check against the other kind:
 
 ```bash
-mise run sigilc check --kind policies/access_grant.sigil --config policies/sigil.yaml \
+mise run sigilc check --config policies/sigil.yaml \
   --require access.guardrails --trusted policies/platform/access \
   --policy access.main policies/access
 ```
 
-Run each kind's test files:
+Run every test file, for both kinds, in one run; each file runs with the kind of the policy it names:
 
 ```bash
-mise run sigilc test --kind policies/deploy_approval.sigil policies/platform/deploy policies/teams
-mise run sigilc test --kind policies/access_grant.sigil policies/platform/access policies/access
+mise run sigilc test policies
 ```
 
 ```text
+ok    policies/access/main_test.yaml  17 cases
 ok    policies/teams/checkout/production_test.yaml  9 cases
 ok    policies/teams/payments/production_test.yaml  16 cases
-✓ 25 cases passed in 2 files
-ok    policies/access/main_test.yaml  17 cases
-✓ 17 cases passed in 1 file
+✓ 42 cases passed in 3 files
 ```
 
 Flatten a team policy into the rules it adds up to, with each invocation's conditions pushed into the rules and every param replaced by its value. `--policy` takes the name the document declares, `payments.production`, not a file path:
 
 ```bash
-mise run sigilc explain --kind policies/deploy_approval.sigil \
+mise run sigilc explain \
   --policy payments.production -R policies/platform/deploy policies/teams
 ```
 
@@ -556,7 +554,7 @@ payments.production: 7 rules from 3 policies and 1 module
 `explain` on the access policy lists every grant it can make, and the guardrails' asserts, with the phase each runs in:
 
 ```bash
-mise run sigilc explain --kind policies/access_grant.sigil \
+mise run sigilc explain \
   --policy access.main -R policies/platform/access policies/access
 ```
 

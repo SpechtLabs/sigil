@@ -216,13 +216,13 @@ The loader fails on any broken document, even one the root never imports, and on
 
 ```shell
 sigil fmt --check .
-sigil check --kind deploy_approval.sigil \
+sigil check \
   --require deploy.guardrails --trusted deploy/ \
   --policy 'payments.*' --policy 'checkout.*' \
-  teams/
+  deploy_approval.sigil teams/
 ```
 
-`check` reads `teams/` into one bundle, reads `deploy/` as the trusted source, fails on a team document that claims a platform name or on a name two teams both define, and checks that every root invokes `deploy.guardrails` unconditionally.
+`check` reads `teams/` into one bundle, with the kind from `deploy_approval.sigil`, reads `deploy/` as the trusted source, fails on a team document that claims a platform name or on a name two teams both define, and checks that every root invokes `deploy.guardrails` unconditionally.
 
 When overlays add documents to the ConfigMap, a check of one directory doesn't see what the overlays merge in, and two teams can pass CI separately and still collide on a name. Check the rendered output instead. Documents delimit themselves by their headers, so every key of the ConfigMap can go to `sigil check` as one stream:
 
@@ -233,7 +233,7 @@ kustomize build overlays/production \
       --require deploy.guardrails --trusted deploy/ --policy '*' -
 ```
 
-Errors from stdin still name the document, as in `<stdin>:42:5 (payments.production)`, so they point back to a file in the repository.
+The rendered ConfigMap holds only the policies, so `--kind` names the kind file. Errors from stdin still name the document, as in `<stdin>:42:5 (payments.production)`, so they point back to a file in the repository.
 
 The rest of a policy repository's pipeline, tests and the kind export check included, is in [Check policies in CI](/guides/ci/).
 

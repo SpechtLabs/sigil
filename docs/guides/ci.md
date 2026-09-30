@@ -26,12 +26,12 @@ payments/production.sigil
 Check every document in the repository against the kind:
 
 ```text
-sigil check --kind deploy_approval.sigil --recursive .
+sigil check --recursive .
 ```
 
 `check` type-checks and compiles every document it's given, including ones no policy imports, so a broken document fails the pull request instead of failing the host's `Load` later. Errors fail the job; warnings from [lints](/reference/lints/) are printed and don't.
 
-`--recursive .` also picks up the checked-in `deploy_approval.sigil`. A kind document among the inputs must match the `--kind` file exactly, and in a host binary, `--kind` must match the kind linked in, so CI notices an export that wasn't regenerated.
+`--recursive .` also picks up the checked-in `deploy_approval.sigil`, which is where `check` finds the kind the policies name, and checks the kind file itself. A repository with policies of several kinds checks them all in this one run. In a host binary, the kind file must match the kind linked in, so CI notices an export that wasn't regenerated.
 
 Point it at the right directory. When the paths hold no `.sigil` files, `check` warns `no .sigil files found, so nothing was checked` and still exits 0, so a job that checks the wrong directory passes. Directory arguments contribute only the files directly inside them unless you pass `--recursive`.
 
@@ -54,10 +54,10 @@ lints:
 The host loads each team policy with `policy.Require("deploy.guardrails", policy.From(...))`. Run the same check in CI, so a team finds a gated or missing guardrail in its pull request instead of in a service that refuses to load the policy:
 
 ```text
-sigil check --kind deploy_approval.sigil \
+sigil check \
   --require deploy.guardrails --trusted deploy/ \
   --policy 'payments.*' --policy 'checkout.*' \
-  payments/ checkout/
+  deploy_approval.sigil payments/ checkout/
 ```
 
 1. **Name the required policy with `--require`.** Every root must invoke it unconditionally, through top-level invocations only. A team policy that gates it fails:
@@ -70,7 +70,7 @@ sigil check --kind deploy_approval.sigil \
      = help: the host requires deploy.guardrails for every DeployApproval policy; move the call to the top level
    ```
 
-2. **Pass the host's trusted source with `--trusted`.** Required policies, and everything they import and invoke, then come from `deploy/`, the way `policy.From` reads them in the host, and a team document that claims one of their names is an error. Use the same source the host uses; a trusted directory is always read recursively. Don't also put the trusted directory among the bundle paths, by name or through `--recursive .`: its documents would then be defined twice, and every one of them fails with `policy deploy.guardrails is defined twice`.
+2. **Pass the host's trusted source with `--trusted`.** Required policies, and everything they import and invoke, then come from `deploy/`, the way `policy.From` reads them in the host, and a team document that claims one of their names is an error. Use the same source the host uses; a trusted directory is always read recursively. A trusted directory that's also among the bundle paths, by name or through `--recursive .`, is read as trusted only.
 
 3. **Name the roots with `--policy`.** Give a name or a pattern per team, and add one when a team joins. A pattern that matches nothing is an error, so a renamed team can't drop out of the check unnoticed.
 
@@ -85,12 +85,12 @@ To review what a ConfigMap change does, run `sigil explain` on the same input wi
 Run the test cases:
 
 ```text
-sigil test --kind deploy_approval.sigil
+sigil test
 ```
 
 `test` reads every `.sigil` file under the current directory into one bundle and runs every `*_test.yaml` against it, and exits 1 when a case fails. [Test your policies](/guides/test-policies/) shows how to write the cases.
 
-Use the host team's build of the CLI for this step. The stock binary has only the signatures of the kind's host functions, and it fails every case whose evaluation reaches a call, such as `deploy.common`'s `split`. [Build a host binary](/guides/host-binary/) shows how the host team builds one. Run `check` with it too, so the `--kind` file is compared with the kind linked into it.
+Use the host team's build of the CLI for this step. The stock binary has only the signatures of the kind's host functions, and it fails every case whose evaluation reaches a call, such as `deploy.common`'s `split`. [Build a host binary](/guides/host-binary/) shows how the host team builds one. Run `check` with it too, so the kind file is compared with the kind linked into it.
 
 ## Keep the kind file current
 
@@ -109,7 +109,7 @@ With `-o json`, `check` prints one record per diagnostic, with `severity`, `mess
 
 ```sh
 status=0
-sigil check --kind deploy_approval.sigil --recursive . -o json > check.json || status=$?
+sigil check --recursive . -o json > check.json || status=$?
 jq -r '.[] | "::\(.severity) file=\(.file),line=\(.line),col=\(.column),title=\(.lint // "sigil check")::\(.message)"' check.json
 exit "$status"
 ```
@@ -120,7 +120,7 @@ exit "$status"
 
 ```sh
 status=0
-sigil test --kind deploy_approval.sigil -o json > test.json || status=$?
+sigil test -o json > test.json || status=$?
 jq -r '.[] | .file as $f | .cases[] | select(.passed | not)
   | "::error file=\($f),line=\(.line),title=\(.name)::\((.failures // [.error]) | join("; "))"' test.json
 exit "$status"
@@ -135,12 +135,12 @@ A test file that can't run at all, because it's invalid or its policy doesn't co
 ```sh
 set -eu
 sigil fmt --check .
-sigil check --kind deploy_approval.sigil --recursive .
-sigil check --kind deploy_approval.sigil \
+sigil check --recursive .
+sigil check \
   --require deploy.guardrails --trusted deploy/ \
   --policy 'payments.*' --policy 'checkout.*' \
-  payments/ checkout/
-sigil test --kind deploy_approval.sigil
+  deploy_approval.sigil payments/ checkout/
+sigil test
 ```
 
 The [example service](/guides/example-service/) runs the check and test steps on its own policies with its host binary, `sigilc`, in the `policies` task of `examples/.mise.toml`.

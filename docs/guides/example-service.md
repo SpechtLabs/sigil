@@ -112,10 +112,10 @@ Startup is the exception. With no bundle loaded yet there's nothing to fall back
 
 ## Check policies with the host's binary
 
-The stock `sigil` binary can't run the kind's `split` host function, so the example builds its own, `sigilc`, with the [`cli` package](/guides/host-binary/), and links both kinds in. With two kinds linked, every policy command takes `--kind` with the exported kind file. A policy repository's CI runs it the same way the service loads the policies. `mise run policies` runs the checks and the tests for both kinds. The team policies' check, from `examples/`, requires the guardrails from the same trusted directory the service embeds:
+The stock `sigil` binary can't run the kind's `split` host function, so the example builds its own, `sigilc`, with the [`cli` package](/guides/host-binary/), and links both kinds in. With the kinds linked, no command needs `--kind`; each document uses the kind its header names. A policy repository's CI runs it the same way the service loads the policies. `mise run policies` runs the checks and the tests for both kinds. The team policies' check, from `examples/`, requires the guardrails from the same trusted directory the service embeds:
 
 ```bash
-mise run sigilc check --kind policies/deploy_approval.sigil --config policies/sigil.yaml \
+mise run sigilc check --config policies/sigil.yaml \
   --require deploy.guardrails --trusted policies/platform/deploy \
   --policy 'payments.*' --policy 'checkout.*' -R policies/teams
 ```

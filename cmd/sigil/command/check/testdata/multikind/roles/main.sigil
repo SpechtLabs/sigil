@@ -1,0 +1,7 @@
+policy roles.main: Roles@1
+
+let unused = user
+
+when user != "" {
+  read(reason: member)
+}

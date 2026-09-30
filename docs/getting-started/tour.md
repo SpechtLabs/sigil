@@ -206,7 +206,7 @@ p, err := Deploy.Load(policies, "payments.production", policy.Require("deploy.gu
 With calls to two other files, it helps to see the policy flattened. `sigil explain` inlines every invocation and pushes its gates down into each rule:
 
 ```text
-$ sigil explain --kind deploy_approval.sigil --policy payments.production deploy/ payments/
+$ sigil explain --policy payments.production deploy_approval.sigil deploy/ payments/
 payments.production: 7 rules from 3 policies and 1 module
 
   deny(reason: not_eligible)        payments.production:7 → deploy.guardrails:8

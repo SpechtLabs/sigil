@@ -1,10 +1,11 @@
-testdata/stale/deploy_approval.sigil:1:6: error: kind document DeployApproval doesn't match the host's kind
+testdata/stale/deploy_approval.sigil:1:6: error: kind document DeployApproval differs from the one at testdata/deploy_approval.sigil:1:6
   |
 1 | kind DeployApproval version 2
   |      ^^^^^^^^^^^^^^
-  = help: the host's Go definition is the contract; regenerate this file from Schema()
+  = help: a kind has one definition, and the first source wins: the kind files named with --kind or in sigil.yaml, then the paths, then the trusted paths; regenerate this document from the host's Schema(), or remove it
 
 ✗ checked 1 file, 1 error
 --- error ---
 check found 1 error
 advice: each diagnostic above says where the problem is and how to fix it
+advice: fix the kind file, or regenerate it from the host's Schema(); `sigil fmt --write` rewrites the old decision syntax

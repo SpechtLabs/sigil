@@ -7,7 +7,7 @@ permalink: /reference/kind-files/
 
 The kind file format, its validity rules and its versioning rules.
 
-A kind file is what a host's `Schema()` exports from the kind it defines in Go with `policy.NewKind` ([Kinds](/reference/go-api/#kinds)), and what `sigil check --kind`, `eval`, `explain` and `test` read.
+A kind file is what a host's `Schema()` exports from the kind it defines in Go with `policy.NewKind` ([Kinds](/reference/go-api/#kinds)), and what `sigil check`, `eval`, `explain` and `test` read, among their inputs or named with `--kind` ([Kinds](/reference/cli/#kinds)).
 
 - Every policy names exactly one kind in its header and is type-checked against it.
 - Kind files use the `.sigil` extension, like policies and modules. The `kind` header tells them apart.
@@ -437,7 +437,7 @@ deploy_approval.sigil:5:30: error: enum Stage: value "release" collides with inp
 
 | Checked by                                  | Reports                                                   |
 | ------------------------------------------- | --------------------------------------------------------- |
-| The kind loader behind `sigil check --kind` | every violation, with its position                        |
+| The kind loader behind `sigil check`        | every violation, with its position                        |
 | `NewKind` in Go                             | the same rules; panics listing every problem at program start, so a kind that exists can always be exported |
 
 ## Canonical form

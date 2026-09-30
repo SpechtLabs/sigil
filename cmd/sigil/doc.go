@@ -13,8 +13,10 @@
 //
 // Every PATH is a file, a directory or "-" for stdin, and the documents
 // found in all of them form one bundle, indexed by the names in their
-// headers. --kind (-k) names the kind file, which is never part of the
-// bundle. Every command takes two global flags: --output (-o) picks text,
+// headers. Each document is checked against the kind its header names,
+// found among the paths, in a kind file named with --kind (-k), or linked
+// into a host binary; one run can hold documents of several kinds. Every
+// command takes two global flags: --output (-o) picks text,
 // json or yaml, and --color picks auto, always or never. Every command
 // exits with status 0 on success and 1 on any failure.
 //
@@ -58,7 +60,7 @@
 //	}
 //
 // That binary decodes inputs into the host's own Go types, calls its
-// functions, and uses the linked kind without --kind. This command is the
+// functions, and uses the linked kind with no kind file. This command is the
 // same call with no kind linked in: cli.Main(cli.WithVersion(version)).
 //
 // The full reference, with every flag, output record and error message, is

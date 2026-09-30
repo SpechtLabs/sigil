@@ -1,0 +1,5 @@
+policy roles.main: Role@1
+
+when user != "" {
+  read(reason: member)
+}

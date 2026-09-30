@@ -7,12 +7,12 @@ permalink: /reference/cli/
 
 Every `sigil` command: its synopsis, flags, behavior, output and exit status. The files the commands read have pages of their own: [test files](/reference/test-files/) and [`sigil.yaml`](/reference/lints/#sigil-yaml).
 
-The tools read the exported kind file (`deploy_approval.sigil` in the running example), so they work in a team's policy repository without the host's Go code.
+The tools read the exported kind file (`deploy_approval.sigil` in the running example) like any other input, so they work in a team's policy repository without the host's Go code.
 
 | Command | Does | Needs |
 | --- | --- | --- |
 | [`sigil fmt`](#sigil-fmt) | Rewrites files into the one canonical style, like `gofmt` | Nothing |
-| [`sigil check`](#sigil-check) | Parses, type-checks and compiles policies against a kind, and lints them | Kind file |
+| [`sigil check`](#sigil-check) | Parses, type-checks and compiles policies against their kinds, and lints them | Kind file |
 | [`sigil eval`](#sigil-eval) | Evaluates a policy against a JSON input and prints the result and trace | Kind file; a host binary for functions |
 | [`sigil explain`](#sigil-explain) | Flattens a policy into its guarded decisions, with every invocation inlined | Kind file |
 | [`sigil test`](#sigil-test) | Runs test cases: an input plus the expected decision and reason, or the asserts that fail | Kind file; a host binary for functions |
@@ -33,10 +33,10 @@ The tools read the exported kind file (`deploy_approval.sigil` in the running ex
 Commands that read policies take their input the way `kubectl -f` does: every argument is a file, a directory or `-` for stdin, and the tool combines all the documents it finds into one bundle.
 
 ```text
-sigil check   --kind deploy_approval.sigil deploy/*.sigil payments/*.sigil
-sigil check   --kind deploy_approval.sigil policies.sigil
-sigil explain --kind deploy_approval.sigil --policy payments.production deploy/ payments/
-cat policies.sigil | sigil eval --kind deploy_approval.sigil --input release.json --policy payments.production -
+sigil check   deploy_approval.sigil deploy/*.sigil payments/*.sigil
+sigil check   policies.sigil
+sigil explain --policy payments.production deploy_approval.sigil deploy/ payments/
+cat policies.sigil | sigil eval --input release.json --policy payments.production -
 ```
 
 | Argument | Reads |
@@ -45,10 +45,30 @@ cat policies.sigil | sigil eval --kind deploy_approval.sigil --input release.jso
 | A directory | The `*.sigil` files directly inside it. `check`, `eval` and `explain` include subdirectories with `-R` (`--recursive`); `fmt` and `test` always search directories recursively. Entries whose names start with `.` are skipped, as the [loader](/reference/bundles/#loading-files) skips them, so a mounted ConfigMap volume reads as its keys |
 | `-` | One stream from stdin, which may hold several documents. `eval` can't read both the bundle and `--input` from stdin |
 
-- Documents from all arguments form one bundle, indexed by the names in their headers, as the host's `Load` does. A name defined in two files is an error here too.
-- `--kind` (`-k`) names the kind file, which is never part of the bundle.
-- A kind document for the same kind among the inputs, for example because a glob matched the exported file, must match `--kind` exactly, or the command fails. Kind documents for other kinds are ignored.
-- A missing `--kind` is an error, except in a [host binary](#host-functions-and-host-binaries).
+- Documents from all arguments form one bundle, indexed by the names in their headers, as the host's `Load` does. A name defined in two files is an error here too, even when the two documents are of different kinds.
+- Every file is read and parsed once, however many arguments name it, and a parse error is reported once.
+
+### Kinds
+
+Each policy's and module's header names its kind, `policy payments.production: DeployApproval@1`. The command finds that kind in these sources, in this order:
+
+1. The kinds linked into a [host binary](#host-functions-and-host-binaries).
+2. The kind documents in the files `--kind` (`-k`) names. Repeat it for several kind files.
+3. The kind documents among the inputs: a kind file in a directory argument, or a kind document in the same file as the policies, separated by `---`.
+
+- One run can hold documents of several kinds. Each document is checked, compiled and evaluated against its own kind.
+- A kind file named with `--kind` contributes only its kind documents. Its other documents count only when the file is also among the inputs.
+- The same kind from two sources must be identical, so a kind file both named with `--kind` and found in `.` is fine. A kind document that differs from an earlier one is an error at the later one. A `--kind` file that differs from a linked kind fails the command with `doesn't match the kind DeployApproval linked into this binary`, a stale export.
+- The inputs' kind documents are checked like every other document, so `sigil check` reports an error in a kind file too.
+- A document whose kind no source provides is an error at the kind's name:
+
+```text
+payments/production.sigil:1:29: error: policy payments.production is written against kind DeployAproval, but no kind DeployAproval was found
+  |
+1 | policy payments.production: DeployAproval@1
+  |                             ^^^^^^^^^^^^^
+  = help: did you mean `DeployApproval`? add its kind file to the paths or name it with --kind
+```
 
 The root policy:
 
@@ -106,8 +126,8 @@ runtime error: deploy/common.sigil:5:3: host function split failed: no implement
 A host binary is the whole command line with the host's kind linked in by [package `cli`](/reference/go-api/#package-cli):
 
 - It decodes inputs into the host's own Go types and calls its real functions in `eval` and `test`.
-- Every command uses the linked kind without `--kind`. A `--kind` file for the same kind must match it exactly, which catches a stale export.
-- With several kinds linked (`cli.WithKind` repeated), a `--kind` file picks one by the kind's name, and `sigil export` takes the kind's name as its argument.
+- Every command uses the linked kind for the documents written against it, with no kind file. A kind file for the same kind, named with `--kind` or among the inputs, must match it exactly, which catches a stale export.
+- With several kinds linked (`cli.WithKind` repeated), each document uses the kind its header names, and `sigil export` takes the kind's name as its argument.
 - `sigil version` reports what `cli.WithVersion` set.
 
 The running example's `deploy.common` calls `split`, so the `eval` and `test` samples on this page come from a host binary. To build one, see [Build a host binary](/guides/host-binary/). `go test` doesn't need one: [`policytest`](/reference/go-api/#package-policytest) runs inside the host.
@@ -211,7 +231,7 @@ Exits 1 under `--check` when a file isn't formatted, and in any mode when a file
 
 ## `sigil check`
 
-Parses and type-checks policies and modules against a kind, resolves imports and invocations, detects `let`, import and invocation cycles, compiles every policy, and reports [lints](/reference/lints/).
+Parses and type-checks policies and modules against their kinds, resolves imports and invocations, detects `let`, import and invocation cycles, compiles every policy, and reports [lints](/reference/lints/).
 
 ```text
 sigil check PATH... [flags]
@@ -219,7 +239,7 @@ sigil check PATH... [flags]
 
 | Flag | Default | Does |
 | --- | --- | --- |
-| `-k`, `--kind` | none | Kind file to check against; optional in a host binary |
+| `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `-R`, `--recursive` | off | Reads `.sigil` files in subdirectories of directory arguments too |
 | `--require` | none | Policy every root must invoke unconditionally. Repeatable |
 | `--trusted` | none | File or directory to read required policies from, as `policy.From` does. Repeatable |
@@ -227,7 +247,7 @@ sigil check PATH... [flags]
 | `--config` | nearest `sigil.yaml` | Configuration file with [lint levels](/reference/lints/#sigil-yaml) |
 
 - Needs host function signatures from the kind file, not their implementations.
-- Checks every document in the bundle and compiles every policy, including ones no policy imports.
+- Checks every document in the bundle and compiles every policy, including ones no policy imports. Documents of several kinds are checked in one run, and the kind documents among the inputs are checked too.
 - Compiling catches what type-checking can't, such as an invocation argument outside its param's `min` and `max`.
 - A policy whose params have no defaults, like `deploy.production`, is checked and compiled with them unbound, the way `explain` shows it.
 - Errors fail the check; warnings are printed and don't. Both use the [error format](#error-messages), in file and line order, and a warning names its lint.
@@ -238,13 +258,14 @@ sigil check PATH... [flags]
 
 - `--require` makes the check a host makes with [`policy.Require`](/reference/go-api/#require): every root policy must invoke the named policy unconditionally, through top-level invocations only. Repeat it to require several.
 - `--trusted` does what [`policy.From`](/reference/go-api/#from) does: required policies, and everything they import and invoke, are read from those paths, and the bundle may not define any name they define. Trusted directories are always read recursively.
+- A file under a trusted path is read as trusted only, even when a path argument also holds it, so `--trusted deploy/ .` reads `deploy/` once.
 - `--policy` names the roots, by name or by pattern, and can be repeated. Without it, the roots are the bundle's policies that no other policy invokes, apart from the required ones.
+- A required policy applies to the roots of its own kind. A required name no document defines applies to every root, which then fails for not invoking it.
 - With `--trusted`, the trusted documents aren't part of the bundle, so they're never roots.
 
 ```text
-sigil check --kind deploy_approval.sigil \
-  --require deploy.guardrails --trusted deploy/ \
-  --policy 'payments.*' payments/
+sigil check --require deploy.guardrails --trusted deploy/ \
+  --policy 'payments.*' deploy_approval.sigil payments/
 ```
 
 To run it in CI, see [Check policies in CI](/guides/ci/#check).
@@ -287,7 +308,7 @@ sigil eval PATH... --input FILE [flags]
 | Flag | Default | Does |
 | --- | --- | --- |
 | `-i`, `--input` | required | Input document (JSON) to evaluate against, or `-` for stdin |
-| `-k`, `--kind` | none | Kind file the policy is written against; optional in a host binary |
+| `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `-p`, `--policy` | the bundle's only policy | Name of the policy to evaluate; required when the bundle holds more than one |
 | `-R`, `--recursive` | off | Reads `.sigil` files in subdirectories of directory arguments too |
 
@@ -296,7 +317,7 @@ sigil eval PATH... --input FILE [flags]
 - A policy that reaches a host function call needs a [host binary](#host-functions-and-host-binaries).
 
 ```text
-$ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
+$ sigil eval --input owner-deploy.json --policy payments.production deploy_approval.sigil deploy/ payments/
 payments.production: review(reason: service_owner)
   approvers = ["payments-leads"]
 
@@ -358,7 +379,7 @@ trace: no rule fired
 The separation-of-duties assert from the examples' access policies, failing for an auditor who also got deploy rights through on-call:
 
 ```text
-$ sigil eval --kind access_grant.sigil --input access/testdata/auditor-sre.json --policy access.main access platform/access
+$ sigil eval --input access/testdata/auditor-sre.json --policy access.main access_grant.sigil access platform/access
 access.main: an assert failed, the host falls back to no decisions
 
 assert sod_auditor_deployer failed at access/main.sigil:6:1 → platform/access/guardrails.sigil:11:1
@@ -379,7 +400,7 @@ trace: 2 candidates
 A kind that declares `conflict deny(reason: conflicting_rules)` and leaves two deny reasons unranked, with both firing:
 
 ```text
-$ sigil eval --kind access_grant.sigil --input conflict.json --policy access.main access
+$ sigil eval --input conflict.json --policy access.main access_grant.sigil access
 access.main: the candidates conflict, the host falls back to deny(reason: conflicting_rules), the kind's conflict outcome
 
 conflict: collect one: 2 candidates at the top rank
@@ -444,12 +465,12 @@ sigil explain PATH... [flags]
 
 | Flag | Default | Does |
 | --- | --- | --- |
-| `-k`, `--kind` | none | Kind file the policy is written against; optional in a host binary |
+| `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `-p`, `--policy` | every policy | Name or pattern of the policies to explain |
 | `-R`, `--recursive` | off | Reads `.sigil` files in subdirectories of directory arguments too |
 
 ```text
-$ sigil explain --kind deploy_approval.sigil --policy payments.production deploy/ payments/
+$ sigil explain --policy payments.production deploy_approval.sigil deploy/ payments/
 payments.production: 7 rules from 3 policies and 1 module
 
   deny(reason: not_eligible)        payments.production:7 → deploy.guardrails:8
@@ -528,18 +549,18 @@ sigil test [PATH...] [flags]
 
 | Flag | Default | Does |
 | --- | --- | --- |
-| `-k`, `--kind` | none | Kind file the policies are written against; optional in a host binary |
+| `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `--run` | every case | Only runs cases whose name matches this regular expression |
 | `-v`, `--verbose` | off | Lists passing cases too |
 
 - Every path is a file or a directory, searched recursively. With no paths, `test` searches the current directory.
-- The `.sigil` files it finds form one bundle, and every test file found runs against it.
+- The `.sigil` files it finds form one bundle, and every test file found runs against it, with the kind of the policy it names.
 - A case that reaches a host function needs a [host binary](#host-functions-and-host-binaries); the stock binary fails it with the runtime error.
 
 The output follows `go test`. Here the second case expects the wrong reason:
 
 ```text
-$ sigil test --kind deploy_approval.sigil
+$ sigil test
 --- FAIL: payments/production_test.yaml:10: a short soak is denied
       want deny(reason: not_eligible)
       got  deny(reason: soak_too_short)

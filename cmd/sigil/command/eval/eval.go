@@ -29,8 +29,8 @@ import (
 )
 
 // NewCommand returns the eval command, configured by opts. Without
-// [WithOutput] it prints text, and without [WithKinds] every run needs
-// --kind.
+// [WithOutput] it prints text, and without [WithKinds] the kinds come from
+// the paths and --kind.
 func NewCommand(opts ...Option) *cobra.Command {
 	format := output.Text
 	o := &options{output: &format}
@@ -52,6 +52,12 @@ their headers. A directory contributes the .sigil files directly inside it, or
 every one below it with --recursive. If the bundle holds exactly one policy,
 that policy is evaluated; otherwise --policy names the one to evaluate.
 
+Each document's header names its kind, and the kind is found among the
+inputs: a kind file among the paths, or a kind document in the same file as the
+policies. --kind adds a kind file the paths don't hold, and a host binary has
+its kinds linked in. The same kind from two sources must be identical, which
+catches a stale export.
+
 The input is a JSON object with one key per input. A key the kind doesn't
 declare is an error, and a missing one reads as its zero value. Durations are
 strings in Sigil's syntax ("1h30m"), timestamps RFC 3339 strings, and only
@@ -61,29 +67,29 @@ The stock sigil binary knows the host functions' signatures but not their
 implementations, so a rule that calls one fails with a runtime error. A host
 builds its own sigil binary with its kind and functions linked in (see the
 pkg/cli package); that binary evaluates with the real functions and needs no
---kind. eval exits non-zero when the evaluation fails: on a runtime error, a
+kind file. eval exits non-zero when the evaluation fails: on a runtime error, a
 conflict or a failing assert.`,
 		Example: `# Evaluate the only policy in a file and print the decision with its trace
 sigil eval --kind deploy_approval.sigil --input release.json gate.sigil
 
-# Pick the root policy from the documents in two directories
-sigil eval --kind deploy_approval.sigil --input release.json --policy payments.production deploy/ payments/
+# Pick the root policy from the documents in two directories and the kind file
+sigil eval --input release.json --policy payments.production deploy_approval.sigil deploy/ payments/
 
-# Read the bundle from stdin, for example a rendered ConfigMap key
-kustomize build . | yq '.data["policies.sigil"]' | sigil eval --kind deploy_approval.sigil --input release.json --policy payments.production -`,
+# Read a self-contained bundle from stdin, for example a rendered ConfigMap key
+kustomize build . | yq '.data["policies.sigil"]' | sigil eval --input release.json --policy payments.production -`,
 		Args:              usage.AtLeast(1, "PATH"),
 		ValidArgsFunction: complete.SigilFiles,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			kindFile, _ := cmd.Flags().GetString("kind")
+			kindFiles, _ := cmd.Flags().GetStringSlice("kind")
 			input, _ := cmd.Flags().GetString("input")
 			name, _ := cmd.Flags().GetString("policy")
 			recursive, _ := cmd.Flags().GetBool("recursive")
-			src := project.Sources{Paths: args, Recursive: recursive, Stdin: cmd.InOrStdin()}
-			return run(cmd.Context(), cmd.OutOrStdout(), o, kindFile, input, name, src)
+			src := project.Sources{Paths: args, Kinds: kindFiles, Recursive: recursive, Stdin: cmd.InOrStdin()}
+			return run(cmd.Context(), cmd.OutOrStdout(), o, input, name, src)
 		},
 	}
 
-	cmd.Flags().StringP("kind", "k", "", "Kind file the policy is written against; optional in a binary with the kind linked in")
+	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policy's kind is found among the paths and the kinds linked in (repeatable)")
 	cmd.Flags().StringP("input", "i", "", `Input document (JSON) to evaluate the policy against, or "-" for stdin (required)`)
 	cmd.Flags().StringP("policy", "p", "", "Name of the policy to evaluate; required when the bundle holds more than one")
 	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories of directory arguments too")
@@ -96,11 +102,11 @@ kustomize build . | yq '.data["policies.sigil"]' | sigil eval --kind deploy_appr
 	return cmd
 }
 
-func run(ctx context.Context, out io.Writer, o *options, kindFile, input, name string, src project.Sources) humane.Error {
+func run(ctx context.Context, out io.Writer, o *options, input, name string, src project.Sources) humane.Error {
 	if input == "-" && slices.Contains(src.Paths, "-") {
 		return humane.New("the input and the bundle can't both come from stdin", "pass the input with --input FILE, or name the bundle's files")
 	}
-	k, prog, err := compile(o, kindFile, name, src)
+	k, prog, err := compile(o, name, src)
 	if err != nil {
 		return err
 	}
@@ -125,29 +131,27 @@ func run(ctx context.Context, out io.Writer, o *options, kindFile, input, name s
 	return nil
 }
 
-// compile loads the kind and the bundle and compiles the root policy.
-func compile(o *options, kindFile, name string, src project.Sources) (*project.Kind, *eval.Policy, humane.Error) {
-	k, err := project.LoadKind(kindFile, o.kinds)
+// compile loads the project and compiles the root policy against its
+// kind, which it returns with the compiled policy.
+func compile(o *options, name string, src project.Sources) (*project.Kind, *eval.Policy, humane.Error) {
+	p, err := project.Load(src, o.kinds)
 	if err != nil {
 		return nil, nil, err
 	}
-	b, err := k.Bundle(src)
+	p.Check()
+	if errs := p.Errors(); errs != nil {
+		return nil, nil, pretty.Diagnose(p.Resolve(errs), p.SourceOf, "the bundle doesn't check, so nothing was evaluated", "fix the errors above; sigil check reports every problem in a bundle at once")
+	}
+	root, err := project.Root(p.Policies(), name)
 	if err != nil {
 		return nil, nil, err
 	}
-	b.Check()
-	if errs := b.Errors(); errs != nil {
-		return nil, nil, pretty.Diagnose(b.Resolve(errs), b.SourceOf, "the bundle doesn't check, so nothing was evaluated", "fix the errors above; sigil check reports every problem in a bundle at once")
-	}
-	root, err := project.Root(b.Policies(), name)
-	if err != nil {
-		return nil, nil, err
-	}
-	prog, errs := b.Compile(root, bundle.Options{Binding: k.Binding})
+	g := p.Group(root)
+	prog, errs := g.Bundle.Compile(root, bundle.Options{Binding: g.Kind.Binding})
 	if errs != nil {
-		return nil, nil, pretty.Diagnose(b.Resolve(errs), b.SourceOf, "the policy doesn't compile, so nothing was evaluated", "fix the errors above; sigil check reports every problem in a bundle at once")
+		return nil, nil, pretty.Diagnose(p.Resolve(errs), p.SourceOf, "the policy doesn't compile, so nothing was evaluated", "fix the errors above; sigil check reports every problem in a bundle at once")
 	}
-	return k, prog, nil
+	return g.Kind, prog, nil
 }
 
 // readInput reads and parses the input document.
