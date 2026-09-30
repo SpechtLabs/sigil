@@ -91,7 +91,7 @@ export default defineUserConfig({
     },
 
     sidebar: {
-      // Getting Started: the tutorial path, from "what is this" to a first policy.
+      // Getting Started: the tutorial path, from "what is this" to guardrails.
       "/getting-started/": [
         {
           text: "Getting Started",
@@ -100,7 +100,31 @@ export default defineUserConfig({
           items: [
             { text: "What Sigil is", link: "overview", icon: "mdi:eye" },
             { text: "A tour of the language", link: "tour", icon: "mdi:map-marker-path", badge: "5 min" },
-            { text: "Your first policy", link: "first-policy", icon: "mdi:flash" },
+          ],
+        },
+        {
+          // Steps 1-4: everything a service needs when one team owns its policies.
+          text: "Step by step",
+          icon: "mdi:stairs",
+          collapsed: false,
+          prefix: "/getting-started/",
+          items: [
+            { text: "1. Define the input", link: "define-the-input", icon: "mdi:language-go" },
+            { text: "2. Write policies", link: "write-policies", icon: "mdi:file-document-edit-outline" },
+            { text: "3. Export the kind", link: "export-the-kind", icon: "mdi:file-export-outline" },
+            { text: "4. Check, evaluate and test", link: "check-and-test", icon: "mdi:check-decagram-outline" },
+          ],
+        },
+        {
+          // Steps 5-7: for several teams writing policies against one kind.
+          text: "Sharing across teams",
+          icon: "mdi:account-group",
+          collapsed: false,
+          prefix: "/getting-started/",
+          items: [
+            { text: "5. Share rules across teams", link: "share-rules", icon: "mdi:library-shelves" },
+            { text: "6. See what a policy adds up to", link: "explain", icon: "mdi:file-tree-outline" },
+            { text: "7. Require guardrails", link: "require-guardrails", icon: "mdi:shield-lock-outline" },
           ],
         },
       ],

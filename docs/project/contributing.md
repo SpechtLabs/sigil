@@ -8,7 +8,7 @@ permalink: /project/contributing/
 This page is for contributors changing Sigil itself: the lexer, parser, checker, evaluator, CLI and Go API. It covers the repository's test suite, its benchmarks, its fuzz targets and the CI workflows that run them.
 
 ::: tip Testing your own policies
-To test policies you wrote, you don't need any of this. Write `*_test.yaml` cases and run them with [`sigil test`](/reference/cli/#sigil-test), or from `go test` in the host with [`policytest.Run`](/reference/go-api/#package-policytest). [Test your policies](/guides/test-policies/) shows both, and [Your first policy](/getting-started/first-policy/) walks through a test file.
+To test policies you wrote, you don't need any of this. Write `*_test.yaml` cases and run them with [`sigil test`](/reference/cli/#sigil-test), or from `go test` in the host with [`policytest.Run`](/reference/go-api/#package-policytest). [Test your policies](/guides/test-policies/) shows both, and [Check, evaluate and test](/getting-started/check-and-test/) walks through a test file.
 :::
 
 Run the commands below from the repository root. The tools come from `.mise.toml`, so `mise install` sets up the Go toolchain that `go.mod` pins.

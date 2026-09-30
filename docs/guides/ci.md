@@ -7,7 +7,7 @@ permalink: /guides/ci/
 
 This guide sets up the CI job of a policy repository. When it's done, a pull request fails on an unformatted file, a document that doesn't check, a team policy that skips the guardrails, a failing test case or a stale kind file, and the problems show up as annotations on the diff.
 
-The examples use the layout of the [tour](/getting-started/tour/): the platform's documents in `deploy/`, each team's in its own directory such as `payments/`, and the exported kind file `deploy_approval.sigil` at the root. The job needs that kind file checked in and a `sigil` binary. The stock binary is enough for everything but `sigil test`; see [Test](#test).
+The examples use the layout from [Per-team policies](/guides/team-policies/): the platform's documents in `deploy/`, each team's in its own directory such as `payments/`, and the exported kind file `deploy_approval.sigil` at the root. The job needs that kind file checked in and a `sigil` binary. The stock binary is enough for everything but `sigil test`; see [Test](#test).
 
 ## Format
 

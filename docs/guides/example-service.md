@@ -5,7 +5,7 @@ createTime: 2026/09/28 12:00:00
 permalink: /guides/example-service/
 ---
 
-This guide is for Go developers who want to see Sigil embedded in a real service before they embed it in their own. It introduces deploygate, a complete Go service built on Sigil. It serves the `DeployApproval` policies from the [tour](/getting-started/tour/) over HTTP, and it wires up everything the rest of these docs describe one piece at a time: a kind defined in Go, an exported kind file, guardrails required from a trusted source, policies loaded from a directory with hot reload, typed matching, and metrics and traces for every decision. A second, collecting kind, `AccessGrant`, grants the roles each deploy is decided with, so no client names its own.
+This guide is for Go developers who want to see Sigil embedded in a real service before they embed it in their own. It introduces deploygate, a complete Go service built on Sigil. It serves the `DeployApproval` policies from [Per-team policies](/guides/team-policies/) over HTTP, and it wires up everything the rest of these docs describe one piece at a time: a kind defined in Go, an exported kind file, guardrails required from a trusted source, policies loaded from a directory with hot reload, typed matching, and metrics and traces for every decision. A second, collecting kind, `AccessGrant`, grants the roles each deploy is decided with, so no client names its own.
 
 The code lives in [`examples/deploy-gates/`](https://github.com/SpechtLabs/sigil/tree/main/examples/deploy-gates) in the repository, as a Go module of its own. Its README is the full walkthrough; this page is the short version.
 

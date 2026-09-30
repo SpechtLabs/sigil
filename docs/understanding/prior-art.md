@@ -52,3 +52,208 @@ Rego is powerful and its Datalog roots make some things elegant, but engineers w
 The declarative feel is worth keeping: a policy should describe conditions and outcomes, not a procedure. What goes wrong with YAML-based rule engines is everything around that feel. Deeply nested blocks fight text templating, because indentation becomes load-bearing. Anchors and aliases end up as the reuse mechanism, which nobody enjoys debugging. Matchers are strings interpreted at runtime, so `tier: "critical"` and `teir: "critical"` are both valid YAML.
 
 Sigil keeps statements keyword-led and whitespace-insensitive so templating can't break them, replaces anchors with modules, imports and `let`, and types every matcher against the kind.
+
+### The same deploy gate, both ways
+
+Here is a deploy gate written against the [`DeployApproval` kind](/reference/kind-files/#a-complete-kind) twice: once in Sigil, and once for the kind of YAML rule engine teams tend to build in-house. The YAML engine is made up but typical: rules run top to bottom, the first match wins, matchers are field paths with an operator, and per-team variants come from rendering the file with `text/template`. The `[1]` to `[4]` markers in the YAML are explained at the end of its tab.
+
+::: tabs
+
+@tab Sigil
+
+The platform team's shared matchers:
+
+```sigil title="deploy/common.sigil"
+module deploy.common: DeployApproval@1
+
+pub let owns_service = actor.teams any in service.owners
+pub let cleared = split(service.labels["regions"], ",") all in actor.regions
+pub let eligible = "deployer" in actor.roles
+  and environment == "production"
+  and service.labels has {
+    "app.kubernetes.io/managed-by": "argocd",
+    "platform.example.com/lifecycle": "ga",
+  }
+```
+
+The guardrails, which the host requires every team policy to invoke:
+
+```sigil title="deploy/guardrails.sigil"
+policy deploy.guardrails: DeployApproval@1
+
+use deploy.common.{eligible}
+
+param min_soak: duration = 24h
+
+when not eligible {
+  deny(reason: not_eligible)
+}
+
+when release.soak < min_soak and not release.hotfix {
+  deny(reason: soak_too_short)
+}
+```
+
+The approvals and reviews:
+
+```sigil title="deploy/production.sigil"
+policy deploy.production: DeployApproval@1
+
+use deploy.common.{cleared, owns_service}
+
+param approvers: list<string>
+param tiers: list<Tier> = [standard, internal]
+
+when cleared {
+  when service.tier == critical
+    and "release_manager" in actor.roles {
+    approve(reason: release_manager)
+  }
+
+  when service.tier in tiers
+    and owns_service {
+    review(reason: service_owner, approvers: approvers)
+  }
+}
+```
+
+The payments team's policy, which invokes both with its own values:
+
+```sigil title="payments/production.sigil"
+policy payments.production: DeployApproval@1
+
+use deploy.guardrails
+use deploy.production
+use deploy.common.{cleared}
+
+guardrails(min_soak: 4h)
+
+when service.labels["compliance"] == "pci" {
+  production(approvers: ["payments-leads", "security-leads"])
+}
+
+when service.labels["compliance"] != "pci" {
+  production(approvers: ["payments-leads"])
+}
+
+when cleared and "payments-sre" in actor.teams {
+  approve(reason: payments_sre, bake: 15m)
+}
+```
+
+@tab YAML rule engine
+
+The platform team's rules, as a template:
+
+```yaml title="deploy-gate.yaml.tmpl"
+# Rendered once per team with text/template, then loaded by the engine.
+# Rules run top to bottom and the first match wins.            [1]
+default:
+  decision: deny
+  reason: no_rule_matched
+
+rules:
+  - name: not-eligible
+    decision: deny
+    reason: not_eligible
+    match:
+      any:
+        - { field: actor.roles, op: notContains, value: deployer }
+        - { field: environment, op: notEquals, value: production }
+        - field: service.labels
+          op: notMatchLabels
+          value:
+            app.kubernetes.io/managed-by: argocd
+            platform.example.com/lifecycle: ga
+
+  - name: soak-too-short
+    decision: deny
+    reason: soak_too_short
+    match:
+      all:
+        - { field: release.soak, op: lessThan, value: "{{ .MinSoak }}" }  # [2]
+        - { field: release.hotfix, op: equals, value: false }
+
+  # Team rules go here: below the denies, above everything else.   [1]
+{{- range .ExtraRules }}
+{{ list . | toYaml | indent 2 }}                                   # [3]
+{{- end }}
+
+  - name: release-manager
+    decision: approve
+    reason: release_manager
+    payload: { bake: 1h }
+    match:
+      all:
+        - field: service.labels.regions                               # [4]
+          op: splitSubsetOf
+          separator: ","
+          valueFrom: actor.regions
+        - { field: service.tier, op: equals, value: critical }
+        - { field: actor.roles, op: contains, value: release_manager }
+
+  - name: service-owner
+    decision: review
+    reason: service_owner
+    payload:
+      approvers: {{ .Approvers | toJson }}
+    match:
+      all:
+        - field: service.labels.regions                               # [4]
+          op: splitSubsetOf
+          separator: ","
+          valueFrom: actor.regions
+        - field: service.tier
+          op: in
+          value: {{ .Tiers | default (list "standard" "internal") | toJson }}
+        - { field: actor.teams, op: intersects, valueFrom: service.owners }
+{{- if .PCIApprovers }}
+        - { field: service.labels.compliance, op: notEquals, value: pci }
+
+  - name: service-owner-pci                                           # [4]
+    decision: review
+    reason: service_owner
+    payload:
+      approvers: {{ .PCIApprovers | toJson }}
+    match:
+      all:
+        - field: service.labels.regions
+          op: splitSubsetOf
+          separator: ","
+          valueFrom: actor.regions
+        - { field: service.labels.compliance, op: equals, value: pci }
+        - field: service.tier
+          op: in
+          value: {{ .Tiers | default (list "standard" "internal") | toJson }}
+        - { field: actor.teams, op: intersects, valueFrom: service.owners }
+{{- end }}
+```
+
+The payments team's values file, which fills in the template:
+
+```yaml title="teams/payments.values.yaml"
+MinSoak: 4h
+Approvers: [payments-leads]
+PCIApprovers: [payments-leads, security-leads]
+ExtraRules:
+  - name: payments-sre
+    decision: approve
+    reason: payments_sre
+    payload: { bake: 15m }
+    match:
+      all:
+        - field: service.labels.regions # [4]
+          op: splitSubsetOf
+          separator: ","
+          valueFrom: actor.regions
+        - { field: actor.teams, op: contains, value: payments-sre }
+```
+
+What the `[1]` to `[4]` markers point at:
+
+1. **Order decides the outcome.** The team's approve has to sit below the denies, or it overrides them. Where it lands relative to `service-owner` changes behavior, too: a service owner who's also in `payments-sre` gets approved here, because the team rule matches first. In Sigil every rule runs, `deny > review > approve` picks the winner, and that owner gets a review.
+2. **Nothing is typed.** `"4h"` stays a string until the engine parses it at evaluation time, and a misspelled path such as `service.teir` resolves to nothing, so its rule quietly stops matching. So does a misspelled value such as `critcal`, which no service ever has. Sigil checks all three against the kind at compile time: `min_soak: 4h` is a `duration`, and `service.teir` and `critcal` are [errors with a fix hint](/understanding/strictness/).
+3. **Templating is text.** The team's rules get spliced in as text, so a wrong `indent` produces a different YAML file instead of an error, and every team's values file has to know the template's internals. Sigil's invocations bind [typed params](/understanding/composition/), a team can only add candidates, and the guardrails the host requires can't be gated off.
+4. **Nothing is named or shared.** The regions check is pasted into every rule that needs it, even into the team's values file, and the engine grew a one-off `splitSubsetOf` operator to express it. Giving PCI services other approvers means a second copy of the whole `service-owner` rule behind an `if`. Sigil names the check once as `let cleared` in a module, builds it from `split` and the general `all in`, and adds a condition to a shared policy by invoking it inside a `when`.
+
+:::

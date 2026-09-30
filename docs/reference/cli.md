@@ -617,7 +617,7 @@ payments.production: 7 rules from 3 policies and 1 module
 | `check` | An assert's own condition |
 | `payload` | A rule's payload arguments, as `name = expression` |
 
-[The tour](/getting-started/tour/#what-the-team-policy-adds-up-to) walks through this output.
+[See what a policy adds up to](/getting-started/explain/) walks through this output.
 
 Exits 1 when a policy to explain, or a document it uses, doesn't check or doesn't compile, when a kind document doesn't check, or when `--policy` matches nothing. An error in a document none of them uses doesn't stop the explanation; `sigil check` reports it.
 

@@ -26,6 +26,8 @@ config:
       - kbd
       # The performance page plots its benchmark curves with this component.
       - LineChart
+      # The tour routes alerts through its policy with this component.
+      - DecisionPlayground
 
   # MD036: Allow bold labels used as pseudo-headings.
   MD036: false

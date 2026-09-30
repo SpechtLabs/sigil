@@ -1,6 +1,6 @@
 # deploygate: a Go service built on Sigil
 
-deploygate is a small deploy approval API. A client posts the release it wants to ship, and deploygate works out which roles the requestor holds, evaluates the team's Sigil policy with those roles and answers with a decision: approve, review or deny, each with a reason, a typed payload and a trace of how the policy got there. It's the running example from the [documentation](../../docs/getting-started/tour.md), turned into a service you can start with one command.
+deploygate is a small deploy approval API. A client posts the release it wants to ship, and deploygate works out which roles the requestor holds, evaluates the team's Sigil policy with those roles and answers with a decision: approve, review or deny, each with a reason, a typed payload and a trace of how the policy got there. It serves the policies most of the [guides](../../docs/guides/team-policies.md) use, turned into a service you can start with one command.
 
 The example is a separate Go module, `github.com/spechtlabs/sigil/examples/deploy-gates`, that builds against the Sigil checkout it lives in. Its dependencies never reach the library's `go.mod`. Start with [Run it](#run-it); [Layout](#layout) and [How it is wired](#how-it-is-wired) near the end map the directories and packages.
 
@@ -792,7 +792,7 @@ mise run snapshot
 
 ## Further reading
 
-- [A tour of the language](../../docs/getting-started/tour.md) walks through the same policies by hand.
+- [Per-team policies](../../docs/guides/team-policies.md) walks through the same policies.
 - [Per-team policies](../../docs/guides/team-policies.md) explains how the team policies compose the platform's.
 - [Policies in a ConfigMap](../../docs/guides/configmaps.md) shows how to ship the team bundle to a cluster.
 - [Kind files](../../docs/reference/kind-files.md#collecting-kinds) and [Evaluation semantics](../../docs/reference/evaluation.md#collecting-kinds) define collecting kinds, `exclusive` and outcome asserts.

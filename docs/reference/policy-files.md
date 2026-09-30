@@ -7,7 +7,7 @@ permalink: /reference/policy-files/
 
 The statements of policy and module documents in `.sigil` files.
 
-A complete team policy is in the [tour](/getting-started/tour/#the-team-policy).
+A complete team policy is in [Per-team policies](/guides/team-policies/#compose-with-invocations).
 
 ## Statements at a glance
 

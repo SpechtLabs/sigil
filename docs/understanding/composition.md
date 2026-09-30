@@ -161,15 +161,17 @@ Put together, union-only composition, the kind's `precedence deny > review > app
 | Change any param, including loosening ones like `min_soak`, within the bounds the policy declares                | Remove or edit a rule of an invoked policy              |
 | Import shared matchers from modules                                                                              | Import a `let` that reads a param                       |
 
-The first line of the right column is what the whole mechanism exists for: the guardrails' `not_eligible` and `soak_too_short` denies hold no matter what a team adds. The [tour](/getting-started/tour/#the-same-release-after-two-hours) shows a team approval losing to a guardrail deny. Three rows of the left column, turning the default into an approve, gating policies the host doesn't require, and changing params, are where the guarantee stops, and the next section goes through them.
+The first line of the right column is what the whole mechanism exists for: the guardrails' `not_eligible` and `soak_too_short` denies hold no matter what a team adds. Three rows of the left column, turning the default into an approve, gating policies the host doesn't require, and changing params, are where the guarantee stops, and the next section goes through them.
 
 ## What the guarantee doesn't cover
 
-Three things sit outside it, and all are easy to miss.
+Four things sit outside it, and all are easy to miss.
 
 **Policies the host doesn't require.** Only required policies are protected. `deploy.production` isn't, so a team can gate it however it likes, or not invoke it at all, because approvals are what teams are meant to tune. A policy that holds denies but isn't required gets the `gated-deny` lint when someone invokes it under `when`. The gate may be intended, but a gated deny is also how a guardrail quietly stops applying. Keeping denies and approvals in separate policies means gating the approvals never gates a deny.
 
 **The kind's default.** When no rule fires, the kind's `default` applies, typically a deny. That default isn't a decision any policy made explicitly, so a team rule can turn it into an approve, and that's how teams add approvals the platform didn't anticipate. But it means "no policy has an approve rule for X" doesn't imply "X will be denied". If the platform wants something denied no matter what teams add, it has to say so with an explicit `deny` in a required policy.
+
+**Failed evaluations.** A team can't remove a required policy's candidates, but it can make the whole evaluation fail: a second candidate that ties with a required one on decision and reason but carries another payload is a conflict, and a failing assert or a runtime error fails it too. `Eval` then returns an error and the kind's `default`, or its `conflict` outcome, in place of every candidate, the required ones included. When the default is the safe answer, as a deny is for a deploy gate, the failure fails closed. When it isn't, as for an alert router whose default is a channel post rather than a page, the host has to handle the error itself, for example by evaluating the required policy on its own. `sigil check` can't see the conflict coming, because it depends on the input.
 
 **Params.** A team binds params, so without bounds a team could lower `min_soak` from 24 hours to 4, or to zero, and the `soak_too_short` rule would dutifully compare against zero and never fire. The union-of-candidates argument doesn't help here because the team didn't add a rule; it changed an input to an existing one. A guardrail closes that gap by bounding its params, so a team can adjust the threshold but not disable the rule. With `min: 1h, max: 48h` on `min_soak`, a team can move the threshold but not below an hour:
 

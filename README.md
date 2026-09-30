@@ -8,169 +8,107 @@ A small, statically typed policy language for Go hosts.
 
 **Documentation:** [sigil.specht-labs.de](https://sigil.specht-labs.de/) &nbsp;·&nbsp; **Where it stands:** [roadmap](./roadmap.yml) and [open questions](./docs/project/open-questions.md)
 
-Sigil lets engineers write rules that evaluate host-provided input to a typed decision such as `approve`, `deny` or `review`. Every decision carries a reason and a payload, and every policy is type-checked against a contract the host defines in Go. The language terminates on finite inputs when its host functions terminate. It ships as an importable Go library, in the spirit of [filt-rs](https://github.com/SierraSoftworks/filters), and it's meant to replace the YAML rule engines with label-selector matchers that teams keep rebuilding.
+Sigil is a small language for decision logic. Your Go program hands a policy typed input, the policy's rules look at it, and the answer is a typed decision: page the on-call, turn a feature on, approve a deploy, grant a role. Every decision carries a reason and a payload, and every policy is type-checked against a contract your Go code defines. The language terminates on finite inputs when its host functions terminate. It ships as an importable Go library, in the spirit of [filt-rs](https://github.com/SierraSoftworks/filters), and it's meant to replace the YAML rule engines with label-selector matchers that teams keep rebuilding.
 
 > [!IMPORTANT]
 > The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`), host-ordered types such as versions, static cost budgets, and editor tooling. The [roadmap](#roadmap) tracks what's left.
 
 ## What it looks like
 
-The example below gates production deployments: a platform team writes shared policies, and a product team composes them with its own settings.
+The example routes alerts: for each firing alert, the policy decides whether to page the on-call, drop the alert or post it to the team's channel.
 
-**The kind** is the contract. The host defines it in Go and exports it as `deploy_approval.sigil`; nobody writes it by hand.
-
-```sigil
-kind DeployApproval version 1
-
-enum Tier: critical | standard | internal
-
-type Release {
-  soak: duration
-  hotfix: bool
-}
-
-type Service {
-  name: string
-  tier: Tier
-  owners: list<string>
-  labels: map<string, string>
-}
-
-type Actor {
-  name: string
-  teams: list<string>
-  roles: list<string>
-  regions: list<string>
-}
-
-input release: Release
-input service: Service
-input actor: Actor
-input environment: string
-
-fn split(string, string) -> list<string>
-
-decision deny {
-  reason: not_eligible | soak_too_short | no_rule_matched
-}
-
-decision review {
-  reason: service_owner
-  approvers: list<string>
-}
-
-decision approve {
-  reason: release_manager | payments_sre
-  bake: duration = 1h
-}
-
-collect one
-precedence deny > review > approve
-precedence deny: not_eligible > soak_too_short > no_rule_matched
-precedence approve: release_manager > payments_sre
-
-default deny(reason: no_rule_matched)
-```
-
-**A module** holds shared matchers. `let`s name conditions; a module has nothing else, so importing from it can never change a decision.
-
-```sigil
-module deploy.common: DeployApproval@1
-
-pub let owns_service = actor.teams any in service.owners
-pub let cleared = split(service.labels["regions"], ",") all in actor.regions
-pub let eligible = "deployer" in actor.roles
-  and environment == "production"
-  and service.labels has {
-    "app.kubernetes.io/managed-by": "argocd",
-    "platform.example.com/lifecycle": "ga",
-  }
-```
-
-**Two platform policies** hold the rules: guardrails that deny, and approvals that teams tune. `use` imports names; `param`s make a policy reusable.
-
-```sigil
-policy deploy.guardrails: DeployApproval@1
-
-use deploy.common.{eligible}
-
-param min_soak: duration = 24h
-
-when not eligible {
-  deny(reason: not_eligible)
-}
-
-when release.soak < min_soak and not release.hotfix {
-  deny(reason: soak_too_short)
-}
-```
-
-```sigil
-policy deploy.production: DeployApproval@1
-
-use deploy.common.{cleared, owns_service}
-
-param approvers: list<string>
-param tiers: list<Tier> = [standard, internal]
-
-when cleared {
-  when service.tier == critical
-    and "release_manager" in actor.roles {
-    approve(reason: release_manager)
-  }
-
-  when service.tier in tiers
-    and owns_service {
-    review(reason: service_owner, approvers: approvers)
-  }
-}
-```
-
-`critical`, `standard` and `internal` are values of the kind's `Tier` enum, written bare: `service.tier == critcal` is a compile error, not a rule that never matches.
-
-**A team policy** invokes the platform's policies like decision constructors, with its own values. Inside a `when`, an invocation's rules only apply where the condition holds, so PCI-scoped services get a second approver group. The team also adds a rule of its own.
-
-```sigil
-policy payments.production: DeployApproval@1
-
-use deploy.guardrails
-use deploy.production
-use deploy.common.{cleared}
-
-guardrails(min_soak: 4h)
-
-when service.labels["compliance"] == "pci" {
-  production(approvers: ["payments-leads", "security-leads"])
-}
-
-when service.labels["compliance"] != "pci" {
-  production(approvers: ["payments-leads"])
-}
-
-when cleared and "payments-sre" in actor.teams {
-  approve(reason: payments_sre, bake: 15m)
-}
-```
-
-The team rule can only add an approval. The guardrails' `not_eligible` and `soak_too_short` denies still win over it, because the kind ranks `deny` above `approve`, and the host requires `deploy.guardrails` to be invoked unconditionally, so no team can wrap it in a `when` to switch it off.
-
-Files are only containers. Imports resolve by the name in each document's header, so the same documents can ship one per file, as above, or several to a file separated by `---`, which is how they fit into a single key of a Kubernetes ConfigMap.
-
-The host evaluates the compiled policy and gets a typed result back:
+**The kind** is the contract, defined in Go. Tagged structs are the input a policy reads, and each decision lists the reasons it may give and the payload the host acts on:
 
 ```go
-p, err := Deploy.Load(policies, "payments.production", policy.Require("deploy.guardrails"))
+type Input struct {
+	Alert Alert `policy:"alert"` // name, severity, labels, firing_for
+	Team  Team  `policy:"team"`  // name, oncall, channel
+}
+
+var (
+	Page   = policy.NewDecision[PageData]("page", "critical_alert", "sustained")
+	Drop   = policy.NewDecision[policy.None]("drop", "muted", "not_production")
+	Notify = policy.NewDecision[NotifyData]("notify", "routine", "unrouted")
+)
+
+var Kind = policy.NewKind[Input]("AlertRouting",
+	policy.WithVersion(1),
+	policy.WithEnum(Critical, Warning, Info),
+	policy.WithDecisions(Page, Drop, Notify), // a page beats a drop beats a notification
+	policy.WithDefault(Notify.Reason("unrouted")),
+	// ...
+)
+```
+
+**A policy** is a set of `when` blocks. Every rule is evaluated, each decision it reaches becomes a candidate, and the kind's precedence picks the winner:
+
+```sigil
+policy checkout.alerts: AlertRouting@1
+
+let pre_production = alert.labels["env"] in ["staging", "dev"]
+
+when not pre_production and alert.severity == critical {
+  page(reason: critical_alert, target: team.oncall)
+}
+
+when not pre_production and alert.severity == warning {
+  when alert.firing_for >= 30m {
+    page(reason: sustained, target: team.oncall)
+  }
+
+  notify(reason: routine, channel: team.channel)
+}
+
+when pre_production {
+  drop(reason: not_production)
+}
+```
+
+`critical` and `warning` are values of the kind's `Severity` enum, so `alert.severity == critcal` is a compile error, not a rule that never matches. The same goes for a misspelled field, a duration compared with a number, or a reason the kind doesn't declare.
+
+**The host** compiles the policy once and evaluates it per alert:
+
+```go
+p, err := Kind.Load(policies, "checkout.alerts")
 if err != nil {
 	log.Fatal(err) // file:line:col plus a fix hint
 }
 
-res, err := p.Eval(ctx, input) // on error, res holds the kind's default
-if r, ok := Review.Match(res); ok {
-	requestReview(r.Approvers, res.Reason) // r is a typed ReviewData
+res, err := p.Eval(ctx, Input{Alert: alert, Team: team})
+if page, ok := Page.Match(res); ok {
+	pageOncall(page.Target, res.Reason) // page is a typed PageData
 }
 ```
 
-[`examples/deploy-gates/`](./examples/deploy-gates) turns these documents into a running service, deploygate, with the guardrails embedded, team policies that reload in place, and a metric and a trace for every decision. A second, collecting kind grants the roles each deploy is checked with, so the client never gets to name its own. `mise -C examples/deploy-gates run up` starts it from the repository root; `mise -C examples/deploy-gates run demo deploy owner` asks for a deployment through the example platform CLI.
+A warning that has fired for 45 minutes matches two rules, and the page wins:
+
+```text
+$ sigil eval --input latency.json
+checkout.alerts: page(reason: sustained)
+  target = "checkout-primary"
+
+trace: 2 candidates
+  * page(reason: sustained)  checkout/alerts.sigil:11:5
+      when not pre_production and alert.severity == warning
+       and alert.firing_for >= 30m
+      target = "checkout-primary"
+    notify(reason: routine)  checkout/alerts.sigil:14:3
+      channel = "#checkout-alerts"
+```
+
+**Sharing rules.** When several teams write policies against one kind, a platform team publishes modules of named expressions and policies with typed params, and each team invokes them with its own values. The host can require the rules no team may switch off:
+
+```sigil
+policy payments.alerts: AlertRouting@1
+
+use platform.paging
+use platform.routing
+
+paging(page_after: 5m)   // required by the host, bounded by the platform
+routing()
+```
+
+Nothing about the language is specific to alerts. The same constructs decide feature rollouts, discounts, deploy approvals or the roles someone holds. [`examples/deploy-gates/`](./examples/deploy-gates) is a complete service that shows it: deploygate, a deploy approval service with two kinds, where one decides whether a deploy goes ahead and a collecting kind grants the roles each deploy is checked with.
 
 ## Design goals
 
@@ -249,7 +187,7 @@ The docs site is at [sigil.specht-labs.de](https://sigil.specht-labs.de/), built
 
 | You want to | Start with |
 | --- | --- |
-| Write and test policies | [What Sigil is](./docs/getting-started/overview.md), [the tour](./docs/getting-started/tour.md) and [your first policy](./docs/getting-started/first-policy.md), then the [guides](./docs/guides/team-policies.md), [testing your policies](./docs/guides/test-policies.md) and the [language reference](./docs/reference/policy-files.md) |
+| Write and test policies | [What Sigil is](./docs/getting-started/overview.md), [the tour](./docs/getting-started/tour.md) and the [step-by-step path](./docs/getting-started/define-the-input.md), then the [guides](./docs/guides/team-policies.md), [testing your policies](./docs/guides/test-policies.md) and the [language reference](./docs/reference/policy-files.md) |
 | Embed Sigil in a Go service | [Embedding Sigil in a Go service](./docs/guides/embed-go.md), the [Go API reference](./docs/reference/go-api.md), [the example service](./docs/guides/example-service.md), [policies in a ConfigMap](./docs/guides/configmaps.md) and [evolving a kind](./docs/guides/evolve-a-kind.md) |
 | Decide whether Sigil fits | [What Sigil is](./docs/getting-started/overview.md), the [design goals](./docs/understanding/design-goals.md) and the other understanding pages, and [prior art](./docs/understanding/prior-art.md) |
 | Change Sigil itself | [Contributing](./docs/project/contributing.md), the [open questions](./docs/project/open-questions.md) and the [roadmap](./roadmap.yml) |

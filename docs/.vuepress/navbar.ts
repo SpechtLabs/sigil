@@ -9,7 +9,13 @@ export const navbar = defineNavbarConfig([
     items: [
       { text: "What Sigil is", link: "/getting-started/overview", icon: "mdi:eye" },
       { text: "A tour of the language", link: "/getting-started/tour", icon: "mdi:map-marker-path" },
-      { text: "Your first policy", link: "/getting-started/first-policy", icon: "mdi:flash" },
+      { text: "1. Define the input", link: "/getting-started/define-the-input", icon: "mdi:language-go" },
+      { text: "2. Write policies", link: "/getting-started/write-policies", icon: "mdi:file-document-edit-outline" },
+      { text: "3. Export the kind", link: "/getting-started/export-the-kind", icon: "mdi:file-export-outline" },
+      { text: "4. Check, evaluate and test", link: "/getting-started/check-and-test", icon: "mdi:check-decagram-outline" },
+      { text: "5. Share rules across teams", link: "/getting-started/share-rules", icon: "mdi:library-shelves" },
+      { text: "6. See what a policy adds up to", link: "/getting-started/explain", icon: "mdi:file-tree-outline" },
+      { text: "7. Require guardrails", link: "/getting-started/require-guardrails", icon: "mdi:shield-lock-outline" },
     ],
   },
 
