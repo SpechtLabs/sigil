@@ -49,6 +49,9 @@ type parser struct {
 	// OpInvalid at the start of an expression. Prefix forms that bind looser
 	// than that operator use it to name the operator in their error.
 	after ast.Op
+	// inField is set while a decision field's default is parsed, where a
+	// keyword followed by `:` is the next field, not part of the default.
+	inField bool
 	// afterPos is where the operator in after starts.
 	afterPos token.Pos
 }

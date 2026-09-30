@@ -259,7 +259,7 @@ func (p *parser) parseDecisionFields(d *ast.DecisionDecl, open token.Token) {
 		if p.tok.Kind == token.Assign {
 			p.next()
 			p.after = ast.OpInvalid
-			f.Default = p.parseExpr(lowest)
+			f.Default = p.parseFieldDefault()
 		}
 		d.Fields = append(d.Fields, f)
 	}
@@ -431,4 +431,13 @@ func (p *parser) syncKind() {
 	p.sync(func(t token.Token) bool {
 		return t.Kind == token.Separator || p.atHeader(t) || isDeclKeyword(t.Kind)
 	})
+}
+
+// parseFieldDefault parses the default of a field in a decision body, where
+// a keyword followed by `:` starts the next field. The flag is cleared even
+// when a parse error unwinds through here.
+func (p *parser) parseFieldDefault() ast.Expr {
+	p.inField = true
+	defer func() { p.inField = false }()
+	return p.parseExpr(lowest)
 }

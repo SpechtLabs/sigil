@@ -45,12 +45,12 @@ type infixOp struct {
 
 // infix classifies the current token as an infix operator, or reports
 // false when it isn't one, which is how an expression ends: at `)`, `,`,
-// `{`, a statement keyword or anything else that can't continue it. A
-// keyword followed by `:` ends it too: that's the next field of a
-// decision, named like a keyword, after a field's default.
+// `{`, a statement keyword or anything else that can't continue it. In a
+// decision field's default, a keyword followed by `:` ends it too: that's
+// the next field, named like a keyword.
 func (p *parser) infix() (infixOp, bool) {
 	cmp := func(op ast.Op) (infixOp, bool) { return infixOp{bpCmp, 1, op, none}, true }
-	if p.tok.Kind.IsKeyword() && p.peek().Kind == token.Colon {
+	if p.inField && p.tok.Kind.IsKeyword() && p.peek().Kind == token.Colon {
 		return infixOp{}, false
 	}
 	switch p.tok.Kind {
