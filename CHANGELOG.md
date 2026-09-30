@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/SpechtLabs/sigil/compare/v0.5.1...v0.5.2) (2026-09-30)
+
+
+### Bug Fixes
+
+* **examples:** log trace and span IDs once on deploygate's failure lines ([#95](https://github.com/SpechtLabs/sigil/issues/95)) ([f9832dc](https://github.com/SpechtLabs/sigil/commit/f9832dc3eeb76550a02c1c636f9d0061e671fbaa))
+
 ## [0.5.1](https://github.com/SpechtLabs/sigil/compare/v0.5.0...v0.5.1) (2026-09-30)
 
 
