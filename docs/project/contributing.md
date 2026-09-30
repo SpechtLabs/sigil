@@ -22,7 +22,7 @@ mise run check
 
 The first command runs unit tests, golden tests, fuzz seeds and checked-in regression inputs with the race detector and coverage. The second also runs mutation fuzz smoke tests, benchmark smoke tests and the repository's lint and configuration checks. Plain `go test ./...` runs the same test cases without the race detector. It doesn't generate new fuzz inputs or measure benchmarks.
 
-`examples/` is a separate Go module with its own `.mise.toml`. Run `mise run test` or `mise run check` from that directory to test the example service and its policies.
+`examples/deploy-gates/` is a separate Go module with its own `.mise.toml`. Run `mise run test` or `mise run check` from that directory to test the example service and its policies.
 
 ## The devtool CLI
 
@@ -83,19 +83,19 @@ Compilation and evaluation are measured separately. Evaluation benchmarks prepar
 
 ### Measure the example service
 
-The example service's policies have a benchmark of their own, with the same settings. Run it from `examples/`:
+The example service's policies have a benchmark of their own, with the same settings. Run it from `examples/deploy-gates/`:
 
 ```sh
 go test ./internal/store -run '^$' -bench BenchmarkPolicies -benchmem -count 10 -cpu 2 -benchtime 200ms
 ```
 
-For the service measurement in [Performance](/reference/performance/), start the example's stack as [The example service](/guides/example-service/#run-it) shows, then run the load test from `examples/` at the same rate:
+For the service measurement in [Performance](/reference/performance/), start the example's stack as [The example service](/guides/example-service/#run-it) shows, then run the load test from `examples/deploy-gates/` at the same rate:
 
 ```sh
 RATE=1000 DURATION=2m mise run loadtest
 ```
 
-k6 writes its report under `examples/results/`, and the deploygate dashboard in Grafana shows the run's throughput and latency next to the service's profiles.
+k6 writes its report under `examples/deploy-gates/results/`, and the deploygate dashboard in Grafana shows the run's throughput and latency next to the service's profiles.
 
 ### CI regression gate
 

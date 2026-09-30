@@ -47,9 +47,9 @@ docs/project/roadmap.md
 /fuzz-results/
 /testdata/performance/results/
 
-# Binaries that `go build` drops into examples/ when run there.
-/examples/sigilc
-/examples/deploygate
+# Binaries that `go build` drops into an example module when run there.
+/examples/*/sigilc
+/examples/*/deploygate
 
 ### Commit message check ###
 .github/commit-lint/node_modules/

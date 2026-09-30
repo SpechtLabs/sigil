@@ -214,7 +214,7 @@ run = "cd docs && bun install && bun run dev"
 # resolve from the local module cache, so their links work offline.
 [tasks.docs-godoc]
 description = "Serve the Go API documentation locally, as pkg.go.dev renders it, on localhost:6060"
-run = "pkgsite -open -cache -http localhost:6060 . ./examples"
+run = "pkgsite -open -cache -http localhost:6060 . ./examples/deploy-gates"
 
 [tasks.docs-build]
 description = "Build the documentation website (the docs workflow's second job)"

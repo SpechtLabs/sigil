@@ -170,7 +170,7 @@ if r, ok := Review.Match(res); ok {
 }
 ```
 
-[`examples/`](./examples) turns these documents into a running service, deploygate, with the guardrails embedded, team policies that reload in place, and a metric and a trace for every decision. A second, collecting kind grants the roles each deploy is checked with, so the client never gets to name its own. `mise -C examples run up` starts it from the repository root; `mise -C examples run demo deploy owner` asks for a deployment through the example platform CLI.
+[`examples/deploy-gates/`](./examples/deploy-gates) turns these documents into a running service, deploygate, with the guardrails embedded, team policies that reload in place, and a metric and a trace for every decision. A second, collecting kind grants the roles each deploy is checked with, so the client never gets to name its own. `mise -C examples/deploy-gates run up` starts it from the repository root; `mise -C examples/deploy-gates run demo deploy owner` asks for a deployment through the example platform CLI.
 
 ## Design goals
 
@@ -231,7 +231,7 @@ go install github.com/spechtlabs/sigil/cmd/sigil@latest
 
 Prebuilt archives for Linux and macOS on amd64 and arm64 are also available from the [releases](https://github.com/SpechtLabs/sigil/releases).
 
-The stock binary checks, formats and explains any policy, but it has only the signatures of the kind's host functions, so `eval` and `test` stop at the first call to one. A host builds its own CLI with the real functions linked in through [`pkg/cli`](./docs/guides/host-binary.md); the example service's [`sigilc`](./examples/cmd/sigilc) is one.
+The stock binary checks, formats and explains any policy, but it has only the signatures of the kind's host functions, so `eval` and `test` stop at the first call to one. A host builds its own CLI with the real functions linked in through [`pkg/cli`](./docs/guides/host-binary.md); the example service's [`sigilc`](./examples/deploy-gates/cmd/sigilc) is one.
 
 Every release after v0.1.0 signs `checksums.txt` with a keyless [cosign](https://docs.sigstore.dev/) signature from the release workflow. Verify the checksums, then the archive against them:
 

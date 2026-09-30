@@ -152,4 +152,4 @@ sigil test
 
 `sigil check` enforces the requirements and lint levels in `sigil.yaml`, so the job itself names no policy.
 
-The [example service](/guides/example-service/) runs the check and test steps on its own policies with its host binary, `sigilc`, in the `policies` task of `examples/.mise.toml`.
+The [example service](/guides/example-service/) runs the check and test steps on its own policies with its host binary, `sigilc`, in the `policies` task of `examples/deploy-gates/.mise.toml`.
