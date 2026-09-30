@@ -32,7 +32,7 @@ type compiled struct {
 type compiledResp struct {
 	envelope
 	Policy      string                 `json:"policy"`
-	Diagnostics []workspace.Diagnostic `json:"diagnostics"` // problems in documents the policy doesn't use, which don't stop it
+	Diagnostics []workspace.Diagnostic `json:"diagnostics"` // always empty, since any error fails the compile; the response keeps the brief's shape
 	Handle      uint32                 `json:"handle"`
 }
 
@@ -49,9 +49,12 @@ type explained struct {
 	Explanations []workspace.Explanation `json:"explanations"`
 }
 
-// compile answers the compile op the way `sigil eval` compiles its root:
-// the policy named, or the bundle's only one, in a bundle of it and what
-// it uses, so an error elsewhere doesn't stop it.
+// compile answers the compile op the way a host's Kind.Load compiles its
+// root: the policy named, or the bundle's only one, in the bundle of every
+// document of its kind, with the trusted files behind it. Every document
+// is checked, so a broken one fails the compile even when the root never
+// uses it, as it fails Load; sigil eval, which narrows to the root and
+// what it uses, would evaluate anyway.
 func (e *Engine) compile(env envelope, r *request) (any, humane.Error) { //nolint:emptyinterface // each op answers with its own record
 	p, err := load(r.Files, nil, r.Trusted)
 	if err != nil {
@@ -60,39 +63,38 @@ func (e *Engine) compile(env envelope, r *request) (any, humane.Error) { //nolin
 	p.Check()
 	root, err := workspace.Root(p.Policies(), r.Policy)
 	if err != nil {
-		// Without a root there's no scope, and the policy asked for may be
-		// missing because its document or kind doesn't check.
+		// The policy asked for may be missing because its document or
+		// kind doesn't check.
 		if errs := p.Errors(); errs != nil {
 			return nil, stopped(p.Resolve(errs), "the bundle doesn't check, so nothing was compiled")
 		}
 		return nil, err
 	}
+	// A requirement the host got wrong, such as a required policy its
+	// trusted files don't define, is reported before what it causes in
+	// the bundle, such as a use of that policy that doesn't resolve.
 	g := p.Group(root)
 	reqs, err := required(p, g, r)
 	if err != nil {
 		return nil, err
 	}
-	// The required policies are in scope, so a document that redefines
-	// one is reported however the root uses it.
-	s := p.ScopeOf(append([]string{root}, reqs...))
-	if errs := s.Keep(p.Errors()); errs != nil {
-		return nil, stopped(errs, root+" doesn't check, so nothing was compiled")
+	if errs := p.Errors(); errs != nil {
+		return nil, stopped(p.Resolve(errs), "the bundle doesn't check, so nothing was compiled")
 	}
 	binding, err := e.bind(g.Kind, r.Functions, r.Stubs)
 	if err != nil {
 		return nil, err
 	}
-	b := s.Bundle(g)
-	prog, errs := b.Compile(root, bundle.Options{Binding: binding, Require: reqs})
-	static, serrs := b.Compile(root, bundle.Options{Static: true})
+	prog, errs := g.Bundle.Compile(root, bundle.Options{Binding: binding, Require: reqs})
+	static, serrs := g.Bundle.Compile(root, bundle.Options{Static: true})
 	if errs == nil {
 		errs = serrs // what explain would have found, which eval's compile doesn't look for
 	}
 	if errs != nil {
 		return nil, stopped(p.Resolve(errs), "the policy doesn't compile, so nothing was compiled")
 	}
-	h := e.handles.keep(&compiled{kind: g.Kind, prog: prog, explain: workspace.Explain(static, b)})
-	return compiledResp{envelope: env, Handle: h, Policy: root, Diagnostics: workspace.Diagnostics(p.Resolve(p.Errors()))}, nil
+	h := e.handles.keep(&compiled{kind: g.Kind, prog: prog, explain: workspace.Explain(static, g.Bundle)})
+	return compiledResp{envelope: env, Handle: h, Policy: root, Diagnostics: []workspace.Diagnostic{}}, nil
 }
 
 // evaluate answers the eval op: the compiled policy evaluated against the

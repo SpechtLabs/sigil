@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -353,6 +354,72 @@ func TestRequire(t *testing.T) {
 			}
 			if !bytes.HasPrefix(got, []byte(`{"ok":false`)) || !strings.Contains(string(got), tt.want) {
 				t.Errorf("compile = %s, want it to fail with %s", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCompileChecksEveryDocument checks that compile, as a host's
+// Kind.Load, fails on a broken document the root never uses, among the
+// files or the trusted files, with the diagnostics check reports for the
+// same files.
+func TestCompileChecksEveryDocument(t *testing.T) {
+	kind := file(t, gates+"/deploy_approval.sigil")
+	payments := file(t, gates+"/teams/payments/production.sigil")
+	trusted := files(t, gates+"/platform/deploy")
+	broken := map[string]string{"path": "broken.sigil", "source": "policy teams.broken: DeployApproval@1\n\nwhen service.teir == \"x\" {\n  approve(reason: release_manager)\n}\n"}
+	tests := []struct {
+		name    string
+		files   []map[string]string
+		trusted []map[string]string
+	}{
+		{name: "among the files", files: []map[string]string{kind, payments, broken}, trusted: trusted},
+		{name: "among the trusted files", files: []map[string]string{kind, payments}, trusted: append(slices.Clone(trusted), broken)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inst := newInstance(t, nil)
+			req := map[string]any{"op": "compile", "policy": "payments.production", "files": tt.files, "trusted_files": tt.trusted, "require": []map[string]any{{"policy": "deploy.guardrails"}}}
+			got, want := inst.Call(encode(t, req)), newNative().Call(encode(t, req))
+			if !bytes.Equal(got, want) {
+				t.Errorf("the module answered\n%s\nwhere the engine answers natively\n%s", got, want)
+			}
+			var compiled map[string]any
+			if err := json.Unmarshal(got, &compiled); err != nil {
+				t.Fatal(err)
+			}
+			checked := inst.Request(map[string]any{"op": "check", "files": tt.files, "trusted_files": tt.trusted})
+			if compiled["ok"] != false || !strings.Contains(string(got), `"file":"broken.sigil","document":"teams.broken"`) {
+				t.Errorf("compile = %s, want it to fail on broken.sigil", got)
+			}
+			if !reflect.DeepEqual(compiled["diagnostics"], checked["diagnostics"]) {
+				t.Errorf("compile's diagnostics\n%v\ndiffer from check's\n%v", compiled["diagnostics"], checked["diagnostics"])
+			}
+		})
+	}
+}
+
+// TestIDEcho checks through the module that a request that doesn't
+// decode still gets its id back, unless it isn't JSON at all.
+func TestIDEcho(t *testing.T) {
+	tests := []struct {
+		name string
+		req  string
+		want string // the response's start
+	}{
+		{name: "unknown field", req: `{"op": "eval", "id": 5, "handle": 1, "timeoutMs": 10}`, want: `{"id":5,"ok":false,"error":{"message":"the request isn't a JSON object of the fields an op takes: json: unknown field \"timeoutMs\""`},
+		{name: "field of the wrong type", req: `{"op": "eval", "id": 6, "handle": "one"}`, want: `{"id":6,"ok":false`},
+		{name: "not JSON", req: `{"op": "eval", "id": 8,`, want: `{"ok":false,"error":{"message":"the request isn't a JSON object`},
+	}
+	inst := newInstance(t, nil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, want := inst.Call([]byte(tt.req)), newNative().Call([]byte(tt.req))
+			if !bytes.Equal(got, want) {
+				t.Errorf("the module answered\n%s\nwhere the engine answers natively\n%s", got, want)
+			}
+			if !bytes.HasPrefix(got, []byte(tt.want)) {
+				t.Errorf("Call(%s) = %s, want it to start %s", tt.req, got, tt.want)
 			}
 		})
 	}

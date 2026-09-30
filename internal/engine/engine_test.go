@@ -3,6 +3,7 @@ package engine_test
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -181,7 +182,7 @@ func TestCheck(t *testing.T) {
 		{name: "lint at its default", req: map[string]any{"files": with(file{"access/lets.sigil", lets})}, want: []string{`"severity":"warning","lint":"unused-let"`}},
 		{name: "lint set to error", req: map[string]any{"files": with(file{"access/lets.sigil", lets}), "lints": map[string]string{"unused-let": "error"}}, want: []string{`"severity":"error","lint":"unused-let"`}},
 		{name: "lint off", req: map[string]any{"files": with(file{"access/lets.sigil", lets}), "lints": map[string]string{"unused-let": "off"}}, want: []string{`"diagnostics":[]`}},
-		{name: "unknown lint", req: map[string]any{"files": base, "lints": map[string]string{"unused-lets": "off"}}, want: []string{`unknown lint \"unused-lets\"`, `did you mean \"unused-let\"?`}, fails: true},
+		{name: "unknown lint", req: map[string]any{"files": base, "lints": map[string]string{"unused-lets": "off"}}, want: []string{`unknown lint \"unused-lets\"`, `"help":"did you mean \"unused-let\"? the lints are unused-import, `}, fails: true},
 		{name: "unknown level", req: map[string]any{"files": base, "lints": map[string]string{"unused-let": "loud"}}, want: []string{`unused-let: unknown level \"loud\"`}, fails: true},
 		{name: "requirement met", req: map[string]any{"files": with(file{"platform/guard.sigil", guard}), "require": []map[string]any{{"policy": "platform.guard", "trusted": []string{"platform/"}, "roots": []string{"access.*"}}}}, want: []string{`"severity":"error"`, `access.main doesn't invoke platform.guard`}},
 		{name: "requirement undefined", req: map[string]any{"files": base, "require": []map[string]any{{"policy": "platform.gaurd"}}}, want: []string{`require[0]: platform.gaurd is required, but no policy platform.gaurd was found`}, fails: true},
@@ -222,7 +223,7 @@ func TestCompileErrors(t *testing.T) {
 		{name: "two policies, none named", req: map[string]any{"files": []file{{"kind.sigil", kind}, {"a.sigil", policy}, {"b.sigil", strings.Replace(other, "user.nmae", "user.name", 1)}}}, want: []string{"the bundle holds several policies"}},
 		{name: "unknown policy", req: map[string]any{"files": []file{{"kind.sigil", kind}, {"a.sigil", policy}}, "policy": "access.nope"}, want: []string{`no policy matches \"access.nope\"`}},
 		{name: "the bundle doesn't check", req: map[string]any{"files": []file{{"kind.sigil", "kind Access version 1\n\ninput x: nope\n"}, {"a.sigil", policy}}}, want: []string{"the bundle doesn't check, so nothing was compiled"}, diags: true},
-		{name: "the root doesn't check", req: map[string]any{"files": []file{{"kind.sigil", kind}, {"a.sigil", policy}, {"b.sigil", other}}, "policy": "access.other"}, want: []string{"access.other doesn't check, so nothing was compiled", `"line":3`}, diags: true},
+		{name: "the root doesn't check", req: map[string]any{"files": []file{{"kind.sigil", kind}, {"a.sigil", policy}, {"b.sigil", other}}, "policy": "access.other"}, want: []string{"the bundle doesn't check, so nothing was compiled", `"line":3`}, diags: true},
 		{name: "unknown function", req: map[string]any{"files": []file{{"kind.sigil", kind}, {"a.sigil", policy}}, "functions": []string{"ownr"}}, want: []string{"functions: the kind Access has no host function ownr", `did you mean \"owner\"?`}},
 		{name: "a function far from every name", req: map[string]any{"files": []file{{"kind.sigil", kind}, {"a.sigil", policy}}, "functions": []string{"zzzzzzzzzz"}}, want: []string{"the kind declares: owner, ttl_for"}},
 		{name: "a function of a kind without any", req: map[string]any{"files": []file{{"k.sigil", "kind K version 1\n\ninput x: int\n\ndecision allow {\n  reason: yes\n}\n\ncollect one\nprecedence allow\n\ndefault allow(reason: yes)\n"}, {"p.sigil", "policy k.main: K@1\n"}}, "functions": []string{"f"}}, want: []string{"the kind declares no host functions"}},
@@ -250,17 +251,41 @@ func TestCompileErrors(t *testing.T) {
 	}
 }
 
-// TestCompileKeepsUnrelatedErrors checks that an error in a document the
-// policy doesn't use doesn't stop it, as with sigil eval, and comes back
-// as a diagnostic.
-func TestCompileKeepsUnrelatedErrors(t *testing.T) {
-	e := engine.New()
-	resp := call(t, e, map[string]any{"op": "compile", "policy": "access.main", "files": []file{{"kind.sigil", kind}, {"a.sigil", policy}, {"b.sigil", other}}})
-	if resp["ok"] != true || resp["policy"] != "access.main" || resp["handle"] != 1.0 {
-		t.Fatalf("compile = %v", resp)
+// TestCompileChecksEveryDocument checks that compile, as a host's
+// Kind.Load, fails on a broken document the root never uses, among the
+// files or the trusted files, with that document's diagnostics: the ones
+// check reports for the same files.
+func TestCompileChecksEveryDocument(t *testing.T) {
+	const guard = "policy platform.guard: Access@1\n\nwhen age > 30d {\n  deny(reason: too_old)\n}\n"
+	const brokenGuard = "policy platform.broken: Access@1\n\nwhen user.nmae == \"x\" {\n  deny(reason: banned)\n}\n"
+	root := file{"access/main.sigil", policy}
+	tests := []struct {
+		name    string
+		files   []file
+		trusted []file
+		want    string // in the diagnostics, re-encoded with sorted keys
+	}{
+		{name: "a type error among the files", files: []file{{"kind.sigil", kind}, root, {"access/other.sigil", other}}, want: `"document":"access.other","file":"access/other.sigil","help":"did you mean \"name\"? User declares: name, teams, admin","line":3,"message":"unknown field`},
+		{name: "a syntax error among the files", files: []file{{"kind.sigil", kind}, root, {"access/other.sigil", "policy access.other: Access@1\n\nwhen {\n"}}, want: `"file":"access/other.sigil"`},
+		{name: "a document of an unknown kind", files: []file{{"kind.sigil", kind}, root, {"x.sigil", "policy x.y: Nope@1\n"}}, want: "no kind Nope was found"},
+		{name: "a type error among the trusted files", files: []file{{"kind.sigil", kind}, root}, trusted: []file{{"platform/guard.sigil", guard}, {"platform/broken.sigil", brokenGuard}}, want: `"document":"platform.broken","file":"platform/broken.sigil"`},
 	}
-	if diags, _ := resp["diagnostics"].([]any); len(diags) != 1 {
-		t.Errorf("diagnostics = %v, want the one in access.other", resp["diagnostics"])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := engine.New()
+			compiled := call(t, e, map[string]any{"op": "compile", "policy": "access.main", "files": tt.files, "trusted_files": tt.trusted})
+			checked := call(t, e, map[string]any{"op": "check", "files": tt.files, "trusted_files": tt.trusted})
+			problem, _ := compiled["error"].(map[string]any)
+			if compiled["ok"] != false || problem["message"] != "the bundle doesn't check, so nothing was compiled" {
+				t.Fatalf("compile = %v, want it to fail", compiled)
+			}
+			if !reflect.DeepEqual(compiled["diagnostics"], checked["diagnostics"]) {
+				t.Errorf("compile's diagnostics\n%v\ndiffer from check's\n%v", compiled["diagnostics"], checked["diagnostics"])
+			}
+			if got, _ := json.Marshal(compiled["diagnostics"]); !strings.Contains(string(got), tt.want) {
+				t.Errorf("diagnostics = %s, want %s", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -369,8 +394,8 @@ func TestHostArgsOutsideJSON(t *testing.T) {
 func TestPanic(t *testing.T) {
 	e := engine.New(engine.WithHost(func([]byte) []byte { panic("host exploded") }))
 	h := compile(t, e, map[string]any{"files": []file{{"kind.sigil", kind}, {"a.sigil", policy}}, "functions": []string{"owner"}})
-	got := raw(t, e, map[string]any{"op": "eval", "handle": h, "input": map[string]any{"user": map[string]any{"name": "ada"}, "resource": "vault"}})
-	if !strings.Contains(got, `"ok":false`) || !strings.Contains(got, "sigil failed while handling the request: host exploded") {
+	got := raw(t, e, map[string]any{"op": "eval", "id": 12, "handle": h, "input": map[string]any{"user": map[string]any{"name": "ada"}, "resource": "vault"}})
+	if !strings.HasPrefix(got, `{"id":12,"ok":false`) || !strings.Contains(got, "sigil failed while handling the request: host exploded") {
 		t.Errorf("eval = %s, want the panic as an answer", got)
 	}
 	if got := raw(t, e, map[string]any{"op": "release", "handle": h}); got != `{"ok":true}` {
@@ -570,6 +595,11 @@ func TestRequire(t *testing.T) {
 			want: []string{`"message":"require[0]: platform.guard isn't among the trusted files"`, `"message":"platform.guard must come from the trusted files, but it's defined here","help":"the host reads a required policy only from its trusted source`, `"file":"team/guard.sigil"`},
 		},
 		{
+			name:  "nobody defines it, though the root uses it",
+			files: []file{{"kind.sigil", kind}, team("guard()")}, trusted: []file{{"platform/other.sigil", "policy platform.other: Access@1\n"}}, require: req,
+			want: []string{"require[0]: platform.guard is required, but the trusted files define no policy platform.guard"},
+		},
+		{
 			name:  "nobody defines it",
 			files: []file{{"kind.sigil", kind}, {"team/main.sigil", "policy team.main: Access@1\n"}}, trusted: []file{{"platform/other.sigil", "policy platform.other: Access@1\n"}}, require: req,
 			want: []string{"require[0]: platform.guard is required, but the trusted files define no policy platform.guard"},
@@ -610,6 +640,31 @@ func TestRequire(t *testing.T) {
 			resp := call(t, e, map[string]any{"op": "eval", "handle": 1, "input": map[string]any{"user": map[string]any{"name": "ada", "admin": true}, "age": "40d"}})
 			if resp["ok"] != true || resp["error"] != nil {
 				t.Errorf("eval = %v", resp)
+			}
+		})
+	}
+}
+
+// TestIDEcho checks that every response that can carry the request's id
+// does: even one to a request that names a field no op takes, or gives a
+// field the wrong type. Only a request that isn't JSON, or whose id isn't
+// a number, has none to echo.
+func TestIDEcho(t *testing.T) {
+	tests := []struct {
+		name string
+		req  string
+		want string // the response's start
+	}{
+		{name: "unknown field", req: `{"op": "eval", "id": 5, "handle": 1, "timeoutMs": 10}`, want: `{"id":5,"ok":false,"error":{"message":"the request isn't a JSON object of the fields an op takes: json: unknown field \"timeoutMs\""`},
+		{name: "field of the wrong type", req: `{"op": "eval", "id": 6, "handle": "one"}`, want: `{"id":6,"ok":false,"error":{"message":"the request isn't a JSON object`},
+		{name: "unknown op", req: `{"op": "evaluate", "id": 7}`, want: `{"id":7,"ok":false`},
+		{name: "not JSON", req: `{"op": "eval", "id": 8,`, want: `{"ok":false,"error":{"message":"the request isn't a JSON object`},
+		{name: "an id that isn't a number", req: `{"op": "version", "id": "x"}`, want: `{"ok":false,"error":{"message":"the request isn't a JSON object`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := string(engine.New().Call([]byte(tt.req))); !strings.HasPrefix(got, tt.want) {
+				t.Errorf("Call(%s) = %s, want it to start %s", tt.req, got, tt.want)
 			}
 		})
 	}
