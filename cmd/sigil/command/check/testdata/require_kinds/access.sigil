@@ -1,0 +1,36 @@
+kind Access version 1
+
+input user: string
+
+decision deny {
+  reason: no_rule_matched | nobody
+}
+
+decision allow {
+  reason: admin
+}
+
+collect one
+precedence deny > allow
+
+default deny(reason: no_rule_matched)
+
+---
+
+policy access.guard: Access@1
+
+when user == "" {
+  deny(reason: nobody)
+}
+
+---
+
+policy access.main: Access@1
+
+use access.guard
+
+guard()
+
+when user == "root" {
+  allow(reason: admin)
+}

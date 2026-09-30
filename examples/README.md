@@ -479,21 +479,13 @@ go generate ./cmd/sigilc
 
 With both kinds linked in, no command needs `--kind`: each document is checked against the kind its header names, and a kind file among the paths must match the linked kind exactly, which is how a stale export fails the check. Run these from `examples/`. `mise run policies` runs the checks and the tests for both kinds, the way the examples CI job does.
 
-Check every team policy against its kind, with the platform's deploy documents as the trusted source, the same `Require` the service makes, and the lint levels from `policies/sigil.yaml`:
+Check every policy against its kind with the requirements and lint levels from `policies/sigil.yaml`: for both kinds, the platform's documents are the trusted source, and every root must pass the same `Require` the service makes.
 
 ```bash
-mise run sigilc check --config policies/sigil.yaml \
-  --require deploy.guardrails --trusted policies/platform/deploy \
-  --policy 'payments.*' --policy 'checkout.*' policies/teams
+mise run sigilc check --config policies/sigil.yaml policies
 ```
 
-The access policy gets the same check against the other kind:
-
-```bash
-mise run sigilc check --config policies/sigil.yaml \
-  --require access.guardrails --trusted policies/platform/access \
-  --policy access.main policies/access
-```
+Its `require` entries name `deploy.guardrails` for the team policies and `access.guardrails` for `access.main`; each applies only to policies of its own kind.
 
 Run every test file, for both kinds, in one run; each file runs with the kind of the policy it names:
 

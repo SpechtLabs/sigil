@@ -26,6 +26,7 @@ import (
 	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/config"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/diag"
@@ -79,9 +80,11 @@ it, with the kind of the policy it names.
 
 Each document's header names its kind, and the kind is found among the
 inputs: a kind file among the paths, or a kind document in the same file as the
-policies. --kind adds a kind file the paths don't hold, and a host binary has
-its kinds linked in. The same kind from two sources must be identical, which
-catches a stale export. Like eval, a case that calls a
+policies. --kind adds a kind file the paths don't hold, and so does the kinds:
+list of the nearest sigil.yaml, or of the file --config names; a host binary
+has its kinds linked in. The same kind from two sources must be identical, which
+catches a stale export. sigil.yaml's require: trusted: paths are read
+too, so a policy finds the required policies it uses. Like eval, a case that calls a
 host function needs a host binary with the functions linked in.`,
 		Example: `# Run every test case under the current directory, for every kind in it
 sigil test
@@ -97,15 +100,18 @@ sigil test --run 'freeze'`,
 			kindFiles, _ := cmd.Flags().GetStringSlice("kind")
 			run, _ := cmd.Flags().GetString("run")
 			verbose, _ := cmd.Flags().GetBool("verbose")
-			return runTests(cmd.Context(), cmd.OutOrStdout(), o, project.Sources{Paths: args, Kinds: kindFiles, Stdin: cmd.InOrStdin()}, run, verbose)
+			configFile, _ := cmd.Flags().GetString("config")
+			return runTests(cmd.Context(), cmd.OutOrStdout(), o, configFile, project.Sources{Paths: args, Kinds: kindFiles, Stdin: cmd.InOrStdin()}, run, verbose)
 		},
 	}
 
 	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policies' kinds are found among the paths and the kinds linked in (repeatable)")
 	cmd.Flags().String("run", "", "Only run test cases whose name matches this regular expression")
 	cmd.Flags().BoolP("verbose", "v", false, "List every test case, not only the ones that fail")
+	cmd.Flags().String("config", "", "Configuration file with kind files and trusted paths to load; the nearest "+config.FileName+" when omitted")
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagFilename("kind", "sigil")
+	_ = cmd.MarkFlagFilename("config", "yaml")
 	_ = cmd.RegisterFlagCompletionFunc("run", cobra.NoFileCompletions)
 
 	return cmd
@@ -144,7 +150,7 @@ type osFS struct{}
 // Open opens a file by its path on disk.
 func (osFS) Open(name string) (fs.File, error) { return os.Open(name) } //nolint:gosec,wrapcheck,humaneerror // fs.FS fixes the signature; input files are named by test files the user asked to run
 
-func runTests(ctx context.Context, out io.Writer, o *options, src project.Sources, run string, verbose bool) humane.Error {
+func runTests(ctx context.Context, out io.Writer, o *options, configFile string, src project.Sources, run string, verbose bool) humane.Error {
 	var filter *regexp.Regexp
 	if run != "" {
 		re, err := regexp.Compile(run)
@@ -164,6 +170,9 @@ func runTests(ctx context.Context, out io.Writer, o *options, src project.Source
 		return humane.New("no test files among "+strings.Join(src.Paths, ", "), "test files are YAML files named *_test.yaml, next to the policies they test")
 	}
 	src.Paths = sources
+	if err = config.Apply(configFile, ".", &src); err != nil {
+		return err
+	}
 	p, err := project.Load(src, o.kinds)
 	if err != nil {
 		return err

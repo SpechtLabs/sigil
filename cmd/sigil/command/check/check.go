@@ -1,15 +1,15 @@
 // Package check implements the `sigil check` command. It parses,
 // type-checks and compiles every document against its kind, checks the root
-// policies against --require, runs the lints at the levels sigil.yaml
-// sets, and prints the diagnostics with a summary line. As JSON or YAML it
-// prints one [output.Diagnostic] per problem. The command fails when any
-// diagnostic is an error, including a lint set to error.
+// policies against the policies sigil.yaml or --require requires, runs the
+// lints at the levels sigil.yaml sets, and prints the diagnostics with a
+// summary line. As JSON or YAML it prints one [output.Diagnostic] per
+// problem. The command fails when any diagnostic is an error, including a
+// lint set to error.
 package check
 
 import (
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 
 	"github.com/sierrasoftworks/humane-errors-go"
@@ -55,7 +55,7 @@ as 'payments.*' and the documents they use; only their problems are reported.
 the same check a host makes with policy.Require. --trusted reads required
 policies, and everything they use, from separate paths, the same way
 policy.From does. The roots are the policies --policy matches, or every policy
-no other policy invokes, apart from required ones; CI should name its roots.
+no other policy invokes, apart from required ones.
 
 Each document's header names its kind, and the kind is found among the
 inputs: a kind file among the paths, or a kind document in the same file as the
@@ -66,13 +66,12 @@ each against its own kind, and a required policy applies to the roots of its
 own kind. The kind documents are checked too. A policy whose params have no
 defaults is checked with the params unbound, the way explain shows it.
 
-Lints are warnings unless the repository's sigil.yaml promotes them to errors
-or turns them off. check reads the nearest sigil.yaml at or above the working
-directory, or the file --config names:
-
-  lints:
-    gated-deny: error
-    qualified-imports: warn
+check reads the nearest sigil.yaml at or above the working directory, or the
+file --config names: kinds: adds kind files as --kind does, require: lists the
+policies check enforces with their trusted: paths and roots: patterns, and
+lints: sets lint levels. --require, with --trusted, replaces require: for one
+run; --policy narrows the roots. Name the roots: a policy another one invokes,
+even under when, isn't a root, so a requirement misses it.
 
 check needs only the kind files, not implementations of the host functions it
 declares, so it is the command a policy repository runs in CI. It exits
@@ -80,7 +79,8 @@ non-zero when there is an error, including a lint set to error.`,
 		Example: `# Type-check one policy against a kind file kept elsewhere
 sigil check --kind deploy_approval.sigil deploy/production.sigil
 
-# Check every document in a policy repository, every kind in it, as CI would
+# Check every document in a policy repository, every kind in it, and the
+# requirements its sigil.yaml lists, as CI would
 sigil check
 
 # Check a self-contained file that holds its kind and its policies
@@ -89,7 +89,7 @@ sigil check bundle.sigil
 # Check one team's policies and what they use, not the rest of the repository
 sigil check --policy 'payments.*'
 
-# Check that every team policy invokes the guardrails unconditionally
+# Check one requirement on its own, instead of the ones sigil.yaml lists
 sigil check --require deploy.guardrails --trusted deploy/ --policy 'payments.*' deploy_approval.sigil payments/`,
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: complete.SigilFiles,
@@ -116,9 +116,9 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories too; always on")
 	_ = cmd.Flags().MarkDeprecated("recursive", "directories are always read recursively")
 	cmd.Flags().StringSliceP("policy", "p", nil, "Only check the policies matching this name or pattern, such as 'payments.*', and what they use; the roots for --require (repeatable)")
-	cmd.Flags().StringSlice("trusted", nil, "File or directory to read required policies from, as policy.From does (repeatable)")
+	cmd.Flags().StringSlice("trusted", nil, "File or directory to read the --require policies from, as policy.From does; needs --require (repeatable)")
 	cmd.Flags().StringSlice("require", nil, "Policy that every checked policy must invoke unconditionally (repeatable)")
-	cmd.Flags().String("config", "", "Configuration file with lint levels; the nearest "+config.FileName+" when omitted")
+	cmd.Flags().String("config", "", "Configuration file with kind files, requirements and lint levels; the nearest "+config.FileName+" when omitted")
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagFilename("kind", "sigil")
 	_ = cmd.MarkFlagFilename("config", "yaml")
@@ -127,11 +127,16 @@ func addFlags(cmd *cobra.Command) {
 	_ = cmd.MarkFlagFilename("trusted", "sigil")
 }
 
+// run checks the project src names, with the configuration configFile
+// names or the nearest sigil.yaml: every document, or with patterns the
+// policies they match and what those use. It enforces the requirements
+// --require names, or sigil.yaml's require: without it, and reports the
+// diagnostics and lint findings with a summary.
 func run(out io.Writer, o *options, configFile string, src project.Sources, patterns, requires []string) humane.Error {
 	if len(src.Paths) == 0 {
 		src.Paths = []string{"."}
 	}
-	cfg, err := config.Load(configFile, ".")
+	cfg, reqs, err := configure(configFile, &src, patterns, requires)
 	if err != nil {
 		return err
 	}
@@ -152,14 +157,18 @@ func run(out io.Writer, o *options, configFile string, src project.Sources, patt
 	var findings diag.ErrorList
 	if errs == nil {
 		// Lints read what the checker learned, so they run on a project
-		// that checks, even when a compile or --require then fails.
-		var rs []string
-		if len(requires) > 0 {
-			rs = roots(p, s, requires)
+		// that checks, even when a compile or a requirement then fails.
+		e, err := enforce(p, cfg, reqs, s.selected, whole(cfg, src.Paths))
+		if err != nil {
+			return err
 		}
-		errs = s.keep(compileAll(p, s, rs, requires))
+		errs = s.keep(compileAll(p, s, e))
+		required := make([]string, len(reqs))
+		for i, r := range reqs {
+			required[i] = r.Policy
+		}
 		for _, g := range p.Groups() {
-			for _, f := range lint.Run(g.Bundle, lint.Options{Kind: g.Kind.Model, Levels: cfg.Lints, Required: requires}) {
+			for _, f := range lint.Run(g.Bundle, lint.Options{Kind: g.Kind.Model, Levels: cfg.Lints, Required: required}) {
 				findings = append(findings, f.Error)
 			}
 		}
@@ -170,8 +179,8 @@ func run(out io.Writer, o *options, configFile string, src project.Sources, patt
 
 // compileAll compiles the scope's policies, so errors only a compile
 // finds, such as an invocation argument out of its param's bounds, fail
-// the check, and checks the roots against --require.
-func compileAll(p *project.Project, s *scope, roots, requires []string) diag.ErrorList {
+// the check, and checks each root against the policies it must invoke.
+func compileAll(p *project.Project, s *scope, e *enforced) diag.ErrorList {
 	var errs diag.ErrorList
 	seen := map[string]bool{}
 	add := func(list diag.ErrorList) {
@@ -187,55 +196,14 @@ func compileAll(p *project.Project, s *scope, roots, requires []string) diag.Err
 		_, list := s.bundle(p.Group(name)).Compile(name, bundle.Options{Static: true})
 		add(list)
 	}
-	if len(requires) == 0 || errs != nil {
+	if errs != nil {
 		return errs
 	}
-	for _, root := range roots {
-		g := p.Group(root)
-		_, list := s.bundle(g).Compile(root, bundle.Options{Static: true, Require: required(p, g, requires)})
+	for _, root := range e.roots {
+		_, list := s.bundle(p.Group(root)).Compile(root, bundle.Options{Static: true, Require: e.requires[root]})
 		add(list)
 	}
 	return errs
-}
-
-// required returns the required policies that apply to g's roots: those
-// of g's kind, and those no document defines, so a root still reports
-// that it doesn't invoke them.
-func required(p *project.Project, g *project.Group, requires []string) []string {
-	var out []string
-	for _, r := range requires {
-		if owner := p.Group(r); owner == nil || owner == g {
-			out = append(out, r)
-		}
-	}
-	return out
-}
-
-// roots returns the policies --require applies to: those --policy
-// selected, or every policy no other one invokes, apart from the
-// required ones.
-func roots(p *project.Project, s *scope, requires []string) []string {
-	if s.selected != nil {
-		return s.selected
-	}
-	invoked := map[string]bool{}
-	for _, g := range p.Groups() {
-		for _, d := range g.Bundle.Documents() {
-			if d.Info == nil {
-				continue
-			}
-			for _, target := range d.Info.Invocations {
-				invoked[target] = true
-			}
-		}
-	}
-	var out []string
-	for _, name := range p.Policies() {
-		if !invoked[name] && !slices.Contains(requires, name) {
-			out = append(out, name)
-		}
-	}
-	return out
 }
 
 // report prints the diagnostics, then a summary, and fails when there's
@@ -279,7 +247,7 @@ func reportText(out io.Writer, proj *project.Project, diags diag.ErrorList, fail
 	if proj.Files() == 0 && failed == 0 {
 		return p.Warning("no .sigil files found, so nothing was checked", "name the files or directories that hold the policies")
 	}
-	files := fmt.Sprintf("checked %d %s, ", proj.Files(), plural(proj.Files(), "file", "files"))
+	files := fmt.Sprintf("checked %d %s, ", proj.Read(), plural(proj.Read(), "file", "files"))
 	warnings := len(diags) - failed
 	switch {
 	case failed > 0:

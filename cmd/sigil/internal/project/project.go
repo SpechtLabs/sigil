@@ -184,9 +184,27 @@ func (p *Project) Policies() []string {
 	return out
 }
 
+// Names lists every policy and module the project read, trusted ones
+// included, sorted by name, such as for a did-you-mean over the names a
+// policy can be required by.
+func (p *Project) Names() []string {
+	out := make([]string, 0, len(p.names))
+	for name := range p.names {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Files returns how many files were read from the paths, trusted paths
 // and kind files apart.
 func (p *Project) Files() int { return p.files }
+
+// Read returns how many files the project read: its paths, its trusted
+// paths and its kind files, each once however many ways it was named.
+// It's what check reports as checked, the same for one tree whether a
+// file is read as trusted or not.
+func (p *Project) Read() int { return len(p.sources) }
 
 // SourceOf returns a file's source, or nil for a file the project didn't
 // read.

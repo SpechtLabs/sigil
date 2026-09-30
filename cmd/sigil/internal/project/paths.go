@@ -30,8 +30,8 @@ func Expand(paths []string, match func(name string) bool) ([]string, humane.Erro
 	var out []string
 	seen := map[string]bool{}
 	add := func(name string) {
-		if !seen[name] {
-			seen[name] = true
+		if !seen[identity(name)] {
+			seen[identity(name)] = true
 			out = append(out, name)
 		}
 	}
@@ -119,11 +119,11 @@ func (w *walker) walk(dir string) ([]string, humane.Error) {
 func without(files, drop []string) []string {
 	skip := map[string]bool{}
 	for _, f := range drop {
-		skip[f] = true
+		skip[identity(f)] = true
 	}
 	out := files[:0:0]
 	for _, f := range files {
-		if !skip[f] {
+		if !skip[identity(f)] {
 			out = append(out, f)
 		}
 	}
@@ -133,3 +133,22 @@ func without(files, drop []string) []string {
 // clean names a file the way diagnostics show it: cleaned and
 // slash-separated, so one file named two ways is read once.
 func clean(p string) string { return filepath.ToSlash(filepath.Clean(p)) }
+
+// identity returns what tells files apart: the absolute path with every
+// symbolic link resolved, so a file named once relatively and once
+// absolutely, such as a path argument and a path from sigil.yaml, or once
+// through a link, is read once. A path that doesn't resolve is its
+// absolute self. Stdin is itself.
+func identity(name string) string {
+	if name == "-" || name == stdinName {
+		return name
+	}
+	abs, err := filepath.Abs(name)
+	if err != nil {
+		return name
+	}
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		return real
+	}
+	return abs
+}

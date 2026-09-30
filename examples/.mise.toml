@@ -29,16 +29,16 @@ description = "Lint the examples module, e2e suite included, with the root golan
 depends = ["lint-build"]
 run = "../custom-gcl run --config ../.golangci.yaml --build-tags e2e ./..."
 
-# The check a policy repository runs in CI, once per kind: every root policy
-# type-checks with the platform's documents for its kind as the trusted source
-# and invokes the guardrails at the top level, and every test file passes
-# under the sigilc host binary. sigilc links both kinds, so no command needs
-# --kind: each document is checked against the kind its header names.
+# The check a policy repository runs in CI: every root policy type-checks with
+# the platform's documents for its kind as the trusted source and invokes that
+# kind's guardrails at the top level, as policies/sigil.yaml requires, and
+# every test file passes under the sigilc host binary. sigilc links both kinds,
+# so no command needs --kind: each document is checked against the kind its
+# header names.
 [tasks.policies]
 description = "Check the example deploy and access policies against the platform's guardrails and run their test files with sigilc"
 run = [
-  "go run ./cmd/sigilc check --config policies/sigil.yaml --require deploy.guardrails --trusted policies/platform/deploy --policy 'payments.*' --policy 'checkout.*' policies/teams",
-  "go run ./cmd/sigilc check --config policies/sigil.yaml --require access.guardrails --trusted policies/platform/access --policy access.main policies/access",
+  "go run ./cmd/sigilc check --config policies/sigil.yaml policies",
   "go run ./cmd/sigilc test policies",
 ]
 

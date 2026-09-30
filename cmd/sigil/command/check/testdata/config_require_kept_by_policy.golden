@@ -1,0 +1,4 @@
+--- error ---
+testdata/lints/require_undefined.yaml:2:13: deploy.guardrail is required, but no policy deploy.guardrail was found
+advice: did you mean "deploy.guardrails"?
+advice: check reads a required policy from the entry's trusted: paths, or else from its paths

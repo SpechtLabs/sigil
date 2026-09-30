@@ -4,7 +4,7 @@ testdata/errors/bad.sigil:3:14 (teams.bad): error: unknown field "teir" on type 
   |              ^^^^
   = help: did you mean "tier"? Service declares: name, tier, owners, labels
 
-✗ checked 1 file, 1 error
+✗ checked 2 files, 1 error
 --- error ---
 check found 1 error
 advice: each diagnostic above says where the problem is and how to fix it

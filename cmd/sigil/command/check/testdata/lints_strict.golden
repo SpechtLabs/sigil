@@ -40,7 +40,7 @@ testdata/lints/teams/payments.sigil:16:1: warning: deploy.production is invoked 
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: the first is on line 14; every rule it holds already fires once, so remove one, or change its arguments
 
-✗ checked 4 files, 1 error and 6 warnings
+✗ checked 5 files, 1 error and 6 warnings
 --- error ---
 check found 1 error and 6 warnings
 advice: each diagnostic above says where the problem is and how to fix it

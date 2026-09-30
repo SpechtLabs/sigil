@@ -94,7 +94,7 @@ payments/production.sigil:7:3: error: deploy.guardrails must be invoked uncondit
   = help: the host requires deploy.guardrails for every DeployApproval policy; move the call to the top level
 ```
 
-A team policy that doesn't invoke the guardrails at all fails too, with `payments.production doesn't invoke deploy.guardrails`. In CI, `sigil check --require deploy.guardrails` runs the same check; see [Check policies in CI](/guides/ci/#require-the-guardrails). Put the `Require` wherever the host loads team policies, so no team can forget it.
+A team policy that doesn't invoke the guardrails at all fails too, with `payments.production doesn't invoke deploy.guardrails`. In CI, `sigil check` runs the same check once `sigil.yaml` requires the guardrails; see [Check policies in CI](/guides/ci/#require-the-guardrails). Put the `Require` wherever the host loads team policies, so no team can forget it.
 
 When teams can write to the bundle, also pass `policy.From` with a source only the platform controls, since `Require` on its own only checks a name ([why](/understanding/bundles/#why-required-policies-need-a-trusted-source)):
 

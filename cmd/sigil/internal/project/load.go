@@ -19,7 +19,7 @@ type loader struct {
 	p      *Project
 	kinds  *kinds
 	stdin  io.Reader
-	parsed map[string]*file // every file read, by name, so none is parsed twice
+	parsed map[string]*file // every file read, by its identity, so none is parsed twice
 	order  []*file          // the same, in read order
 }
 
@@ -75,7 +75,7 @@ func (l *loader) read(name string) (*file, humane.Error) {
 	if name == "-" {
 		name = stdinName
 	}
-	if f, ok := l.parsed[name]; ok {
+	if f, ok := l.parsed[identity(name)]; ok {
 		return f, nil
 	}
 	var src []byte
@@ -95,12 +95,12 @@ func (l *loader) read(name string) (*file, humane.Error) {
 // documents, and keeps it so it's never parsed again. flag marks a kind
 // file named on the command line.
 func (l *loader) parse(name string, src []byte, flag bool) (*file, humane.Error) {
-	if f, ok := l.parsed[name]; ok {
+	if f, ok := l.parsed[identity(name)]; ok {
 		return f, nil
 	}
 	parsed, errs := parser.ParseFile(name, src)
 	f := &file{name: name, src: src, docs: parsed.Docs}
-	l.parsed[name] = f
+	l.parsed[identity(name)] = f
 	l.order = append(l.order, f)
 	l.p.sources[name] = src
 	l.p.errs = append(l.p.errs, errs...)

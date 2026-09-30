@@ -1,0 +1,2 @@
+require:
+  - policy: deploy.guardrail

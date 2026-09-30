@@ -47,36 +47,47 @@ lints:
 
 `gated-deny` as an error fails a team policy that invokes a policy holding denies under a `when`, which is almost always a mistake. Promote `path-matches-name` when CODEOWNERS protects the directories that hold the required policies, so each document's name matches the path CODEOWNERS sees ([a review aid, not a control](/understanding/bundles/#path-matches-name-is-a-review-aid)).
 
-`check` uses the first `sigil.yaml` it finds in the working directory or a parent. When the job runs from somewhere else, name the file with `--config`. [sigil.yaml](/reference/lints/#sigil-yaml) has the format and [Lints](/reference/lints/#lints) the lints and their defaults.
+`check` uses the first `sigil.yaml` it finds in the working directory or a parent. When the job runs from somewhere else, name the file with `--config`. [sigil.yaml](/reference/sigil-yaml/) has the format and [Lints](/reference/lints/#lints) the lints and their defaults.
 
 ## Require the guardrails
 
-The host loads each team policy with `policy.Require("deploy.guardrails", policy.From(...))`. Run the same check in CI, so a team finds a gated or missing guardrail in its pull request instead of in a service that refuses to load the policy:
+The host loads each team policy with `policy.Require("deploy.guardrails", policy.From(...))`. Run the same check in CI, so a team finds a gated or missing guardrail in its pull request instead of in a service that refuses to load the policy. List the requirement in the same `sigil.yaml`:
 
-```text
-sigil check \
-  --require deploy.guardrails --trusted deploy/ \
-  --policy 'payments.*' --policy 'checkout.*' \
-  deploy_approval.sigil payments/ checkout/
+```yaml
+require:
+  - policy: deploy.guardrails
+    trusted: [deploy]
+    roots: ["payments.*", "checkout.*"]
+lints:
+  gated-deny: error
+  path-matches-name: error
 ```
 
-1. **Name the required policy with `--require`.** Every root must invoke it unconditionally, through top-level invocations only. A team policy that gates it fails:
+The plain `sigil check` from [Check](#check) now enforces it:
+
+1. **`policy` names the required policy.** Every root must invoke it unconditionally, through top-level invocations only. A team policy that gates it fails:
 
    ```text
-   payments/production.sigil:7:3: error: deploy.guardrails must be invoked unconditionally
+   payments/production.sigil:8:3: error: deploy.guardrails must be invoked unconditionally
      |
-   7 |   guardrails(min_soak: 4h)
+   8 |   guardrails(min_soak: 4h)
      |   ^^^^^^^^^^^^^^^^^^^^^^^^
      = help: the host requires deploy.guardrails for every DeployApproval policy; move the call to the top level
    ```
 
-2. **Pass the host's trusted source with `--trusted`.** Required policies, and everything they import and invoke, then come from `deploy/`, the way `policy.From` reads them in the host, and a team document that claims one of their names is an error. Use the same source the host uses; a trusted directory is always read recursively. A trusted directory that's also among the bundle paths, by name or because it's below one, is read as trusted only.
+2. **`trusted` is the host's trusted source.** Required policies, and everything they import and invoke, then come from `deploy/`, the way `policy.From` reads them in the host, and a team document that claims one of their names is an error. A `deploy.guardrails` defined anywhere but below `deploy/` fails the check, so a team can't swap in its own. Use the same source the host uses; a trusted directory is always read recursively, and read as trusted only, even though `check` reads `.` too. The path is relative to `sigil.yaml`.
 
-3. **Name the roots with `--policy`.** Give a name or a pattern per team, and add one when a team joins. A pattern that matches nothing is an error, so a renamed team can't drop out of the check unnoticed.
+3. **`roots` names the roots.** Give a name or a pattern per team, and add one when a team joins. A pattern that matches nothing is an error, so a renamed team can't drop out of the check unnoticed.
 
-Always name the roots in CI. Without `--policy`, `check` guesses: the roots are the bundle's policies that no other policy invokes, apart from the required ones. That guess misfires on a library bundle. Checked on its own, the platform's `deploy/` has two uninvoked policies, and `deploy.production` fails `--require` for not invoking the guardrails, although no host ever loads it as a root. With `--trusted deploy/`, the platform's documents aren't part of the bundle, so they're never roots.
+Always name the roots. Without `roots`, `check` guesses: the roots are the policies of the required policy's kind that no other policy invokes, apart from the required ones. A policy that another one invokes, even under a `when`, isn't a guessed root, so the requirement doesn't reach it, although a host can load it on its own. That guess misfires on a library bundle. Checked on its own, the platform's `deploy/` has two uninvoked policies, and `deploy.production` fails for not invoking the guardrails, although no host ever loads it as a root. The trusted documents aren't part of the bundle, so they're never roots.
 
-When the service loads its policies from a ConfigMap that overlays add to, check the rendered ConfigMap as well. Extract its keys and pipe them to `check` with `-` as the path, which reads the documents from stdin; [Policies in a ConfigMap](/guides/configmaps/#check-in-ci-what-the-service-will-load) shows the pipeline. [`sigil check`](/reference/cli/#sigil-check) has every flag, and [Trusted sources](/reference/bundles/#trusted-sources) the rules `--trusted` follows.
+A repository with policies of several kinds lists one entry per required policy; each applies only to roots of its own kind. To try a requirement without editing the file, `--require` replaces `require` for one run, with `--trusted` for its trusted source and `--policy` for its roots:
+
+```text
+sigil check --require deploy.guardrails --trusted deploy/ --policy 'payments.*'
+```
+
+When the service loads its policies from a ConfigMap that overlays add to, check the rendered ConfigMap as well. Extract its keys and pipe them to `check` with `-` as the path, which reads the documents from stdin; [Policies in a ConfigMap](/guides/configmaps/#check-in-ci-what-the-service-will-load) shows the pipeline. [sigil.yaml](/reference/sigil-yaml/) has every key, [`sigil check`](/reference/cli/#sigil-check) every flag, and [Trusted sources](/reference/bundles/#trusted-sources) the rules `trusted` follows.
 
 To review what a ConfigMap change does, run `sigil explain` on the same input without `--policy`. It explains every policy in the bundle, one after another, and its output can go into the pull request.
 
@@ -134,13 +145,11 @@ A test file that can't run at all, because it's invalid or its policy doesn't co
 
 ```sh
 set -eu
-sigil fmt --check .
+sigil fmt --check
 sigil check
-sigil check \
-  --require deploy.guardrails --trusted deploy/ \
-  --policy 'payments.*' --policy 'checkout.*' \
-  deploy_approval.sigil payments/ checkout/
 sigil test
 ```
+
+`sigil check` enforces the requirements and lint levels in `sigil.yaml`, so the job itself names no policy.
 
 The [example service](/guides/example-service/) runs the check and test steps on its own policies with its host binary, `sigilc`, in the `policies` task of `examples/.mise.toml`.

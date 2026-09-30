@@ -361,11 +361,14 @@ func TestTrusted(t *testing.T) {
 		t.Errorf("Document(platform.base) = %v, want a trusted document", d)
 	}
 	errs := p.Errors()
-	if len(errs) != 1 || !strings.Contains(errs[0].Help, "the name belongs to the trusted source") {
-		t.Fatalf("Errors() = %v, want the trusted name taken", errs)
+	if len(errs) != 1 || !strings.Contains(errs[0].Help, "the name belongs to the trusted source") || errs[0].Doc != "platform.base" {
+		t.Fatalf("Errors() = %v, want the trusted name taken, in the second platform.base", errs)
 	}
 	if got := p.Policies(); !reflect.DeepEqual(got, []string{"team.main"}) {
 		t.Errorf("Policies() = %v, want the bundle's own", got)
+	}
+	if got := p.Names(); !reflect.DeepEqual(got, []string{"platform.base", "team.main"}) {
+		t.Errorf("Names() = %v, want the trusted name too", got)
 	}
 }
 
@@ -527,4 +530,41 @@ func linked(t *testing.T, src string) project.Linked {
 		t.Fatalf("LoadKind: %v", errs)
 	}
 	return project.Linked{Model: k, Binding: gokind.Synthesize(k)}
+}
+
+// TestIdentity checks that a file named once relatively and once
+// absolutely, as a path argument and a path from sigil.yaml can be, is
+// read once, and that a trusted file named the other way is still left
+// out of the regular files.
+func TestIdentity(t *testing.T) {
+	dir := t.TempDir()
+	for name, src := range map[string]string{
+		"access.sigil":        accessKind,
+		"platform/base.sigil": "policy platform.base: Access@1\n",
+		"team/main.sigil":     "policy team.main: Access@1\n",
+	} {
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(dir)
+	files, err := project.Expand([]string{"team", filepath.Join(dir, "team", "main.sigil")}, project.IsSigil)
+	if err != nil || !reflect.DeepEqual(files, []string{"team/main.sigil"}) {
+		t.Fatalf("Expand() = %v, %v, want team/main.sigil once", files, err)
+	}
+	p, herr := project.Load(project.Sources{
+		Paths:   []string{".", filepath.Join(dir, "access.sigil")},
+		Trusted: []string{filepath.Join(dir, "platform")},
+		Kinds:   []string{filepath.Join(dir, "access.sigil")},
+	}, nil)
+	if herr != nil {
+		t.Fatal(herr)
+	}
+	if errs := p.Errors(); errs != nil || p.Files() != 2 {
+		t.Errorf("Load() read %d files with %v, want access.sigil and team/main.sigil once each and no errors", p.Files(), errs)
+	}
 }

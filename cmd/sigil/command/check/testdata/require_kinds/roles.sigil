@@ -1,0 +1,25 @@
+kind Roles version 1
+
+input user: string
+
+decision read {
+  reason: member
+}
+
+collect all
+
+---
+
+policy roles.guard: Roles@1
+
+when user != "" {
+  read(reason: member)
+}
+
+---
+
+policy roles.main: Roles@1
+
+when user == "root" {
+  read(reason: member)
+}

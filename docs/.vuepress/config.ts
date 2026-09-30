@@ -185,6 +185,7 @@ export default defineUserConfig({
           items: [
             { text: "CLI", link: "cli", icon: "mdi:console" },
             { text: "Test files", link: "test-files", icon: "mdi:test-tube" },
+            { text: "sigil.yaml", link: "sigil-yaml", icon: "mdi:file-cog-outline" },
             { text: "Lints", link: "lints", icon: "mdi:alert-outline" },
           ],
         },

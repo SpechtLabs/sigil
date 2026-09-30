@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,7 +58,7 @@ func TestTest(t *testing.T) {
 				kinds = nil
 			}
 			var out bytes.Buffer
-			err := runTests(context.Background(), &out, &options{output: &format}, project.Sources{Paths: tt.paths, Kinds: kinds}, tt.run, tt.verbose)
+			err := runTests(context.Background(), &out, &options{output: &format}, "", project.Sources{Paths: tt.paths, Kinds: kinds}, tt.run, tt.verbose)
 			golden(t, tt.name, render(out.String(), err))
 		})
 	}
@@ -88,7 +89,7 @@ func TestCurrentDirectory(t *testing.T) {
 	t.Chdir(dir)
 	format := output.Text
 	var out bytes.Buffer
-	if err := runTests(context.Background(), &out, &options{output: &format}, project.Sources{}, "", false); err != nil {
+	if err := runTests(context.Background(), &out, &options{output: &format}, "", project.Sources{}, "", false); err != nil {
 		t.Fatalf("runTests() = %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "ok    access/main_test.yaml") {
@@ -123,5 +124,63 @@ func golden(t *testing.T, name, got string) {
 	}
 	if got != string(want) {
 		t.Errorf("output differs from %s (run with -update to accept):\n--- got ---\n%s\n--- want ---\n%s", path, got, want)
+	}
+}
+
+// TestConfigKinds checks that test loads the kind files the nearest
+// sigil.yaml, or the one --config names, lists under kinds:.
+func TestConfigKinds(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  string // sigil.yaml, one level above the policies
+		flag    string // --config, relative to the policies
+		wantErr string
+	}{
+		{name: "nearest", config: "kinds: [vendor/access.sigil]\n"},
+		{name: "named", config: "kinds: vendor/access.sigil\n", flag: "../sigil.yaml"},
+		{name: "missing kind file", config: "kinds: [vendor/nope.sigil]\n", wantErr: "the kind file ../vendor/nope.sigil can't be read"},
+		{name: "invalid", config: "kinds: [vendor/access.sigil\n", wantErr: "isn't valid YAML"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			files := map[string]string{"vendor/access.sigil": filepath.Join("testdata", "access.sigil")}
+			err := filepath.WalkDir(filepath.Join("testdata", "access"), func(path string, d fs.DirEntry, err error) error {
+				if err == nil && !d.IsDir() {
+					files[filepath.Join("policies", path[len(filepath.Join("testdata", "access"))+1:])] = path
+				}
+				return err
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for to, from := range files {
+				src, err := os.ReadFile(from)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, to)), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, to), src, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(dir, "sigil.yaml"), []byte(tt.config), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			t.Chdir(filepath.Join(dir, "policies"))
+			format := output.Text
+			var out bytes.Buffer
+			herr := runTests(context.Background(), &out, &options{output: &format}, tt.flag, project.Sources{}, "", false)
+			switch {
+			case tt.wantErr == "" && herr != nil:
+				t.Fatalf("runTests() = %v\n%s", herr, out.String())
+			case tt.wantErr != "" && (herr == nil || !strings.Contains(herr.Error(), tt.wantErr)):
+				t.Fatalf("runTests() = %v, want %q", herr, tt.wantErr)
+			case tt.wantErr == "" && !strings.Contains(out.String(), "ok    main_test.yaml"):
+				t.Errorf("output = %q, want main_test.yaml run", out.String())
+			}
+		})
 	}
 }

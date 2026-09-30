@@ -4,7 +4,7 @@ testdata/kinds/invalid.sigil:3:34: error: enum Tier: value "standard" is declare
   |                                  ^^^^^^^^
   = help: declare each value once
 
-✗ checked 2 files, 1 error
+✗ checked 3 files, 1 error
 --- error ---
 check found 1 error
 advice: each diagnostic above says where the problem is and how to fix it

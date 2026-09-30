@@ -48,7 +48,7 @@ func TestExplain(t *testing.T) {
 			if tt.noKind {
 				src.Kinds = nil
 			}
-			err := run(&out, &options{output: &format}, tt.pattern, src)
+			err := run(&out, &options{output: &format}, "", tt.pattern, src)
 			if tt.err != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.err) {
 					t.Fatalf("run() error = %v, want %q", err, tt.err)
@@ -86,7 +86,7 @@ func TestCurrentDirectory(t *testing.T) {
 	t.Chdir("testdata")
 	format := output.Text
 	var out bytes.Buffer
-	if err := run(&out, &options{output: &format}, "deploy.*", project.Sources{}); err != nil {
+	if err := run(&out, &options{output: &format}, "", "deploy.*", project.Sources{}); err != nil {
 		t.Fatalf("run() = %v", err)
 	}
 	if out.String() != string(want) {
@@ -107,5 +107,59 @@ func TestCount(t *testing.T) {
 		if got := count(tt.n, "rule", "rules"); got != tt.want {
 			t.Errorf("count(%d) = %q, want %q", tt.n, got, tt.want)
 		}
+	}
+}
+
+// TestConfigKinds checks that explain loads the kind files the nearest
+// sigil.yaml, or the one --config names, lists under kinds:.
+func TestConfigKinds(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  string // sigil.yaml, one level above the policies
+		flag    string // --config, relative to the policies
+		wantErr string
+	}{
+		{name: "nearest", config: "kinds: [vendor/deploy_approval.sigil]\n"},
+		{name: "named", config: "kinds: vendor/deploy_approval.sigil\n", flag: "../sigil.yaml"},
+		{name: "missing kind file", config: "kinds: [vendor/nope.sigil]\n", wantErr: "the kind file ../vendor/nope.sigil can't be read"},
+		{name: "invalid", config: "kinds: [vendor/deploy_approval.sigil\n", wantErr: "isn't valid YAML"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			files := map[string]string{"sigil.yaml": tt.config, "vendor/deploy_approval.sigil": "deploy_approval.sigil"}
+			for _, f := range []string{"common", "guardrails", "production"} {
+				files["policies/deploy/"+f+".sigil"] = "deploy/" + f + ".sigil"
+			}
+			files["policies/payments/production.sigil"] = "payments/production.sigil"
+			for to, from := range files {
+				src := []byte(tt.config)
+				if to != "sigil.yaml" {
+					var err error
+					if src, err = os.ReadFile(filepath.Join("testdata", filepath.FromSlash(from))); err != nil {
+						t.Fatal(err)
+					}
+				}
+				path := filepath.Join(dir, filepath.FromSlash(to))
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, src, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Chdir(filepath.Join(dir, "policies"))
+			format := output.Text
+			var out bytes.Buffer
+			err := run(&out, &options{output: &format}, tt.flag, "payments.production", project.Sources{})
+			switch {
+			case tt.wantErr == "" && err != nil:
+				t.Fatalf("run() = %v", err)
+			case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
+				t.Fatalf("run() = %v, want %q", err, tt.wantErr)
+			case tt.wantErr == "" && !strings.HasPrefix(out.String(), "payments.production: "):
+				t.Errorf("output = %q, want payments.production explained", out.String())
+			}
+		})
 	}
 }

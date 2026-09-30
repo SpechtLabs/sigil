@@ -18,6 +18,7 @@ import (
 	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/config"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/eval"
@@ -51,9 +52,11 @@ every policy in the bundle, one after another.
 
 Each document's header names its kind, and the kind is found among the
 inputs: a kind file among the paths, or a kind document in the same file as the
-policies. --kind adds a kind file the paths don't hold, and a host binary has
-its kinds linked in. The same kind from two sources must be identical, which
-catches a stale export.
+policies. --kind adds a kind file the paths don't hold, and so does the kinds:
+list of the nearest sigil.yaml, or of the file --config names; a host binary
+has its kinds linked in. The same kind from two sources must be identical, which
+catches a stale export. sigil.yaml's require: trusted: paths are read
+too, so a policy finds the required policies it uses.
 
 A policy is explained with its params as declared, so a policy whose params
 have no defaults is explained only through the policies that invoke it.
@@ -70,19 +73,22 @@ sigil explain --kind deploy_approval.sigil policies.sigil`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kindFiles, _ := cmd.Flags().GetStringSlice("kind")
 			pattern, _ := cmd.Flags().GetString("policy")
+			configFile, _ := cmd.Flags().GetString("config")
 			src := project.Sources{Paths: args, Kinds: kindFiles, Stdin: cmd.InOrStdin()}
-			return run(cmd.OutOrStdout(), o, pattern, src)
+			return run(cmd.OutOrStdout(), o, configFile, pattern, src)
 		},
 	}
 
 	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policies' kinds are found among the paths and the kinds linked in (repeatable)")
 	cmd.Flags().StringP("policy", "p", "", "Name or pattern of the policies to explain; every policy in the bundle when omitted")
+	cmd.Flags().String("config", "", "Configuration file with kind files and trusted paths to load; the nearest "+config.FileName+" when omitted")
 	// -R read subdirectories before every command did; it stays so scripts
 	// that pass it keep working.
 	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories too; always on")
 	_ = cmd.Flags().MarkDeprecated("recursive", "directories are always read recursively")
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagFilename("kind", "sigil")
+	_ = cmd.MarkFlagFilename("config", "yaml")
 	_ = cmd.RegisterFlagCompletionFunc("policy", complete.Policies)
 
 	return cmd
@@ -110,9 +116,15 @@ type Entry struct {
 	Payload    []string `json:"payload,omitempty" yaml:"payload,omitempty"`   // a rule's payload arguments, as `name = expression`
 }
 
-func run(out io.Writer, o *options, pattern string, src project.Sources) humane.Error {
+// run explains the policies pattern matches, or every policy without it,
+// in the project src names, with the kind files and trusted paths of the
+// configuration configFile names or the nearest sigil.yaml.
+func run(out io.Writer, o *options, configFile, pattern string, src project.Sources) humane.Error {
 	if len(src.Paths) == 0 {
 		src.Paths = []string{"."}
+	}
+	if err := config.Apply(configFile, ".", &src); err != nil {
+		return err
 	}
 	proj, err := project.Load(src, o.kinds)
 	if err != nil {

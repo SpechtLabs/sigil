@@ -1,6 +1,24 @@
-# Lint levels for `sigilc check`. It looks for sigil.yaml in the working
+# What `sigilc check` enforces. It looks for sigil.yaml in the working
 # directory and its parents, and CI runs from examples/, so pass
-# --config policies/sigil.yaml.
+# --config policies/sigil.yaml. Paths are relative to this file.
+
+# Both kind files, so that a command on one directory, such as
+# `sigil check teams/payments` or `sigil test access` from here, finds the
+# kinds its policies name. A kind file that is also among the paths is read
+# once.
+kinds: [deploy_approval.sigil, access_grant.sigil]
+
+require:
+  # The Require deploygate makes when it loads a team's deploy policy: every
+  # team root invokes the platform's guardrails at the top level, read from
+  # the platform's own documents rather than from anything a team wrote.
+  - policy: deploy.guardrails
+    trusted: [platform/deploy]
+    roots: ["payments.*", "checkout.*"]
+  # The same for the access policy, against the access guardrails.
+  - policy: access.guardrails
+    trusted: [platform/access]
+    roots: [access.main]
 lints:
   # A deny invoked under `when` only fires while the gate holds. The platform
   # requires deploy.guardrails anyway, but a team that gates its own denies is
