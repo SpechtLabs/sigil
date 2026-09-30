@@ -45,11 +45,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Runs the markdownlint-cli2 and yamllint pinned in .mise.toml, so local
-      # and CI agree.
+      # and CI agree. markdownlint-cli2 is an npm package, and mise installs it
+      # with the node .mise.toml pins, so node comes first.
       - name: Set up mise
         uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5 # v5.0.0
         with:
-          install_args: markdownlint-cli2 yamllint
+          install_args: node markdownlint-cli2 yamllint
 
       - name: Lint docs
         run: mise run docs-lint
