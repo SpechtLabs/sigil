@@ -1,0 +1,17 @@
+# Next.js build output and local caches.
+.next/
+node_modules/
+next-env.d.ts
+*.tsbuildinfo
+# Copied from @spechtlabs/sigil by scripts/copy-wasm.ts for the browser preview.
+public/sigil/
+# Generated load-test reports and dashboard snapshots.
+results/
+# Playwright browsers (bun run ui:install).
+.cache/
+# Playwright's reports and traces of a UI test run.
+test-results/
+playwright-report/
+# bin/ holds the container entry scripts (alertrouter.mjs, healthcheck.mjs), not
+# build output, so it undoes the root .gitignore's bin/ for Go binaries.
+!bin/

@@ -260,7 +260,7 @@ Remove the rule again before moving on.
 
 A Go service that routes alerts through policies it checks against a typed contract; a kind file that lets anyone check, evaluate and test those policies with the CLI; a shared library that teams use with their own values; and guardrails that no team can leave out.
 
-From here:
+The same router, grown into a service, is [`examples/alert-routing`](https://github.com/SpechtLabs/sigil/tree/main/examples/alert-routing). It runs the policies you wrote here in a TypeScript app on Sigil's WebAssembly build, with an HTTP API, an operator console, hot reload, metrics, traces, a Grafana dashboard and load tests. From here:
 
 - [Per-team policies](/guides/team-policies/) and [Policies in a ConfigMap](/guides/configmaps/) take the same ideas into production, including loading team policies from a directory the platform doesn't control, where `policy.From` makes the guardrails come from the platform's own copy.
 - [Composition without templating](/understanding/composition/) explains what guarantees composition gives and which it doesn't.

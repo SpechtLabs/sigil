@@ -1,0 +1,8 @@
+{
+  "alert": {
+    "name": "PaymentsLatencyHigh",
+    "severity": "warning",
+    "labels": {"env": "production", "service": "payments-gateway"},
+    "firing_for": "4m59s"
+  }
+}

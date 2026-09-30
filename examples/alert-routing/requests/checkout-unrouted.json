@@ -1,0 +1,8 @@
+{
+  "alert": {
+    "name": "CheckoutPodRestarted",
+    "severity": "info",
+    "labels": {"env": "production", "service": "checkout-api"},
+    "firing_for": "0s"
+  }
+}

@@ -223,6 +223,41 @@ jobs:
       - name: Build the TypeScript package
         run: mise run ts-build
 
+  # examples/alert-routing is a TypeScript service on the module and the
+  # package above, not a Go module, so the examples matrix doesn't cover it.
+  # Its install task builds sigil.wasm and the package from this checkout
+  # first. The Playwright smoke test is the one place a real browser runs
+  # the module, through the package's worker helper.
+  alert-routing:
+    name: Example (alert-routing)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/alert-routing
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5 # v5.0.0
+        with:
+          install_args: go bun node
+          working_directory: examples/alert-routing
+
+      - name: Install
+        run: mise run install
+
+      # Lint, typecheck, unit and integration tests, the policies through the
+      # sigil CLI, and the standalone Next.js build.
+      - name: Check
+        run: mise run check
+
+      - name: Install Chromium for the UI smoke test
+        run: bun run ui:install -- --with-deps
+
+      - name: UI smoke test
+        run: bun run test:ui
+
   build:
     name: Build with GoReleaser
     runs-on: ubuntu-latest

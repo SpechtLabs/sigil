@@ -1,0 +1,44 @@
+{
+  // One config for the app, the scripts and the tests. `tsc --noEmit` is the
+  // typecheck gate; Next compiles with its own bundler and skips type checking
+  // (see next.config.ts).
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["DOM", "DOM.Iterable", "ES2023", "ESNext.Disposable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["bun", "node"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "incremental": true,
+    "allowJs": false,
+    "esModuleInterop": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "src",
+    "scripts",
+    "test",
+    "deploy",
+    "*.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", ".next"]
+}

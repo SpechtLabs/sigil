@@ -34,8 +34,11 @@ pinact = "5.0.0"
 # is the same version the docs workflow runs.
 bun = "1.4.2"
 markdownlint-cli2 = "0.23.3"
-# Node, for npm: the release workflow publishes @spechtlabs/sigil with it (see
-# release.yaml), and trusted publishing needs npm 11.5 or later.
+# Node: the release workflow publishes @spechtlabs/sigil with npm (see
+# release.yaml; trusted publishing needs npm 11.5 or later), and
+# examples/alert-routing builds and serves on Node, whose Pyroscope profiler
+# needs V8. Keep in lockstep with the node images in
+# examples/alert-routing/Dockerfile.
 node = "24.21.0"
 # Renders roadmap.yml into docs/project/roadmap.md (see the docs-roadmap task).
 "github:SierraSoftworks/roadmap" = "1.4.2"

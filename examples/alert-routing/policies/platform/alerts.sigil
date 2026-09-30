@@ -1,0 +1,3 @@
+module platform.alerts: AlertRouting@1
+
+pub let pre_production = alert.labels["env"] in ["staging", "dev"]

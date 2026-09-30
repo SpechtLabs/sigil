@@ -1,0 +1,188 @@
+# Tasks for the alert-routing example, the TypeScript alertrouter on Sigil's
+# WebAssembly engine. Run these from examples/alert-routing/, or use
+# `mise run -C examples/alert-routing <task>` from the repository root; every
+# task runs in this directory, wherever it's called from.
+# Tool versions (go, bun, node) are inherited from ../../.mise.toml.
+#
+# Try it:
+#
+#   mise run up      # alertrouter, Alloy and the Grafana LGTM stack in Docker; prints the URLs
+#   mise run demo    # sends the sample alerts, so the console and the dashboard fill up
+#   mise run open    # opens the console
+#   mise run down    # stops the stack and drops its data
+#
+# or without Docker: `mise run dev` serves alertrouter on localhost:8080 with
+# hot reload, and `mise run demo` works against it the same way.
+#
+# The image builds sigil.wasm and @spechtlabs/sigil itself, so `up` needs
+# nothing on the host but Docker. The tasks that run the example on the host
+# (dev, build, test and the rest) build them first, with `install`.
+
+# Where `up` and `open` point: the console (which also serves the API) and
+# the Grafana dashboard, at the ports docker-compose.yaml publishes.
+[vars]
+console = "http://localhost:8080"
+dashboard = "http://localhost:3000/d/alertrouter"
+
+# @spechtlabs/sigil is a file: dependency, which bun copies into node_modules
+# when it installs (the example's postinstall turns Linux's symlinks into
+# copies). So the package is built first, from sigil.wasm, and the example
+# installs after it, with --force, so a rebuilt package is copied again. The
+# root's wasm-build skips an up-to-date sigil.wasm.
+[tasks.install]
+description = "Build sigil.wasm and @spechtlabs/sigil, then install the example's dependencies"
+dir = "{{config_root}}"
+run = [
+  "mise -C ../.. run ts-build",
+  "bun install --frozen-lockfile --force",
+]
+
+[tasks.build]
+description = "Build the standalone Next.js server into .next/standalone/"
+depends = ["install"]
+dir = "{{config_root}}"
+run = "bun run build"
+
+# The team policies come from policies/teams, so an edit there reloads within
+# the interval, and nothing is exported: the OTEL_* and PYROSCOPE_* settings
+# are off.
+[tasks.dev]
+description = "Run alertrouter with Next's dev server on localhost:8080, hot reloading code and policies, without Docker or telemetry"
+depends = ["install"]
+dir = "{{config_root}}"
+env = { PORT = "8080", ALERTROUTER_POLICIES = "{{config_root}}/policies/teams", ALERTROUTER_RELOAD_INTERVAL = "2s", ALERTROUTER_LOG_FORMAT = "console", OTEL_TRACES_EXPORTER = "none", PYROSCOPE_SERVER_ADDRESS = "" }
+run = "bun run dev"
+
+# Two runners: bun test for everything, and Node's for the one test that
+# needs V8, the Pyroscope upload (the profiler's native code doesn't load
+# under Bun). The e2e suite is part of `bun test` but skips itself unless
+# ALERTROUTER_E2E=1; `mise run e2e` runs it against the compose stack.
+[tasks.test]
+description = "Run the unit, integration, policy and dashboard tests, and the profiler upload test on Node"
+depends = ["install"]
+dir = "{{config_root}}"
+run = [
+  "bun test",
+  "node --test 'test/node/*.ts'",
+]
+
+[tasks.lint]
+description = "Lint and check the formatting of the example with Biome"
+depends = ["install"]
+dir = "{{config_root}}"
+run = "bun run lint"
+
+[tasks.fmt]
+description = "Format the example and apply Biome's safe fixes"
+depends = ["install"]
+dir = "{{config_root}}"
+run = "bun run fmt"
+
+[tasks.typecheck]
+description = "Type-check the app, scripts and tests with tsc"
+depends = ["install"]
+dir = "{{config_root}}"
+run = "bun run typecheck"
+
+# The check a policy repository runs in CI, with the stock sigil CLI: every
+# team root type-checks with the platform's documents as the trusted source
+# and invokes platform.paging, as policies/sigil.yaml requires, and every
+# test file passes. test/policies runs the same gates through
+# @spechtlabs/sigil, so the two engines can't drift apart.
+[tasks.policies]
+description = "Check the example policies against the platform's paging policy and run their test files with the sigil CLI"
+dir = "{{config_root}}"
+run = [
+  "go run ../../cmd/sigil check --config policies/sigil.yaml policies",
+  "go run ../../cmd/sigil test policies",
+]
+
+[tasks.generate]
+description = "Export policies/alert_routing.sigil from the TypeScript kind and regenerate the embedded documents"
+depends = ["install"]
+dir = "{{config_root}}"
+run = "bun run generate"
+
+[tasks.check]
+description = "Every gate CI runs on the example: lint, typecheck, tests, policies and the build"
+depends = ["lint", "typecheck", "test", "policies", "build"]
+
+[tasks.up]
+description = "Build the image and start alertrouter with Alloy and the Grafana LGTM stack, wait until they're ready, and print the URLs"
+dir = "{{config_root}}"
+run = """
+docker compose up --build --wait
+cat <<'EOF'
+
+alertrouter is up.
+  Console:   {{vars.console}}
+  Dashboard: {{vars.dashboard}}
+  API:       {{vars.console}}/api/v1 (health {{vars.console}}/readyz, metrics {{vars.console}}/metrics)
+
+Send it the sample alerts with `mise run demo`; stop it with `mise run down`.
+EOF
+"""
+
+[tasks.down]
+description = "Stop the example's compose stack and drop its volumes"
+dir = "{{config_root}}"
+run = "docker compose down -v"
+
+[tasks.demo]
+description = "Send the sample alerts and webhook batches in requests/ to a running alertrouter (ALERTROUTER_URL, default localhost:8080)"
+dir = "{{config_root}}"
+run = "bun run scripts/demo.ts"
+
+[tasks.open]
+description = "Print the console's URL and open it in the browser"
+dir = "{{config_root}}"
+run = """
+echo "{{vars.console}}"
+if command -v open >/dev/null; then open "{{vars.console}}"
+elif command -v xdg-open >/dev/null; then xdg-open "{{vars.console}}"
+fi
+"""
+
+[tasks.e2e]
+description = "Start the compose stack and run the black-box e2e suite against it"
+depends = ["up"]
+dir = "{{config_root}}"
+env = { ALERTROUTER_E2E = "1", ALERTROUTER_URL = "http://localhost:8080", TEMPO_URL = "http://localhost:3200", LOKI_URL = "http://localhost:3100", MIMIR_URL = "http://localhost:9009", GRAFANA_URL = "http://localhost:3000", PYROSCOPE_URL = "http://localhost:4040" }
+run = "bun test test/e2e"
+
+# Every load-test task runs the same k6 suite (test/load/alertrouter.js);
+# TEST_MODE picks the executor shape, and test/load/lib/config.js lists the knobs
+# each mode reads. The variants below only preset TEST_MODE and the knobs
+# that mode needs to be meaningful. Outside smoke, test/load/run.sh also
+# alternates the mounted team bundle between good and broken while k6
+# reloads it (BAD_BUNDLE_EVERY).
+[tasks.loadtest]
+description = "Run the k6 suite against alertrouter in TEST_MODE (default load), send measurements to Mimir and save a JSON report"
+depends = ["up"]
+dir = "{{config_root}}"
+run = "bash test/load/run.sh"
+
+[tasks.loadtest-smoke]
+description = "Route every request case in requests/cases.json once, and reload once, checking each outcome"
+env = { TEST_MODE = "smoke" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-stress]
+description = "Ramp k6 from RATE to five times RATE and back over five minutes"
+env = { TEST_MODE = "stress", VUS = "50", MAX_VUS = "400" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-spike]
+description = "Hold RATE, jump to ten times RATE for a minute, and check alertrouter recovers"
+env = { TEST_MODE = "spike", VUS = "50", MAX_VUS = "600" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-soak]
+description = "Hold RATE for DURATION (default 1h) to surface leaks and slow drift"
+env = { TEST_MODE = "soak" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-breakpoint]
+description = "Ramp the arrival rate until a threshold fails and k6 aborts, to find alertrouter's capacity"
+env = { TEST_MODE = "breakpoint", VUS = "100", MAX_VUS = "1000" }
+run = [{ task = "loadtest" }]
