@@ -483,7 +483,8 @@ func (c *Checker) constructor(s *ast.CallStmt, env *Env) {
 // label. It returns the reason's name, or nil after reporting what's
 // wrong. env is nil for the default, which has no document around it.
 func (c *Checker) reasonArg(s *ast.CallStmt, d *kind.Decision, env *Env) *ast.Ident {
-	declares := fmt.Sprintf("%s declares: %s", d.Name, strings.Join(d.Reasons, ", "))
+	// The help that lists the reasons is only built for an error.
+	declares := func() string { return d.Name + " declares: " + strings.Join(d.Reasons, ", ") }
 	var named *ast.NamedArg
 	for _, arg := range s.Args {
 		switch {
@@ -499,7 +500,7 @@ func (c *Checker) reasonArg(s *ast.CallStmt, d *kind.Decision, env *Env) *ast.Id
 		return nil
 	}
 	if named == nil {
-		c.errorf(s, fmt.Sprintf("write `%s(reason: <reason>)`; %s", d.Name, declares), "decision %s needs a reason", d.Name)
+		c.errorf(s, fmt.Sprintf("write `%s(reason: <reason>)`; %s", d.Name, declares()), "decision %s needs a reason", d.Name)
 		return nil
 	}
 	switch r := named.Value.(type) {
@@ -508,29 +509,29 @@ func (c *Checker) reasonArg(s *ast.CallStmt, d *kind.Decision, env *Env) *ast.Id
 			c.record(r, types.Decision)
 			return r
 		}
-		help := declares
+		help := declares()
 		if closest, ok := nearest(r.Name, d.Reasons); ok {
-			help = fmt.Sprintf("did you mean `%s`? %s", closest, declares)
+			help = fmt.Sprintf("did you mean `%s`? %s", closest, declares())
 		}
 		c.errorf(r, help, "decision %s has no reason `%s`", d.Name, r.Name)
 	case *ast.StringLit:
-		help := fmt.Sprintf("reasons are declared names, not strings; %s", declares)
+		help := fmt.Sprintf("reasons are declared names, not strings; %s", declares())
 		if d.HasReason(r.Value) {
 			help = fmt.Sprintf("reasons are declared names, not strings; write `reason: %s`", r.Value)
 		}
 		c.errorf(r, help, "decision reason must be a bare name")
 	case *ast.SelectorExpr:
 		if qualifiedName(r, env) {
-			c.qualifiedReason(r, d, declares)
+			c.qualifiedReason(r, d, declares())
 			break
 		}
-		c.errorf(r, fmt.Sprintf("a reason is one of the names the kind declares; put dynamic text in a `detail` field. %s", declares),
+		c.errorf(r, fmt.Sprintf("a reason is one of the names the kind declares; put dynamic text in a `detail` field. %s", declares()),
 			"decision reason must be a bare name")
 		if env != nil {
 			c.Expr(r, env)
 		}
 	default:
-		c.errorf(named.Value, fmt.Sprintf("a reason is one of the names the kind declares; put dynamic text in a `detail` field. %s", declares),
+		c.errorf(named.Value, fmt.Sprintf("a reason is one of the names the kind declares; put dynamic text in a `detail` field. %s", declares()),
 			"decision reason must be a bare name")
 		if env != nil {
 			c.Expr(named.Value, env)

@@ -44,6 +44,7 @@ func Build(o Options) (*kind.Kind, *Binding, diag.ErrorList) {
 			"kind %s mixes WithDecisions and WithCollect", o.Name)
 	}
 	registered := b.registerEnums(o.Enums)
+	b.binding.HasEnums = len(registered) > 0
 	b.inputs(o.Input)
 	for _, f := range o.Funcs {
 		b.fn(f)

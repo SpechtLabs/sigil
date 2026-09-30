@@ -79,7 +79,9 @@ func (p *parser) next() {
 	p.prev = p.tok.Kind
 	if len(p.buf) > 0 {
 		p.tok = p.buf[0]
-		p.buf = p.buf[1:]
+		// Shift in place: reslicing from the front would shrink the
+		// buffer's capacity, so every later peek would allocate a new one.
+		p.buf = p.buf[:copy(p.buf, p.buf[1:])]
 		return
 	}
 	p.tok = p.scan()

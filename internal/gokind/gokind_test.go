@@ -581,3 +581,38 @@ func TestBuildEnums(t *testing.T) {
 		})
 	}
 }
+
+func TestHasEnums(t *testing.T) {
+	type Tier string
+	type withEnum struct {
+		Tier Tier `policy:"tier"`
+	}
+	type withoutEnum struct {
+		Name string `policy:"name"`
+	}
+	for _, tt := range []struct {
+		name string
+		o    gokind.Options
+		want bool
+	}{
+		{name: "an enum", o: gokind.Options{Input: reflect.TypeFor[withEnum](), Enums: []gokind.Enum{{Type: reflect.TypeFor[Tier](), Values: []string{"a", "b"}}}}, want: true},
+		{name: "no enum", o: gokind.Options{Input: reflect.TypeFor[withoutEnum]()}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.o.Name, tt.o.Version, tt.o.Collect = "K", 1, true
+			tt.o.Decisions = []gokind.Decision{{Name: "ok", Payload: reflect.TypeFor[struct{}](), Reasons: []string{"yes"}}}
+			k, b, errs := gokind.Build(tt.o)
+			if errs != nil {
+				t.Fatal(errs)
+			}
+			if b.HasEnums != tt.want {
+				t.Errorf("Build: HasEnums = %v, want %v", b.HasEnums, tt.want)
+			}
+			// The stock CLI's binding, synthesized from the kind file, says
+			// the same, so it checks enum values too.
+			if s := gokind.Synthesize(k); s.HasEnums != tt.want {
+				t.Errorf("Synthesize: HasEnums = %v, want %v", s.HasEnums, tt.want)
+			}
+		})
+	}
+}

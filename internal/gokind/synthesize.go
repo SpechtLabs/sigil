@@ -40,6 +40,7 @@ func Synthesize(k *kind.Kind) *Binding {
 		},
 		kind: k,
 	}
+	s.binding.HasEnums = len(k.Enums) > 0
 	for _, t := range k.Types {
 		s.structType(t)
 	}

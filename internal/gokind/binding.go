@@ -28,6 +28,9 @@ type Binding struct {
 	// Enums maps the Go types registered as enums to their enums. A
 	// synthesized binding has none: it reads an enum into a string.
 	Enums map[reflect.Type]*types.Enum
+	// HasEnums reports whether the kind declares an enum, so a read that
+	// can't hold one skips the check an enum value needs.
+	HasEnums bool
 	// RecoverHostPanics makes a panic in a host function a runtime error,
 	// as [Options.RecoverHostPanics] asks.
 	RecoverHostPanics bool

@@ -285,9 +285,7 @@ func (l *linter) unusedLets(d *bundle.Document, stmts []ast.Stmt) {
 		if let, ok := s.(*ast.LetStmt); ok {
 			lets = append(lets, let)
 		}
-		for _, x := range exprsOf(d, s) {
-			names(x, seen)
-		}
+		eachExpr(d, s, func(x ast.Expr) { names(x, seen) })
 	})
 	for _, let := range lets {
 		if !let.Pub && !seen[let.Name.Name] {
@@ -443,35 +441,38 @@ func walkStmts(stmts []ast.Stmt, fn func(ast.Stmt)) {
 	}
 }
 
-// exprsOf returns the expressions a statement of d reads names in, not
-// those of the statements in its body. A constructor's `reason:` names one
-// of its decision's reasons, which are outside the document's namespace,
-// so it reads nothing.
-func exprsOf(d *bundle.Document, s ast.Stmt) []ast.Expr {
+// eachExpr calls fn with each expression a statement of d reads names in,
+// not those of the statements in its body, skipping the ones it doesn't
+// have. A constructor's `reason:` names one of its decision's reasons,
+// which are outside the document's namespace, so it reads nothing.
+func eachExpr(d *bundle.Document, s ast.Stmt, fn func(ast.Expr)) {
+	visit := func(xs ...ast.Expr) {
+		for _, x := range xs {
+			if x != nil {
+				fn(x)
+			}
+		}
+	}
 	switch s := s.(type) {
 	case *ast.LetStmt:
-		return []ast.Expr{s.Value}
+		visit(s.Value)
 	case *ast.ParamStmt:
-		return []ast.Expr{s.Default, s.Min, s.Max}
+		visit(s.Default, s.Min, s.Max)
 	case *ast.WhenStmt:
-		return []ast.Expr{s.Cond}
+		visit(s.Cond)
 	case *ast.AssertStmt:
-		return []ast.Expr{s.Cond}
+		visit(s.Cond)
 	case *ast.CallStmt:
 		_, constructor := d.Info.Constructors[s]
-		var out []ast.Expr
 		if !constructor {
-			out = append(out, s.Positional)
+			visit(s.Positional)
 		}
 		for _, a := range s.Args {
-			if constructor && a.Name.Name == "reason" {
-				continue
+			if !constructor || a.Name.Name != "reason" {
+				visit(a.Value)
 			}
-			out = append(out, a.Value)
 		}
-		return out
 	}
-	return nil
 }
 
 // names records every identifier x reads, leaving out field names after

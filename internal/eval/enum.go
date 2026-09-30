@@ -60,8 +60,12 @@ func hostRead(x ast.Expr, t types.Type, read func(*Frame) (Value, bool)) func(*F
 	}
 }
 
-// hostExpr is [hostRead] for a read that can't be absent.
+// hostExpr is [hostRead] for a read that can't be absent. A read of a
+// type without enums is read itself, so it costs nothing.
 func hostExpr(x ast.Expr, t types.Type, read Expr) Expr {
+	if !holdsEnum(t) {
+		return read
+	}
 	checked := hostRead(x, t, func(f *Frame) (Value, bool) { return read(f), true })
 	return func(f *Frame) Value {
 		v, _ := checked(f)
@@ -191,4 +195,21 @@ func qualifiedEnum(x *ast.SelectorExpr, t, xt types.Type) bool {
 	}
 	id, ok := x.X.(*ast.Ident)
 	return ok && id.Name == e.Name
+}
+
+// holdsEnum reports whether a value of type t can hold an enum value that
+// a read has to check: an enum, or a list, map or optional of one. A
+// struct's fields are checked when they're read.
+func holdsEnum(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.Enum:
+		return true
+	case *types.List:
+		return holdsEnum(t.Elem)
+	case *types.Map:
+		return holdsEnum(t.Key) || holdsEnum(t.Value)
+	case *types.Optional:
+		return holdsEnum(t.Elem)
+	}
+	return false
 }

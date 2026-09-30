@@ -62,9 +62,7 @@ func (k *Kind) Source() string {
 		b.WriteString("\n" + d.Source())
 	}
 
-	if resolution := k.resolutionSource(); resolution != "" {
-		b.WriteString("\n" + resolution)
-	}
+	k.writeResolution(&b)
 	if k.Default != nil {
 		b.WriteString("\ndefault " + k.Default.Call(k.Decision(k.Default.Decision)) + "\n")
 	}
@@ -108,23 +106,32 @@ func (d *Default) Call(decl *Decision) string {
 	return d.Decision + "(" + strings.Join(args, ", ") + ")"
 }
 
-// resolutionSource renders the lines that say how candidates resolve:
+// writeResolution writes the lines that say how candidates resolve to b:
 // `collect`, the decision `precedence`, each scoped `precedence` and each
-// `exclusive` set, one per line, or "" for a kind that declares none.
-func (k *Kind) resolutionSource() string {
-	var b strings.Builder
+// `exclusive` set, one per line, after a blank line. A kind that declares
+// none of them writes nothing.
+func (k *Kind) writeResolution(b *strings.Builder) {
+	first := true
+	line := func(s string) {
+		if first {
+			b.WriteString("\n")
+			first = false
+		}
+		b.WriteString(s)
+		b.WriteString("\n")
+	}
 	switch k.Collect {
 	case CollectOne:
-		b.WriteString("collect one\n")
+		line("collect one")
 	case CollectAll:
-		b.WriteString("collect all\n")
+		line("collect all")
 	}
 	if len(k.Precedence) > 0 {
-		b.WriteString("precedence " + strings.Join(k.Precedence, " > ") + "\n")
+		line("precedence " + strings.Join(k.Precedence, " > "))
 	}
 	for _, d := range k.Decisions {
 		if len(d.Ranked) > 0 {
-			b.WriteString("precedence " + d.Name + ": " + strings.Join(d.Ranked, " > ") + "\n")
+			line("precedence " + d.Name + ": " + strings.Join(d.Ranked, " > "))
 		}
 	}
 	for _, set := range k.Exclusive {
@@ -132,7 +139,6 @@ func (k *Kind) resolutionSource() string {
 		for i, o := range set {
 			names[i] = o.String()
 		}
-		b.WriteString("exclusive " + strings.Join(names, ", ") + "\n")
+		line("exclusive " + strings.Join(names, ", "))
 	}
-	return b.String()
 }

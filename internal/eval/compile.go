@@ -117,7 +117,7 @@ func (c *compiler) ident(x *ast.Ident) Expr {
 		return func(f *Frame) Value { return f.slots[slot] }
 	}
 	if idx, ok := c.fieldIndex("." + x.Name); ok {
-		return hostExpr(x, c.typeOf(x), func(f *Frame) Value { return f.Input.FieldByIndex(idx) })
+		return c.hostExpr(x, func(f *Frame) Value { return f.Input.FieldByIndex(idx) })
 	}
 	switch t := c.typeOf(x).(type) {
 	case *types.Enum:
@@ -627,8 +627,10 @@ func (c *compiler) link(x ast.Expr) func(*Frame) (Value, bool) {
 			throwf(x.Sel, "no binding for field %s.%s", s.Name, x.Sel.Name)
 		}
 		var ft types.Type
-		if fd := s.Field(x.Sel.Name); fd != nil {
-			ft = fd.Type
+		if c.enums() {
+			if fd := s.Field(x.Sel.Name); fd != nil {
+				ft = fd.Type
+			}
 		}
 		if x.Optional {
 			return hostRead(x, ft, func(f *Frame) (Value, bool) {
@@ -779,7 +781,7 @@ func (c *compiler) call(x *ast.CallExpr) Expr {
 	if c.scope.binding.RecoverHostPanics {
 		invoke = func(in []Value) []Value { return callRecovered(fn, in, name, x) }
 	}
-	return hostExpr(x, c.typeOf(x), func(f *Frame) Value {
+	return c.hostExpr(x, func(f *Frame) Value {
 		in := make([]Value, len(args))
 		for i, a := range args {
 			in[i] = convert(a(f), ft.In(i))
@@ -872,6 +874,21 @@ func (c *compiler) filter(x *ast.FilterExpr) Expr {
 }
 
 // typeOf returns the checked type of x, or throws when there is none.
+// enums reports whether the kind declares an enum. Without one, no read
+// holds an enum value, and none needs checking.
+func (c *compiler) enums() bool {
+	return c.scope.binding != nil && c.scope.binding.HasEnums
+}
+
+// hostExpr is [hostExpr] for the read x, with its type, when the kind has
+// enums, and read itself when it has none.
+func (c *compiler) hostExpr(x ast.Expr, read Expr) Expr {
+	if !c.enums() {
+		return read
+	}
+	return hostExpr(x, c.typeOf(x), read)
+}
+
 func (c *compiler) typeOf(x ast.Expr) types.Type {
 	t := c.info.TypeOf(x)
 	if t == nil || t == types.Invalid {

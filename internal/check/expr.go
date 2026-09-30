@@ -585,10 +585,19 @@ func (c *Checker) comparison(x *ast.BinaryExpr, env *Env, allowed func(types.Typ
 func (c *Checker) operands(x *ast.BinaryExpr, env *Env, hintX, hintY func(types.Type) types.Type) (types.Type, types.Type) {
 	if c.need(x.X, env) > c.need(x.Y, env) {
 		r := c.expr(x.Y, env, nil)
-		return c.expr(x.X, env, c.hintFor(x.X, env, hintX(r))), r
+		return c.expr(x.X, env, c.lazyHint(x.X, env, hintX, r)), r
 	}
 	l := c.expr(x.X, env, nil)
-	return l, c.expr(x.Y, env, c.hintFor(x.Y, env, hintY(l)))
+	return l, c.expr(x.Y, env, c.lazyHint(x.Y, env, hintY, l))
+}
+
+// lazyHint is [Checker.hintFor] the hint hint derives from t, derived only
+// for an operand that needs one, since deriving it can allocate.
+func (c *Checker) lazyHint(x ast.Expr, env *Env, hint func(types.Type) types.Type, t types.Type) types.Type { //nolint:returninterface // a type is any of five kinds
+	if !c.needsHint(x, env) {
+		return nil
+	}
+	return c.hintFor(x, env, hint(t))
 }
 
 // same is the hint for an operand of the other operand's type.
