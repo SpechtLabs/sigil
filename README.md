@@ -110,7 +110,7 @@ routing()
 
 Nothing about the language is specific to alerts. The same constructs decide feature rollouts, discounts, deploy approvals or the roles someone holds. Two complete services show it:
 
-- [`examples/alert-routing/`](./examples/alert-routing) is the router above, grown into an HTTP service that takes Alertmanager webhooks, with hot reload, metrics, traces, a Grafana dashboard and a k6 load test suite. `mise -C examples/alert-routing run up` starts it.
+- [`examples/alert-routing/`](./examples/alert-routing) is the router above, rebuilt as a TypeScript service on Sigil's WebAssembly build: a Next.js app that takes Alertmanager webhooks, with an operator console, hot reload, metrics, traces, a Grafana dashboard and a k6 load test suite. `mise -C examples/alert-routing run up` starts it.
 - [`examples/deploy-gates/`](./examples/deploy-gates) is deploygate, a deploy approval service with two kinds: one decides whether a deploy goes ahead, and a collecting kind grants the roles each deploy is checked with.
 
 ## Design goals
