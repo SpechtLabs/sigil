@@ -1,9 +1,11 @@
 error:
   kind: assertion
+  phase: outcome
   message: 'assertions failed: "write_needs_read"'
   help: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong
   asserts:
     - reason: write_needs_read
+      policy: grants
       position: testdata/grants/grants.sigil:16:1
       outcome:
         - decision: write

@@ -21,6 +21,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/spechtlabs/sigil/internal/diag"
+	"github.com/spechtlabs/sigil/internal/workspace"
 )
 
 // Format is an output format, the value of --output. *Format implements
@@ -38,17 +39,9 @@ const (
 // Formats lists every supported format, for validation and flag completion.
 var Formats = []string{string(Text), string(JSON), string(YAML)}
 
-// Diagnostic is one error or lint finding, as JSON and YAML print it.
-type Diagnostic struct {
-	Severity string `json:"severity" yaml:"severity"`             // error or warning
-	Lint     string `json:"lint,omitempty" yaml:"lint,omitempty"` // the lint's name, for a lint finding
-	File     string `json:"file,omitempty" yaml:"file,omitempty"`
-	Document string `json:"document,omitempty" yaml:"document,omitempty"` // the document it's in, when that's known
-	Message  string `json:"message" yaml:"message"`
-	Help     string `json:"help,omitempty" yaml:"help,omitempty"`     // how to fix it
-	Line     int    `json:"line,omitempty" yaml:"line,omitempty"`     // from 1; zero, and left out, when the diagnostic has no position
-	Column   int    `json:"column,omitempty" yaml:"column,omitempty"` // in characters, from 1
-}
+// Diagnostic is one error or lint finding, as JSON and YAML print it. The
+// WebAssembly module prints the same record.
+type Diagnostic = workspace.Diagnostic
 
 // String implements [github.com/spf13/pflag.Value]. It returns the
 // format's name.
@@ -91,10 +84,4 @@ func Encode(w io.Writer, f Format, v any) humane.Error { //nolint:emptyinterface
 }
 
 // NewDiagnostic converts a compiler or lint diagnostic into its record.
-func NewDiagnostic(e *diag.Error) Diagnostic {
-	d := Diagnostic{Severity: e.Severity.String(), Lint: e.Code, File: e.File, Message: e.Msg, Help: e.Help, Document: e.Doc}
-	if e.Pos.IsValid() {
-		d.Line, d.Column = e.Pos.Line, e.Pos.Column
-	}
-	return d
-}
+func NewDiagnostic(e *diag.Error) Diagnostic { return workspace.NewDiagnostic(e) }

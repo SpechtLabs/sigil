@@ -1,4 +1,4 @@
-package project
+package workspace
 
 import (
 	"fmt"
@@ -23,8 +23,8 @@ type kinds struct {
 // reported as written against a missing kind, but they aren't checked.
 type known struct {
 	kind   *Kind
-	file   string       // the file of its first document; empty for a linked kind
 	doc    *ast.KindDoc // its first document; nil for a linked kind
+	file   string       // the file of its first document; empty for a linked kind
 	linked bool
 }
 

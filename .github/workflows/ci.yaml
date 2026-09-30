@@ -175,6 +175,45 @@ jobs:
       - name: Validate GoReleaser config
         run: mise run release-check
 
+  # The WebAssembly module. Its end-to-end tests are a Go module of their own,
+  # cmd/sigil-wasm/test, which the lint and test jobs above stop at, and its
+  # glue only builds for wasip1, so this job lints both and drives the module
+  # through its ABI.
+  wasm:
+    name: WebAssembly module
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5 # v5.0.0
+        with:
+          install_args: go golangci-lint
+
+      # Same key as the lint job: custom-gcl is built from the root config and
+      # lints every module.
+      - name: Restore custom-gcl cache
+        id: custom-gcl-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: custom-gcl
+          key: custom-gcl-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.custom-gcl.yml', '.mise.toml') }}
+
+      - name: Lint the module's glue and its tests
+        if: steps.custom-gcl-cache.outputs.cache-hit != 'true'
+        run: mise run wasm-lint
+
+      - name: Lint the module's glue and its tests with cached custom-gcl
+        if: steps.custom-gcl-cache.outputs.cache-hit == 'true'
+        run: |
+          chmod +x ./custom-gcl
+          GOOS=wasip1 GOARCH=wasm ./custom-gcl run ./cmd/sigil-wasm/... ./internal/engine/...
+          cd cmd/sigil-wasm/test && ../../../custom-gcl run --config ../../../.golangci.yaml ./...
+
+      - name: Test the module through its ABI
+        run: mise run wasm-test
+
   build:
     name: Build with GoReleaser
     runs-on: ubuntu-latest

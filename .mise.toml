@@ -135,8 +135,8 @@ description = "Check that go.mod and go.sum are tidy"
 run = "go mod tidy -diff"
 
 [tasks.lint]
-description = "Lint the Go module with golangci-lint and golint-sl, check .sigil formatting, and lint YAML and workflows"
-depends = ["lint-build", "sigil-lint", "yaml-lint", "actionlint"]
+description = "Lint the Go module with golangci-lint and golint-sl, the WebAssembly glue for wasip1, .sigil formatting, YAML and workflows"
+depends = ["lint-build", "sigil-lint", "yaml-lint", "actionlint", "wasm-lint"]
 run = "./custom-gcl run ./..."
 
 # The parser's and the formatter's test inputs are unformatted on purpose,
@@ -220,3 +220,42 @@ run = "pkgsite -open -cache -http localhost:6060 . ./examples/deploy-gates"
 description = "Build the documentation website (the docs workflow's second job)"
 depends = ["docs-roadmap"]
 run = "cd docs && bun install --frozen-lockfile && bun run build"
+
+# The WebAssembly module (cmd/sigil-wasm): the CLI's engine as a wasip1
+# reactor, which hosts in other languages load. -s -w and
+# -trimpath keep it small and free of local paths.
+[tasks.wasm-build]
+description = "Build the WebAssembly module into dist/wasm/sigil.wasm"
+env = { GOOS = "wasip1", GOARCH = "wasm" }
+run = "go build -buildmode=c-shared -trimpath -ldflags='-s -w' -o dist/wasm/sigil.wasm ./cmd/sigil-wasm"
+sources = ["go.mod", "go.sum", "cmd/sigil-wasm/*.go", "internal/**/*.go"]
+outputs = ["dist/wasm/sigil.wasm"]
+
+# cmd/sigil-wasm/test is a module of its own, so the wazero runtime its tests
+# drive the module with never reaches the library's go.mod. It tests the
+# module wasm-build wrote, rather than building its own copy.
+[tasks.wasm-test]
+description = "Drive the WebAssembly module through its ABI with wazero: every op, host functions, memory, and parity with the CLI"
+depends = ["wasm-build"]
+dir = "cmd/sigil-wasm/test"
+env = { SIGIL_WASM = "../../../dist/wasm/sigil.wasm" }
+run = ["go mod tidy -diff", "go test ./..."]
+
+[tasks.wasm-bench]
+description = "Measure an evaluation natively, through the engine's JSON, and through the WebAssembly module's ABI"
+depends = ["wasm-build"]
+dir = "cmd/sigil-wasm/test"
+env = { SIGIL_WASM = "../../../dist/wasm/sigil.wasm" }
+run = "go test -run '^$' -bench . -count 5 ./..."
+
+# The root lint task covers the engine as the CLI builds it; this lints the
+# glue as wasm-build builds it, and the test module, which ./... at the root
+# stops at.
+[tasks.wasm-lint]
+description = "Lint the WebAssembly glue for wasip1 and the module's test module"
+depends = ["lint-build"]
+run = [
+  "GOOS=wasip1 GOARCH=wasm ./custom-gcl run ./cmd/sigil-wasm/... ./internal/engine/...",
+  "cd cmd/sigil-wasm/test && ../../../custom-gcl run --config ../../../.golangci.yaml ./...",
+]
+

@@ -8,5 +8,6 @@ rules:
     indent-sequences: consistent
 
 ignore: |
-  docs/node_modules/
+  **/node_modules/
+  **/.next/
   dist/

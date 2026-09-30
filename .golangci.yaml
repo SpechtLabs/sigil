@@ -91,6 +91,13 @@ linters:
         text: "^fieldalignment:"
         path: _test\.go
 
+      # The WebAssembly glue is reached only through //go:wasmexport, which
+      # unused doesn't follow, so it takes the exports and all they use for
+      # dead code. It's linted with GOOS=wasip1 (see the wasm-lint task).
+      - linters:
+          - unused
+        path: ^cmd/sigil-wasm/main\.go$
+
       # The example modules are linted with this config from examples/<name>/,
       # and their kind structs mirror the documentation: the field order is the
       # order of the inputs in the exported kind file, so it isn't free to change.
@@ -108,13 +115,14 @@ linters:
       # The checker's and the compiler's rule methods take AST nodes the
       # parser guarantees are non-nil, the policy package's helpers take
       # outcomes the evaluator guarantees, and the tooling (the decoder,
-      # the lints, the test runner, the stubs and the CLIs) takes kinds,
+      # the lints, the test runner, the stubs, the CLIs, the workspace they
+      # share with the WebAssembly engine, and the engine) takes kinds,
       # documents, YAML nodes and results its own callers built; returning
       # quietly on nil would hide a bug rather than prevent one.
       - linters:
           - golint-sl
         text: "^nilcheck:"
-        path: ^(internal/(ast|check|eval|gokind|lint|result|stub|testsuite)|pkg/(policy|policytest)|cmd)/
+        path: ^(internal/(ast|check|engine|eval|gokind|lint|result|stub|testsuite|workspace)|pkg/(policy|policytest)|cmd)/
 
       # The public API returns typed errors (*CompileError, *AssertionError,
       # *RuntimeError) that hosts match with errors.As, each carrying its own

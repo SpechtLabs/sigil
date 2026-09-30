@@ -4,37 +4,13 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
-	"github.com/spechtlabs/sigil/internal/result"
+	"github.com/spechtlabs/sigil/internal/workspace"
 )
 
 func theme() pretty.Theme {
 	return pretty.New(&bytes.Buffer{}, pretty.WithEnviron(nil)).Theme()
-}
-
-func TestPlain(t *testing.T) {
-	when := time.Date(2026, 9, 28, 14, 0, 0, 0, time.UTC)
-	got := Plain(map[any]any{
-		"ttl":  90 * time.Minute,
-		"at":   when,
-		"list": []any{time.Second, "x"},
-		3:      "int key",
-	})
-	m, ok := got.(map[string]any)
-	if !ok {
-		t.Fatalf("Plain() = %T, want a map with string keys", got)
-	}
-	if m["ttl"] != "1h30m" || m["at"] != "2026-09-28T14:00:00Z" || m["3"] != "int key" {
-		t.Errorf("Plain() = %v", m)
-	}
-	if list, ok := m["list"].([]any); !ok || list[0] != "1s" || list[1] != "x" {
-		t.Errorf("Plain(list) = %v", m["list"])
-	}
-	if got := Plain(42); got != 42 {
-		t.Errorf("Plain(42) = %v", got)
-	}
 }
 
 func TestFailureText(t *testing.T) {
@@ -66,7 +42,7 @@ func TestFailureText(t *testing.T) {
 		{
 			name: "an outcome assert shows the payloads it read",
 			f: &Failure{Kind: FailAssertion, Asserts: []Assert{
-				{Reason: "no_self_review", Position: "p:1:1", Outcome: []Entry{{Decision: "review", Reason: "a", Position: "p:3:3", values: []field{{name: "approvers", value: []any{"alice", "bob"}}}}}},
+				{Reason: "no_self_review", Position: "p:1:1", Outcome: []Entry{{Decision: "review", Reason: "a", Position: "p:3:3", Fields: []workspace.Field{{Name: "approvers", Value: []any{"alice", "bob"}}}}}},
 			}},
 			wantHeadline: "an assert failed",
 			wantText:     []string{"  the outcome it read:\n    review(reason: a)  p:3:3\n      approvers = [\"alice\", \"bob\"]\n"},
@@ -83,6 +59,12 @@ func TestFailureText(t *testing.T) {
 			wantText:     []string{"conflict: 2 at the top\n", "    deny(reason: a)       p:1:1\n", "    deny(reason: longer)  p:2:1\n"},
 		},
 		{
+			name:         "canceled",
+			f:            &Failure{Kind: FailCanceled, Message: "the evaluation was stopped: context deadline exceeded", Help: "give it more time"},
+			wantHeadline: "the evaluation was stopped",
+			wantText:     []string{"stopped: the evaluation was stopped: context deadline exceeded\n  = help: give it more time\n"},
+		},
+		{
 			name:         "runtime",
 			f:            &Failure{Kind: FailRuntime, Message: "p:1:1: boom", Help: "fix it"},
 			wantHeadline: "a runtime error stopped the evaluation",
@@ -91,11 +73,11 @@ func TestFailureText(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.f.headline(); got != tt.wantHeadline {
+			if got := headline(tt.f); got != tt.wantHeadline {
 				t.Errorf("headline() = %q, want %q", got, tt.wantHeadline)
 			}
 			r := &Report{Error: tt.f}
-			text := tt.f.text(theme(), r.width())
+			text := failureText(tt.f, theme(), columnWidth(r))
 			for _, want := range tt.wantText {
 				if !strings.Contains(text, want) {
 					t.Errorf("text() =\n%s\nwant it to contain %q", text, want)
@@ -105,19 +87,11 @@ func TestFailureText(t *testing.T) {
 	}
 }
 
-func TestHelp(t *testing.T) {
-	for _, kind := range []string{FailAssertion, FailConflict, FailRuntime} {
-		if help(kind) == "" {
-			t.Errorf("help(%s) is empty", kind)
-		}
-	}
-}
-
 // TestText lays out a report built by hand, with what the goldens don't
 // reach: a call chain, several conditions, and a collecting kind.
 func TestText(t *testing.T) {
 	winner := Entry{Decision: "review", Reason: "owner", Position: "team.sigil:5:1", Chain: []string{"team.sigil:2:1"}, Conditions: []string{"cleared", "owns"}, Outcome: true,
-		values: []field{{name: "approvers", value: []any{"a"}}}}
+		Fields: []workspace.Field{{Name: "approvers", Value: []any{"a"}}}}
 	loser := Entry{Decision: "approve", Reason: "sre", Position: "team.sigil:9:1", Conditions: []string{"on_call"}}
 	r := &Report{Policy: "team", Decision: "review", Reason: "owner", Outcome: []Entry{winner}, Trace: []Entry{winner, loser}}
 	want := "team: review(reason: owner)\n" +
@@ -130,7 +104,7 @@ func TestText(t *testing.T) {
 		"      approvers = [\"a\"]\n" +
 		"    approve(reason: sre)   team.sigil:9:1\n" +
 		"      when on_call\n"
-	if got := r.Text(theme()); got != want {
+	if got := Text(r, theme()); got != want {
 		t.Errorf("Text() =\n%s\nwant\n%s", got, want)
 	}
 
@@ -140,39 +114,7 @@ func TestText(t *testing.T) {
 		"\n" +
 		"trace: 1 candidate\n" +
 		"  * approve(reason: sre)  team.sigil:9:1\n"
-	if got := collect.Text(theme()); got != want {
+	if got := Text(collect, theme()); got != want {
 		t.Errorf("Text() =\n%s\nwant\n%s", got, want)
-	}
-}
-
-// TestFailureHelp checks that a runtime error that knows what to do
-// about itself says so, in place of the generic advice.
-func TestFailureHelp(t *testing.T) {
-	at := result.Position{File: "p.sigil", Line: 2, Column: 5}
-	tests := []struct {
-		name      string
-		fl        *result.Failure
-		wantHelp  string
-		wantCause string // the first assert's help
-	}{
-		{name: "runtime error", fl: &result.Failure{Runtime: &result.Runtime{Msg: "boom", Position: at}}, wantHelp: help(FailRuntime)},
-		{name: "runtime error with help", fl: &result.Failure{Runtime: &result.Runtime{Msg: "unbound", Help: "use the host's binary", Position: at}}, wantHelp: "use the host's binary"},
-		{
-			name:      "assert whose cause has help",
-			fl:        &result.Failure{Asserts: []result.Assert{{Reason: "a", Position: at, Cause: &result.Runtime{Msg: "unbound", Help: "use the host's binary", Position: at}}}},
-			wantHelp:  help(FailAssertion),
-			wantCause: "use the host's binary",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := failure(nil, tt.fl)
-			if f.Help != tt.wantHelp {
-				t.Errorf("Help = %q, want %q", f.Help, tt.wantHelp)
-			}
-			if tt.wantCause != "" && f.Asserts[0].Help != tt.wantCause {
-				t.Errorf("Asserts[0].Help = %q, want %q", f.Asserts[0].Help, tt.wantCause)
-			}
-		})
 	}
 }
