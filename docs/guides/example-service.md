@@ -7,7 +7,7 @@ permalink: /guides/example-service/
 
 This guide is for Go developers who want to see Sigil embedded in a real service before they embed it in their own. It introduces deploygate, a complete Go service built on Sigil. It serves the `DeployApproval` policies from the [tour](/getting-started/tour/) over HTTP, and it wires up everything the rest of these docs describe one piece at a time: a kind defined in Go, an exported kind file, guardrails required from a trusted source, policies loaded from a directory with hot reload, typed matching, and metrics and traces for every decision. A second, collecting kind, `AccessGrant`, grants the roles each deploy is decided with, so no client names its own.
 
-The code lives in [`examples/`](https://github.com/SpechtLabs/sigil/tree/main/examples) in the repository, as a Go module of its own. Its README is the full walkthrough; this page is the short version.
+The code lives in [`examples/deploy-gates/`](https://github.com/SpechtLabs/sigil/tree/main/examples/deploy-gates) in the repository, as a Go module of its own. Its README is the full walkthrough; this page is the short version.
 
 ## What it shows
 
@@ -26,14 +26,14 @@ The code lives in [`examples/`](https://github.com/SpechtLabs/sigil/tree/main/ex
 You need [mise](https://mise.jdx.dev/) and Docker. From the repository root:
 
 ```bash
-cd examples
+cd examples/deploy-gates
 mise install
 mise run up
 ```
 
-The tasks live in `examples/.mise.toml`. Run them from `examples/`, or use `mise -C examples run <task>` from the repository root.
+The tasks live in `examples/deploy-gates/.mise.toml`. Run them from `examples/deploy-gates/`, or use `mise -C examples/deploy-gates run <task>` from the repository root.
 
-That starts deploygate on port 8080 with Alloy, single-process Loki, Tempo and Mimir, plus Pyroscope. Grafana on [port 3000](http://localhost:3000/d/deploygate) has a provisioned dashboard with metrics, logs, traces, profiles and k6 load measurements. The command waits for the telemetry backends and for deploygate with both bundles loaded: its image has no shell, so compose probes it with `deploygate healthcheck`, which asks the server's own `/readyz`. The example includes `demo-cli`, which stands in for the platform tooling that supplies identity and release metadata. Ask for a deploy, from `examples/`:
+That starts deploygate on port 8080 with Alloy, single-process Loki, Tempo and Mimir, plus Pyroscope. Grafana on [port 3000](http://localhost:3000/d/deploygate) has a provisioned dashboard with metrics, logs, traces, profiles and k6 load measurements. The command waits for the telemetry backends and for deploygate with both bundles loaded: its image has no shell, so compose probes it with `deploygate healthcheck`, which asks the server's own `/readyz`. The example includes `demo-cli`, which stands in for the platform tooling that supplies identity and release metadata. Ask for a deploy, from `examples/deploy-gates/`:
 
 ```bash
 mise run demo deploy owner --json
@@ -67,7 +67,7 @@ The request describes the actor by their groups, `"groups": ["payments"]`, not b
 }
 ```
 
-The README's [walkthrough](https://github.com/SpechtLabs/sigil/tree/main/examples#a-review) shows the full body, including the conditions each trace entry held under.
+The README's [walkthrough](https://github.com/SpechtLabs/sigil/tree/main/examples/deploy-gates#a-review) shows the full body, including the conditions each trace entry held under.
 
 The status encodes the decision: `200` for approve, `202` for review and `403` for deny. A failed evaluation answers by whose fault it is. A failed input assert is the caller's, so it's a `422`. A conflict, a failed outcome assert or a runtime error means the policy failed on a valid request, so it's a `500`, which counts against deploygate's error budget instead of reading as a client mistake. deploygate reads which it was from the assert error's phase rather than the trace, which is just as empty when an outcome assert fails with nothing fired. An evaluation that runs past deploygate's evaluation timeout, one second by default, is the service failing to answer in time, so it's a `503`. Whichever it is, the body holds the kind's default decision and says what failed. A client that disconnects mid-evaluation stops it too, and gets `499` with no body: no one failed, so it stays out of both the client and the server error rates. The kinds recover host function panics with [`policy.WithRecoverHostPanics()`](/guides/handle-errors/#recover-host-panics), so a panic fails the evaluation closed with a `500` and a fallback, counted like any runtime error, instead of an empty `500` from gin's recovery that the request metrics never see. A request deploygate won't evaluate, such as one with an unknown field like `roles`, a negative soak, or a tier the `Tier` enum doesn't declare, gets `400` before any policy runs. A client can act on the status alone and read the body for the details.
 
@@ -98,7 +98,7 @@ It answers `200` when at least one role is granted and `403` with the same body,
 
 ## Watch it reload
 
-The compose stack mounts `examples/policies/teams` and `examples/policies/access` into the container, the way ConfigMaps would be mounted in a cluster. Edit a team policy or the access policy, then reload:
+The compose stack mounts `examples/deploy-gates/policies/teams` and `examples/deploy-gates/policies/access` into the container, the way ConfigMaps would be mounted in a cluster. Edit a team policy or the access policy, then reload:
 
 ```bash
 mise run demo policies reload
@@ -112,13 +112,13 @@ Startup is the exception. With no bundle loaded yet there's nothing to fall back
 
 ## Check policies with the host's binary
 
-The stock `sigil` binary can't run the kind's `split` host function, so the example builds its own, `sigilc`, with the [`cli` package](/guides/host-binary/), and links both kinds in. With the kinds linked, no command needs `--kind`; each document uses the kind its header names. A policy repository's CI runs it the same way the service loads the policies. `mise run policies` runs the check and the tests for both kinds. The check, from `examples/`, requires each kind's guardrails from the same trusted directory the service embeds, as the `require` entries of `policies/sigil.yaml` list them:
+The stock `sigil` binary can't run the kind's `split` host function, so the example builds its own, `sigilc`, with the [`cli` package](/guides/host-binary/), and links both kinds in. With the kinds linked, no command needs `--kind`; each document uses the kind its header names. A policy repository's CI runs it the same way the service loads the policies. `mise run policies` runs the check and the tests for both kinds. The check, from `examples/deploy-gates/`, requires each kind's guardrails from the same trusted directory the service embeds, as the `require` entries of `policies/sigil.yaml` list them:
 
 ```bash
 mise run sigilc check --config policies/sigil.yaml policies
 ```
 
-The README's [sigilc section](https://github.com/SpechtLabs/sigil/tree/main/examples#your-own-sigil-binary-sigilc) has the test runs, `explain` output for both kinds and the `export --check` that catches a stale kind file.
+The README's [sigilc section](https://github.com/SpechtLabs/sigil/tree/main/examples/deploy-gates#your-own-sigil-binary-sigilc) has the test runs, `explain` output for both kinds and the `export --check` that catches a stale kind file.
 
 ## Tests
 
@@ -126,13 +126,13 @@ The example has table-driven unit tests, the policy tests run from `go test` wit
 
 ## Load tests and profiles
 
-From `examples/`, run `mise run loadtest-smoke` to verify the eight request cases, or `DURATION=15m RATE=100 mise run loadtest` to generate sustained traffic. `mise run loadtest-stress` ramps to five times the configured rate. The scripts check policy outcomes as well as HTTP responses, apply latency budgets, send measurements to Mimir and write a JSON report under `examples/results/`.
+From `examples/deploy-gates/`, run `mise run loadtest-smoke` to verify the eight request cases, or `DURATION=15m RATE=100 mise run loadtest` to generate sustained traffic. `mise run loadtest-stress` ramps to five times the configured rate. The scripts check policy outcomes as well as HTTP responses, apply latency budgets, send measurements to Mimir and write a JSON report under `examples/deploy-gates/results/`.
 
-Select a **Load run** in Grafana to inspect achieved throughput, p95/p99, incorrect outcomes and dropped iterations. The **Sigil evaluation performance** section shows throughput and latency around the policy evaluator itself. CPU and runtime flame graphs show where the service spends resources; **Runtime profile** selects memory, goroutine, mutex, blocking or detected leak profiles. Follow a Loki log's trace link into Tempo, then open the surrounding service profile in Pyroscope. The load measurements include the full HTTP service and telemetry; their interpretation and configuration are covered in the [example README](https://github.com/SpechtLabs/sigil/tree/main/examples#generate-load-with-k6). [Performance](/reference/performance/#in-a-service) records one such run next to the engine's own benchmarks.
+Select a **Load run** in Grafana to inspect achieved throughput, p95/p99, incorrect outcomes and dropped iterations. The **Sigil evaluation performance** section shows throughput and latency around the policy evaluator itself. CPU and runtime flame graphs show where the service spends resources; **Runtime profile** selects memory, goroutine, mutex, blocking or detected leak profiles. Follow a Loki log's trace link into Tempo, then open the surrounding service profile in Pyroscope. The load measurements include the full HTTP service and telemetry; their interpretation and configuration are covered in the [example README](https://github.com/SpechtLabs/sigil/tree/main/examples/deploy-gates#generate-load-with-k6). [Performance](/reference/performance/#in-a-service) records one such run next to the engine's own benchmarks.
 
 ## Further reading
 
-- The [example's README](https://github.com/SpechtLabs/sigil/tree/main/examples#readme) covers every package, metric, span and flag.
+- The [example's README](https://github.com/SpechtLabs/sigil/tree/main/examples/deploy-gates#readme) covers every package, metric, span and flag.
 - [Embed Sigil in a Go service](/guides/embed-go/) builds the same kind of host step by step, and [Handle failed evaluations](/guides/handle-errors/) shows how deploygate's statuses and error counts come about.
 - [Evaluation semantics](/reference/evaluation/#collecting-kinds) defines how a collecting kind's outcome forms.
 - [Per-team policies](/guides/team-policies/) explains the composition the team policies use.

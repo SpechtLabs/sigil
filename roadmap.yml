@@ -97,10 +97,10 @@ timeline:
   - date: 2026-09-28
     title: deploygate, an example host service
     description: |
-      `examples/` runs the deploy gate from these docs as a Go service: both kinds defined in Go,
-      the guardrails embedded and required, team policies that reload from a directory, typed
-      matching, `policytest` and ginkgo suites, and metrics, traces, logs and profiles for every
-      decision. It's the first host outside the test suite.
+      `examples/deploy-gates/` runs the deploy gate from these docs as a Go service: both kinds
+      defined in Go, the guardrails embedded and required, team policies that reload from a
+      directory, typed matching, `policytest` and ginkgo suites, and metrics, traces, logs and
+      profiles for every decision. It's the first host outside the test suite.
   - date: 2026-09-28
     title: Evaluation performance measured
     description: |

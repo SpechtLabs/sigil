@@ -96,7 +96,7 @@ func TestSchemaKeys(t *testing.T) {
 // TestExampleConfiguration parses the example repository's
 // configuration, whose keys the schema describes.
 func TestExampleConfiguration(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "..", "examples", "policies", "sigil.yaml")
+	path := filepath.Join("..", "..", "..", "..", "examples", "deploy-gates", "policies", "sigil.yaml")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

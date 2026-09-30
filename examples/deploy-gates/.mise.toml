@@ -1,0 +1,97 @@
+# Tasks for the deploy-gates example module. Run these from
+# examples/deploy-gates/, or use `mise -C examples/deploy-gates run <task>`
+# from the repository root.
+# Tool versions and the lint-build task are inherited from ../../.mise.toml.
+
+[tasks.build]
+description = "Build deploygate, demo-cli and sigilc into examples/deploy-gates/bin/"
+run = "go build -o bin/ ./cmd/..."
+
+[tasks.demo]
+description = "Run the demo deployment CLI"
+run = "go run ./cmd/demo-cli/"
+
+[tasks.sigilc]
+description = "Run the example sigilc host binary with go run"
+run = "go run ./cmd/sigilc/"
+
+# The e2e suite sits behind the e2e build tag because it needs the compose
+# stack. `go test ./...` never compiles it, so it's vetted here on its own and
+# linted with the tag, or it would rot until someone next starts the stack.
+[tasks.test]
+description = "Run the examples' tests with the race detector, including every policy test file, and vet the e2e suite"
+run = [
+  "go test -race ./...",
+  "go vet -tags e2e ./test/e2e/...",
+]
+
+[tasks.lint]
+description = "Lint the examples module, e2e suite included, with the root golangci-lint config and the golint-sl plugin"
+depends = ["lint-build"]
+run = "../../custom-gcl run --config ../../.golangci.yaml --build-tags e2e ./..."
+
+# The check a policy repository runs in CI: every root policy type-checks with
+# the platform's documents for its kind as the trusted source and invokes that
+# kind's guardrails at the top level, as policies/sigil.yaml requires, and
+# every test file passes under the sigilc host binary. sigilc links both kinds,
+# so no command needs --kind: each document is checked against the kind its
+# header names.
+[tasks.policies]
+description = "Check the example deploy and access policies against the platform's guardrails and run their test files with sigilc"
+run = [
+  "go run ./cmd/sigilc check --config policies/sigil.yaml policies",
+  "go run ./cmd/sigilc test policies",
+]
+
+[tasks.generate]
+description = "Regenerate the examples' kind files from the Go types"
+run = "go generate ./cmd/sigilc"
+
+[tasks.up]
+description = "Start deploygate with Alloy and the Grafana LGTM stack, and wait until they're ready"
+run = "docker compose up --build --wait"
+
+[tasks.down]
+description = "Stop the examples' compose stack and drop its volumes"
+run = "docker compose down -v"
+
+[tasks.e2e]
+description = "Start the compose stack and run the black-box e2e suite against it"
+depends = ["up"]
+env = { DEPLOYGATE_URL = "http://localhost:8080", TEMPO_URL = "http://localhost:3200", LOKI_URL = "http://localhost:3100", MIMIR_URL = "http://localhost:9009", GRAFANA_URL = "http://localhost:3000", PYROSCOPE_URL = "http://localhost:4040" }
+# -count=1: the suite checks a running stack, not the code, so a cached pass
+# from an earlier run would say nothing about the stack that's up now.
+run = "go test -count=1 -tags e2e ./test/e2e/..."
+
+[tasks.release-check]
+description = "Validate the examples' GoReleaser config"
+run = "goreleaser check --config .goreleaser.yaml"
+
+[tasks.snapshot]
+description = "Build local GoReleaser snapshots of deploygate, demo-cli and sigilc into examples/deploy-gates/dist/"
+run = "goreleaser build --snapshot --clean --config .goreleaser.yaml"
+
+[tasks.check]
+description = "Every gate CI runs on the examples module"
+depends = ["lint", "test", "policies", "release-check"]
+
+[tasks.loadtest]
+description = "Run k6 against deploygate, send measurements to Mimir and save a JSON report"
+depends = ["up"]
+run = "bash test/load/run.sh"
+
+[tasks.loadtest-smoke]
+description = "Check all eight k6 request cases once"
+env = { TEST_MODE = "smoke" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-stress]
+description = "Ramp k6 from RATE to five times RATE and back over three minutes"
+env = { TEST_MODE = "stress", VUS = "50", MAX_VUS = "200" }
+run = [{ task = "loadtest" }]
+
+# Benchmarks of the compiled policies through the store, without HTTP or
+# telemetry: the cost of one evaluation per request shape.
+[tasks.bench]
+description = "Run the examples' Go benchmarks: policy evaluation through the store, serial and parallel"
+run = "go test -run '^$' -bench . -benchmem ./..."
