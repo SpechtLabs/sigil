@@ -81,6 +81,9 @@ config:
 
   - type: custom
 
+  - type: VPReleases
+    repo: SpechtLabs/sigil
+
   - type: VPContributors
     repo: SpechtLabs/sigil
 ---
@@ -359,7 +362,7 @@ ExtraRules:
     payload: { bake: 15m }
     match:
       all:
-        - field: service.labels.regions                               # [4]
+        - field: service.labels.regions # [4]
           op: splitSubsetOf
           separator: ","
           valueFrom: actor.regions
