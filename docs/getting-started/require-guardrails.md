@@ -202,7 +202,35 @@ The 12-minute warning pages now, because checkout's `page_after` is 10 minutes. 
 
 ## What a guardrail can't stop
 
-A team can't remove the page, but it can make the evaluation fail. Add a second page to `checkout/alerts.sigil`, for the same reason and a different target:
+A team can't remove the platform's page, but it has two other ways to keep it from being the answer.
+
+It can outrank it. Reasons are ranked within a decision, `critical_alert` above `sustained`, so a team page with the higher reason beats the platform's sustained page without any conflict. Add this to `checkout/alerts.sigil`:
+
+```sigil
+when alert.severity == warning {
+  page(reason: critical_alert, target: "nobody")
+}
+```
+
+`sigil check --require platform.paging` still passes, and the 45-minute warning from step 4 now pages nobody:
+
+```text
+$ sigil eval --policy checkout.alerts --input checkout/testdata/latency.json
+checkout.alerts: page(reason: critical_alert)
+  target = "nobody"
+
+trace: 3 candidates
+  * page(reason: critical_alert)  checkout/alerts.sigil:10:3
+      when alert.severity == warning
+      target = "nobody"
+    page(reason: sustained)       checkout/alerts.sigil:6:1 → platform/paging.sigil:12:3
+      when not pre_production and alert.severity == warning and alert.firing_for >= 10m
+      target = "checkout-primary"
+    notify(reason: routine)       checkout/alerts.sigil:7:1 → platform/routing.sigil:8:3
+      channel = "#checkout-alerts"
+```
+
+It can also make the evaluation fail. Change the rule to page for critical alerts instead, with the same reason as the platform's:
 
 ```sigil
 when alert.severity == critical {
@@ -210,7 +238,7 @@ when alert.severity == critical {
 }
 ```
 
-`sigil check --require platform.paging` still passes. Save a critical production alert as `critical.json`, the way you saved `latency.json` in step 4, and evaluate it:
+Save a critical production alert as `critical.json`, the way you saved `latency.json` in step 4, and evaluate it:
 
 ```text
 $ sigil eval --policy checkout.alerts --input critical.json
@@ -222,7 +250,9 @@ conflict: collect one: 2 candidates at the top rank
   = help: a conflict is a defect in the policy: rank the reasons with precedence, or keep the exclusive outcomes' conditions apart
 ```
 
-Two pages with the same reason and different targets can't both win, so the evaluation fails and `Eval` returns an error along with the kind's default. In this kind the default is a post to `#alerts`, not a page. A failing `assert` or a timeout has the same effect. So a service that routes alerts has to handle a failed evaluation itself, for example by evaluating `platform.paging` on its own and using its page. [Handle failed evaluations](/guides/handle-errors/) covers the error, and [What the guarantee doesn't cover](/understanding/composition/#what-the-guarantee-doesn-t-cover) explains why composition can't prevent this.
+Two pages with the same reason and different targets can't both win, so the evaluation fails and `Eval` returns an error along with the kind's default. In this kind the default is a post to `#alerts`, not a page. A failing `assert` or a timeout has the same effect.
+
+Neither case is visible to `sigil check`, because both depend on the input. A service that must page whatever teams write evaluates `platform.paging` on its own as well, and uses its page when the team's result doesn't match it or fails. [Handle failed evaluations](/guides/handle-errors/) covers the error, and [What the guarantee doesn't cover](/understanding/composition/#what-the-guarantee-doesn-t-cover) explains why composition can't prevent either case.
 
 Remove the rule again before moving on.
 
