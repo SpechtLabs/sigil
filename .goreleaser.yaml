@@ -15,16 +15,34 @@ builds:
     binary: sigil
     main: ./cmd/sigil
     mod_timestamp: "{{ .CommitTimestamp }}"
-    ldflags:
+    ldflags: &ldflags
       - -s -w
       # Only the version is injected; commit, commit time and dirty state come
       # from the VCS info the Go toolchain embeds (see `sigil version`).
       - -X=main.version={{ .Version }}
 
+  - id: sigil-wasm
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - wasip1
+    goarch:
+      - wasm
+    # GoReleaser adds the .wasm extension for this target.
+    binary: sigil
+    main: ./cmd/sigil-wasm
+    # c-shared produces a reactor with _initialize and the Sigil ABI exports.
+    buildmode: c-shared
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags: *ldflags
+
 archives:
   - id: sigil
     ids:
       - sigil
+      - sigil-wasm
     name_template: "sigil_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
