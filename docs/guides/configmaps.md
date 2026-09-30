@@ -7,7 +7,7 @@ permalink: /guides/configmaps/
 
 By the end of this guide your teams' policies ship to a Sigil host service as a ConfigMap built with kustomize, the platform's guardrails stay out of reach of whoever writes that ConfigMap, the service reloads a changed ConfigMap without an outage, and CI checks exactly what the service will load. The Go snippets are for whoever maintains the service; the rest is YAML and shell.
 
-It builds on the `deploy.*` and `payments.production` documents from the [tour](/getting-started/tour/) and on the host from [Embed Sigil in a Go service](/guides/embed-go/). The service is a deploy gate that loads `payments.production` and requires `deploy.guardrails`.
+It builds on the `deploy.*` and `payments.production` documents from [Per-team policies](/guides/team-policies/) and on the host from [Embed Sigil in a Go service](/guides/embed-go/). The service is a deploy gate that loads `payments.production` and requires `deploy.guardrails`.
 
 Documents resolve by the name in their header, not by file path, so the flat keys of a ConfigMap hold them however you split them; see [Name resolution](/reference/bundles/#name-resolution) and [Bundles and trust](/understanding/bundles/).
 

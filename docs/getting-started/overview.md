@@ -5,89 +5,202 @@ createTime: 2026/09/24 22:30:00
 permalink: /getting-started/overview/
 ---
 
-Sigil is a small, statically typed policy language that you embed in a Go application. Engineers write rules that read host-provided input and produce a typed decision such as `approve`, `deny` or `review`. Every decision carries a reason and a payload, so the host always knows what was decided, why, and with which parameters.
+Sigil is a small language for writing rules. Your Go program hands a policy some typed input, the policy's rules look at it, and the answer is a typed decision: page the on-call, turn a feature on, approve a deploy, grant a role, apply a discount. Every decision carries a reason and the data the program needs to act on it.
 
-This page is the starting point for everyone: people who write policies, Go developers who embed Sigil in a service, and anyone deciding whether it fits. [Where to go next](#where-to-go-next) splits the paths.
+A policy that routes alerts reads like this:
+
+```sigil
+policy checkout.alerts: AlertRouting@1
+
+when alert.severity == critical {
+  page(reason: critical_alert, target: team.oncall)
+}
+
+when alert.severity == warning {
+  notify(reason: routine, channel: team.channel)
+}
+```
+
+`when` blocks are rules. `page(...)` and `notify(...)` are decisions, and the decisions a policy may make, their reasons and their fields are fixed by a contract your Go code defines, called the **kind**. A typo in a field, a misspelled severity or a missing payload field is a compile error, not a rule that quietly never matches.
 
 ::: info Project status
 The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`), host-ordered types such as versions, static cost budgets, and editor tooling. The [roadmap](/project/roadmap/) tracks what's left. The language can still change; report problems through [GitHub issues](https://github.com/SpechtLabs/sigil/issues).
 :::
 
-## The problem it replaces
+## What you can decide with it
 
-Most applications that make access or approval decisions grow a rule engine by accident. It usually starts as a YAML file with a list of rules, each rule a label selector plus an outcome. Then someone needs "any of these roles", so a new matcher type appears. Then a team needs its own version of the file, so the YAML goes through `text/template`. Then a typo in a field name makes one deny rule silently match nothing, and nobody notices until an audit.
+Sigil doesn't know what an alert, a deploy or a discount is. The kind says what the input looks like and which decisions exist, and the language only evaluates rules against it. The same few constructs cover very different problems:
 
-Sigil takes that recurring pile of matchers and turns it into a language with a type checker. A typo like `service.teir` fails when the policy compiles, not months later, and so does a misspelled value such as `service.tier == critcal`. Per-team versions are ordinary policies that bind typed parameters, so no text templating is involved. And the result of every evaluation says which rule fired and why.
+::: tabs
 
-## What a setup looks like
+@tab Alert routing
 
-A working setup has three parts. The example used throughout these docs is a gate for production deploys: the platform team decides who may ship what, and product teams tune it for their services.
-
-The three parts:
-
-| Part | Written by | What it is |
-| --- | --- | --- |
-| The kind (`deploy_approval.sigil`) | Generated from Go | The contract: which inputs exist, their types, which host functions policies may call, which decisions they may make, and how conflicts resolve |
-| Shared policies (`deploy/*.sigil`) | A platform team | Rules written against the kind, with typed `param`s for the parts teams may tune: guardrails that deny, approvals and reviews, and a module of shared matchers |
-| A team policy (`payments/production.sigil`) | A product team, here payments | A policy that invokes the shared ones with its own values, optionally under conditions, and adds rules of its own |
-
-Two rules from the platform's guardrails give a feel for the syntax:
+The running example of these docs. Page someone, post to a channel, or drop the alert:
 
 ```sigil
-when not eligible {
-  deny(reason: not_eligible)
+decision page   { reason: critical_alert | sustained  target: string }
+decision drop   { reason: muted | not_production }
+decision notify { reason: routine | unrouted          channel: string = "#alerts" }
+```
+
+```sigil
+when alert.severity == warning and alert.firing_for >= 30m {
+  page(reason: sustained, target: team.oncall)
 }
 
+when alert.name in ["CheckoutCanaryLatency"] {
+  drop(reason: muted)
+}
+```
+
+@tab Feature rollout
+
+Turn a feature on for enterprise customers, beta testers and a percentage of everyone else, but only in regions where it's ready:
+
+```sigil
+policy flags.new_checkout: FeatureRollout@1
+
+param percent: int = 20, min: 0, max: 100
+
+when user.region not in ["eu-1", "eu-2"] {
+  disable(reason: region_not_ready)
+}
+
+when user.beta {
+  enable(reason: beta_tester, variant: "redesign")
+}
+
+when bucket < percent {
+  enable(reason: rollout)
+}
+```
+
+@tab Discounts
+
+Decide which discount applies to a cart. The kind ranks the reasons, so a loyal customer's 20% wins over the first-order 10%:
+
+```sigil
+policy shop.discounts: Discount@1
+
+when customer.orders == 0 {
+  discount(reason: first_order, percent: 10)
+}
+
+when cart.items >= 10 and cart.total >= 100.0 {
+  discount(reason: bulk, percent: 15)
+}
+
+when customer.tier in [gold, platinum] {
+  discount(reason: loyalty, percent: 20)
+}
+```
+
+@tab Deploy approval
+
+Approve a release, send it to review, or deny it. [Per-team policies](/guides/team-policies/) builds the full version:
+
+```sigil
 when release.soak < min_soak and not release.hotfix {
   deny(reason: soak_too_short)
 }
+
+when service.tier in tiers and actor.teams any in service.owners {
+  review(reason: service_owner, approvers: approvers)
+}
 ```
 
-Declarations start with keywords, rules are `when` blocks, and a decision constructor passes its reason by name, `reason: soak_too_short`, picking one the kind declares. There are no loops, no user-defined functions and no `else`. A team policy reuses these rules by importing the policy with `use` and invoking it like a constructor, `guardrails(min_soak: 4h)`. The host can require that call so no team can switch the denies off.
+@tab Access grants
 
-## Who writes what
+A kind can collect every decision that holds instead of picking one, here the roles someone holds at once:
 
-Host engineers own the Go side. They describe the input as Go structs, declare the decisions and their payloads, and call `policy.NewKind`. The kind exports itself as a `.sigil` file that starts with the `kind` keyword, and that file is what everyone else works against.
+```sigil
+when team_member {
+  reader(reason: team_member)
+  deployer(reason: team_member)
+}
 
-Policy authors write `.sigil` policy files, check them against the exported kind file, and ship test cases next to them. The `sigil` CLI reads the kind file, so a policy repo lints in CI without importing the host's code. LSP support is planned.
+when on_call {
+  deployer(reason: oncall, ttl: 2h)
+}
+```
+
+:::
+
+The first three are small enough to write in an afternoon. The last two come from [deploygate](/guides/example-service/), a complete service that uses both kinds.
+
+## How it fits together
 
 ```mermaid
 flowchart LR
-  A[Go structs<br/>host engineers] --> B[policy.NewKind]
-  B -- Schema --> C[deploy_approval.sigil]
-  C --> D[policy files<br/>policy authors]
-  D --> E[Compile once]
-  E --> F[Eval per request]
-  F --> G[Decision + reason<br/>+ payload + trace]
+  G["Go structs and decisions<br/>(your service)"] -- policy.NewKind --> K["the kind"]
+  K -. exported as .-> F["alert_routing.sigil<br/>(for the CLI)"]
+  P["policy files<br/>*.sigil"] --> L["Load: compile once"]
+  K --> L
+  L --> E["Eval: per request"]
+  E --> D["decision + reason<br/>+ payload + trace"]
 ```
 
-The host compiles each policy once and evaluates it for every request, from as many goroutines as it likes. A compiled policy is immutable.
+- **The kind** is Go code. You describe the input as structs, declare the decisions with their reasons and payloads, and say which decision wins when several rules fire. Nobody writes a kind by hand.
+- **Policies** are `.sigil` files written against the kind. They can live in the service's repository, in a separate one, or in a ConfigMap.
+- **Your service** compiles the policies once and evaluates them for every request, from as many goroutines as it likes. A compiled policy is immutable.
+- **The `sigil` CLI** checks, evaluates and tests policies without your Go code. It reads the kind from a file your service exports.
+
+The evaluator doesn't loop, recurse or call anything the kind doesn't declare, so a policy always halts. Rule order never matters: every rule is evaluated, and the kind's precedence picks the winner. [Design goals](/understanding/design-goals/) explains why.
 
 ## What it isn't
 
-Sigil isn't a general-purpose language and it isn't meant to replace OPA or Cedar for org-wide authorization. It targets decisions that live inside one application, where the host already has the data in Go structs. For now only a Go program can embed the evaluator. The exported kind file is plain text with a [published grammar](/reference/grammar/), so tooling in other languages can read it, but nothing outside Go runs policies yet.
-
-Policy and kind files share the `.sigil` extension, and the CLI is called `sigil`.
+Sigil isn't a general-purpose language, and it isn't meant to replace OPA or Cedar for org-wide authorization. It's for decisions that live inside one application, where the data is already in Go structs. For now only a Go program can embed the evaluator. The exported kind file is plain text with a [published grammar](/reference/grammar/), so tooling in other languages can read it, but nothing outside Go runs policies yet.
 
 ## Install
 
-Policy authors need the `sigil` CLI, not Go. Install it with Homebrew:
+The Go library:
+
+```sh
+go get github.com/spechtlabs/sigil@latest
+```
+
+The `sigil` CLI, for checking and testing policies. People who only write policies need the CLI, not Go:
 
 ```sh
 brew install --cask spechtlabs/tap/sigil
 ```
 
-Or, if you have Go, with `go install github.com/spechtlabs/sigil/cmd/sigil@latest`. The [releases](https://github.com/SpechtLabs/sigil/releases) also have signed archives for Linux and macOS.
+Or `go install github.com/spechtlabs/sigil/cmd/sigil@latest`. The [releases](https://github.com/SpechtLabs/sigil/releases) also have signed archives for Linux and macOS.
 
-The stock binary knows each host function's signature from the kind file, but not its implementation. `check`, `fmt` and `explain` work on any policy. `eval` and `test` work until a rule calls a host function, such as the deploy kind's `split`, and then stop with a runtime error naming it, unless a test file or `eval --stub` [stubs](/reference/test-files/#stubs) the function. For the real functions, use the host team's own build of the CLI, which links in the real functions through package `cli`; the [example service](/guides/example-service/) builds one as `sigilc`. [Host functions and host binaries](/reference/cli/#host-functions-and-host-binaries) has the details.
+## Learn it step by step
 
-Host engineers add the library to their module with `go get github.com/spechtlabs/sigil@latest` and import `github.com/spechtlabs/sigil/pkg/policy`.
+The [tour](/getting-started/tour/) reads one complete policy in five minutes and lets you route alerts through it in the browser. After that, these steps build the alert router from an empty Go module. Each one adds one idea:
 
-## Where to go next
+::: steps
 
-It depends on what you're here to do.
+1. [Define the input and evaluate a policy](/getting-started/define-the-input/)
 
-- **Writing policies.** [A tour of the language](/getting-started/tour/) walks through a complete example and evaluates a few inputs by hand, and [Your first policy](/getting-started/first-policy/) builds it from an empty file, tests included. After that, the [guides](/guides/team-policies/) cover per-team policies and common patterns, and the [language reference](/reference/policy-files/) is the precise version of everything above.
-- **Embedding Sigil in a Go service.** [Embed Sigil in a Go service](/guides/embed-go/) takes you from Go structs to a typed decision, and the [Go API reference](/reference/go-api/) lists every function, option and type. [The example service](/guides/example-service/) is a complete host you can run, and [Policies in a ConfigMap](/guides/configmaps/) and [Evolve a kind safely](/guides/evolve-a-kind/) cover running one in production.
-- **Deciding whether Sigil fits.** [Design goals](/understanding/design-goals/) explains the constraints behind the syntax, and [Prior art](/understanding/prior-art/) says what Sigil takes from filt-rs, Cedar, CEL and Rego, and what it avoids.
-- **Changing Sigil itself.** [Contributing](/project/contributing/) explains the test suite, benchmarks and fuzz campaigns, and the [open questions](/project/open-questions/) list what's still undecided.
+   Describe the input and the decisions in Go, load one policy and act on its decision.
+
+2. [Write policies](/getting-started/write-policies/)
+
+   Rules, lets, nesting, precedence and the compile errors that catch mistakes.
+
+3. [Export the kind](/getting-started/export-the-kind/)
+
+   Write the contract to a file, so policies can be checked without your Go code.
+
+4. [Check, evaluate and test with the CLI](/getting-started/check-and-test/)
+
+   `sigil check`, `sigil eval` and test files that pin the decisions.
+
+5. [Share rules across teams](/getting-started/share-rules/)
+
+   A library of shared helpers and policies that teams invoke with their own values.
+
+6. [See what a policy adds up to](/getting-started/explain/)
+
+   `sigil explain` flattens a composed policy into the rules it can fire.
+
+7. [Require guardrails](/getting-started/require-guardrails/)
+
+   Rules the host requires of every policy, so no team can switch them off.
+
+:::
+
+Steps 1 to 4 are all a service needs when one team owns its policies. Steps 5 to 7 are for when several teams write policies against the same kind. The finished alert router is [`examples/alert-routing`](https://github.com/SpechtLabs/sigil/tree/main/examples/alert-routing), a complete service with an observability stack and load tests.

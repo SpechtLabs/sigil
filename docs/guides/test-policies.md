@@ -7,7 +7,7 @@ permalink: /guides/test-policies/
 
 By the end of this guide, every decision and reason your policy can reach has a test case, the cases run with `sigil test` in the policy repository and with `go test` in the host, and a conflict the kind is meant to catch has a Go test of its own.
 
-The examples test `payments.production` from the [tour](/getting-started/tour/#the-team-policy), with an input assert added below its imports, `assert("named_actor", actor.name != "")`, like the one the example service's checkout policy has. The exact format of a test file is in [Test files](/reference/test-files/).
+The examples test `payments.production` from [Per-team policies](/guides/team-policies/#compose-with-invocations), with an input assert added below its imports, `assert("named_actor", actor.name != "")`, like the one the example service's checkout policy has. The exact format of a test file is in [Test files](/reference/test-files/).
 
 ## Write test cases
 

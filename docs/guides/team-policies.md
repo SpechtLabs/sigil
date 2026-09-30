@@ -7,7 +7,7 @@ permalink: /guides/team-policies/
 
 By the end of this guide, the platform's shared policies take typed params, each team gets its own version by invoking them or by binding their params from Go, and the host makes sure no team can switch the guardrails off. Nothing is copied or run through a text templater.
 
-The examples build on the `DeployApproval` kind and the `deploy.*` files from the [tour](/getting-started/tour/).
+The examples use the `DeployApproval` kind, printed in full in [Kind files](/reference/kind-files/#a-complete-kind), and the policies of the [example service](/guides/example-service/). To learn composition from scratch first, follow [Share rules across teams](/getting-started/share-rules/).
 
 ## Split shared files by what they do
 
@@ -208,7 +208,7 @@ Every rule of every invocation runs against every input, unless a `when` around 
 
 ## Know what a team can and can't change
 
-Composition adds candidates and never removes them, so with the guardrails required and their params [bounded](#decide-what-teams-may-tune), a team can make the result stricter or approve what the platform leaves open, but never override a guardrail's deny. [Composition without templating](/understanding/composition/) lays out exactly what a team can and can't change, and why; the [tour](/getting-started/tour/#the-same-release-after-two-hours) shows a team approval losing to a guardrail deny.
+Composition adds candidates and never removes them, so with the guardrails required and their params [bounded](#decide-what-teams-may-tune), a team can make the result stricter or approve what the platform leaves open, but never override a guardrail's deny. [Composition without templating](/understanding/composition/) lays out exactly what a team can and can't change, and why.
 
 ## Further reading
 

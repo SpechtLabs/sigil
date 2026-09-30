@@ -161,7 +161,7 @@ Put together, union-only composition, the kind's `precedence deny > review > app
 | Change any param, including loosening ones like `min_soak`, within the bounds the policy declares                | Remove or edit a rule of an invoked policy              |
 | Import shared matchers from modules                                                                              | Import a `let` that reads a param                       |
 
-The first line of the right column is what the whole mechanism exists for: the guardrails' `not_eligible` and `soak_too_short` denies hold no matter what a team adds. The [tour](/getting-started/tour/#the-same-release-after-two-hours) shows a team approval losing to a guardrail deny. Three rows of the left column, turning the default into an approve, gating policies the host doesn't require, and changing params, are where the guarantee stops, and the next section goes through them.
+The first line of the right column is what the whole mechanism exists for: the guardrails' `not_eligible` and `soak_too_short` denies hold no matter what a team adds. Three rows of the left column, turning the default into an approve, gating policies the host doesn't require, and changing params, are where the guarantee stops, and the next section goes through them.
 
 ## What the guarantee doesn't cover
 

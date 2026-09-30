@@ -5,7 +5,7 @@ createTime: 2026/09/29 12:00:00
 permalink: /guides/embed-go/
 ---
 
-By the end of this guide your Go service defines the `DeployApproval` kind from the [tour](/getting-started/tour/) in Go, loads the team policies with the platform's guardrails required, and acts on each decision through typed payloads. Everything lives in package `policy`, import path `github.com/spechtlabs/sigil/pkg/policy`; the [Go API](/reference/go-api/) lists every symbol, and [the example service](/guides/example-service/) is a complete host built this way.
+By the end of this guide your Go service defines the `DeployApproval` kind in Go (the whole kind file is in [Kind files](/reference/kind-files/#a-complete-kind)), loads the team policies with the platform's guardrails required, and acts on each decision through typed payloads. Everything lives in package `policy`, import path `github.com/spechtlabs/sigil/pkg/policy`; the [Go API](/reference/go-api/) lists every symbol, and [the example service](/guides/example-service/) is a complete host built this way.
 
 ## Define the kind
 

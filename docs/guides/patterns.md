@@ -5,7 +5,7 @@ createTime: 2026/09/24 22:30:00
 permalink: /guides/patterns/
 ---
 
-Short recipes for things policy authors do all the time. Most use the `DeployApproval` kind from the [tour](/getting-started/tour/). When a recipe needs something that kind doesn't declare, it shows the kind lines to add, because in Sigil nothing exists in a policy unless the kind says so. That includes reasons: every reason a recipe constructs is assumed to be declared on its decision in the kind.
+Short recipes for things policy authors do all the time. Most use the `DeployApproval` kind, printed in full in [Kind files](/reference/kind-files/#a-complete-kind). When a recipe needs something that kind doesn't declare, it shows the kind lines to add, because in Sigil nothing exists in a policy unless the kind says so. That includes reasons: every reason a recipe constructs is assumed to be declared on its decision in the kind.
 
 ## Match a set of labels
 
