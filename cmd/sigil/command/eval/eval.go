@@ -42,7 +42,7 @@ type request struct {
 	src    project.Sources
 	input  string   // --input: a file, "-" for stdin, or empty to read stdin unless terminal is set
 	policy string   // --policy: the root's name; empty for the bundle's only policy
-	config string   // --config: the sigil.yaml whose kinds: to load; the nearest one when empty
+	config string   // --config: the configuration file whose kinds: to load; the nearest one when empty
 	stubs  string   // --stubs: a file of stubs; empty for none
 	stub   []string // --stub: NAME=VALUE stubs, applied after the file's in order
 	// terminal is set when stdin is a terminal, which eval never waits on
@@ -77,10 +77,11 @@ that policy is evaluated; otherwise --policy names the one to evaluate.
 Each document's header names its kind, and the kind is found among the
 inputs: a kind file among the paths, or a kind document in the same file as the
 policies. --kind adds a kind file the paths don't hold, and so does the kinds:
-list of the nearest sigil.yaml, or of the file --config names; a host binary
-has its kinds linked in. The same kind from two sources must be identical, which
-catches a stale export. sigil.yaml's require: trusted: paths are read
-too, so a policy finds the required policies it uses.
+list of the configuration file (the nearest sigil.yaml, sigil.json or
+sigil.toml, or the file --config names); a host binary has its kinds linked in.
+The same kind from two sources must be identical, which catches a stale
+export. The configuration's require: trusted: paths are read too, so a policy
+finds the required policies it uses.
 
 The input is a JSON or YAML object with one key per input. A key the kind
 doesn't declare is an error, and a missing one reads as its zero value.
@@ -129,7 +130,7 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policy's kind is found among the paths and the kinds linked in (repeatable)")
 	cmd.Flags().StringP("input", "i", "", `Input document (JSON or YAML) to evaluate the policy against, or "-" for stdin; stdin when omitted and it isn't a terminal`)
 	cmd.Flags().StringP("policy", "p", "", "Name of the policy to evaluate; required when the bundle holds more than one")
-	cmd.Flags().String("config", "", "Configuration file with kind files and trusted paths to load; the nearest "+config.FileName+" when omitted")
+	cmd.Flags().String("config", "", "Configuration file with kind files and trusted paths to load; the nearest "+config.Names+" when omitted")
 	cmd.Flags().String("stubs", "", "YAML or JSON file of host function stubs, keyed by function name, as a test file's stubs:")
 	cmd.Flags().StringArray("stub", nil, "NAME=VALUE: host function NAME returns VALUE, JSON or YAML, whatever the args; applied after --stubs (repeatable)")
 	// -R read subdirectories before every command did; it stays so scripts

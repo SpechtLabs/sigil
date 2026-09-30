@@ -136,8 +136,8 @@ func clean(p string) string { return filepath.ToSlash(filepath.Clean(p)) }
 
 // identity returns what tells files apart: the absolute path with every
 // symbolic link resolved, so a file named once relatively and once
-// absolutely, such as a path argument and a path from sigil.yaml, or once
-// through a link, is read once. A path that doesn't resolve is its
+// absolutely, such as a path argument and a path from the configuration
+// file, or once through a link, is read once. A path that doesn't resolve is its
 // absolute self. Stdin is itself.
 func identity(name string) string {
 	if name == "-" || name == stdinName {

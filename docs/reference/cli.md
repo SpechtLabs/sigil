@@ -5,7 +5,7 @@ createTime: 2026/09/24 22:30:00
 permalink: /reference/cli/
 ---
 
-Every `sigil` command: its synopsis, flags, behavior, output and exit status. The files the commands read have pages of their own: [test files](/reference/test-files/) and [`sigil.yaml`](/reference/sigil-yaml/).
+Every `sigil` command: its synopsis, flags, behavior, output and exit status. The files the commands read have pages of their own: [test files](/reference/test-files/) and [the configuration file](/reference/config/).
 
 The tools read the exported kind file (`deploy_approval.sigil` in the running example) like any other input, so they work in a team's policy repository without the host's Go code.
 
@@ -60,7 +60,7 @@ cat policies.sigil | sigil eval --input release.json --policy payments.productio
 Each policy's and module's header names its kind, `policy payments.production: DeployApproval@1`. The command finds that kind in these sources, in this order:
 
 1. The kinds linked into a [host binary](#host-functions-and-host-binaries).
-2. The kind documents in the files `--kind` (`-k`) names, and in the files the `kinds` key of [`sigil.yaml`](/reference/sigil-yaml/) lists. Repeat `--kind` for several kind files.
+2. The kind documents in the files `--kind` (`-k`) names, and in the files the `kinds` key of [the configuration file](/reference/config/) lists. Repeat `--kind` for several kind files.
 3. The kind documents among the inputs, the paths before the `--trusted` paths: a kind file in a directory argument, or a kind document in the same file as the policies, separated by `---`.
 
 - One run can hold documents of several kinds. Each document is checked, compiled and evaluated against its own kind.
@@ -286,7 +286,7 @@ sigil check [PATH...] [flags]
 | `--require` | none | Policy every root must invoke unconditionally. Repeatable |
 | `--trusted` | none | File or directory to read the `--require` policies from, as `policy.From` does. Needs `--require`. Repeatable |
 | `-p`, `--policy` | every policy | Name or pattern of the policies to check, with what they use; the roots for `--require`. Repeatable |
-| `--config` | nearest `sigil.yaml` | Configuration file with [kind files, requirements and lint levels](/reference/sigil-yaml/) |
+| `--config` | the nearest [configuration file](/reference/config/#finding-the-file) | File with the [kind files, requirements and lint levels](/reference/config/), in YAML, JSON or TOML by its extension |
 
 - Needs host function signatures from the kind file, not their implementations.
 - Checks every document in the bundle and compiles every policy, including ones no policy imports. Documents of several kinds are checked in one run, and the kind documents among the inputs are checked too.
@@ -311,13 +311,13 @@ What you can do
   • the bundle defines: deploy.guardrails, deploy.production, payments.production
 ```
 
-Requirements come from the `require` key of [`sigil.yaml`](/reference/sigil-yaml/), one entry per required policy with its trusted paths and roots, or from `--require`, `--trusted` and `--policy`. `--require` replaces `require` for that run. `--trusted` goes with `--require`, and without it is an error, since it would otherwise replace `require` and drop its guardrails. `--policy` keeps `require` and narrows each entry's roots to the policies it matches, so `check --policy 'payments.*'` still requires the guardrails of `payments.production`; an entry whose roots `--policy` leaves out is skipped. The flags:
+Requirements come from the `require` key of [the configuration file](/reference/config/), one entry per required policy with its trusted paths and roots, or from `--require`, `--trusted` and `--policy`. `--require` replaces `require` for that run. `--trusted` goes with `--require`, and without it is an error, since it would otherwise replace `require` and drop its guardrails. `--policy` keeps `require` and narrows each entry's roots to the policies it matches, so `check --policy 'payments.*'` still requires the guardrails of `payments.production`; an entry whose roots `--policy` leaves out is skipped. The flags:
 
 - `--require` makes the check a host makes with [`policy.Require`](/reference/go-api/#require): every root policy must invoke the named policy unconditionally, through top-level invocations only. Repeat it to require several.
 - `--trusted` does what [`policy.From`](/reference/go-api/#from) does: required policies, and everything they import and invoke, are read from those paths, and the bundle may not define any name they define. With `--require`, each required policy must be defined below them. Trusted directories are always read recursively.
 - A file under a trusted path is read as trusted only, even when a path argument also holds it, so `--trusted deploy/ .` reads `deploy/` once.
 - The policies `--policy` matches are the roots of every `--require`. Without it, the roots are the bundle's policies that no other policy invokes, apart from the required ones.
-- A required policy applies to the roots of its own kind. A `--require` name no document defines applies to every root, which then fails for not invoking it; in `sigil.yaml`, it's an error at the entry.
+- A required policy applies to the roots of its own kind. A `--require` name no document defines applies to every root, which then fails for not invoking it; in the configuration file, it's an error at the entry.
 - With `--trusted`, the trusted documents aren't part of the bundle, so they're never roots.
 
 ```text
@@ -367,7 +367,7 @@ sigil eval [PATH...] [--input FILE] [flags]
 | `-i`, `--input` | stdin | Input document, JSON or YAML, to evaluate against, or `-` for stdin |
 | `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `-p`, `--policy` | the bundle's only policy | Name of the policy to evaluate; required when the bundle holds more than one |
-| `--config` | nearest `sigil.yaml` | Configuration file with the [kind files and trusted paths](/reference/sigil-yaml/) to load |
+| `--config` | the nearest [configuration file](/reference/config/#finding-the-file) | File with the [kind files and trusted paths](/reference/config/) to load, in YAML, JSON or TOML by its extension |
 | `--stubs` | none | YAML or JSON file of host function [stubs](/reference/test-files/#stubs), keyed by function name |
 | `--stub` | none | `NAME=VALUE`: the host function `NAME` returns `VALUE`, JSON or YAML, whatever its args. Repeatable |
 
@@ -549,7 +549,7 @@ sigil explain [PATH...] [flags]
 | --- | --- | --- |
 | `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `-p`, `--policy` | every policy | Name or pattern of the policies to explain |
-| `--config` | nearest `sigil.yaml` | Configuration file with the [kind files and trusted paths](/reference/sigil-yaml/) to load |
+| `--config` | the nearest [configuration file](/reference/config/#finding-the-file) | File with the [kind files and trusted paths](/reference/config/) to load, in YAML, JSON or TOML by its extension |
 
 ```text
 $ sigil explain --policy payments.production deploy_approval.sigil deploy/ payments/
@@ -634,7 +634,7 @@ sigil test [PATH...] [flags]
 | `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `--run` | every case | Only runs cases whose name matches this regular expression |
 | `-v`, `--verbose` | off | Lists passing cases too |
-| `--config` | nearest `sigil.yaml` | Configuration file with the [kind files and trusted paths](/reference/sigil-yaml/) to load |
+| `--config` | the nearest [configuration file](/reference/config/#finding-the-file) | File with the [kind files and trusted paths](/reference/config/) to load, in YAML, JSON or TOML by its extension |
 
 - The `.sigil` files it finds form one bundle, and every test file found runs against it, with the kind of the policy it names.
 - A test file couldn't run when its policy, a document the policy uses, or a kind document doesn't check; the diagnostics show under the file. An error in another document doesn't stop it.

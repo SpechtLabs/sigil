@@ -1,0 +1,5 @@
+{
+  "require": [
+    {"policy": "deploy.guardrails", "trusted": ["../lints/deploy"], "roots": ["teams.*"]}
+  ]
+}

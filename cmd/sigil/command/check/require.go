@@ -21,7 +21,7 @@ type enforced struct {
 }
 
 // configure reads the configuration, from configFile or the nearest
-// sigil.yaml, and applies it to src: its kind files, and the trusted
+// configuration file, and applies it to src: its kind files, and the trusted
 // paths of the requirements the run enforces, which it returns: the
 // flags' when --require is given, and otherwise the file's. --trusted
 // without --require is an error: it says where required policies come
@@ -29,7 +29,7 @@ type enforced struct {
 // requirement vouches for.
 func configure(configFile string, src *project.Sources, patterns, requires []string) (*config.Config, []config.Require, humane.Error) {
 	if len(src.Trusted) > 0 && len(requires) == 0 {
-		return nil, nil, humane.New("--trusted names where required policies come from; pass --require, or set require: in sigil.yaml", "sigil.yaml's require: entries take the trusted paths of each required policy, as trusted:")
+		return nil, nil, humane.New("--trusted names where required policies come from; pass --require, or set require: in the configuration file", "the require: entries of "+config.Names+" take the trusted paths of each required policy, as trusted:")
 	}
 	cfg, err := config.Load(configFile, ".")
 	if err != nil {
@@ -51,15 +51,15 @@ func configure(configFile string, src *project.Sources, patterns, requires []str
 // roots: or --policy patterns match, or else every policy no other one
 // invokes, apart from the required ones, and only roots of the required
 // policy's own kind. A required name no document defines applies to
-// every root, which then reports that it doesn't invoke it; from
-// sigil.yaml it's an error at the entry instead, unless the run isn't
-// strict and the entry has no trusted: paths, when the entry is skipped,
-// its policy being among paths this run doesn't read. When strict, a roots:
-// pattern that matches nothing is an error too, and so is an entry whose
-// roots: match no policy of its kind; otherwise its roots: pick among
-// the policies the run read. selected, the policies --policy matched,
-// narrows every requirement's roots to those among them, so a
-// requirement whose roots it leaves out is skipped.
+// every root, which then reports that it doesn't invoke it; from the
+// configuration file it's an error at the entry instead, unless the run
+// isn't strict and the entry has no trusted: paths, when the entry is
+// skipped, its policy being among paths this run doesn't read. When
+// strict, a roots: pattern that matches nothing is an error too, and so
+// is an entry whose roots: match no policy of its kind; otherwise its
+// roots: pick among the policies the run read. selected, the policies
+// --policy matched, narrows every requirement's roots to those among
+// them, so a requirement whose roots it leaves out is skipped.
 func enforce(p *project.Project, cfg *config.Config, reqs []config.Require, selected []string, strict bool) (*enforced, humane.Error) {
 	// --policy narrows the roots, so a roots: pattern for policies it
 	// leaves out isn't an error.
@@ -160,8 +160,8 @@ func defaultRoots(p *project.Project, requires []string) []string {
 	return out
 }
 
-// undefined is the error for a policy sigil.yaml requires that no
-// document defines.
+// undefined is the error for a policy the configuration file requires
+// that no document defines.
 func undefined(p *project.Project, cfg *config.Config, r config.Require) humane.Error {
 	advice := []string{"check reads a required policy from the entry's trusted: paths, or else from its paths"}
 	if near, ok := diag.Nearest(r.Policy, p.Names()); ok {
@@ -170,10 +170,10 @@ func undefined(p *project.Project, cfg *config.Config, r config.Require) humane.
 	return humane.New(fmt.Sprintf("%s: %s is required, but no policy %s was found", cfg.At(r.Pos), r.Policy, r.Policy), advice...)
 }
 
-// whole reports whether the run reads the whole repository sigil.yaml
-// configures: one of the paths is the file's directory or above it. A
-// run that reads part of it, such as one team's directory, doesn't hold
-// every policy the file's roots: name.
+// whole reports whether the run reads the whole repository the
+// configuration file configures: one of the paths is the file's directory
+// or above it. A run that reads part of it, such as one team's directory,
+// doesn't hold every policy the file's roots: name.
 func whole(cfg *config.Config, paths []string) bool {
 	dir, err := filepath.Abs(filepath.Dir(cfg.File))
 	if err != nil {

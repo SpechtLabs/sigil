@@ -42,7 +42,7 @@ func Apply(path, dir string, src *project.Sources) humane.Error {
 func (c *Config) KindFiles() ([]string, humane.Error) {
 	for _, k := range c.Kinds {
 		if _, err := os.Stat(k); err != nil {
-			return nil, humane.Wrap(err, c.File+": the kind file "+k+" can't be read", "kinds: lists kind files relative to "+FileName)
+			return nil, humane.Wrap(err, c.File+": the kind file "+k+" can't be read", "kinds lists kind files relative to "+c.Base())
 		}
 	}
 	return c.Kinds, nil
@@ -60,7 +60,7 @@ func (c *Config) Trusted(have []string, reqs []Require) ([]string, humane.Error)
 				continue
 			}
 			if _, err := os.Stat(path); err != nil {
-				return nil, humane.Wrap(err, fmt.Sprintf("%s: the trusted path %s of %s can't be read", c.At(r.Pos), path, r.Policy), "trusted: paths are relative to "+FileName)
+				return nil, humane.Wrap(err, fmt.Sprintf("%s: the trusted path %s of %s can't be read", c.At(r.Pos), path, r.Policy), "trusted paths are relative to "+c.Base())
 			}
 			out = append(out, path)
 		}

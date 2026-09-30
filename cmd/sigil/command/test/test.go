@@ -88,10 +88,11 @@ it, with the kind of the policy it names.
 Each document's header names its kind, and the kind is found among the
 inputs: a kind file among the paths, or a kind document in the same file as the
 policies. --kind adds a kind file the paths don't hold, and so does the kinds:
-list of the nearest sigil.yaml, or of the file --config names; a host binary
-has its kinds linked in. The same kind from two sources must be identical, which
-catches a stale export. sigil.yaml's require: trusted: paths are read
-too, so a policy finds the required policies it uses.`,
+list of the configuration file (the nearest sigil.yaml, sigil.json or
+sigil.toml, or the file --config names); a host binary has its kinds linked in.
+The same kind from two sources must be identical, which catches a stale
+export. The configuration's require: trusted: paths are read too, so a policy
+finds the required policies it uses.`,
 		Example: `# Run every test case under the current directory, for every kind in it
 sigil test
 
@@ -120,7 +121,7 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policies' kinds are found among the paths and the kinds linked in (repeatable)")
 	cmd.Flags().String("run", "", "Only run test cases whose name matches this regular expression")
 	cmd.Flags().BoolP("verbose", "v", false, "List every test case, not only the ones that fail")
-	cmd.Flags().String("config", "", "Configuration file with kind files and trusted paths to load; the nearest "+config.FileName+" when omitted")
+	cmd.Flags().String("config", "", "Configuration file with kind files and trusted paths to load; the nearest "+config.Names+" when omitted")
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagFilename("kind", "sigil")
 	_ = cmd.MarkFlagFilename("config", "yaml")

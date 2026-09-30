@@ -73,7 +73,7 @@ func (ks *kinds) add(file string, doc *ast.KindDoc, flag bool) (diag.ErrorList, 
 	return diag.ErrorList{{
 		File: file, Pos: doc.Name.Pos(), End: doc.Name.End(),
 		Msg:  fmt.Sprintf("kind document %s differs from the one at %s", k.Name, at(prev.file, prev.doc.Name.Pos())),
-		Help: "a kind has one definition, and the first source wins: the kind files named with --kind or in sigil.yaml, then the paths, then the trusted paths; regenerate this document from the host's Schema(), or remove it",
+		Help: "a kind has one definition, and the first source wins: the kind files named with --kind or in the configuration file, then the paths, then the trusted paths; regenerate this document from the host's Schema(), or remove it",
 	}}, nil
 }
 

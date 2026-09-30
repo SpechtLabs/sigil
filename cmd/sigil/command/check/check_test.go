@@ -53,6 +53,7 @@ func TestCheck(t *testing.T) {
 		{name: "legacy_kind_json", kind: "testdata/kinds/legacy.sigil", format: output.JSON, paths: []string{"testdata/compile"}},
 		{name: "invalid_kind", kind: "testdata/kinds/invalid.sigil", paths: []string{"testdata/compile"}},
 		{name: "config_typo", config: "typo.yaml", paths: []string{"testdata/lints"}},
+		{name: "config_typo_toml", config: "typo.toml", paths: []string{"testdata/lints"}},
 		{name: "require_ok", paths: []string{"testdata/require"}, trusted: []string{"testdata/lints/deploy"}, patterns: []string{"teams.*"}, requires: []string{"deploy.guardrails"}},
 		{name: "require_gated", paths: []string{"testdata/lints/teams"}, trusted: []string{"testdata/lints/deploy"}, patterns: []string{"teams.payments"}, requires: []string{"deploy.guardrails"}},
 		{name: "require_roots", paths: []string{"testdata/lints"}, requires: []string{"deploy.guardrails"}},
@@ -71,6 +72,8 @@ func TestCheck(t *testing.T) {
 		{name: "scope_redefined", paths: []string{"testdata/scope", "-"}, stdin: redefined, patterns: []string{"scope.a"}},
 		{name: "scope_redefined_elsewhere", paths: []string{"testdata/scope", "-"}, stdin: redefined, patterns: []string{"scope.b"}},
 		{name: "config_require", config: "require.yaml", paths: []string{"testdata/require"}},
+		{name: "config_require_toml", config: "require.toml", paths: []string{"testdata/require"}},
+		{name: "config_require_json", config: "require.json", paths: []string{"testdata/require"}},
 		{name: "config_require_default_roots", config: "require_default_roots.yaml", paths: []string{"testdata/lints"}},
 		{name: "config_require_undefined", config: "../lints/require_undefined.yaml", paths: []string{"testdata/lints"}},
 		{name: "config_require_no_match", config: "../lints/require_no_match.yaml", paths: []string{"testdata/lints"}},
@@ -197,7 +200,7 @@ func TestNoFiles(t *testing.T) {
 // TestWhole checks when a run reads the whole repository sigil.yaml
 // configures, which makes every roots: pattern count.
 func TestWhole(t *testing.T) {
-	cfg := &config.Config{File: filepath.Join("repo", "policies", config.FileName)}
+	cfg := &config.Config{File: filepath.Join("repo", "policies", "sigil.yaml")}
 	tests := []struct {
 		paths []string
 		want  bool

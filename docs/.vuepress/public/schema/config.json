@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sigil.specht-labs.de/schema/config.json",
+  "title": "Sigil configuration file",
+  "description": "The configuration of a Sigil policy repository: sigil.yaml, sigil.json or sigil.toml, or the same with a leading dot. Paths are relative to the file's directory. See https://sigil.specht-labs.de/reference/config/.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "The JSON Schema the file follows, for editors. The tools ignore it.",
+      "type": "string"
+    },
+    "kinds": {
+      "description": "Kind files outside the paths a command reads, which every policy command loads as if named with --kind.",
+      "anyOf": [
+        {
+          "description": "A kind file, relative to the configuration file.",
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "items": {
+            "description": "A kind file, relative to the configuration file.",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "lints": {
+      "description": "The level of each lint: off, warn or error. Lints the file doesn't name keep their defaults.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "duplicate-invocation": {
+          "description": "A policy is invoked twice with the same arguments, in any order. Default warn.",
+          "enum": [
+            "off",
+            "warn",
+            "error"
+          ]
+        },
+        "gated-assert": {
+          "description": "A policy holding asserts, directly or through its own invocations, is invoked under `when` and isn't required. Default warn.",
+          "enum": [
+            "off",
+            "warn",
+            "error"
+          ]
+        },
+        "gated-deny": {
+          "description": "A policy holding constructors of the decision a `collect one` kind ranks highest is invoked under `when` and isn't required. Default warn.",
+          "enum": [
+            "off",
+            "warn",
+            "error"
+          ]
+        },
+        "path-matches-name": {
+          "description": "A document's name doesn't match its file's path. Default off.",
+          "enum": [
+            "off",
+            "warn",
+            "error"
+          ]
+        },
+        "qualified-imports": {
+          "description": "A selective import is used. Default off.",
+          "enum": [
+            "off",
+            "warn",
+            "error"
+          ]
+        },
+        "shadowed-kind-name": {
+          "description": "A document keeps a name the kind has since given to an input, host function, decision, enum or enum value. Default warn.",
+          "enum": [
+            "off",
+            "warn",
+            "error"
+          ]
+        },
+        "unused-import": {
+          "description": "A `use` binds a name nothing reads or invokes. Default warn.",
+          "enum": [
+            "off",
+            "warn",
+            "error"
+          ]
+        },
+        "unused-let": {
+          "description": "A private let is never read. Default warn.",
+          "enum": [
+            "off",
+            "warn",
+            "error"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "require": {
+      "description": "The policies sigil check enforces, one entry each. A policy can be required once.",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "description": "A policy every root it applies to must invoke unconditionally.",
+        "type": "object",
+        "required": [
+          "policy"
+        ],
+        "properties": {
+          "policy": {
+            "description": "The required policy's name: one name, not a pattern.",
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^*]+$"
+          },
+          "roots": {
+            "description": "Name patterns of the policies the requirement applies to, as --policy takes them. Without it, every policy of the required policy's kind that no other policy invokes.",
+            "anyOf": [
+              {
+                "description": "A policy name or pattern, such as \"payments.*\".",
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "array",
+                "items": {
+                  "description": "A policy name or pattern, such as \"payments.*\".",
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trusted": {
+            "description": "Files and directories the required policy comes from, as --trusted reads them.",
+            "anyOf": [
+              {
+                "description": "A file or directory, relative to the configuration file.",
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "array",
+                "items": {
+                  "description": "A file or directory, relative to the configuration file.",
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

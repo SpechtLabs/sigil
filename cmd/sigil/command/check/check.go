@@ -1,10 +1,10 @@
 // Package check implements the `sigil check` command. It parses,
 // type-checks and compiles every document against its kind, checks the root
-// policies against the policies sigil.yaml or --require requires, runs the
-// lints at the levels sigil.yaml sets, and prints the diagnostics with a
-// summary line. As JSON or YAML it prints one [output.Diagnostic] per
-// problem. The command fails when any diagnostic is an error, including a
-// lint set to error.
+// policies against the policies the configuration file or --require
+// requires, runs the lints at the levels the configuration file sets, and
+// prints the diagnostics with a summary line. As JSON or YAML it prints
+// one [output.Diagnostic] per problem. The command fails when any
+// diagnostic is an error, including a lint set to error.
 package check
 
 import (
@@ -66,9 +66,9 @@ each against its own kind, and a required policy applies to the roots of its
 own kind. The kind documents are checked too. A policy whose params have no
 defaults is checked with the params unbound, the way explain shows it.
 
-check reads the nearest sigil.yaml at or above the working directory, or the
-file --config names: kinds: adds kind files as --kind does, require: lists the
-policies check enforces with their trusted: paths and roots: patterns, and
+check reads the nearest sigil.yaml, sigil.json or sigil.toml (or .sigil.*), or
+the file --config names. kinds: adds kind files as --kind does, require: lists
+the policies check enforces with their trusted: paths and roots: patterns, and
 lints: sets lint levels. --require, with --trusted, replaces require: for one
 run; --policy narrows the roots. Name the roots: a policy another one invokes,
 even under when, isn't a root, so a requirement misses it.
@@ -80,7 +80,7 @@ non-zero when there is an error, including a lint set to error.`,
 sigil check --kind deploy_approval.sigil deploy/production.sigil
 
 # Check every document in a policy repository, every kind in it, and the
-# requirements its sigil.yaml lists, as CI would
+# requirements its configuration file lists, as CI would
 sigil check
 
 # Check a self-contained file that holds its kind and its policies
@@ -89,7 +89,7 @@ sigil check bundle.sigil
 # Check one team's policies and what they use, not the rest of the repository
 sigil check --policy 'payments.*'
 
-# Check one requirement on its own, instead of the ones sigil.yaml lists
+# Check one requirement on its own, instead of the ones the configuration lists
 sigil check --require deploy.guardrails --trusted deploy/ --policy 'payments.*' deploy_approval.sigil payments/`,
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: complete.SigilFiles,
@@ -118,7 +118,7 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceP("policy", "p", nil, "Only check the policies matching this name or pattern, such as 'payments.*', and what they use; the roots for --require (repeatable)")
 	cmd.Flags().StringSlice("trusted", nil, "File or directory to read the --require policies from, as policy.From does; needs --require (repeatable)")
 	cmd.Flags().StringSlice("require", nil, "Policy that every checked policy must invoke unconditionally (repeatable)")
-	cmd.Flags().String("config", "", "Configuration file with kind files, requirements and lint levels; the nearest "+config.FileName+" when omitted")
+	cmd.Flags().String("config", "", "Configuration file with kind files, requirements and lint levels; the nearest "+config.Names+" when omitted")
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagFilename("kind", "sigil")
 	_ = cmd.MarkFlagFilename("config", "yaml")
@@ -128,9 +128,9 @@ func addFlags(cmd *cobra.Command) {
 }
 
 // run checks the project src names, with the configuration configFile
-// names or the nearest sigil.yaml: every document, or with patterns the
+// names or the nearest configuration file: every document, or with patterns the
 // policies they match and what those use. It enforces the requirements
-// --require names, or sigil.yaml's require: without it, and reports the
+// --require names, or the configuration's require: without it, and reports the
 // diagnostics and lint findings with a summary.
 func run(out io.Writer, o *options, configFile string, src project.Sources, patterns, requires []string) humane.Error {
 	if len(src.Paths) == 0 {

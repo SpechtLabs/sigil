@@ -1,0 +1,3 @@
+--- error ---
+testdata/config/typo.toml:2:1: unknown lint "gated-dney"
+advice: did you mean "gated-deny"? lints: unused-import, shadowed-kind-name, unused-let, gated-assert, gated-deny, duplicate-invocation, qualified-imports, path-matches-name
