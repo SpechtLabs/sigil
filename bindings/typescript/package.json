@@ -1,6 +1,6 @@
 {
   "name": "@spechtlabs/sigil",
-  "version": "0.6.0",
+  "version": "0.6.2",
   "description": "The Sigil policy language in JavaScript: the Go engine compiled to WebAssembly, with typed bindings",
   "type": "module",
   "author": "Cedric Specht <cedric@specht-labs.de>",

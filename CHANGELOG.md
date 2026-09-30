@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.2](https://github.com/SpechtLabs/sigil/compare/v0.6.1...v0.6.2) (2026-09-30)
+
+
+### Features
+
+* **examples:** alertrouter, a TypeScript service on Sigil's WebAssembly build ([#107](https://github.com/SpechtLabs/sigil/issues/107)) ([ed674df](https://github.com/SpechtLabs/sigil/commit/ed674df50ff2caca6ac31a0632571296297de3b8))
+
+
+### Bug Fixes
+
+* **wasm:** check every document on compile, and echo the request id on every error ([#101](https://github.com/SpechtLabs/sigil/issues/101)) ([b4ecb47](https://github.com/SpechtLabs/sigil/commit/b4ecb478fb1bdbfdfff6f41b8e95bbfa25f5810a))
+
 ## [0.6.1](https://github.com/SpechtLabs/sigil/compare/v0.6.0...v0.6.1) (2026-09-30)
 
 
