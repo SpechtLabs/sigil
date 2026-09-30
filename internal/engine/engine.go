@@ -83,6 +83,7 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sierrasoftworks/humane-errors-go"
@@ -90,6 +91,9 @@ import (
 	"github.com/spechtlabs/sigil/internal/buildinfo"
 	"github.com/spechtlabs/sigil/internal/workspace"
 )
+
+// malformedHelp says what a request is, in the answer to one that isn't.
+const malformedHelp = `send one JSON object of an op and its fields, such as {"op": "version"}`
 
 // Engine handles requests. Its methods are safe for concurrent use.
 type Engine struct {
@@ -183,9 +187,19 @@ func New(opts ...Option) *Engine {
 // false. So is a panic, a bug in sigil, which would otherwise stop a
 // WebAssembly module for good and lose every handle in it.
 func (e *Engine) Call(req []byte) (resp []byte) {
+	// The id is read on its own first, so a request that names a field no
+	// op takes, or gives one the wrong type, still gets its id back; only
+	// a request that isn't JSON at all, or whose id isn't a number, has
+	// none to echo.
+	var head struct {
+		ID *json.Number `json:"id"`
+	}
+	if err := json.Unmarshal(req, &head); err != nil {
+		head.ID = nil // an id that isn't a number is left behind half decoded
+	}
 	defer func() {
 		if p := recover(); p != nil {
-			resp = encode(fail(nil, humane.New(fmt.Sprintf("sigil failed while handling the request: %v", p), "this is a bug in sigil; please report it with the request")))
+			resp = encode(fail(head.ID, humane.New(fmt.Sprintf("sigil failed while handling the request: %v", p), "this is a bug in sigil; please report it with the request")))
 		}
 	}()
 	var r request
@@ -193,7 +207,7 @@ func (e *Engine) Call(req []byte) (resp []byte) {
 	dec.DisallowUnknownFields()
 	dec.UseNumber() // an input's numbers, as sigil eval reads them
 	if err := dec.Decode(&r); err != nil {
-		return Malformed("the request isn't a JSON object of the fields an op takes: " + err.Error())
+		return encode(fail(head.ID, humane.New("the request isn't a JSON object of the fields an op takes: "+err.Error(), malformedHelp)))
 	}
 	env := envelope{ID: r.ID, OK: true}
 	var out any //nolint:emptyinterface // each op answers with its own record
@@ -225,7 +239,7 @@ func (e *Engine) Call(req []byte) (resp []byte) {
 // Malformed is the response to a request the engine couldn't read, for
 // the glue to answer with when a request doesn't reach [Engine.Call].
 func Malformed(msg string) []byte {
-	return encode(fail(nil, humane.New(msg, `send one JSON object, such as {"op": "version"}`)))
+	return encode(fail(nil, humane.New(msg, malformedHelp)))
 }
 
 // HostMisbehaved is the response of a host function whose host broke the
@@ -255,17 +269,33 @@ func (e *Engine) release(env envelope, r *request) (any, humane.Error) { //nolin
 
 // fail is the response for err, with the diagnostics that caused it.
 func fail(id *json.Number, err humane.Error) failure {
-	f := failure{ID: id, Error: problem{Message: err.Error()}}
-	if advice := err.Advice(); len(advice) > 0 {
-		f.Error.Help = advice[0]
-		for _, a := range advice[1:] {
-			f.Error.Help += "; " + a
+	return failure{ID: id, Error: problem{Message: err.Error(), Help: joinAdvice(err.Advice())}, Diagnostics: diagnosticsOf(err)}
+}
+
+// joinAdvice joins pieces of advice into one help string: after one that
+// ends a sentence, such as a did-you-mean question, with a space, and
+// otherwise with a semicolon, as the pieces are clauses of one sentence.
+func joinAdvice(advice []string) string {
+	var b strings.Builder
+	for i, a := range advice {
+		if i > 0 {
+			if strings.HasSuffix(advice[i-1], "?") || strings.HasSuffix(advice[i-1], ".") {
+				b.WriteString(" ")
+			} else {
+				b.WriteString("; ")
+			}
 		}
+		b.WriteString(a)
 	}
+	return b.String()
+}
+
+// diagnosticsOf returns the diagnostics that caused err, or nil.
+func diagnosticsOf(err humane.Error) []workspace.Diagnostic {
 	if b, ok := errors.AsType[*blocked](err); ok {
-		f.Diagnostics = b.diags
+		return b.diags
 	}
-	return f
+	return nil
 }
 
 // encode encodes a response. A response is built of strings, numbers,

@@ -23,3 +23,24 @@ func TestBlocked(t *testing.T) {
 		t.Errorf("blocked = %q, %q, %v, %v", b.Error(), b.Display(), b.Cause(), b.Advice())
 	}
 }
+
+// TestJoinAdvice checks that advice reads as prose: a sentence, such as a
+// did-you-mean question, is followed by a space, and a clause by a
+// semicolon.
+func TestJoinAdvice(t *testing.T) {
+	tests := []struct {
+		advice []string
+		want   string
+	}{
+		{advice: nil, want: ""},
+		{advice: []string{"fix it"}, want: "fix it"},
+		{advice: []string{`did you mean "unused-let"?`, "the lints are unused-import, unused-let"}, want: `did you mean "unused-let"? the lints are unused-import, unused-let`},
+		{advice: []string{"Fix the file.", "then check again"}, want: "Fix the file. then check again"},
+		{advice: []string{"fix the file", "then check again"}, want: "fix the file; then check again"},
+	}
+	for _, tt := range tests {
+		if got := joinAdvice(tt.advice); got != tt.want {
+			t.Errorf("joinAdvice(%q) = %q, want %q", tt.advice, got, tt.want)
+		}
+	}
+}
