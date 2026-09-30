@@ -2,6 +2,7 @@ package gokind_test
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -130,6 +131,10 @@ func TestSynthesizedFunctionFails(t *testing.T) {
 	if err, _ := reflect.TypeAssert[error](out[1]); !errors.As(err, &unbound) || unbound.Name != "lookup" {
 		t.Fatalf("error = %v, want *ErrUnbound for lookup", out[1].Interface())
 	}
+	want := "this sigil binary has only lookup's signature from the kind file; stub it with `stubs:` in the test file or `--stub lookup=VALUE` on sigil eval, or evaluate with a host binary built with sigil's pkg/cli, which links the real function in"
+	if got := unbound.Help(); got != want {
+		t.Errorf("Help() = %q, want %q", got, want)
+	}
 }
 
 // TestSynthesizedEvaluation compiles and evaluates a policy over the
@@ -211,4 +216,34 @@ func loadKind(t *testing.T, src string) *kind.Kind {
 		t.Fatalf("LoadKind: %v", errs)
 	}
 	return k
+}
+
+// hostError is a host's own error with a Help method, which isn't a
+// stand-in's advice.
+type hostError struct{}
+
+func (hostError) Error() string { return "no quota" }
+
+func (hostError) Help() string { return "raise the quota" }
+
+func TestStandInHelp(t *testing.T) {
+	unbound := &gokind.ErrUnbound{Name: "owner"}
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "an unbound function", err: unbound, want: unbound.Help()},
+		{name: "wrapped", err: fmt.Errorf("calling owner: %w", unbound), want: unbound.Help()},
+		{name: "a plain error", err: errors.New("boom")},
+		{name: "a host's error with a Help method", err: hostError{}},
+		{name: "nil"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := gokind.StandInHelp(tt.err); got != tt.want {
+				t.Errorf("StandInHelp() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }

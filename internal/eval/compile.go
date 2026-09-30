@@ -1,7 +1,6 @@
 package eval
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -756,12 +755,13 @@ func (c *compiler) indexer(x *ast.IndexExpr) func(*Frame, Value) Value {
 
 // call compiles a host function call. Arguments are converted to the Go
 // parameter types when a literal's representation differs; an error
-// result becomes a runtime error caused by it, and the context is polled
-// once the function returns. An enum value in the result is checked like
-// one read from the input. A panic in the function becomes a runtime
-// error caused by a *HostPanic when the binding asks for that. Otherwise
-// it isn't recovered: it isn't a *diag.Error, so catch re-raises it to
-// the host.
+// result becomes a runtime error caused by it, with the advice of
+// sigil's own stand-ins for a host function as its help, and the
+// context is polled once the function returns. An enum value in the
+// result is checked like one read from the input. A panic in the
+// function becomes a runtime error caused by a *HostPanic when the
+// binding asks for that. Otherwise it isn't recovered: it isn't a
+// *diag.Error, so catch re-raises it to the host.
 func (c *compiler) call(x *ast.CallExpr) Expr {
 	name := x.Fun.(*ast.Ident).Name
 	var fn reflect.Value
@@ -799,13 +799,12 @@ func (c *compiler) call(x *ast.CallExpr) Expr {
 	})
 }
 
-// hostError is the runtime error for the error a host function returned.
+// hostError is the runtime error for the error a host function returned,
+// with the advice of sigil's own stand-ins as its help.
 func hostError(x *ast.CallExpr, name string, result Value) *diag.Error {
 	err, _ := reflect.TypeAssert[error](result)
 	e := &diag.Error{Msg: fmt.Sprintf("host function %s failed: %v", name, err), Pos: x.Pos(), End: x.End(), Cause: err}
-	if _, ok := errors.AsType[*gokind.ErrUnbound](err); ok {
-		e.Help = "this sigil binary has only " + name + "'s signature from the kind file; evaluate with the host's own binary, built with sigil's pkg/cli, which links the real function in"
-	}
+	e.Help = gokind.StandInHelp(err)
 	return e
 }
 

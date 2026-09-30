@@ -70,8 +70,15 @@ per policy:
         asserts: [named_actor]
 
 A case expects a decision and reason, with the payload fields it lists; the
-whole outcome of a collect all kind under outcome:, in any order; or the
-reasons of the asserts that fail. Inputs follow the rules of sigil eval.
+whole outcome of a collect all kind under outcome:, in any order; the
+reasons of the asserts that fail; or, under error:, text the message of the
+runtime error it fails with contains. Inputs follow the rules of sigil eval.
+
+The stock sigil binary knows the host functions' signatures but not their
+implementations. A test file's stubs: give a host function results, such as
+"stubs: {owner: {returns: ada}}", and a case's own stubs: replace those, so a
+case runs without the real function; in a host binary a stub replaces the real
+one, which pins a function whose result changes from run to run.
 
 Every PATH is a file or a directory; with no PATH, test searches the current
 directory. A directory contributes every .sigil file and test file below it.
@@ -84,8 +91,7 @@ policies. --kind adds a kind file the paths don't hold, and so does the kinds:
 list of the nearest sigil.yaml, or of the file --config names; a host binary
 has its kinds linked in. The same kind from two sources must be identical, which
 catches a stale export. sigil.yaml's require: trusted: paths are read
-too, so a policy finds the required policies it uses. Like eval, a case that calls a
-host function needs a host binary with the functions linked in.`,
+too, so a policy finds the required policies it uses.`,
 		Example: `# Run every test case under the current directory, for every kind in it
 sigil test
 
@@ -105,6 +111,12 @@ sigil test --run 'freeze'`,
 		},
 	}
 
+	addFlags(cmd)
+	return cmd
+}
+
+// addFlags declares the test command's flags.
+func addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policies' kinds are found among the paths and the kinds linked in (repeatable)")
 	cmd.Flags().String("run", "", "Only run test cases whose name matches this regular expression")
 	cmd.Flags().BoolP("verbose", "v", false, "List every test case, not only the ones that fail")
@@ -113,8 +125,6 @@ sigil test --run 'freeze'`,
 	_ = cmd.MarkFlagFilename("kind", "sigil")
 	_ = cmd.MarkFlagFilename("config", "yaml")
 	_ = cmd.RegisterFlagCompletionFunc("run", cobra.NoFileCompletions)
-
-	return cmd
 }
 
 // SuiteResult is one test file's run. When Error is set, none of the
@@ -178,9 +188,6 @@ func runTests(ctx context.Context, out io.Writer, o *options, configFile string,
 		return err
 	}
 	p.Check()
-	if errs := p.Errors(); errs != nil {
-		return pretty.Diagnose(p.Resolve(errs), p.SourceOf, "the bundle doesn't check, so no test ran", "fix the errors above; sigil check reports every problem in a bundle at once")
-	}
 	var results []SuiteResult
 	for _, file := range tests {
 		results = append(results, runSuite(ctx, p, file, filter))
@@ -200,19 +207,32 @@ func runSuite(ctx context.Context, p *project.Project, file string, filter *rege
 	s, err := testsuite.Parse(file, src)
 	if err != nil {
 		res.Error = err.Error()
-		if e, ok := err.(*testsuite.Error); ok {
+		switch e := err.(type) {
+		case *testsuite.Error:
 			res.problems = []*testsuite.Error{e}
+		case testsuite.Errors:
+			res.problems = e
 		}
 		return res
 	}
 	res.Policy = s.Policy
 	g := p.Group(s.Policy)
 	if g == nil {
-		errs := diag.ErrorList{noPolicy(p, s.Policy)}
-		res.Error = p.Render(errs)
-		res.diags, res.src = p.Resolve(errs), p.SourceOf
-		return res
+		// The policy may be missing because its document or kind doesn't
+		// check, which the project's diagnostics then say.
+		errs := p.Errors()
+		if errs == nil {
+			errs = diag.ErrorList{noPolicy(p, s.Policy)}
+		}
+		return failSuite(res, p, errs)
 	}
+	// Only the policy, what it uses and the kinds count: an error in a
+	// document it doesn't use doesn't stop its tests.
+	scope := p.ScopeOf([]string{s.Policy})
+	if errs := scope.Keep(p.Errors()); errs != nil {
+		return failSuite(res, p, errs)
+	}
+	b := scope.Bundle(g)
 	runner := &testsuite.Runner{Kind: g.Kind.Model, Binding: g.Kind.Binding, FS: osFS{}}
 	if errs := s.Validate(runner.Kind); len(errs) > 0 {
 		msgs := make([]string, len(errs))
@@ -226,30 +246,65 @@ func runSuite(ctx context.Context, p *project.Project, file string, filter *rege
 		res.problems = errs
 		return res
 	}
-	prog, errs := g.Bundle.Compile(s.Policy, bundle.Options{Binding: runner.Binding})
-	if errs != nil {
-		res.Error = p.Render(errs)
-		res.diags, res.src = p.Resolve(errs), p.SourceOf
+	base, berr := runner.Bind(s, nil)
+	if berr != nil {
+		res.Error, res.problems = berr.Display(), []*testsuite.Error{berr}
 		return res
 	}
-	evaluate := evaluator(prog)
+	prog, errs := b.Compile(s.Policy, bundle.Options{Binding: base})
+	if errs != nil {
+		return failSuite(res, p, errs)
+	}
 	for _, c := range s.Cases {
 		if filter != nil && !filter.MatchString(c.Name) {
 			continue
 		}
-		r := runner.RunCase(ctx, s, c, evaluate)
-		cr := CaseResult{Name: c.Name, Line: c.Line, Passed: r.Passed(), problem: r.Err, diffs: r.Failures}
-		for _, f := range r.Failures {
-			cr.Failures = append(cr.Failures, f.Text)
-		}
-		if r.Err != nil {
-			cr.Error = r.Err.Msg
-			if r.Err.Help != "" {
-				cr.Error += " (" + r.Err.Help + ")"
-			}
-		}
-		res.Cases = append(res.Cases, cr)
+		res.Cases = append(res.Cases, runCase(ctx, p, b, runner, s, c, prog))
 	}
+	return res
+}
+
+// runCase runs one case against prog, the policy compiled with the test
+// file's stubs, or, when the case stubs host functions of its own, the
+// policy compiled again with them: host functions are bound when a
+// policy compiles.
+func runCase(ctx context.Context, p *project.Project, b *bundle.Bundle, runner *testsuite.Runner, s *testsuite.Suite, c *testsuite.Case, prog *eval.Policy) CaseResult {
+	cr := CaseResult{Name: c.Name, Line: c.Line}
+	if len(c.Stubs) > 0 {
+		cb, berr := runner.Bind(s, c)
+		if berr != nil {
+			return caseError(cr, berr)
+		}
+		var errs diag.ErrorList
+		if prog, errs = b.Compile(s.Policy, bundle.Options{Binding: cb}); errs != nil {
+			return caseError(cr, &testsuite.Error{File: s.File, Line: c.Line, Case: c.Name, Msg: "the policy doesn't compile with the case's stubs: " + p.Render(errs)})
+		}
+	}
+	r := runner.RunCase(ctx, s, c, evaluator(prog))
+	cr.Passed, cr.diffs = r.Passed(), r.Failures
+	for _, f := range r.Failures {
+		cr.Failures = append(cr.Failures, f.Text)
+	}
+	if r.Err != nil {
+		return caseError(cr, r.Err)
+	}
+	return cr
+}
+
+// caseError records why a case couldn't run.
+func caseError(cr CaseResult, err *testsuite.Error) CaseResult {
+	cr.Passed, cr.problem, cr.Error = false, err, err.Msg
+	if err.Help != "" {
+		cr.Error += " (" + err.Help + ")"
+	}
+	return cr
+}
+
+// failSuite records why a test file's policy couldn't run: the
+// diagnostics behind it.
+func failSuite(res SuiteResult, p *project.Project, errs diag.ErrorList) SuiteResult {
+	res.Error = p.Render(errs)
+	res.diags, res.src = p.Resolve(errs), p.SourceOf
 	return res
 }
 
@@ -279,7 +334,8 @@ func outcome(res *result.Result) *testsuite.Outcome {
 			out.Entries = append(out.Entries, testsuite.Got{Decision: e.Decision, Reason: e.Reason, Payload: e.Payload, Position: e.Position.String()})
 		}
 	case f.Runtime != nil:
-		out.Err = "a runtime error (" + f.Runtime.Position.String() + ": " + f.Runtime.Msg + ")"
+		out.Err, out.Runtime, out.Help = "a runtime error", f.Runtime.Msg, f.Runtime.Help
+		out.Detail = f.Runtime.Position.String() + ": " + f.Runtime.Msg
 	case f.Conflict != nil:
 		out.Err = "a conflict (" + f.Conflict.Msg + ")"
 	default:
@@ -444,6 +500,9 @@ func writeSuite(b *strings.Builder, t pretty.Theme, s SuiteResult, verbose bool)
 			}
 			b.WriteString("      " + t.Key("want") + " " + f.Want + "\n")
 			b.WriteString("      " + t.Key("got ") + " " + t.Fail(f.Got) + "\n")
+			if f.Detail != "" {
+				b.WriteString(indent(problem(t, f.Detail, f.Help), "           ") + "\n")
+			}
 		}
 	}
 	if failed > 0 {

@@ -145,24 +145,24 @@ func run(out io.Writer, o *options, configFile string, src project.Sources, patt
 		return err
 	}
 	p.Check()
-	s := everything(p)
+	s := p.ScopeOf(nil)
 	if len(patterns) > 0 {
 		selected, err := project.Match(p.Policies(), patterns)
 		if err != nil {
 			return err
 		}
-		s = scopeOf(p, selected)
+		s = p.ScopeOf(selected)
 	}
-	errs := s.keep(p.Errors())
+	errs := s.Keep(p.Errors())
 	var findings diag.ErrorList
 	if errs == nil {
 		// Lints read what the checker learned, so they run on a project
 		// that checks, even when a compile or a requirement then fails.
-		e, err := enforce(p, cfg, reqs, s.selected, whole(cfg, src.Paths))
+		e, err := enforce(p, cfg, reqs, s.Selected(), whole(cfg, src.Paths))
 		if err != nil {
 			return err
 		}
-		errs = s.keep(compileAll(p, s, e))
+		errs = s.Keep(compileAll(p, s, e))
 		required := make([]string, len(reqs))
 		for i, r := range reqs {
 			required[i] = r.Policy
@@ -172,7 +172,7 @@ func run(out io.Writer, o *options, configFile string, src project.Sources, patt
 				findings = append(findings, f.Error)
 			}
 		}
-		findings = s.keep(findings)
+		findings = s.Keep(findings)
 	}
 	return report(out, p, append(errs, findings...), *o.output)
 }
@@ -180,7 +180,7 @@ func run(out io.Writer, o *options, configFile string, src project.Sources, patt
 // compileAll compiles the scope's policies, so errors only a compile
 // finds, such as an invocation argument out of its param's bounds, fail
 // the check, and checks each root against the policies it must invoke.
-func compileAll(p *project.Project, s *scope, e *enforced) diag.ErrorList {
+func compileAll(p *project.Project, s *project.Scope, e *enforced) diag.ErrorList {
 	var errs diag.ErrorList
 	seen := map[string]bool{}
 	add := func(list diag.ErrorList) {
@@ -192,15 +192,15 @@ func compileAll(p *project.Project, s *scope, e *enforced) diag.ErrorList {
 			}
 		}
 	}
-	for _, name := range s.policies {
-		_, list := s.bundle(p.Group(name)).Compile(name, bundle.Options{Static: true})
+	for _, name := range s.Policies() {
+		_, list := s.Bundle(p.Group(name)).Compile(name, bundle.Options{Static: true})
 		add(list)
 	}
 	if errs != nil {
 		return errs
 	}
 	for _, root := range e.roots {
-		_, list := s.bundle(p.Group(root)).Compile(root, bundle.Options{Static: true, Require: e.requires[root]})
+		_, list := s.Bundle(p.Group(root)).Compile(root, bundle.Options{Static: true, Require: e.requires[root]})
 		add(list)
 	}
 	return errs

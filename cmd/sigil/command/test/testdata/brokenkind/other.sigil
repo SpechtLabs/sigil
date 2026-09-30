@@ -1,0 +1,17 @@
+kind Other version 1
+
+input x: nope
+
+decision allow {
+  reason: yes
+}
+
+collect one
+
+default allow(reason: yes)
+
+---
+
+policy other.main: Other@1
+
+allow(reason: yes)

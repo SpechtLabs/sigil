@@ -1,0 +1,15 @@
+--- error ---
+<stdin>:3:10: error: unknown type `nope`
+  |
+3 | input x: nope
+  |          ^^^^
+  = help: declare it with `type nope { ... }`, or use a built-in type
+
+<stdin>:9:1: error: kind Other collects one decision but has no precedence
+  |
+9 | collect one
+  | ^^^^^^^^^^^
+  = help: `collect one` returns the highest-ranked decision; rank them with `precedence deny > review > approve`, highest first
+
+access.main doesn't check, so nothing was evaluated
+advice: fix the errors above; sigil check reports every problem in a bundle at once

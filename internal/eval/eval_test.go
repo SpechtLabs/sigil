@@ -11,6 +11,7 @@ import (
 	"github.com/spechtlabs/sigil/internal/eval"
 	"github.com/spechtlabs/sigil/internal/gokind"
 	"github.com/spechtlabs/sigil/internal/parser"
+	"github.com/spechtlabs/sigil/internal/stub"
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
@@ -90,6 +91,22 @@ func fail(s string) (string, error) { return "", errors.New("boom: " + s) }
 
 func unbound(string) (string, error) { return "", &gokind.ErrUnbound{Name: "unbound"} }
 
+// advisedError is a host's own error with a Help method, which the
+// evaluator must not take for advice: only sigil's stand-ins give it.
+type advisedError struct{}
+
+func (advisedError) Error() string { return "no quota" }
+
+func (advisedError) Help() string { return "raise the quota" }
+
+func advised(string) (string, error) { return "", advisedError{} }
+
+func unmatched(string) (string, error) {
+	return "", &stub.ErrUnmatched{Name: "unmatched", Args: `"x"`}
+}
+
+func stubbed(string) (string, error) { return "", &stub.Failure{Msg: "down"} }
+
 // setup builds the kind, checks src as an expression with a param and a
 // let in scope, compiles it, and returns the compiled expression and a
 // frame with the param and let bound.
@@ -105,6 +122,9 @@ func setup(t *testing.T, src string, assert bool) (eval.Expr, *eval.Frame) {
 			{Name: "fail", Fn: fail},
 			{Name: "upper", Fn: strings.ToUpper},
 			{Name: "unbound", Fn: unbound},
+			{Name: "advised", Fn: advised},
+			{Name: "unmatched", Fn: unmatched},
+			{Name: "stubbed", Fn: stubbed},
 		},
 	})
 	if errs != nil {
@@ -335,7 +355,10 @@ func TestEval(t *testing.T) {
 		{src: "106751d + release.soak", err: "duration overflow in `(106751d + release.soak)`", span: "1:1-1:23"},
 		{src: `fail("x")`, err: "host function fail failed: boom: x", span: "1:1-1:10"},
 		{src: `fail("x") == "y" or true`, err: "host function fail failed: boom: x", span: "1:1-1:10"},
-		{src: `unbound("x")`, err: "host function unbound failed: no implementation in this sigil binary; build a host binary with unbound linked in (see sigil's pkg/cli)", help: "this sigil binary has only unbound's signature from the kind file; evaluate with the host's own binary, built with sigil's pkg/cli, which links the real function in", span: "1:1-1:13"},
+		{src: `unbound("x")`, err: "host function unbound failed: no implementation in this sigil binary", help: "this sigil binary has only unbound's signature from the kind file; stub it with `stubs:` in the test file or `--stub unbound=VALUE` on sigil eval, or evaluate with a host binary built with sigil's pkg/cli, which links the real function in", span: "1:1-1:13"},
+		{src: `advised("x")`, err: "host function advised failed: no quota", span: "1:1-1:13"},
+		{src: `unmatched("x")`, err: `host function unmatched failed: no stubbed call matches unmatched("x")`, help: "add these args under the stub's calls, or give the stub a returns or error for every other call", span: "1:1-1:15"},
+		{src: `stubbed("x")`, err: "host function stubbed failed: down", help: "the stub's error: fails the call, as the host function failing would; a test case expects it with `expect: {error: ...}`", span: "1:1-1:13"},
 	}
 
 	for _, tt := range tests {

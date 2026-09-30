@@ -6,4 +6,3 @@ assert named_user failed at testdata/access/main.sigil:3:1
 trace: no rule fired
 --- error ---
 the evaluation failed; the host would act on the fallback shown above
-advice: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong

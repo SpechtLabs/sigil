@@ -1,0 +1,12 @@
+policy: access.main
+stubs:
+  ownr: {returns: ada}
+cases:
+  - name: a stub of the wrong type
+    input: {user: {name: ada}}
+    stubs:
+      owner: {returns: [ada]}
+    expect: {decision: deny, reason: no_rule_matched}
+  - name: an error and a decision
+    input: {user: {name: ada}}
+    expect: {error: failed, decision: deny, reason: no_rule_matched}

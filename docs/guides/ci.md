@@ -101,7 +101,7 @@ sigil test
 
 `test` reads every `.sigil` file under the current directory into one bundle and runs every `*_test.yaml` against it, and exits 1 when a case fails. [Test your policies](/guides/test-policies/) shows how to write the cases.
 
-Use the host team's build of the CLI for this step. The stock binary has only the signatures of the kind's host functions, and it fails every case whose evaluation reaches a call, such as `deploy.common`'s `split`. [Build a host binary](/guides/host-binary/) shows how the host team builds one. Run `check` with it too, so the kind file is compared with the kind linked into it.
+Use the host team's build of the CLI for this step. The stock binary has only the signatures of the kind's host functions, and it fails every case whose evaluation reaches a call, such as `deploy.common`'s `split`, unless the test file [stubs](/reference/test-files/#stubs) the function. [Build a host binary](/guides/host-binary/) shows how the host team builds one. Run `check` with it too, so the kind file is compared with the kind linked into it.
 
 ## Keep the kind file current
 

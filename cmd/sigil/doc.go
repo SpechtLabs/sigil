@@ -43,8 +43,9 @@
 //
 // A kind file carries each host function's signature but not its
 // implementation, so this binary's eval and test fail with a runtime error
-// when a rule reaches a host function call. A host that needs its real
-// functions builds its own sigil binary with package
+// when a rule reaches a host function call, unless a test file's stubs: or
+// eval's --stub and --stubs give the function results. A host that needs
+// its real functions builds its own sigil binary with package
 // [github.com/spechtlabs/sigil/pkg/cli], which is this whole command line
 // with the host's kind linked in:
 //

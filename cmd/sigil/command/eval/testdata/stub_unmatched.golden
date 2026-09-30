@@ -1,0 +1,8 @@
+access.main: a runtime error stopped the evaluation, the host falls back to deny(reason: no_rule_matched), the kind's default
+
+runtime error: testdata/access/main.sigil:21:30: host function owner failed: no stubbed call matches owner("vault")
+  = help: add these args under the stub's calls, or give the stub a returns or error for every other call
+
+trace: no rule fired
+--- error ---
+the evaluation failed; the host would act on the fallback shown above

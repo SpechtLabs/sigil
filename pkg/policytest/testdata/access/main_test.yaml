@@ -44,3 +44,14 @@ cases:
       reason: team_member
       payload:
         ttl: 15m
+  - name: a stub replaces the real owner
+    input:
+      user: {name: bob}
+      resource: vault
+    stubs:
+      owner: {returns: bob}
+    expect:
+      decision: allow
+      reason: team_member
+      payload:
+        ttl: 15m

@@ -1,0 +1,13 @@
+policy: tiers.main
+stubs:
+  tier_of:
+    returns: crtical
+cases:
+  - name: an undeclared tier in a call's args
+    input: {service: ledger}
+    stubs:
+      owner_for:
+        calls:
+          - args: [internal]
+            returns: ada
+    expect: {decision: deny, reason: no_rule_matched}

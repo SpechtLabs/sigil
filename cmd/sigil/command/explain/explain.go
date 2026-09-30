@@ -131,16 +131,24 @@ func run(out io.Writer, o *options, configFile, pattern string, src project.Sour
 		return err
 	}
 	proj.Check()
-	if errs := proj.Errors(); errs != nil {
-		return pretty.Diagnose(proj.Resolve(errs), proj.SourceOf, "the bundle doesn't check, so nothing was explained", "fix the errors above; sigil check reports every problem in a bundle at once")
-	}
 	roots, serr := selectRoots(proj.Policies(), pattern)
 	if serr != nil {
+		// Without roots there's no scope, and a policy may be missing
+		// because its document or kind doesn't check.
+		if errs := proj.Errors(); errs != nil {
+			return pretty.Diagnose(proj.Resolve(errs), proj.SourceOf, "the bundle doesn't check, so nothing was explained", "fix the errors above; sigil check reports every problem in a bundle at once")
+		}
 		return serr
+	}
+	// Only the roots, what they use and the kinds count: an error in a
+	// document no root uses doesn't stop the explanation.
+	s := proj.ScopeOf(roots)
+	if errs := s.Keep(proj.Errors()); errs != nil {
+		return pretty.Diagnose(errs, proj.SourceOf, "the policies to explain don't check, so nothing was explained", "fix the errors above; sigil check reports every problem in a bundle at once")
 	}
 	var explanations []Explanation
 	for _, root := range roots {
-		b := proj.Group(root).Bundle
+		b := s.Bundle(proj.Group(root))
 		prog, errs := b.Compile(root, bundle.Options{Static: true})
 		if errs != nil {
 			return pretty.Diagnose(proj.Resolve(errs), proj.SourceOf, "policy "+root+" doesn't compile, so it wasn't explained", "fix the errors above; sigil check reports every problem in a bundle at once")

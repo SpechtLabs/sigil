@@ -1,0 +1,9 @@
+policy tiers.main: Tiers@1
+
+when tier_of(service) == critical {
+  review(reason: critical_tier)
+}
+
+when owner_for(tier_of(service)) == "ada" {
+  allow(reason: owned)
+}

@@ -1,0 +1,5 @@
+policy: access.other
+cases:
+  - name: never runs
+    input: {user: {name: ada}}
+    expect: {decision: deny, reason: no_rule_matched}

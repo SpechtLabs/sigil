@@ -13,4 +13,3 @@ trace: 3 candidates
       scopes = []
 --- error ---
 the evaluation failed; the host would act on the fallback shown above
-advice: a conflict is a defect in the policy: rank the reasons with precedence, or keep the exclusive outcomes' conditions apart

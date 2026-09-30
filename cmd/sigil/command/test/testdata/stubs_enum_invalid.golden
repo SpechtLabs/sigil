@@ -1,0 +1,9 @@
+FAIL  testdata/enumbad/main_test.yaml
+      testdata/enumbad/main_test.yaml:4: stub tier_of: returns: "crtical" is not a value of Tier
+        = help: did you mean `critical`? Tier declares: critical, standard
+      testdata/enumbad/main_test.yaml:11: case "an undeclared tier in a call's args": stub owner_for: call 1: arg 1: "internal" is not a value of Tier
+        = help: Tier declares: critical, standard
+✗ 1 of 1 test files couldn't run
+--- error ---
+1 of 1 test files couldn't run
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

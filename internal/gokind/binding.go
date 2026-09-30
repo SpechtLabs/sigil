@@ -1,6 +1,7 @@
 package gokind
 
 import (
+	"maps"
 	"reflect"
 
 	"github.com/spechtlabs/sigil/internal/types"
@@ -83,4 +84,18 @@ func (b *Binding) TypeOf(t reflect.Type) (types.Type, bool) { //nolint:returnint
 		}
 	}
 	return nil, false
+}
+
+// WithFuncs returns a copy of the binding whose host functions are b's,
+// with funcs replacing those of the same name. The copy shares the Go
+// types and field paths with b, which stays as it is, so a function
+// replaced for one evaluation, such as a test's stub, never reaches
+// another. Each value in funcs must take the parameters of the function
+// it replaces and return its result, or its result and an error.
+func (b *Binding) WithFuncs(funcs map[string]reflect.Value) *Binding {
+	c := *b
+	c.Funcs = make(map[string]reflect.Value, len(b.Funcs)+len(funcs))
+	maps.Copy(c.Funcs, b.Funcs)
+	maps.Copy(c.Funcs, funcs)
+	return &c
 }

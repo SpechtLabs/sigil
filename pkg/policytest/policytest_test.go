@@ -3,6 +3,7 @@ package policytest_test
 import (
 	"os"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/spechtlabs/sigil/pkg/policy"
@@ -49,4 +50,60 @@ func TestRun(t *testing.T) {
 
 func TestSchema(t *testing.T) {
 	policytest.Schema(t, Access, "../../cmd/sigil/command/test/testdata/access.sigil")
+}
+
+// TestRunStubsWithOptions runs a test file whose stubs replace the real
+// owner, with the host's load options: the root's param bound from Go
+// and a required policy from a trusted source, which the case stub
+// reaches too. A stub's error fails the evaluation, as a case can expect.
+func TestRunStubsWithOptions(t *testing.T) {
+	platform := fstest.MapFS{"guard.sigil": {Data: []byte(`policy access.guard: Access@1
+
+when owner(resource) == "mallory" {
+  deny(reason: banned)
+}
+`)}}
+	team := fstest.MapFS{
+		"team.sigil": {Data: []byte(`policy access.team: Access@1
+
+use access.guard
+
+param who: string
+
+guard()
+
+when owner(resource) == who {
+  allow(reason: team_member, ttl: 15m)
+}
+`)},
+		"team_test.yaml": {Data: []byte(`policy: access.team
+stubs:
+  owner: {returns: bob}
+cases:
+  - name: the file's stub replaces owner
+    input: {user: {name: bob}, resource: vault}
+    expect: {decision: allow, reason: team_member, payload: {ttl: 15m}}
+  - name: a case's stub reaches the trusted guard
+    input: {user: {name: bob}, resource: vault}
+    stubs:
+      owner: {returns: mallory}
+    expect: {decision: deny, reason: banned}
+  - name: a call entry that doesn't match falls back to returns
+    input: {user: {name: ada}, resource: vault}
+    stubs:
+      owner:
+        calls:
+          - {args: [nothing], returns: bob}
+        returns: ada
+    expect: {decision: deny, reason: no_rule_matched}
+  - name: a failing owner fails the evaluation
+    input: {user: {name: bob}, resource: vault}
+    stubs:
+      owner: {error: directory unavailable}
+    expect: {error: "host function owner failed: directory unavailable"}
+`)},
+	}
+	policytest.Run(t, Access, team,
+		policy.Params{"who": "bob"},
+		policy.Require("access.guard", policy.From(platform)))
 }

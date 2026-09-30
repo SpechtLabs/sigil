@@ -1,0 +1,25 @@
+policy: access.main
+stubs:
+  owner:
+    calls:
+      - args: [db]
+        returns: ada
+cases:
+  - name: no call matches the vault
+    input:
+      user: {name: ada}
+      resource: vault
+    expect:
+      decision: allow
+      reason: team_member
+  - name: a different runtime error
+    input:
+      user: {name: ada}
+      resource: vault
+    expect:
+      error: directory unavailable
+  - name: a decision instead of an error
+    input:
+      user: {name: ada, admin: true}
+    expect:
+      error: directory unavailable

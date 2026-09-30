@@ -21,7 +21,24 @@
 //
 // A case expects one decision and reason, with any payload fields it
 // lists; or, for a `collect all` kind, the whole outcome; or the reasons
-// of the asserts that fail. It can't expect a conflict.
+// of the asserts that fail; or, with `error:`, text the message of the
+// runtime error it fails with contains, such as a stub's error. It can't
+// expect a conflict.
+//
+// A file's `stubs:` replace host functions for every case, and a case's
+// own `stubs:` replace those, per function, in the format package stub
+// reads:
+//
+//	stubs:
+//	  owner: {returns: payments-leads}
+//	cases:
+//	  - name: the directory is down
+//	    stubs:
+//	      owner: {error: directory unavailable}
+//
+// [Runner.Bind] returns the binding a case evaluates with. Host functions
+// are resolved when a policy compiles, so the caller compiles the policy
+// with the suite's binding, and again for each case with stubs of its own.
 //
 // # Running a suite
 //

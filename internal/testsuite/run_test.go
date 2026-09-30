@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spechtlabs/sigil/internal/gokind"
+	"github.com/spechtlabs/sigil/internal/stub"
 	"github.com/spechtlabs/sigil/internal/testsuite"
 )
 
@@ -99,6 +100,33 @@ func TestRunCase(t *testing.T) {
 			expect: testsuite.Expect{Decision: "allow", Reason: "admin"},
 			got:    testsuite.Outcome{Asserts: []string{"named"}},
 			want:   []string{"got failing asserts named, want allow(reason: admin)"},
+		},
+		{
+			name:   "the runtime error expected",
+			kind:   accessKind,
+			expect: testsuite.Expect{Error: new("owner failed")},
+			got:    testsuite.Outcome{Err: "a runtime error (p.sigil:3:6: host function owner failed: down)", Runtime: "host function owner failed: down"},
+		},
+		{
+			name:   "another runtime error",
+			kind:   accessKind,
+			expect: testsuite.Expect{Error: new("owner failed")},
+			got:    testsuite.Outcome{Err: "a runtime error (p.sigil:3:6: index 3 out of range)", Runtime: "index 3 out of range"},
+			want:   []string{`got a runtime error (p.sigil:3:6: index 3 out of range), want a runtime error containing "owner failed"`},
+		},
+		{
+			name:   "a decision instead of a runtime error",
+			kind:   accessKind,
+			expect: testsuite.Expect{Error: new("owner failed")},
+			got:    testsuite.Outcome{Entries: []testsuite.Got{allowAdmin}},
+			want:   []string{`got allow(reason: admin), want a runtime error containing "owner failed"`},
+		},
+		{
+			name:   "a conflict instead of a runtime error",
+			kind:   accessKind,
+			expect: testsuite.Expect{Error: new("candidates")},
+			got:    testsuite.Outcome{Err: "a conflict (collect one: 2 candidates at the top rank)"},
+			want:   []string{`got a conflict (collect one: 2 candidates at the top rank), want a runtime error containing "candidates"`},
 		},
 		{
 			name:   "asserts in any order",
@@ -246,6 +274,81 @@ func TestRunCaseInput(t *testing.T) {
 	}
 }
 
+// TestRunnerBind checks which binding a case evaluates with: the
+// runner's, the suite's stubs, or the case's replacing them per function.
+func TestRunnerBind(t *testing.T) {
+	src := `policy: p
+stubs:
+  owner: {returns: suite}
+  teams: {returns: [suite]}
+cases:
+  - name: own
+    input: {}
+    stubs:
+      owner: {returns: case}
+    expect: {decision: deny, reason: too_old}
+  - name: shared
+    input: {}
+    expect: {decision: deny, reason: too_old}
+`
+	r := runner(t, accessKind, nil)
+	s, perr := testsuite.Parse("t_test.yaml", []byte(src))
+	if perr != nil {
+		t.Fatal(perr)
+	}
+	call := func(b *gokind.Binding, fn string) string {
+		t.Helper()
+		out := b.Funcs[fn].Call([]reflect.Value{reflect.ValueOf("x")})
+		if err, _ := reflect.TypeAssert[error](out[1]); err != nil {
+			return "error"
+		}
+		if out[0].Kind() == reflect.Slice {
+			return out[0].Index(0).String()
+		}
+		return out[0].String()
+	}
+	tests := []struct {
+		name         string
+		suite        *testsuite.Suite
+		c            *testsuite.Case
+		owner, teams string // what each function returns under the binding
+	}{
+		{name: "no stubs", suite: &testsuite.Suite{File: "t_test.yaml"}, owner: "error", teams: "error"},
+		{name: "the suite's", suite: s, owner: "suite", teams: "suite"},
+		{name: "a case without stubs", suite: s, c: s.Cases[1], owner: "suite", teams: "suite"},
+		{name: "a case's own", suite: s, c: s.Cases[0], owner: "case", teams: "suite"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := r.Bind(tt.suite, tt.c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(tt.suite.Stubs) == 0 && b != r.Binding {
+				t.Error("Bind without stubs didn't return the runner's binding")
+			}
+			if got := call(b, "owner"); got != tt.owner {
+				t.Errorf("owner = %s, want %s", got, tt.owner)
+			}
+			if got := call(b, "teams"); got != tt.teams {
+				t.Errorf("teams = %s, want %s", got, tt.teams)
+			}
+		})
+	}
+
+	bad := &testsuite.Suite{File: "t_test.yaml", Stubs: stub.Set{"nope": {Name: "nope", Line: 3, Error: "x"}}}
+	for _, c := range []*testsuite.Case{nil, {Name: "c"}} {
+		_, err := r.Bind(bad, c)
+		want := "t_test.yaml:3: the kind has no host function nope to stub"
+		if c != nil {
+			want = `t_test.yaml:3: case "c": the kind has no host function nope to stub`
+		}
+		if err == nil || err.Error() != want || err.Help == "" {
+			t.Errorf("Bind(%v) error = %v, want %q", c, err, want)
+		}
+	}
+}
+
 func TestErrorFormat(t *testing.T) {
 	tests := []struct {
 		err     testsuite.Error
@@ -278,5 +381,25 @@ func TestFailureString(t *testing.T) {
 	f := testsuite.Failure{Text: "got a, want b", Got: "a", Want: "b"}
 	if got := f.String(); got != "got a, want b" {
 		t.Errorf("String() = %q", got)
+	}
+}
+
+// TestRunCaseErrorDetail checks that an error with a detail is named in
+// Got, and its detail and help kept apart for the report.
+func TestRunCaseErrorDetail(t *testing.T) {
+	r := runner(t, accessKind, nil)
+	c := &testsuite.Case{Name: "c", Input: map[string]any{}, Expect: testsuite.Expect{Decision: "allow", Reason: "admin"}}
+	res := r.RunCase(t.Context(), &testsuite.Suite{File: "t_test.yaml"}, c, func(context.Context, reflect.Value) *testsuite.Outcome {
+		return &testsuite.Outcome{Err: "a runtime error", Runtime: "host function owner failed: down", Detail: "p.sigil:3:6: host function owner failed: down", Help: "stub it"}
+	})
+	want := testsuite.Failure{
+		Text:   "got a runtime error (p.sigil:3:6: host function owner failed: down), want allow(reason: admin)",
+		Got:    "a runtime error",
+		Want:   "allow(reason: admin)",
+		Detail: "p.sigil:3:6: host function owner failed: down",
+		Help:   "stub it",
+	}
+	if len(res.Failures) != 1 || res.Failures[0] != want {
+		t.Errorf("Failures = %#v, want %#v", res.Failures, want)
 	}
 }

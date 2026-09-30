@@ -56,3 +56,50 @@ func TestBindingTypeOf(t *testing.T) {
 		})
 	}
 }
+
+// TestBindingWithFuncs checks that the copy replaces only the functions
+// named and leaves the original as it was.
+func TestBindingWithFuncs(t *testing.T) {
+	_, b, errs := gokind.Build(deploy())
+	if errs != nil {
+		t.Fatal(errs)
+	}
+	stubbed := reflect.ValueOf(func(string, string) []string { return []string{"stub"} })
+	extra := reflect.ValueOf(func() int { return 1 })
+	tests := []struct {
+		name  string
+		funcs map[string]reflect.Value
+		want  map[string]string // function name to what calling it with ("a,b", ",") returns first; "" for a function that isn't called
+	}{
+		{name: "none", want: map[string]string{"split": "a"}},
+		{name: "replaced", funcs: map[string]reflect.Value{"split": stubbed}, want: map[string]string{"split": "stub"}},
+		{name: "added", funcs: map[string]reflect.Value{"extra": extra}, want: map[string]string{"split": "a", "extra": ""}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := b.WithFuncs(tt.funcs)
+			if c == b || c.Input != b.Input || c.RecoverHostPanics != b.RecoverHostPanics {
+				t.Fatal("WithFuncs didn't return a copy sharing the rest of the binding")
+			}
+			if len(c.Funcs) != len(tt.want) {
+				t.Errorf("Funcs = %v, want %d", c.Funcs, len(tt.want))
+			}
+			for name, first := range tt.want {
+				fn, ok := c.Funcs[name]
+				if !ok {
+					t.Fatalf("Funcs[%s] missing", name)
+				}
+				if first == "" {
+					continue
+				}
+				out := fn.Call([]reflect.Value{reflect.ValueOf("a,b"), reflect.ValueOf(",")})
+				if got := out[0].Index(0).String(); got != first {
+					t.Errorf("%s(...)[0] = %q, want %q", name, got, first)
+				}
+			}
+		})
+	}
+	if out := b.Funcs["split"].Call([]reflect.Value{reflect.ValueOf("a,b"), reflect.ValueOf(",")}); out[0].Len() != 2 || len(b.Funcs) != 1 {
+		t.Error("WithFuncs changed the original binding")
+	}
+}

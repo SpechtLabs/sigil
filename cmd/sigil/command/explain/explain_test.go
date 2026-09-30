@@ -17,6 +17,13 @@ var update = flag.Bool("update", false, "rewrite the golden files under testdata
 // TestExplain runs explain over the testdata bundle in every output
 // format and compares with the golden files.
 func TestExplain(t *testing.T) {
+	// broken is a policy nothing else uses, with a type error, and
+	// brokenKind a kind document that doesn't check: only the second
+	// stops an explanation of payments.production.
+	const (
+		broken     = "policy broken.other: DeployApproval@1\n\nwhen service.teir == \"x\" {\n  approve(reason: release_manager)\n}\n"
+		brokenKind = "kind Other version 1\n\ninput x: nope\n\ndecision allow {\n  reason: yes\n}\n\ncollect one\n\ndefault allow(reason: yes)\n"
+	)
 	tests := []struct {
 		name    string
 		pattern string
@@ -24,6 +31,7 @@ func TestExplain(t *testing.T) {
 		paths   []string
 		err     string
 		noKind  bool // no --kind: the kind comes from the paths
+		stdin   string
 	}{
 		{name: "team", pattern: "payments.production", format: output.Text, paths: []string{"testdata/deploy", "testdata/payments"}},
 		{name: "team_json", pattern: "payments.production", format: output.JSON, paths: []string{"testdata/deploy", "testdata/payments"}},
@@ -32,6 +40,10 @@ func TestExplain(t *testing.T) {
 		{name: "no match", pattern: "nope.*", paths: []string{"testdata"}, err: `no policy matches "nope.*"`},
 		{name: "unknown kind file", pattern: "", paths: []string{"testdata"}, err: "the kind file couldn't be read"},
 		{name: "no policies", paths: []string{"testdata/deploy_approval.sigil"}, err: "the bundle holds no policies"},
+		{name: "unrelated_error", pattern: "payments.production", paths: []string{"testdata/deploy", "testdata/payments", "-"}, stdin: broken},
+		{name: "root error", pattern: "broken.other", paths: []string{"testdata/deploy", "testdata/payments", "-"}, stdin: broken, err: "the policies to explain don't check"},
+		{name: "kind error", pattern: "payments.production", paths: []string{"testdata/deploy", "testdata/payments", "-"}, stdin: brokenKind, err: "the policies to explain don't check"},
+		{name: "no root and an error", pattern: "nope.*", paths: []string{"testdata/deploy", "-"}, stdin: broken, err: "the bundle doesn't check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -44,7 +56,7 @@ func TestExplain(t *testing.T) {
 			if format == "" {
 				format = output.Text
 			}
-			src := project.Sources{Paths: tt.paths, Kinds: []string{kind}, Stdin: strings.NewReader("")}
+			src := project.Sources{Paths: tt.paths, Kinds: []string{kind}, Stdin: strings.NewReader(tt.stdin)}
 			if tt.noKind {
 				src.Kinds = nil
 			}

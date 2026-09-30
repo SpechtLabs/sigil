@@ -725,7 +725,7 @@ The Go values always carry both the file and the document name, so a trace stays
 
 ## Package policytest
 
-Import path `github.com/spechtlabs/sigil/pkg/policytest`. It runs the [test files](/reference/test-files/) `sigil test` runs, from `go test`, with the host's Go types and real function implementations.
+Import path `github.com/spechtlabs/sigil/pkg/policytest`. It runs the [test files](/reference/test-files/) `sigil test` runs, from `go test`, with the host's Go types and real function implementations, unless a test file [stubs](/reference/test-files/#stubs) them.
 
 ```go
 func Run[In any](t *testing.T, k *policy.Kind[In], fsys fs.FS, opts ...policy.LoadOption)
@@ -741,6 +741,7 @@ func Schema[In any](t testing.TB, k *policy.Kind[In], file string)
 - Each test file becomes a subtest named after its path, and each case a subtest of it, so `go test -run 'TestPolicies/access/main_test.yaml/admins'` selects them.
 - A test file that can't be read, doesn't parse, or whose policy doesn't compile fails its subtest. A case that doesn't get what it expects fails its own.
 - `Run` fails `t` at once when `k` is nil or `fsys` holds no test files.
+- A test file's [stubs](/reference/test-files/#stubs) replace the kind's host functions for its cases. The file's policy loads once with the file's stubs, and again for each case with stubs of its own, with the same `opts`.
 - A test file can't expect a conflict; see [Test a conflict](/guides/test-policies/#test-a-conflict).
 
 ```go

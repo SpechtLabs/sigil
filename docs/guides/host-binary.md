@@ -5,7 +5,7 @@ createTime: 2026/09/29 12:00:00
 permalink: /guides/host-binary/
 ---
 
-The stock `sigil` binary knows your kind only from its exported file, so it can check and explain policies but can't run your host functions. By the end of this guide your service ships its own `sigil` binary, whose `eval` and `test` decode inputs into your Go types and call your real functions, and whose `export` writes the kind file your policy repository checks in, with a test that fails when that file goes stale.
+The stock `sigil` binary knows your kind only from its exported file, so it can check and explain policies, but runs your host functions only as the stubs a test file or `sigil eval --stub` gives them. By the end of this guide your service ships its own `sigil` binary, whose `eval` and `test` decode inputs into your Go types and call your real functions, and whose `export` writes the kind file your policy repository checks in, with a test that fails when that file goes stale.
 
 It builds on the `Deploy` kind from [Embed Sigil in a Go service](/guides/embed-go/). The layout used here:
 

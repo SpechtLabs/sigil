@@ -1,0 +1,8 @@
+access.main: a runtime error stopped the evaluation, the host falls back to deny(reason: no_rule_matched), the kind's default
+
+runtime error: testdata/access/main.sigil:21:30: host function owner failed: directory unavailable
+  = help: the stub's error: fails the call, as the host function failing would; a test case expects it with `expect: {error: ...}`
+
+trace: no rule fired
+--- error ---
+the evaluation failed; the host would act on the fallback shown above

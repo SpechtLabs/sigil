@@ -1,0 +1,4 @@
+--- error ---
+testdata/stubs/unknown.yaml:1: the kind has no host function ownr to stub (did you mean "owner"? the kind declares: owner)
+--stub: stub owner: returns: expected a string, found a list (give the value the type the kind declares for it)
+advice: a stub names a host function the kind declares and gives results of its type, as in a test file's stubs:

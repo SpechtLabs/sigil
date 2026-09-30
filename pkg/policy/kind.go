@@ -71,8 +71,18 @@ func (k *Kind[In]) Schema() string { return k.kind.Source() }
 // Contract is for sigil's own tools, the CLI a host builds with package
 // [github.com/spechtlabs/sigil/pkg/cli] and package
 // [github.com/spechtlabs/sigil/pkg/policytest]: the kind model and its
-// binding to the Go types and functions. Its type is internal to the sigil
-// module, so nothing else can use it.
+// binding to the Go types and functions, and a way back to a Kind of the
+// same model over another binding, which is how policytest compiles with
+// stubbed host functions. Its type is internal to the sigil module, so
+// nothing else can use it.
 func (k *Kind[In]) Contract() *contract.Kind {
-	return &contract.Kind{Model: k.kind, Binding: k.binding}
+	return &contract.Kind{
+		Model:   k.kind,
+		Binding: k.binding,
+		Rebind: func(b *gokind.Binding) any {
+			c := *k
+			c.binding = b
+			return &c
+		},
+	}
 }

@@ -2,18 +2,23 @@ package testsuite
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/sierrasoftworks/humane-errors-go"
 	"go.yaml.in/yaml/v3"
 
 	"github.com/spechtlabs/sigil/internal/diag"
+	"github.com/spechtlabs/sigil/internal/gokind"
 	"github.com/spechtlabs/sigil/internal/kind"
+	"github.com/spechtlabs/sigil/internal/stub"
 )
 
 // Suffixes are the name endings that make a file a test file.
@@ -21,23 +26,27 @@ var Suffixes = []string{"_test.yaml", "_test.yml"}
 
 // Suite is one test file.
 type Suite struct {
-	File   string  `yaml:"-"`      // the file's path, which input files are read relative to
-	Policy string  `yaml:"policy"` // the root policy the cases evaluate
-	Cases  []*Case `yaml:"cases"`
+	Stubs  stub.Set `yaml:"stubs"`  // the host functions every case stubs; nil for none
+	File   string   `yaml:"-"`      // the file's path, which input files are read relative to
+	Policy string   `yaml:"policy"` // the root policy the cases evaluate
+	Cases  []*Case  `yaml:"cases"`
 }
 
 // Case is one test case.
 type Case struct {
-	Input     any    `yaml:"input"` //nolint:emptyinterface // the input document, as YAML decoded it
-	Name      string `yaml:"name"`
-	InputFile string `yaml:"input_file"` // a JSON or YAML input file, relative to the test file
-	Expect    Expect `yaml:"expect"`
-	Line      int    `yaml:"-"` // the case's line in the test file, 0 when unknown
+	Input     any      `yaml:"input"` //nolint:emptyinterface // the input document, as YAML decoded it
+	Stubs     stub.Set `yaml:"stubs"` // the case's own stubs, each replacing the suite's for its function; nil for none
+	Name      string   `yaml:"name"`
+	InputFile string   `yaml:"input_file"` // a JSON or YAML input file, relative to the test file
+	Expect    Expect   `yaml:"expect"`
+	Line      int      `yaml:"-"` // the case's line in the test file, 0 when unknown
 }
 
-// Expect is what a case expects. Exactly one of the three forms is set:
-// Decision and Reason, with an optional Payload; Outcome; or Asserts.
+// Expect is what a case expects. Exactly one of the four forms is set:
+// Decision and Reason, with an optional Payload; Outcome; Asserts; or
+// Error.
 type Expect struct {
+	Error    *string        `yaml:"error"`   // text the runtime error's message contains; a pointer, so `error: ""` is caught
 	Payload  map[string]any `yaml:"payload"` //nolint:emptyinterface // payload values, as YAML decoded them
 	Outcome  *[]Entry       `yaml:"outcome"` // a pointer, so `outcome: []` expects an empty outcome
 	Decision string         `yaml:"decision"`
@@ -64,14 +73,22 @@ func IsTestFile(name string) bool {
 
 // Parse reads a test file. Keys the format doesn't define are errors,
 // so a misspelled `expect` doesn't silently expect nothing. A null case
-// or a missing `policy:` is an error too. The error is always an *[Error].
-// Parse checks only the file's shape; [Suite.Validate] checks it against
-// the kind.
+// or a missing `policy:` is an error too. Stubs of the wrong shape (see
+// [stub.Parse]) are reported together, the file's and every case's, as
+// [Errors] sorted by line; any other error is an *[Error]. Parse checks
+// only the file's shape; [Suite.Validate] checks it against the kind.
 func Parse(file string, src []byte) (*Suite, humane.Error) {
 	dec := yaml.NewDecoder(bytes.NewReader(src))
 	dec.KnownFields(true)
 	s := &Suite{File: file}
 	if err := dec.Decode(s); err != nil {
+		if _, ok := errors.AsType[stub.Errors](err); ok {
+			// The decoder stops at the first stubs that don't parse; read
+			// them all from the node tree, which parsed.
+			var root yaml.Node
+			_ = yaml.Unmarshal(src, &root)
+			return nil, stubErrors(file, &root)
+		}
 		return nil, &Error{File: file, Msg: "not a valid test file: " + yamlMessage(err), Help: "a test file holds `policy:` and a list of `cases:`, each with `name`, `input` or `input_file`, and `expect`"}
 	}
 	for i, c := range s.Cases {
@@ -91,10 +108,30 @@ func Parse(file string, src []byte) (*Suite, humane.Error) {
 
 // Validate checks the suite's expectations against the kind: declared
 // decisions, reasons and payload fields, the form the kind's collect mode
-// calls for, and exactly one input per case, with a unique name. It
-// returns every problem found, or nil.
+// calls for, and exactly one input per case, with a unique name. Stubs,
+// the suite's and each case's own, must stub host functions the kind
+// declares, with args and results of their types (see [stub.Set.Bind]).
+// It returns every problem found, or nil.
 func (s *Suite) Validate(k *kind.Kind) []*Error {
 	var errs []*Error
+	var synth *gokind.Binding // what stub values are checked against, synthesized on first use
+	stubs := func(set stub.Set, c *Case) {
+		if len(set) == 0 {
+			return
+		}
+		if synth == nil {
+			synth = gokind.Synthesize(k)
+		}
+		_, serrs := set.Bind(k, synth)
+		for _, e := range serrs {
+			err := &Error{File: s.File, Line: e.Line, Msg: e.Msg, Help: e.Help}
+			if c != nil {
+				err.Case = c.Name
+			}
+			errs = append(errs, err)
+		}
+	}
+	stubs(s.Stubs, nil)
 	names := map[string]int{}
 	for _, c := range s.Cases {
 		errorf := func(help, format string, args ...any) {
@@ -112,6 +149,7 @@ func (s *Suite) Validate(k *kind.Kind) []*Error {
 		for _, e := range c.Expect.check(k) {
 			errorf(e.Help, "%s", e.Msg)
 		}
+		stubs(c.Stubs, c)
 	}
 	return errs
 }
@@ -159,10 +197,13 @@ func (e *Expect) check(k *kind.Kind) []*Error {
 	if e.Asserts != nil {
 		forms++
 	}
+	if e.Error != nil {
+		forms++
+	}
 	collect := k.Collect == kind.CollectAll
 	switch {
 	case forms != 1:
-		errorf("expect a decision with its reason, an outcome for a collect all kind, or the asserts that fail", "case must expect exactly one of decision, outcome and asserts")
+		errorf("expect a decision with its reason, an outcome for a collect all kind, the asserts that fail, or the runtime error the evaluation fails with", "case must expect exactly one of decision, outcome, asserts and error")
 		return errs
 	case e.Outcome != nil && !collect:
 		errorf("a collect one kind decides once; expect `decision:` and `reason:`", "outcome is for collect all kinds, and %s collects one", k.Name)
@@ -170,6 +211,11 @@ func (e *Expect) check(k *kind.Kind) []*Error {
 		errorf("a collect all kind returns every decision that fired; list them under `outcome:`", "%s collects all, so expect an outcome", k.Name)
 	case e.Asserts != nil && len(e.Asserts) == 0:
 		errorf("name the reasons of the asserts that should fail", "asserts is empty")
+	case e.Error != nil && *e.Error == "":
+		errorf("give text the runtime error's message contains, like `error: host function owner failed`", "error is empty")
+	}
+	if e.Error != nil {
+		return errs
 	}
 	if e.Outcome == nil && e.Asserts == nil {
 		errs = append(errs, entryErrors(k, Entry{Decision: e.Decision, Reason: e.Reason, Payload: e.Payload})...)
@@ -245,6 +291,48 @@ func hint(name string, declared []string) string {
 		return fmt.Sprintf("did you mean %q? %s", near, list)
 	}
 	return list
+}
+
+// stubErrors returns the problems of every stubs object in the parsed
+// file, the file's and each case's, sorted by line.
+func stubErrors(file string, root *yaml.Node) Errors {
+	var errs Errors
+	add := func(n *yaml.Node, name string) {
+		_, serrs := stub.Parse(n)
+		for _, e := range serrs {
+			errs = append(errs, &Error{File: file, Line: e.Line, Case: name, Msg: e.Msg, Help: e.Help})
+		}
+	}
+	if len(root.Content) == 0 {
+		return nil
+	}
+	doc := root.Content[0]
+	add(value(doc, "stubs"), "")
+	if cases := value(doc, "cases"); cases != nil {
+		for _, c := range cases.Content {
+			add(value(c, "stubs"), caseName(c))
+		}
+	}
+	slices.SortStableFunc(errs, func(a, b *Error) int { return cmp.Compare(a.Line, b.Line) })
+	return errs
+}
+
+// caseName returns the name a case's node gives, or "".
+func caseName(c *yaml.Node) string {
+	if n := value(c, "name"); n != nil {
+		return n.Value
+	}
+	return ""
+}
+
+// value returns the value of key in a mapping node, or nil.
+func value(n *yaml.Node, key string) *yaml.Node {
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if n.Content[i].Value == key {
+			return n.Content[i+1]
+		}
+	}
+	return nil
 }
 
 // lines records each case's line from the parsed node tree.
