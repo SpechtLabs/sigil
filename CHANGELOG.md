@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/SpechtLabs/sigil/compare/v0.5.2...v0.6.0) (2026-09-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **wasm:** build sigil as a WebAssembly module ([#98](https://github.com/SpechtLabs/sigil/issues/98))
+
+### Features
+
+* **wasm:** build sigil as a WebAssembly module ([#98](https://github.com/SpechtLabs/sigil/issues/98)) ([d5bd546](https://github.com/SpechtLabs/sigil/commit/d5bd5469a0f948523b699f15d40f825678480bb7))
+
 ## [0.5.2](https://github.com/SpechtLabs/sigil/compare/v0.5.1...v0.5.2) (2026-09-30)
 
 
