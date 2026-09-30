@@ -11,6 +11,7 @@ import (
 	"github.com/sierrasoftworks/humane-errors-go"
 
 	"github.com/spechtlabs/sigil/cmd/internal/output"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/config"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 )
 
@@ -56,8 +57,8 @@ func TestCheck(t *testing.T) {
 		{name: "require_gated", paths: []string{"testdata/lints/teams"}, trusted: []string{"testdata/lints/deploy"}, patterns: []string{"teams.payments"}, requires: []string{"deploy.guardrails"}},
 		{name: "require_roots", paths: []string{"testdata/lints"}, requires: []string{"deploy.guardrails"}},
 		{name: "require_no_match", paths: []string{"testdata/lints"}, patterns: []string{"nope.*"}, requires: []string{"deploy.guardrails"}},
-		{name: "trusted_in_paths", paths: []string{"testdata/lints"}, trusted: []string{"testdata/lints/deploy"}},
-		{name: "trusted_collision", paths: []string{"testdata/collision"}, trusted: []string{"testdata/lints/deploy"}},
+		{name: "trusted_in_paths", paths: []string{"testdata/lints"}, trusted: []string{"testdata/lints/deploy"}, requires: []string{"deploy.guardrails"}},
+		{name: "trusted_collision", paths: []string{"testdata/collision"}, trusted: []string{"testdata/lints/deploy"}, requires: []string{"deploy.guardrails"}},
 		{name: "kinds", paths: []string{"testdata/multikind"}, noKind: true},
 		{name: "require_other_kind", paths: []string{"testdata/multikind"}, requires: []string{"roles.main"}, noKind: true},
 		{name: "require_missing", paths: []string{"testdata/multikind"}, requires: []string{"nope.guard"}, noKind: true},
@@ -69,8 +70,24 @@ func TestCheck(t *testing.T) {
 		{name: "scope_unknown_use", paths: []string{"testdata/scope"}, patterns: []string{"scope.c"}},
 		{name: "scope_redefined", paths: []string{"testdata/scope", "-"}, stdin: redefined, patterns: []string{"scope.a"}},
 		{name: "scope_redefined_elsewhere", paths: []string{"testdata/scope", "-"}, stdin: redefined, patterns: []string{"scope.b"}},
+		{name: "config_require", config: "require.yaml", paths: []string{"testdata/require"}},
+		{name: "config_require_default_roots", config: "require_default_roots.yaml", paths: []string{"testdata/lints"}},
+		{name: "config_require_undefined", config: "../lints/require_undefined.yaml", paths: []string{"testdata/lints"}},
+		{name: "config_require_no_match", config: "../lints/require_no_match.yaml", paths: []string{"testdata/lints"}},
+		{name: "config_require_kinds", config: "require_kinds.yaml", paths: []string{"testdata/require_kinds"}, noKind: true},
+		{name: "config_require_other_kind", config: "../require_kinds/require_other_kind.yaml", paths: []string{"testdata/require_kinds"}, noKind: true},
+		{name: "config_require_partial", config: "require_partial.yaml", paths: []string{"testdata/lints/teams"}},
+		{name: "config_require_missing_trusted", config: "require_missing_trusted.yaml", paths: []string{"testdata/lints"}},
+		{name: "config_require_replaced", config: "../lints/require_undefined.yaml", paths: []string{"testdata/lints"}, requires: []string{"deploy.guardrails"}},
+		{name: "config_require_kept_by_policy", config: "../lints/require_undefined.yaml", paths: []string{"testdata/lints"}, patterns: []string{"teams.payments"}},
+		{name: "config_require_in_policy", config: "../lints/require_scoped.yaml", paths: []string{"testdata/lints"}, patterns: []string{"teams.payments"}},
+		{name: "config_require_outside_policy", config: "../lints/require_scoped.yaml", paths: []string{"testdata/lints"}, patterns: []string{"deploy.production"}},
+		{name: "config_require_unscoped", config: "../lints/require_scoped.yaml", paths: []string{"testdata/lints"}},
+		{name: "config_kinds", config: "kinds.yaml", paths: []string{"testdata/lints"}, noKind: true},
+		{name: "config_kinds_among_paths", config: "kinds.yaml", paths: []string{"testdata/lints", "testdata/deploy_approval.sigil"}, noKind: true},
+		{name: "config_kinds_missing", config: "kinds_missing.yaml", paths: []string{"testdata/lints"}, noKind: true},
 		{name: "scope_require", paths: []string{"testdata/scope", "-"}, stdin: broken, patterns: []string{"scope.a"}, requires: []string{"scope.guard"}},
-		{name: "scope_trusted", paths: []string{"testdata/scope"}, trusted: []string{"testdata/scope/team/lib.sigil"}, patterns: []string{"scope.a"}},
+		{name: "scope_trusted", paths: []string{"testdata/scope"}, trusted: []string{"testdata/scope/team/lib.sigil", "testdata/scope/team/guard.sigil"}, patterns: []string{"scope.a"}, requires: []string{"scope.guard"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -174,5 +191,56 @@ func TestNoFiles(t *testing.T) {
 	}
 	if want := "! no .sigil files found, so nothing was checked\n"; !strings.HasPrefix(out.String(), want) {
 		t.Errorf("output = %q, want it to start with %q", out.String(), want)
+	}
+}
+
+// TestWhole checks when a run reads the whole repository sigil.yaml
+// configures, which makes every roots: pattern count.
+func TestWhole(t *testing.T) {
+	cfg := &config.Config{File: filepath.Join("repo", "policies", config.FileName)}
+	tests := []struct {
+		paths []string
+		want  bool
+	}{
+		{paths: []string{filepath.Join("repo", "policies")}, want: true},
+		{paths: []string{"repo"}, want: true},
+		{paths: []string{"."}, want: true},
+		{paths: []string{filepath.Join("repo", "policies", "teams"), "-"}},
+		{paths: []string{filepath.Join("repo", "other")}},
+		{paths: []string{"-"}},
+	}
+	for _, tt := range tests {
+		if got := whole(cfg, tt.paths); got != tt.want {
+			t.Errorf("whole(%v) = %v, want %v", tt.paths, got, tt.want)
+		}
+	}
+}
+
+// TestCountIsTheTree checks that the summary counts every file read, the
+// trusted ones and the kind file included, so one tree reports one count
+// whether or not --policy narrows the check or a path is read as trusted.
+func TestCountIsTheTree(t *testing.T) {
+	configFile := filepath.Join("testdata", "lints", "require_trusted.yaml")
+	kinds := []string{filepath.Join("testdata", "deploy_approval.sigil")}
+	runs := []struct {
+		name     string
+		trusted  []string
+		patterns []string
+		requires []string
+	}{
+		{name: "everything"},
+		{name: "--policy", patterns: []string{"teams.payments"}},
+		{name: "--trusted", trusted: []string{filepath.Join("testdata", "lints", "deploy")}, requires: []string{"deploy.guardrails"}},
+	}
+	for _, r := range runs {
+		t.Run(r.name, func(t *testing.T) {
+			format := output.Text
+			var out bytes.Buffer
+			src := project.Sources{Paths: []string{filepath.Join("testdata", "lints")}, Trusted: r.trusted, Kinds: kinds}
+			_ = run(&out, &options{output: &format}, configFile, src, r.patterns, r.requires)
+			if !strings.Contains(out.String(), "checked 5 files") {
+				t.Errorf("output = %q, want the 4 files under testdata/lints and the kind file counted", out.String())
+			}
+		})
 	}
 }

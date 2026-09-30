@@ -1,0 +1,3 @@
+--- error ---
+testdata/require_kinds/require_other_kind.yaml:2:13: roots of roles.guard match no Roles policy
+advice: a required policy applies to the roots of its own kind; name Roles policies in roots:

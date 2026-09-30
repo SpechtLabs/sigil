@@ -1,0 +1,10 @@
+testdata/require_kinds/roles.sigil:21:1 (roles.main): error: roles.main doesn't invoke roles.guard
+   |
+21 | policy roles.main: Roles@1
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: the host requires roles.guard for every Roles policy; import it with `use roles.guard` and invoke it at the top level
+
+✗ checked 2 files, 1 error
+--- error ---
+check found 1 error
+advice: each diagnostic above says where the problem is and how to fix it

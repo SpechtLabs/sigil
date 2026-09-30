@@ -112,15 +112,13 @@ Startup is the exception. With no bundle loaded yet there's nothing to fall back
 
 ## Check policies with the host's binary
 
-The stock `sigil` binary can't run the kind's `split` host function, so the example builds its own, `sigilc`, with the [`cli` package](/guides/host-binary/), and links both kinds in. With the kinds linked, no command needs `--kind`; each document uses the kind its header names. A policy repository's CI runs it the same way the service loads the policies. `mise run policies` runs the checks and the tests for both kinds. The team policies' check, from `examples/`, requires the guardrails from the same trusted directory the service embeds:
+The stock `sigil` binary can't run the kind's `split` host function, so the example builds its own, `sigilc`, with the [`cli` package](/guides/host-binary/), and links both kinds in. With the kinds linked, no command needs `--kind`; each document uses the kind its header names. A policy repository's CI runs it the same way the service loads the policies. `mise run policies` runs the check and the tests for both kinds. The check, from `examples/`, requires each kind's guardrails from the same trusted directory the service embeds, as the `require` entries of `policies/sigil.yaml` list them:
 
 ```bash
-mise run sigilc check --config policies/sigil.yaml \
-  --require deploy.guardrails --trusted policies/platform/deploy \
-  --policy 'payments.*' --policy 'checkout.*' policies/teams
+mise run sigilc check --config policies/sigil.yaml policies
 ```
 
-The README's [sigilc section](https://github.com/SpechtLabs/sigil/tree/main/examples#your-own-sigil-binary-sigilc) has the access policy's check, the test runs, `explain` output for both kinds and the `export --check` that catches a stale kind file.
+The README's [sigilc section](https://github.com/SpechtLabs/sigil/tree/main/examples#your-own-sigil-binary-sigilc) has the test runs, `explain` output for both kinds and the `export --check` that catches a stale kind file.
 
 ## Tests
 

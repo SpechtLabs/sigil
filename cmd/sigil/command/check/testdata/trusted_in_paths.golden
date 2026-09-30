@@ -10,17 +10,11 @@ testdata/lints/teams/payments.sigil:7:5: warning: let unused_tier is never read 
   |     ^^^^^^^^^^^
   = help: remove the let, or read it; a private let can't be imported
 
-testdata/lints/teams/payments.sigil:11:3: warning: deploy.guardrails holds asserts and is invoked under `when` [gated-assert]
+testdata/lints/teams/payments.sigil:11:3: error: deploy.guardrails must be invoked unconditionally
    |
 11 |   guardrails()
    |   ^^^^^^^^^^^^
-   = help: its asserts only run while the condition holds; invoke it at the top level, or have the host require it
-
-testdata/lints/teams/payments.sigil:11:3: warning: deploy.guardrails holds deny rules and is invoked under `when` [gated-deny]
-   |
-11 |   guardrails()
-   |   ^^^^^^^^^^^^
-   = help: its deny rules only fire while the condition holds; invoke it at the top level, or have the host require it
+   = help: the host requires deploy.guardrails for every DeployApproval policy; move the call to the top level
 
 testdata/lints/teams/payments.sigil:16:1: warning: deploy.production is invoked twice with the same arguments [duplicate-invocation]
    |
@@ -28,5 +22,7 @@ testdata/lints/teams/payments.sigil:16:1: warning: deploy.production is invoked 
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: the first is on line 14; every rule it holds already fires once, so remove one, or change its arguments
 
-! checked 1 file, 5 warnings
---- ok ---
+✗ checked 5 files, 1 error and 3 warnings
+--- error ---
+check found 1 error and 3 warnings
+advice: each diagnostic above says where the problem is and how to fix it

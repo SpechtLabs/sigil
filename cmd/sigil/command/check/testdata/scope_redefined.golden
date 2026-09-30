@@ -4,7 +4,7 @@
   |        ^^^^^^^^^
   = help: first defined at testdata/scope/team/lib.sigil:1:1; documents resolve by name, so each name has one definition
 
-✗ checked 6 files, 1 error
+✗ checked 7 files, 1 error
 --- error ---
 check found 1 error
 advice: each diagnostic above says where the problem is and how to fix it

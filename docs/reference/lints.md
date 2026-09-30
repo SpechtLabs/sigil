@@ -5,7 +5,7 @@ createTime: 2026/09/29 12:00:00
 permalink: /reference/lints/
 ---
 
-The lints [`sigil check`](/reference/cli/#sigil-check) reports, their default levels, and the `sigil.yaml` file that sets them.
+The lints [`sigil check`](/reference/cli/#sigil-check) reports, their default levels, and how [`sigil.yaml`](/reference/sigil-yaml/) sets them.
 
 ## Lints
 
@@ -56,11 +56,11 @@ Default `warn`. Fires when a `let` that isn't `pub` is never read. Only private 
 
 ### `gated-assert`
 
-Default `warn`. Fires when a policy that contains asserts, directly or through the policies it invokes, is invoked inside `when` and isn't required by `--require`. Its asserts only run while the gate holds.
+Default `warn`. Fires when a policy that contains asserts, directly or through the policies it invokes, is invoked inside `when` and isn't required, by `require:` in [`sigil.yaml`](/reference/sigil-yaml/) or by `--require`. Its asserts only run while the gate holds.
 
 ### `gated-deny`
 
-Default `warn`. Fires when a policy that contains denies, directly or through the policies it invokes, is invoked inside `when` and isn't required by `--require`. Its denies only fire while the gate holds. A deny is a constructor of the decision a `collect one` kind ranks highest; a `collect all` kind has none.
+Default `warn`. Fires when a policy that contains denies, directly or through the policies it invokes, is invoked inside `when` and isn't required, by `require:` in [`sigil.yaml`](/reference/sigil-yaml/) or by `--require`. Its denies only fire while the gate holds. A deny is a constructor of the decision a `collect one` kind ranks highest; a `collect all` kind has none.
 
 ### `duplicate-invocation`
 
@@ -76,23 +76,12 @@ Default `off`. Fires when a file holds a document whose name doesn't match the f
 
 ## `sigil.yaml`
 
+The `lints` key of [`sigil.yaml`](/reference/sigil-yaml/) sets each lint to `off`, `warn` or `error`. Lints it doesn't name keep their defaults, and an unknown lint or level is an error.
+
 ```yaml
 # sigil.yaml
 lints:
   gated-deny: error
   path-matches-name: error
   qualified-imports: warn
-```
-
-- `sigil check` looks for `sigil.yaml` in the working directory and then in each parent, and uses the first one it finds. `--config` names a file instead.
-- The file holds one key, `lints`, a map from lint name to level.
-- A level is `off`, `warn` or `error`.
-- Lints the file doesn't name keep their defaults.
-- An unknown lint name, level or key is an error:
-
-```text
-Error: sigil.yaml: unknown lint "gated-deni"
-
-What you can do
-  • did you mean "gated-deny"? lints: unused-import, shadowed-kind-name, unused-let, gated-assert, gated-deny, duplicate-invocation, qualified-imports, path-matches-name
 ```

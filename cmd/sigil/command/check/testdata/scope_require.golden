@@ -10,7 +10,7 @@ testdata/scope/team/a.sigil:5:5 (scope.a): warning: let unused is never read [un
   |     ^^^^^^
   = help: remove the let, or read it; a private let can't be imported
 
-✗ checked 6 files, 1 error and 1 warning
+✗ checked 7 files, 1 error and 1 warning
 --- error ---
 check found 1 error and 1 warning
 advice: each diagnostic above says where the problem is and how to fix it

@@ -445,7 +445,7 @@ p, err := Deploy.Load(policies, "deploy.gate",
 - Repeat it to require several policies.
 - Without `From`, the name is looked up in the bundle like any other document.
 - Takes no bounds of its own; a required policy bounds its own params with [`min` and `max`](/reference/policy-files/#bounds).
-- `sigil check --require` runs the same check; see [`sigil check`](/reference/cli/#sigil-check).
+- `sigil check` runs the same check for the policies `--require` or [`sigil.yaml`](/reference/sigil-yaml/) requires; see [`sigil check`](/reference/cli/#sigil-check).
 
 #### `From`
 

@@ -1,0 +1,4 @@
+require:
+  - policy: deploy.guardrails
+    trusted: [deploy]
+    roots: ["teams.*"]

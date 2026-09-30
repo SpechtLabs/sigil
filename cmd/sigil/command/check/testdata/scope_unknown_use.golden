@@ -4,7 +4,7 @@ testdata/scope/other/c.sigil:3:5 (scope.c): error: unknown document `scope.missi
   |     ^^^^^^^^^^^^^
   = help: `use` names a policy or module by the name in its header, wherever its file is
 
-✗ checked 5 files, 1 error
+✗ checked 6 files, 1 error
 --- error ---
 check found 1 error
 advice: each diagnostic above says where the problem is and how to fix it

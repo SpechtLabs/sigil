@@ -23,6 +23,7 @@ import (
 	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/config"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/report"
 	"github.com/spechtlabs/sigil/internal/bundle"
@@ -38,6 +39,7 @@ type request struct {
 	src    project.Sources
 	input  string // --input: a file, "-" for stdin, or empty to read stdin unless terminal is set
 	policy string // --policy: the root's name; empty for the bundle's only policy
+	config string // --config: the sigil.yaml whose kinds: to load; the nearest one when empty
 	// terminal is set when stdin is a terminal, which eval never waits on
 	// for an input nobody asked it to read.
 	terminal bool
@@ -69,9 +71,11 @@ that policy is evaluated; otherwise --policy names the one to evaluate.
 
 Each document's header names its kind, and the kind is found among the
 inputs: a kind file among the paths, or a kind document in the same file as the
-policies. --kind adds a kind file the paths don't hold, and a host binary has
-its kinds linked in. The same kind from two sources must be identical, which
-catches a stale export.
+policies. --kind adds a kind file the paths don't hold, and so does the kinds:
+list of the nearest sigil.yaml, or of the file --config names; a host binary
+has its kinds linked in. The same kind from two sources must be identical, which
+catches a stale export. sigil.yaml's require: trusted: paths are read
+too, so a policy finds the required policies it uses.
 
 The input is a JSON or YAML object with one key per input. A key the kind
 doesn't declare is an error, and a missing one reads as its zero value.
@@ -103,10 +107,12 @@ kustomize build . | yq '.data["policies.sigil"]' | sigil eval --input release.js
 			kindFiles, _ := cmd.Flags().GetStringSlice("kind")
 			input, _ := cmd.Flags().GetString("input")
 			name, _ := cmd.Flags().GetString("policy")
+			configFile, _ := cmd.Flags().GetString("config")
 			return run(cmd.Context(), cmd.OutOrStdout(), o, request{
 				src:      project.Sources{Paths: args, Kinds: kindFiles, Stdin: cmd.InOrStdin()},
 				input:    input,
 				policy:   name,
+				config:   configFile,
 				terminal: isTerminal(cmd.InOrStdin()),
 			})
 		},
@@ -121,6 +127,7 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policy's kind is found among the paths and the kinds linked in (repeatable)")
 	cmd.Flags().StringP("input", "i", "", `Input document (JSON or YAML) to evaluate the policy against, or "-" for stdin; stdin when omitted and it isn't a terminal`)
 	cmd.Flags().StringP("policy", "p", "", "Name of the policy to evaluate; required when the bundle holds more than one")
+	cmd.Flags().String("config", "", "Configuration file with kind files and trusted paths to load; the nearest "+config.FileName+" when omitted")
 	// -R read subdirectories before every command did; it stays so scripts
 	// that pass it keep working.
 	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories too; always on")
@@ -128,6 +135,7 @@ func addFlags(cmd *cobra.Command) {
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagFilename("kind", "sigil")
 	_ = cmd.MarkFlagFilename("input", "json", "yaml", "yml")
+	_ = cmd.MarkFlagFilename("config", "yaml")
 	_ = cmd.RegisterFlagCompletionFunc("policy", complete.Policies)
 }
 
@@ -140,7 +148,7 @@ func run(ctx context.Context, out io.Writer, o *options, req request) humane.Err
 	if err != nil {
 		return err
 	}
-	k, prog, err := compile(o, req.policy, src)
+	k, prog, err := compile(o, req.policy, req.config, src)
 	if err != nil {
 		return err
 	}
@@ -188,9 +196,13 @@ func isTerminal(r io.Reader) bool {
 	return ok && term.IsTerminal(f.Fd())
 }
 
-// compile loads the project and compiles the root policy against its
-// kind, which it returns with the compiled policy.
-func compile(o *options, name string, src project.Sources) (*project.Kind, *eval.Policy, humane.Error) {
+// compile loads the project, with the kind files the configuration lists,
+// and compiles the root policy against its kind, which it returns with
+// the compiled policy.
+func compile(o *options, name, configFile string, src project.Sources) (*project.Kind, *eval.Policy, humane.Error) {
+	if err := config.Apply(configFile, ".", &src); err != nil {
+		return nil, nil, err
+	}
 	p, err := project.Load(src, o.kinds)
 	if err != nil {
 		return nil, nil, err

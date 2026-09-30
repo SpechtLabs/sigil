@@ -16,7 +16,7 @@ testdata/kinds/legacy.sigil:17:14: error: the reason is a named argument
    |              ^^^^^^^^^^^^^^^
    = help: write `deny(reason: no_rule_matched)`
 
-✗ checked 2 files, 3 errors
+✗ checked 3 files, 3 errors
 --- error ---
 check found 3 errors
 advice: each diagnostic above says where the problem is and how to fix it

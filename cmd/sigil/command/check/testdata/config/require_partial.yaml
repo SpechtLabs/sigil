@@ -1,0 +1,6 @@
+require:
+  - policy: deploy.guardrails
+    trusted: [../lints/deploy]
+    roots: ["teams.*", "nope.*"]
+  - policy: roles.guard
+    roots: [roles.main]

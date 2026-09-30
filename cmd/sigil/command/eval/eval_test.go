@@ -218,3 +218,68 @@ func TestIsTerminal(t *testing.T) {
 		t.Error("isTerminal() = true for a reader or a regular file")
 	}
 }
+
+// TestConfigKinds checks that eval loads the kind files the nearest
+// sigil.yaml, or the one --config names, lists under kinds:, relative to
+// that file.
+func TestConfigKinds(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  string // sigil.yaml, one level above the policies
+		flag    string // --config, relative to the policies
+		wantErr string
+	}{
+		{name: "nearest", config: "kinds: [vendor/access.sigil]\n"},
+		{name: "named", config: "kinds: vendor/access.sigil\n", flag: "../sigil.yaml"},
+		{name: "no kind", config: "lints: {}\n", wantErr: "no kind Access was found"},
+		{name: "missing kind file", config: "kinds: [vendor/nope.sigil]\n", wantErr: "../sigil.yaml: the kind file ../vendor/nope.sigil can't be read"},
+		{name: "invalid", config: "kinds: [vendor/access.sigil\n", wantErr: "isn't valid YAML"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFiles(t, dir, map[string]string{
+				"sigil.yaml":              tt.config,
+				"vendor/access.sigil":     read(t, "testdata/access.sigil"),
+				"policies/main.sigil":     read(t, "testdata/access/main.sigil"),
+				"policies/inputs/in.json": read(t, "testdata/inputs/admin.json"),
+			})
+			t.Chdir(filepath.Join(dir, "policies"))
+			format := output.Text
+			var out bytes.Buffer
+			err := run(context.Background(), &out, &options{output: &format}, request{input: "inputs/in.json", config: tt.flag})
+			switch {
+			case tt.wantErr == "" && err != nil:
+				t.Fatalf("run() = %v", err)
+			case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
+				t.Fatalf("run() = %v, want %q", err, tt.wantErr)
+			case tt.wantErr == "" && !strings.HasPrefix(out.String(), "access.main: allow(reason: admin)"):
+				t.Errorf("output = %q, want access.main's decision", out.String())
+			}
+		})
+	}
+}
+
+// read returns a testdata file's contents.
+func read(t *testing.T, name string) string {
+	t.Helper()
+	src, err := os.ReadFile(filepath.FromSlash(name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(src)
+}
+
+// writeFiles creates files under dir, by slash-separated names.
+func writeFiles(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for name, src := range files {
+		path := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

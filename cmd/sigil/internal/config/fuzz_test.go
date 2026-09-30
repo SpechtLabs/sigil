@@ -8,7 +8,7 @@ import (
 )
 
 func FuzzConfig(f *testing.F) {
-	for _, src := range []string{"", "{}", "lints:\n  unused-let: error\n", "lints: {unknown: warn}", "---\n{}\n---\n{}", "&a [*a]"} {
+	for _, src := range []string{"", "{}", "lints:\n  unused-let: error\n", "lints: {unknown: warn}", "---\n{}\n---\n{}", "&a [*a]", "kinds: [a.sigil]\nrequire:\n  - policy: p\n    trusted: t\n    roots: [\"x.*\"]\n", "require: [&e {policy: p}, *e]"} {
 		f.Add([]byte(src))
 	}
 	f.Fuzz(func(t *testing.T, src []byte) {

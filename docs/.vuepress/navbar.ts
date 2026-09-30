@@ -81,6 +81,7 @@ export const navbar = defineNavbarConfig([
         items: [
           { text: "CLI", link: "/reference/cli", icon: "mdi:console" },
           { text: "Test files", link: "/reference/test-files", icon: "mdi:test-tube" },
+          { text: "sigil.yaml", link: "/reference/sigil-yaml", icon: "mdi:file-cog-outline" },
           { text: "Lints", link: "/reference/lints", icon: "mdi:alert-outline" },
         ],
       },

@@ -20,7 +20,7 @@ which roles the requestor holds for it.
 | `access/main_test.yaml` | platform | Test cases for `access.main`, with inputs under `testdata/` |
 | `teams/<team>/production.sigil` | each team | `<team>.production`: the policy deploygate evaluates for that team |
 | `teams/<team>/production_test.yaml` | each team | Test cases for that policy, with inputs under `testdata/` |
-| `sigil.yaml` | platform | Lint levels for `sigilc check` |
+| `sigil.yaml` | platform | The guardrails `sigilc check` requires, and its lint levels |
 | `embed.go` | platform | Embeds `platform/`, `teams/` and `access/` into the deploygate binary |
 
 The platform documents are trusted. deploygate always reads them from the copy
@@ -64,20 +64,19 @@ file among the paths must match the linked kind exactly, which is how a stale
 export fails the check.
 
 ```sh
-# Type-check every team policy with the platform's deploy documents as the
-# trusted source, and fail if a team policy doesn't invoke the guardrails at
-# the top level. This is the check the service makes when it loads the bundle.
-mise run sigilc check --config policies/sigil.yaml \
-  --require deploy.guardrails --trusted policies/platform/deploy \
-  --policy 'payments.*' --policy 'checkout.*' policies/teams
-
-# The same check for the access policy.
-mise run sigilc check --config policies/sigil.yaml \
-  --require access.guardrails --trusted policies/platform/access \
-  --policy access.main policies/access
+# Type-check every policy with the platform's documents as the trusted
+# source, and fail if a team policy doesn't invoke deploy.guardrails, or
+# access.main access.guardrails, at the top level, as sigil.yaml requires.
+# This is the check the service makes when it loads the bundles.
+mise run sigilc check --config policies/sigil.yaml policies
 
 # Run every test file, for both kinds; each runs with its policy's kind.
 mise run sigilc test -v policies
+
+# From policies/, sigil.yaml is found without --config, and its kinds:
+# and trusted: paths let a command work on one team's directory. The stock
+# sigil binary checks it; its tests need sigilc for the host functions.
+cd policies && sigil check teams/payments
 
 # The same test files from go test, loaded the way the service loads them.
 go test ./internal/deploy/... ./internal/access/...
