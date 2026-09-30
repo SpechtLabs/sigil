@@ -22,7 +22,7 @@
     "wasm"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20.20.2"
   },
   "publishConfig": {
     "access": "public",
