@@ -373,7 +373,8 @@ func (pc *policyCompiler) symbolicIn(x ast.Expr) bool {
 	return found
 }
 
-// checkBounds checks a bound value against the param's `min` and `max`.
+// checkBounds checks a bound value against the param's `min` and `max`,
+// either of which may be absent.
 func (pc *policyCompiler) checkBounds(src *Source, a *ast.NamedArg, v Value) {
 	if v.Type() == symbolType {
 		return
@@ -391,11 +392,15 @@ func (pc *policyCompiler) checkBounds(src *Source, a *ast.NamedArg, v Value) {
 	t := src.Info.Params[decl]
 	got := constant.Ordered(iface(v))
 	declares := fmt.Sprintf("%s declares `%s`", callee.Name, strings.Join(strings.Fields(string(src.Src[decl.Pos().Offset:decl.End().Offset])), " "))
-	if lo, err := constant.Eval(decl.Min, t); decl.Min != nil && err == nil && constant.Compare(got, lo) < 0 {
-		pc.failf(a.Value, declares, "%s: %s is below the minimum %s", a.Name.Name, constant.Format(got), constant.Format(lo))
+	if decl.Min != nil {
+		if lo, err := constant.Eval(decl.Min, t); err == nil && constant.Compare(got, lo) < 0 {
+			pc.failf(a.Value, declares, "%s: %s is below the minimum %s", a.Name.Name, constant.Format(got), constant.Format(lo))
+		}
 	}
-	if hi, err := constant.Eval(decl.Max, t); decl.Max != nil && err == nil && constant.Compare(got, hi) > 0 {
-		pc.failf(a.Value, declares, "%s: %s is above the maximum %s", a.Name.Name, constant.Format(got), constant.Format(hi))
+	if decl.Max != nil {
+		if hi, err := constant.Eval(decl.Max, t); err == nil && constant.Compare(got, hi) > 0 {
+			pc.failf(a.Value, declares, "%s: %s is above the maximum %s", a.Name.Name, constant.Format(got), constant.Format(hi))
+		}
 	}
 }
 

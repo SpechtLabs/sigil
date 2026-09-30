@@ -416,44 +416,66 @@ func TestDiagnostics(t *testing.T) {
 	}
 }
 
-// TestParamBounds checks a param bound from Go against its `min` and
-// `max`, each of which may be declared without the other.
+// TestParamBounds checks a bound param against its `min` and `max`, each
+// of which may be declared without the other, both when Go binds it and
+// when another policy passes it in an invocation.
 func TestParamBounds(t *testing.T) {
 	tests := []struct {
 		name   string
 		bounds string
-		value  time.Duration
-		want   string // the diagnostic's message; empty when the value is accepted
+		value  string // a duration literal, in both Sigil and Go
+		want   string // the diagnostic's message without its prefix; empty when the value is accepted
 	}{
-		{name: "min only, above", bounds: ", min: 1h", value: 2 * time.Hour},
-		{name: "min only, at the bound", bounds: ", min: 1h", value: time.Hour},
-		{name: "min only, below", bounds: ", min: 1h", value: time.Minute, want: "param min_soak: 1m is below the minimum 1h"},
-		{name: "max only, below", bounds: ", max: 48h", value: time.Hour},
-		{name: "max only, at the bound", bounds: ", max: 48h", value: 48 * time.Hour},
-		{name: "max only, above", bounds: ", max: 48h", value: 72 * time.Hour, want: "param min_soak: 3d is above the maximum 2d"},
-		{name: "both, within", bounds: ", min: 1h, max: 48h", value: 4 * time.Hour},
-		{name: "both, below", bounds: ", min: 1h, max: 48h", value: time.Minute, want: "param min_soak: 1m is below the minimum 1h"},
-		{name: "both, above", bounds: ", min: 1h, max: 48h", value: 72 * time.Hour, want: "param min_soak: 3d is above the maximum 2d"},
-		{name: "unbounded", value: 72 * time.Hour},
+		{name: "min only, above", bounds: ", min: 1h", value: "2h"},
+		{name: "min only, at the bound", bounds: ", min: 1h", value: "1h"},
+		{name: "min only, below", bounds: ", min: 1h", value: "1m", want: "min_soak: 1m is below the minimum 1h"},
+		{name: "max only, below", bounds: ", max: 48h", value: "1h"},
+		{name: "max only, at the bound", bounds: ", max: 48h", value: "48h"},
+		{name: "max only, above", bounds: ", max: 48h", value: "72h", want: "min_soak: 3d is above the maximum 2d"},
+		{name: "both, within", bounds: ", min: 1h, max: 48h", value: "4h"},
+		{name: "both, below", bounds: ", min: 1h, max: 48h", value: "1m", want: "min_soak: 1m is below the minimum 1h"},
+		{name: "both, above", bounds: ", min: 1h, max: 48h", value: "72h", want: "min_soak: 3d is above the maximum 2d"},
+		{name: "unbounded", value: "72h"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			src := "policy p: DeployApproval@1\nparam min_soak: duration = 24h" + tt.bounds + "\nwhen release.soak < min_soak { deny(reason: a) }"
-			_, err := Deploy.Compile(src, "p", policy.Params{"min_soak": tt.value})
-			if tt.want == "" {
-				if err != nil {
-					t.Fatalf("Compile() = %v, want no error", err)
+	bindings := []struct {
+		name    string
+		prefix  string // what the diagnostic's message starts with
+		compile func(t *testing.T, decl, value string) error
+	}{
+		{name: "from Go", prefix: "param ", compile: func(t *testing.T, decl, value string) error {
+			t.Helper()
+			d, err := time.ParseDuration(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = Deploy.Compile("policy p: DeployApproval@1\n"+decl, "p", policy.Params{"min_soak": d})
+			return err
+		}},
+		{name: "invoked", compile: func(_ *testing.T, decl, value string) error {
+			_, err := Deploy.Compile("policy base: DeployApproval@1\n"+decl+"\n---\npolicy p: DeployApproval@1\nuse base\nbase(min_soak: "+value+")", "p")
+			return err
+		}},
+	}
+	for _, b := range bindings {
+		for _, tt := range tests {
+			t.Run(b.name+"/"+tt.name, func(t *testing.T) {
+				decl := "param min_soak: duration = 24h" + tt.bounds + "\nwhen release.soak < min_soak { deny(reason: a) }"
+				err := b.compile(t, decl, tt.value)
+				if tt.want == "" {
+					if err != nil {
+						t.Fatalf("Compile() = %v, want no error", err)
+					}
+					return
 				}
-				return
-			}
-			var ce *policy.CompileError
-			if !errors.As(err, &ce) {
-				t.Fatalf("error = %v, want a *CompileError", err)
-			}
-			if len(ce.Diagnostics) != 1 || ce.Diagnostics[0].Message != tt.want {
-				t.Errorf("Diagnostics = %+v, want one with message %q", ce.Diagnostics, tt.want)
-			}
-		})
+				var ce *policy.CompileError
+				if !errors.As(err, &ce) {
+					t.Fatalf("error = %v, want a *CompileError", err)
+				}
+				if want := b.prefix + tt.want; len(ce.Diagnostics) != 1 || ce.Diagnostics[0].Message != want {
+					t.Errorf("Diagnostics = %+v, want one with message %q", ce.Diagnostics, want)
+				}
+			})
+		}
 	}
 }
 
