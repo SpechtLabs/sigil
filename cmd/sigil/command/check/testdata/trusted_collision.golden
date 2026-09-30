@@ -1,4 +1,4 @@
-testdata/collision/guardrails.sigil:1:8: error: policy deploy.guardrails is defined twice
+testdata/collision/guardrails.sigil:1:8 (deploy.guardrails): error: policy deploy.guardrails is defined twice
   |
 1 | policy deploy.guardrails: DeployApproval@1
   |        ^^^^^^^^^^^^^^^^^

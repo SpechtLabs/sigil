@@ -83,7 +83,7 @@ sigil explain --kind deploy_approval.sigil policies.sigil`,
 	_ = cmd.Flags().MarkDeprecated("recursive", "directories are always read recursively")
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagFilename("kind", "sigil")
-	_ = cmd.RegisterFlagCompletionFunc("policy", cobra.NoFileCompletions)
+	_ = cmd.RegisterFlagCompletionFunc("policy", complete.Policies)
 
 	return cmd
 }

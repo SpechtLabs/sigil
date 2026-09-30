@@ -1,0 +1,9 @@
+policy scope.a: DeployApproval@1
+
+use scope.lib
+
+let unused = 1
+
+when lib.hotfix {
+  approve(reason: release_manager)
+}

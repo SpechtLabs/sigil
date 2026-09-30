@@ -49,23 +49,22 @@ contributes every .sigil file below it. All documents from all paths are
 checked together as one bundle, indexed by the names in their headers, so a
 name defined twice is an error.
 
+--policy narrows the check to the policies matching a name or a pattern such
+as 'payments.*' and the documents they use; only their problems are reported.
 --require names a policy that every root policy must invoke unconditionally,
-the same check a host makes with policy.Require. Repeat it to require several.
---trusted reads required policies, and everything they use, from separate paths,
-the same way policy.From does; the bundle may then not define any name the
-trusted paths define. The roots are the policies matching --policy, a name or a
-pattern such as 'payments.*'. Without --policy they are every bundle policy that
+the same check a host makes with policy.Require. --trusted reads required
+policies, and everything they use, from separate paths, the same way
+policy.From does. The roots are the policies --policy matches, or every policy
 no other policy invokes, apart from required ones; CI should name its roots.
 
 Each document's header names its kind, and the kind is found among the
 inputs: a kind file among the paths, or a kind document in the same file as the
 policies. --kind adds a kind file the paths don't hold, and a host binary has
 its kinds linked in. The same kind from two sources must be identical, which
-catches a stale export.
-Documents of several kinds are checked in one run, each against its own kind,
-and a required policy applies to the roots of its own kind. The kind documents
-are checked too. A policy whose params have no defaults is checked with the
-params unbound, the way explain shows it.
+catches a stale export. Documents of several kinds are checked in one run,
+each against its own kind, and a required policy applies to the roots of its
+own kind. The kind documents are checked too. A policy whose params have no
+defaults is checked with the params unbound, the way explain shows it.
 
 Lints are warnings unless the repository's sigil.yaml promotes them to errors
 or turns them off. check reads the nearest sigil.yaml at or above the working
@@ -86,6 +85,9 @@ sigil check
 
 # Check a self-contained file that holds its kind and its policies
 sigil check bundle.sigil
+
+# Check one team's policies and what they use, not the rest of the repository
+sigil check --policy 'payments.*'
 
 # Check that every team policy invokes the guardrails unconditionally
 sigil check --require deploy.guardrails --trusted deploy/ --policy 'payments.*' deploy_approval.sigil payments/`,
@@ -113,15 +115,15 @@ func addFlags(cmd *cobra.Command) {
 	// that pass it keep working.
 	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories too; always on")
 	_ = cmd.Flags().MarkDeprecated("recursive", "directories are always read recursively")
-	cmd.Flags().StringSliceP("policy", "p", nil, "Root policy name or pattern for --require checks, such as 'payments.*' (repeatable)")
+	cmd.Flags().StringSliceP("policy", "p", nil, "Only check the policies matching this name or pattern, such as 'payments.*', and what they use; the roots for --require (repeatable)")
 	cmd.Flags().StringSlice("trusted", nil, "File or directory to read required policies from, as policy.From does (repeatable)")
 	cmd.Flags().StringSlice("require", nil, "Policy that every checked policy must invoke unconditionally (repeatable)")
 	cmd.Flags().String("config", "", "Configuration file with lint levels; the nearest "+config.FileName+" when omitted")
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagFilename("kind", "sigil")
 	_ = cmd.MarkFlagFilename("config", "yaml")
-	_ = cmd.RegisterFlagCompletionFunc("require", cobra.NoFileCompletions)
-	_ = cmd.RegisterFlagCompletionFunc("policy", cobra.NoFileCompletions)
+	_ = cmd.RegisterFlagCompletionFunc("require", complete.Required)
+	_ = cmd.RegisterFlagCompletionFunc("policy", complete.Policies)
 	_ = cmd.MarkFlagFilename("trusted", "sigil")
 }
 
@@ -138,29 +140,38 @@ func run(out io.Writer, o *options, configFile string, src project.Sources, patt
 		return err
 	}
 	p.Check()
-	errs := p.Errors()
-	var findings []lint.Finding
+	s := everything(p)
+	if len(patterns) > 0 {
+		selected, err := project.Match(p.Policies(), patterns)
+		if err != nil {
+			return err
+		}
+		s = scopeOf(p, selected)
+	}
+	errs := s.keep(p.Errors())
+	var findings diag.ErrorList
 	if errs == nil {
 		// Lints read what the checker learned, so they run on a project
 		// that checks, even when a compile or --require then fails.
 		var rs []string
 		if len(requires) > 0 {
-			if rs, err = roots(p, patterns, requires); err != nil {
-				return err
+			rs = roots(p, s, requires)
+		}
+		errs = s.keep(compileAll(p, s, rs, requires))
+		for _, g := range p.Groups() {
+			for _, f := range lint.Run(g.Bundle, lint.Options{Kind: g.Kind.Model, Levels: cfg.Lints, Required: requires}) {
+				findings = append(findings, f.Error)
 			}
 		}
-		errs = compileAll(p, rs, requires)
-		for _, g := range p.Groups() {
-			findings = append(findings, lint.Run(g.Bundle, lint.Options{Kind: g.Kind.Model, Levels: cfg.Lints, Required: requires})...)
-		}
+		findings = s.keep(findings)
 	}
-	return report(out, p, errs, findings, *o.output)
+	return report(out, p, append(errs, findings...), *o.output)
 }
 
-// compileAll compiles every policy of the project, so errors only a
-// compile finds, such as an invocation argument out of its param's
-// bounds, fail the check, and checks the roots against --require.
-func compileAll(p *project.Project, roots, requires []string) diag.ErrorList {
+// compileAll compiles the scope's policies, so errors only a compile
+// finds, such as an invocation argument out of its param's bounds, fail
+// the check, and checks the roots against --require.
+func compileAll(p *project.Project, s *scope, roots, requires []string) diag.ErrorList {
 	var errs diag.ErrorList
 	seen := map[string]bool{}
 	add := func(list diag.ErrorList) {
@@ -172,8 +183,8 @@ func compileAll(p *project.Project, roots, requires []string) diag.ErrorList {
 			}
 		}
 	}
-	for _, name := range p.Policies() {
-		_, list := p.Group(name).Bundle.Compile(name, bundle.Options{Static: true})
+	for _, name := range s.policies {
+		_, list := s.bundle(p.Group(name)).Compile(name, bundle.Options{Static: true})
 		add(list)
 	}
 	if len(requires) == 0 || errs != nil {
@@ -181,7 +192,7 @@ func compileAll(p *project.Project, roots, requires []string) diag.ErrorList {
 	}
 	for _, root := range roots {
 		g := p.Group(root)
-		_, list := g.Bundle.Compile(root, bundle.Options{Static: true, Require: required(p, g, requires)})
+		_, list := s.bundle(g).Compile(root, bundle.Options{Static: true, Require: required(p, g, requires)})
 		add(list)
 	}
 	return errs
@@ -200,12 +211,12 @@ func required(p *project.Project, g *project.Group, requires []string) []string 
 	return out
 }
 
-// roots returns the policies --require applies to: those matching
-// --policy, or every policy no other one of its kind invokes, apart from
-// the required ones.
-func roots(p *project.Project, patterns, requires []string) ([]string, humane.Error) {
-	if len(patterns) > 0 {
-		return project.Match(p.Policies(), patterns)
+// roots returns the policies --require applies to: those --policy
+// selected, or every policy no other one invokes, apart from the
+// required ones.
+func roots(p *project.Project, s *scope, requires []string) []string {
+	if s.selected != nil {
+		return s.selected
 	}
 	invoked := map[string]bool{}
 	for _, g := range p.Groups() {
@@ -224,13 +235,14 @@ func roots(p *project.Project, patterns, requires []string) ([]string, humane.Er
 			out = append(out, name)
 		}
 	}
-	return out, nil
+	return out
 }
 
 // report prints the diagnostics, then a summary, and fails when there's
 // an error: a compiler error, or a lint the configuration set to error.
-func report(out io.Writer, p *project.Project, errs diag.ErrorList, findings []lint.Finding, format output.Format) humane.Error {
-	diags := p.Resolve(collect(errs, findings))
+// A lint's diagnostic already carries its name and level.
+func report(out io.Writer, p *project.Project, errs diag.ErrorList, format output.Format) humane.Error {
+	diags := p.Resolve(errs)
 	failed := 0
 	for _, d := range diags {
 		if d.Severity == diag.SeverityError {
@@ -251,18 +263,6 @@ func report(out io.Writer, p *project.Project, errs diag.ErrorList, findings []l
 		return pretty.Fail(fmt.Sprintf("check found %s", problems(failed, len(diags)-failed)), advice(p, diags, "each diagnostic says where the problem is and how to fix it")...)
 	}
 	return nil
-}
-
-// collect merges the errors and the findings into one list of
-// diagnostics; a finding's diagnostic already carries its lint's name and
-// level.
-func collect(errs diag.ErrorList, findings []lint.Finding) diag.ErrorList {
-	out := make(diag.ErrorList, 0, len(errs)+len(findings))
-	out = append(out, errs...)
-	for _, f := range findings {
-		out = append(out, f.Error)
-	}
-	return out
 }
 
 // reportText prints the diagnostics in file and position order, then one

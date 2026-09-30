@@ -1,0 +1,25 @@
+--- a.sigil.orig
++++ a.sigil
+@@ -1,2 +1,3 @@
+ policy a: K@1
+-when x==1{deny( r )}
++
++when x == 1 { deny(reason: r) }
+--- d.sigil.orig
++++ d.sigil
+@@ -1,6 +1,7 @@
+ policy access.main: AccessGrant@1
+ 
+ use access.guardrails
++
+ guardrails()
+ 
+ when team_member {
+@@ -16,4 +17,4 @@
+   deployer(reason: oncall, ttl: 2h)
+ }
+ 
+-when admin_cleared {admin( reason: clearance )}
++when admin_cleared { admin(reason: clearance) }
+ℹ 2 of 3 files would be reformatted
+  run `sigil fmt -w` on the same paths to rewrite them

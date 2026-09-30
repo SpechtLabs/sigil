@@ -19,7 +19,7 @@ payments/production.sigil
 ✗ 1 of 5 files is not formatted
 ```
 
-`--check` lists every file that isn't formatted and exits 1 if there's one. It searches directories recursively, and a file that doesn't parse fails it too. Authors fix their files locally with `sigil fmt --write .`. The exported kind file passes as it is, because `Schema()` prints kinds in the same style. [`sigil fmt`](/reference/cli/#sigil-fmt) lists the rules.
+`--check` lists every file that isn't formatted and exits 1 if there's one. It searches directories recursively, and a file that doesn't parse fails it too. Locally, `sigil fmt` with no flags shows the diff `sigil fmt -w` would apply, and `sigil fmt -w` rewrites the files. The exported kind file passes as it is, because `Schema()` prints kinds in the same style. [`sigil fmt`](/reference/cli/#sigil-fmt) lists the rules.
 
 ## Check
 

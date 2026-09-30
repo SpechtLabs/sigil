@@ -1,0 +1,3 @@
+--- error ---
+no policy matches "scope.nope"
+advice: the bundle defines: scope.a, scope.b, scope.c, scope.guard

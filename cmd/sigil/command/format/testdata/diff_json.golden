@@ -1,0 +1,11 @@
+[
+  {
+    "file": "a.sigil",
+    "formatted": false,
+    "diff": "--- a.sigil.orig\n+++ a.sigil\n@@ -1,2 +1,3 @@\n policy a: K@1\n-when x==1{deny( r )}\n+\n+when x == 1 { deny(reason: r) }\n"
+  },
+  {
+    "file": "b.sigil",
+    "formatted": true
+  }
+]

@@ -1,3 +1,3 @@
 --- error ---
-testdata/inputs/broken.json isn't valid JSON: unexpected EOF
-advice: the input is a JSON object with one key per input the kind declares
+testdata/inputs/broken.json is neither JSON (unexpected EOF) nor YAML (yaml: line 1: did not find expected node content)
+advice: the input is a JSON or YAML object with one key per input the kind declares

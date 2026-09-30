@@ -1,0 +1,16 @@
+testdata/scope/team/a.sigil:1:1 (scope.a): error: scope.a doesn't invoke scope.guard
+  |
+1 | policy scope.a: DeployApproval@1
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: the host requires scope.guard for every DeployApproval policy; import it with `use scope.guard` and invoke it at the top level
+
+testdata/scope/team/a.sigil:5:5 (scope.a): warning: let unused is never read [unused-let]
+  |
+5 | let unused = 1
+  |     ^^^^^^
+  = help: remove the let, or read it; a private let can't be imported
+
+✗ checked 6 files, 1 error and 1 warning
+--- error ---
+check found 1 error and 1 warning
+advice: each diagnostic above says where the problem is and how to fix it

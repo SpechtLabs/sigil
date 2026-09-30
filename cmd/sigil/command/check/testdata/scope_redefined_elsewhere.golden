@@ -1,0 +1,10 @@
+testdata/scope/other/b.sigil:3:14 (scope.b): error: unknown field "teir" on type Service
+  |
+3 | when service.teir == "critical" {
+  |              ^^^^
+  = help: did you mean "tier"? Service declares: name, tier, owners, labels
+
+✗ checked 6 files, 1 error
+--- error ---
+check found 1 error
+advice: each diagnostic above says where the problem is and how to fix it

@@ -1,7 +1,8 @@
 // Package gen implements the `sigil gen` command group, which will generate
 // code from a kind file. Each target language is a subcommand in its own
 // package. The only one, `sigil gen go` in package golang, isn't
-// implemented yet. Run on its own, gen prints its help.
+// implemented yet, so gen is hidden from the root help. Run on its own, gen
+// prints its own help.
 package gen
 
 import (
@@ -22,7 +23,9 @@ func NewCommand(opts ...Option) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "gen",
 		Aliases: []string{"generate"},
-		Short:   "Generate code from a kind file (planned)",
+		// Hidden from help until a generator is implemented; it still runs.
+		Hidden: true,
+		Short:  "Generate code from a kind file (planned)",
 		Long: `Planned: code generation is not implemented yet.
 
 Generates code from a kind file, so other services can consume decisions

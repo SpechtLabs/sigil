@@ -1,8 +1,8 @@
 // Package export implements the `sigil export` command. It writes the kind
 // file of a kind linked into a host binary: to stdout, or to the --out
 // file, which --check only compares. The stock sigil binary links no kind,
-// so there the command always fails. [Export] is the record it prints as
-// JSON and YAML.
+// so there the command always fails and is hidden from the help. [Export]
+// is the record it prints as JSON and YAML.
 package export
 
 import (
@@ -49,7 +49,9 @@ func NewCommand(opts ...Option) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:        "export [KIND]",
 		SuggestFor: []string{"schema"},
-		Short:      "Write the kind file of a kind linked into this binary",
+		// The stock binary links no kind, so export can only fail there.
+		Hidden: len(o.kinds) == 0,
+		Short:  "Write the kind file of a kind linked into this binary",
 		Long: `Writes the kind file of a kind a host linked into its own sigil binary: the
 text its Schema() returns, which a policy repository checks in so the CLI, the
 editor and other services can check policies without the host's code.

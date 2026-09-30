@@ -1,0 +1,5 @@
+policy scope.b: DeployApproval@1
+
+when service.teir == "critical" {
+  approve(reason: release_manager)
+}

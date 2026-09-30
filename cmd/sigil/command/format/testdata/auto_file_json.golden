@@ -1,0 +1,7 @@
+[
+  {
+    "file": "a.sigil",
+    "formatted": false,
+    "source": "policy a: K@1\n\nwhen x == 1 { deny(reason: r) }\n"
+  }
+]

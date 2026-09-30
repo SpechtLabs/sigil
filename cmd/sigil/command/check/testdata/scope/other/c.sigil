@@ -1,0 +1,7 @@
+policy scope.c: DeployApproval@1
+
+use scope.missing
+
+when release.hotfix {
+  approve(reason: release_manager)
+}

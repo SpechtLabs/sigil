@@ -1,0 +1,3 @@
+--- error ---
+testdata/inputs/garbage.txt is neither JSON (invalid character 'u' looking for beginning of value) nor YAML (yaml: line 1: did not find expected ',' or ']')
+advice: the input is a JSON or YAML object with one key per input the kind declares

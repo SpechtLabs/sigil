@@ -90,7 +90,7 @@ Error: testdata/typo.json: service.teir: unknown field "teir" on type Service
 
 What you can do
   • did you mean "tier"? declared: name, tier, owners, labels
-  • the input is a JSON object with one key per input the kind declares
+  • the input is a JSON or YAML object with one key per input the kind declares
 ```
 
 A key the fixture leaves out is the zero value, as the next section describes. A Go host decodes its requests into its own input struct, with whatever strictness it chooses; by the time Sigil sees the input, it's a typed Go value.

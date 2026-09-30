@@ -133,7 +133,12 @@ func (l *loader) group(files []*file, trusted bool) {
 				continue
 			}
 			if prev := l.p.names[name]; prev != nil {
-				l.p.errs = append(l.p.errs, bundle.Redefined(f.name, doc, prev))
+				// The diagnostic names the document it's in, which the
+				// project doesn't index, so check --policy keeps it
+				// when the name is one the policies use.
+				e := bundle.Redefined(f.name, doc, prev)
+				e.Doc = name
+				l.p.errs = append(l.p.errs, e)
 				continue
 			}
 			d := &bundle.Document{Node: doc, Name: name, File: f.name, Trusted: trusted}
