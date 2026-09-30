@@ -150,7 +150,7 @@ func (s *Server) deployFailed(c *gin.Context, resp *DecisionResponse, f failure)
 	s.metrics.ObserveEvaluationError(telemetry.StageDeploy, resp.Team, f.kind)
 	ctx := c.Request.Context()
 	fallback := []zap.Field{zap.String("decision", resp.Decision), zap.String("reason", resp.Reason)}
-	telemetry.FromContext(ctx).LogContext(ctx, f.logLevel(), "deploy evaluation failed, answering with the fallback decision",
+	telemetry.Log(ctx, f.logLevel(), "deploy evaluation failed, answering with the fallback decision",
 		f.logFields(slices.Concat(where, fallback)...)...)
 
 	resp.Error, resp.Asserts, resp.Conflict = NewErrorResponse(f.herr), f.asserts, f.conflict
@@ -173,7 +173,7 @@ func (s *Server) accessFailed(c *gin.Context, team, policyName string, st access
 
 	s.metrics.ObserveEvaluationError(telemetry.StageAccess, team, f.kind)
 	ctx := c.Request.Context()
-	telemetry.FromContext(ctx).LogContext(ctx, f.logLevel(), "access evaluation failed, denying the deployment",
+	telemetry.Log(ctx, f.logLevel(), "access evaluation failed, denying the deployment",
 		f.logFields(where...)...)
 
 	resp := fallbackResponse(team, policyName)
