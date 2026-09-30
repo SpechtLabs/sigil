@@ -80,14 +80,12 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-# The standalone server with the node_modules Next traced for it, the
-# browser assets it doesn't copy itself, and the entry point and healthcheck
-# next to server.js. WORKDIR matters: the service finds sigil.wasm under
-# node_modules from the working directory.
+# The standalone server with the node_modules Next traced for it. The build
+# (scripts/assemble-standalone.ts) has already put the browser assets Next
+# doesn't copy itself and the entry point and healthcheck from bin/ next to
+# server.js, the same layout `bun run start` runs locally. WORKDIR matters:
+# the service finds sigil.wasm under node_modules from the working directory.
 COPY --from=build /src/examples/alert-routing/.next/standalone/ ./
-COPY --from=build /src/examples/alert-routing/.next/static/ ./.next/static/
-COPY --from=build /src/examples/alert-routing/public/ ./public/
-COPY --from=build /src/examples/alert-routing/bin/alertrouter.mjs /src/examples/alert-routing/bin/listen.mjs /src/examples/alert-routing/bin/healthcheck.mjs ./
 # The profiler's native addon: node-gyp-build finds the prebuilt binary for
 # the platform at run time, so Next's tracer, which follows imports, leaves
 # the prebuilds out.

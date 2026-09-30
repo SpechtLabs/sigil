@@ -54,7 +54,7 @@ describe("Hot reload", () => {
   // and no other spec sees the edits.
   let e: Env;
   beforeEach(async () => {
-    e = await newEnv({ copyTeams: true });
+    e = await newEnv();
     e.resetSpans();
   });
 
@@ -240,7 +240,7 @@ describe("Hot reload", () => {
 
 describe("Startup", () => {
   test("fails when a team policy leaves out the platform's paging, and never becomes ready", async () => {
-    const e = await newEnv({ copyTeams: true, unloaded: true });
+    const e = await newEnv({ unloaded: true });
     e.writeTeamFile(CHECKOUT_POLICY, unpaged);
 
     const err = await e.initialLoad().then(

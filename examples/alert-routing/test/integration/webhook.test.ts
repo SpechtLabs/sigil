@@ -189,7 +189,7 @@ describe("Receiving an Alertmanager webhook", () => {
     ] as const)(
       "fails that alert alone, routes it with the fallback and routes the rest: %s",
       async (_, rules, check) => {
-        const e = await newEnv({ copyTeams: true });
+        const e = await newEnv();
         e.editCheckout(CHECKOUT_RULES, rules);
         await e.reloadOK();
 

@@ -70,7 +70,7 @@ describe("Logs", () => {
   });
 
   test("writes a failed alert's line as an error", async () => {
-    const e = await newEnv({ copyTeams: true, logNotifier: true });
+    const e = await newEnv({ logNotifier: true });
     e.editCheckout(CHECKOUT_RULES, conflictingRule);
     await e.reloadOK();
 

@@ -151,7 +151,7 @@ describe("A team bundle that stops the engine compiling it", () => {
   // module runs out of stack on it or the parser refuses it with a
   // diagnostic, the bundle is rejected and the last good one keeps routing.
   test("with real deep nesting, is rejected either way, and the last good bundle keeps routing", async () => {
-    const e = await newEnv({ copyTeams: true });
+    const e = await newEnv();
     const good = await e.served();
     const deep = `${"(".repeat(200_000)}alert.name${")".repeat(200_000)}`;
     e.editCheckout(CHECKOUT_RULES, `${CHECKOUT_RULES}\n\nwhen ${deep} == "x" {\n  drop(reason: muted)\n}\n`);
@@ -195,7 +195,7 @@ describe("The platform engine", () => {
 
   test("while it's replaced, alerts whose team decided route as usual, and one that needs it goes out answered 503", async () => {
     const loader = gatedLoader("hold");
-    const e = await newEnv({ copyTeams: true, loadPlatformSigil: loader.load });
+    const e = await newEnv({ loadPlatformSigil: loader.load });
     // payments decides by itself; checkout's policy fails at run time, so
     // its alerts need platform.paging to know whether they page.
     e.editCheckout(CHECKOUT_RULES, failingRule);

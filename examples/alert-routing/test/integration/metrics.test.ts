@@ -157,7 +157,7 @@ describe("Metrics", () => {
   ] as const)(
     "counts a failed evaluation by team and kind, and not as a decision: %s",
     async (_, rules, kind, status) => {
-      const e = await newEnv({ copyTeams: true });
+      const e = await newEnv();
       e.editCheckout(CHECKOUT_RULES, rules);
       await e.reloadOK();
 

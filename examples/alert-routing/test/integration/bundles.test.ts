@@ -16,7 +16,7 @@ let embedded: Env;
 let onDisk: Env;
 beforeAll(async () => {
   embedded = await newEnv({ embedded: true, track: false });
-  onDisk = await newEnv({ track: false });
+  onDisk = await newEnv({ sharedTeamsDir: true, track: false });
 });
 afterAll(async () => {
   await embedded.close();

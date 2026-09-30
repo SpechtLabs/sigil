@@ -8,7 +8,7 @@
 // a store that never loaded.
 
 import { expect } from "bun:test";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Writable } from "node:stream";
@@ -95,8 +95,14 @@ export interface LogLine {
 }
 
 export interface EnvOptions {
-  /** Serves a private copy of policies/teams, so a spec can edit and break it. */
-  copyTeams?: boolean;
+  /**
+   * Serves policies/teams itself instead of a private copy, for the spec that
+   * checks the built-in bundle against the directory it was built from. Every
+   * other env serves a temporary directory holding the built-in team files,
+   * so a spec can edit and break it, and an e2e run editing policies/teams
+   * at the same time can't reach into it.
+   */
+  sharedTeamsDir?: boolean;
   /** Serves the team bundle built into the app, as with ALERTROUTER_POLICIES unset. */
   embedded?: boolean;
   /** Builds the env without loading the bundle, the state before the first load succeeds. */
@@ -241,10 +247,13 @@ export class Env {
 
     let dir = TEAMS_DIR;
     let tmp: string | undefined;
-    if (opts.copyTeams) {
+    if (!opts.sharedTeamsDir) {
       tmp = mkdtempSync(join(tmpdir(), "alertrouter-teams-"));
       dir = join(tmp, "teams");
-      cpSync(TEAMS_DIR, dir, { recursive: true });
+      for (const f of TEAM_FILES) {
+        mkdirSync(dirname(join(dir, f.path)), { recursive: true });
+        writeFileSync(join(dir, f.path), f.source);
+      }
     }
 
     const metrics = new PromMetrics();

@@ -134,7 +134,7 @@ describe("Traces", () => {
   });
 
   test("marks the route span of a failed evaluation as an error", async () => {
-    const e = await newEnv({ copyTeams: true });
+    const e = await newEnv();
     e.editCheckout(CHECKOUT_RULES, conflictingRule);
     await e.reloadOK();
     e.resetSpans();

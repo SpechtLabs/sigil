@@ -68,7 +68,7 @@ const failures: [string, Break, string, number][] = [
 ];
 
 async function brokenEnv(breakIt: Break): Promise<Env> {
-  const e = await newEnv({ copyTeams: true, evaluationTimeoutMs: 100 });
+  const e = await newEnv({ evaluationTimeoutMs: 100 });
   breakIt(e);
   await e.reloadOK();
   e.resetSpans();
@@ -157,7 +157,7 @@ describe("A team page that would redirect the platform's page", () => {
   const redirectRule = `${CHECKOUT_RULES}\n\nwhen alert.severity == warning {\n  page(reason: critical_alert, target: "nobody")\n}\n`;
 
   async function redirectEnv(): Promise<Env> {
-    const e = await newEnv({ copyTeams: true });
+    const e = await newEnv();
     e.editCheckout(CHECKOUT_RULES, redirectRule);
     await e.reloadOK();
     e.resetSpans();

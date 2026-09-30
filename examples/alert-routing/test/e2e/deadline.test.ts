@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { UNROUTED } from "../fixture/cases";
-import { routePath } from "../fixture/client";
+import { expectStatus, PATH_HEALTHZ, routePath } from "../fixture/client";
 import { eventually } from "../fixture/eventually";
 import { expectBatch, expectFallback } from "../fixture/expect";
 import {
@@ -38,9 +38,21 @@ import {
 
 /**
  * When the 499 spec's client gives up: after its request reached the
- * service, and well before the stack's 50ms evaluation timeout would answer.
+ * service, and before the stack's evaluation timeout (50ms by default) would
+ * answer. The request takes about half a round trip to arrive, which a busy
+ * machine stretches, so the spec measures one and leaves 20ms after the
+ * request should have arrived, never later than 45ms.
  */
-const ABANDON_AFTER_MS = 20;
+async function abandonAfterMs(): Promise<number> {
+  const trips: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    const start = performance.now();
+    expectStatus(await alertrouter.get(PATH_HEALTHZ), 200);
+    trips.push(performance.now() - start);
+  }
+  const median = trips.sort((a, b) => a - b)[1] ?? 0;
+  return Math.min(median / 2 + 20, 45);
+}
 
 /** The route template the request metrics label a route with. */
 const ROUTE_TEMPLATE = "/api/v1/teams/:team/route";
@@ -113,7 +125,7 @@ describe.skipIf(unwritable !== undefined)("e2e", () => {
         await alertrouter.abandon(
           routePath(TEAM_CHECKOUT),
           firingAlert(CHECKOUT_LATENCY, SEVERITY_WARNING),
-          ABANDON_AFTER_MS,
+          await abandonAfterMs(),
         );
 
         // The server notices the closed connection and stops the evaluation a

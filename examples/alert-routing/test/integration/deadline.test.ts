@@ -40,7 +40,7 @@ afterAll(releaseTelemetry);
 // The shipped policies decide in microseconds whatever the alert, so every
 // spec here swaps checkout's policy for one that doesn't.
 async function slowEnv(evaluationTimeoutMs?: number): Promise<Env> {
-  const e = await newEnv({ copyTeams: true, evaluationTimeoutMs });
+  const e = await newEnv({ evaluationTimeoutMs });
   e.writeTeamFile(CHECKOUT_POLICY, slowPolicy(SLOW_NAMES));
   await e.reloadOK();
   e.resetSpans();
@@ -141,7 +141,7 @@ describe("An evaluation that doesn't finish", () => {
 // evaluation. The Go service had none; this is the lead's addendum, item 2.
 describe("A webhook that runs past its batch deadline", () => {
   test("answers in time, and routes the alerts it didn't reach through the fallback, still paging", async () => {
-    const e = await newEnv({ copyTeams: true, evaluationTimeoutMs: 100, batchTimeoutMs: 250 });
+    const e = await newEnv({ evaluationTimeoutMs: 100, batchTimeoutMs: 250 });
     e.writeTeamFile(CHECKOUT_POLICY, slowPolicy(SLOW_NAMES));
     await e.reloadOK();
 
