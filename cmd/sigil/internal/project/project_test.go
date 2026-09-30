@@ -102,17 +102,10 @@ func TestLoad(t *testing.T) {
 	}{
 		{
 			name:     "a kind file among the paths",
-			src:      project.Sources{Paths: in("access.sigil", "access"), Recursive: true},
+			src:      project.Sources{Paths: in("access.sigil", "access")},
 			groups:   []string{"Access"},
 			policies: []string{"access.deep", "access.main"},
 			files:    3,
-		},
-		{
-			name:     "not recursive",
-			src:      project.Sources{Paths: in("access.sigil", "access")},
-			groups:   []string{"Access"},
-			policies: []string{"access.main"},
-			files:    2,
 		},
 		{
 			name:     "a self-contained file",
@@ -132,44 +125,44 @@ func TestLoad(t *testing.T) {
 			name:     "two kinds",
 			src:      project.Sources{Paths: in("access.sigil", "roles.sigil", "access", "roles")},
 			groups:   []string{"Access", "Roles"},
-			policies: []string{"access.main", "roles.main"},
-			files:    4,
+			policies: []string{"access.deep", "access.main", "roles.main"},
+			files:    5,
 		},
 		{
 			name:     "a --kind file",
 			src:      project.Sources{Paths: in("access"), Kinds: in("access.sigil")},
 			groups:   []string{"Access"},
-			policies: []string{"access.main"},
-			files:    1,
+			policies: []string{"access.deep", "access.main"},
+			files:    2,
 		},
 		{
 			name:     "a --kind file's other documents",
 			src:      project.Sources{Paths: in("access"), Kinds: in("kindplus.sigil")},
 			groups:   []string{"Access"},
-			policies: []string{"access.main"},
-			files:    1,
+			policies: []string{"access.deep", "access.main"},
+			files:    2,
 		},
 		{
 			name:     "a --kind file among the paths too",
 			src:      project.Sources{Paths: in("kindplus.sigil", "access"), Kinds: in("kindplus.sigil")},
 			groups:   []string{"Access"},
-			policies: []string{"access.main", "k.extra"},
-			files:    2,
+			policies: []string{"access.deep", "access.main", "k.extra"},
+			files:    3,
 		},
 		{
 			name:     "a path named twice",
 			src:      project.Sources{Paths: in("access.sigil", "access", "access/main.sigil")},
 			groups:   []string{"Access"},
-			policies: []string{"access.main"},
-			files:    2,
+			policies: []string{"access.deep", "access.main"},
+			files:    3,
 		},
 		{
 			name:     "a linked kind",
 			src:      project.Sources{Paths: in("access")},
 			linked:   []project.Linked{roles, access},
 			groups:   []string{"Access"},
-			policies: []string{"access.main"},
-			files:    1,
+			policies: []string{"access.deep", "access.main"},
+			files:    2,
 			host:     true,
 		},
 		{
@@ -177,8 +170,8 @@ func TestLoad(t *testing.T) {
 			src:      project.Sources{Paths: in("access.sigil", "access"), Kinds: in("access.sigil")},
 			linked:   []project.Linked{access},
 			groups:   []string{"Access"},
-			policies: []string{"access.main"},
-			files:    2,
+			policies: []string{"access.deep", "access.main"},
+			files:    3,
 			host:     true,
 		},
 		{
@@ -193,8 +186,8 @@ func TestLoad(t *testing.T) {
 			src:      project.Sources{Paths: in("stale.sigil", "access")},
 			linked:   []project.Linked{access},
 			groups:   []string{"Access"},
-			policies: []string{"access.main"},
-			files:    2,
+			policies: []string{"access.deep", "access.main"},
+			files:    3,
 			diags:    []string{"kind document Access doesn't match the kind Access linked into this binary"},
 			help:     "export Access --out",
 			host:     true,
@@ -203,8 +196,8 @@ func TestLoad(t *testing.T) {
 			name:     "two kind documents that differ",
 			src:      project.Sources{Paths: in("access", "stale.sigil"), Kinds: in("access.sigil")},
 			groups:   []string{"Access"},
-			policies: []string{"access.main"},
-			files:    2,
+			policies: []string{"access.deep", "access.main"},
+			files:    3,
 			diags:    []string{"kind document Access differs from the one at " + filepath.ToSlash(filepath.Join(dir, "access.sigil")) + ":1:6"},
 		},
 		{
@@ -226,8 +219,8 @@ func TestLoad(t *testing.T) {
 			name:     "a name defined twice across kinds",
 			src:      project.Sources{Paths: in("access.sigil", "roles.sigil", "access", "dup")},
 			groups:   []string{"Access"},
-			policies: []string{"access.main"},
-			files:    4,
+			policies: []string{"access.deep", "access.main"},
+			files:    5,
 			diags:    []string{"policy access.main is defined twice"},
 			help:     "first defined at " + filepath.ToSlash(filepath.Join(dir, "access", "main.sigil")) + ":1:1",
 		},
@@ -257,12 +250,12 @@ func TestLoad(t *testing.T) {
 			name:     "trusted",
 			src:      project.Sources{Paths: in("access.sigil", "access"), Trusted: in("platform")},
 			groups:   []string{"Access"},
-			policies: []string{"access.main"},
-			files:    2,
+			policies: []string{"access.deep", "access.main"},
+			files:    3,
 		},
 		{
 			name:     "trusted inside the paths",
-			src:      project.Sources{Paths: in("access.sigil", "trustedin"), Trusted: in("trustedin/plat"), Recursive: true},
+			src:      project.Sources{Paths: in("access.sigil", "trustedin"), Trusted: in("trustedin/plat")},
 			groups:   []string{"Access"},
 			policies: []string{"team.main"},
 			files:    2,
@@ -396,6 +389,62 @@ func TestResolve(t *testing.T) {
 	out := p.Render(p.Errors())
 	if !strings.Contains(out, "<stdin>:") || !strings.Contains(out, "let x = nope") {
 		t.Errorf("Render() = %q, want positions and source lines", out)
+	}
+}
+
+// TestExpand checks the path rules every command shares.
+func TestExpand(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a.sigil", "b_test.yaml", "notes.txt", "sub/c.sigil", "sub/deep/d.sigil", ".hidden/e.sigil", "..data/f.sigil", "sub/.g.sigil"} {
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(dir, "..data", "f.sigil"), filepath.Join(dir, "link.sigil")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "nope"), filepath.Join(dir, "sub", "deep", "dangling.sigil")); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	tests := []struct {
+		name  string
+		paths []string
+		match func(string) bool
+		want  []string
+		err   string
+	}{
+		{name: "a dangling link below a directory", paths: []string{"sub"}, match: project.IsSigil, err: "sub/deep/dangling.sigil is a symbolic link to nothing that can be read"},
+		{name: "a named file, whatever its name", paths: []string{"notes.txt", "-", "a.sigil"}, match: project.IsSigil, want: []string{"notes.txt", "-", "a.sigil"}},
+		{name: "named twice or two ways", paths: []string{"a.sigil", "./a.sigil", "sub/c.sigil", "sub/../sub/c.sigil"}, match: project.IsSigil, want: []string{"a.sigil", "sub/c.sigil"}},
+		{name: "a missing path", paths: []string{"nope"}, match: project.IsSigil, err: "nope can't be read"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := project.Expand(tt.paths, tt.match)
+			if tt.err != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.err) {
+					t.Fatalf("Expand() error = %v, want %q", err, tt.err)
+				}
+				return
+			}
+			if err != nil || !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Expand() = %q, %v, want %q", got, err, tt.want)
+			}
+		})
+	}
+
+	if err := os.Remove(filepath.Join(dir, "sub", "deep", "dangling.sigil")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := project.Expand([]string{"."}, func(n string) bool { return project.IsSigil(n) || strings.HasSuffix(n, "_test.yaml") })
+	want := []string{"a.sigil", "b_test.yaml", "link.sigil", "sub/c.sigil", "sub/deep/d.sigil"}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("Expand(.) = %q, %v, want %q: dot entries skipped, links followed, files before subdirectories", got, err, want)
 	}
 }
 

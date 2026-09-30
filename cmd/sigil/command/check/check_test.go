@@ -70,7 +70,7 @@ func TestCheck(t *testing.T) {
 				kinds = []string{tt.kind}
 			}
 			var out bytes.Buffer
-			src := project.Sources{Paths: tt.paths, Trusted: tt.trusted, Kinds: kinds, Recursive: true, Stdin: strings.NewReader("")}
+			src := project.Sources{Paths: tt.paths, Trusted: tt.trusted, Kinds: kinds, Stdin: strings.NewReader("")}
 			err := run(&out, &options{output: &format}, filepath.Join("testdata", "config", config), src, tt.patterns, tt.requires)
 			golden(t, tt.name, render(out.String(), err))
 		})
@@ -78,7 +78,8 @@ func TestCheck(t *testing.T) {
 }
 
 // TestConfigDiscovery checks that without --config, check reads the
-// nearest sigil.yaml at or above the working directory.
+// nearest sigil.yaml at or above the working directory, and that without
+// paths it reads the working directory.
 func TestConfigDiscovery(t *testing.T) {
 	dir := t.TempDir()
 	kind, err := os.ReadFile(filepath.Join("testdata", "deploy_approval.sigil"))
@@ -102,7 +103,7 @@ func TestConfigDiscovery(t *testing.T) {
 	t.Chdir(filepath.Join(dir, "sub"))
 	format := output.Text
 	var out bytes.Buffer
-	herr := run(&out, &options{output: &format}, "", project.Sources{Paths: []string{"."}, Kinds: []string{filepath.Join("..", "deploy_approval.sigil")}}, nil, nil)
+	herr := run(&out, &options{output: &format}, "", project.Sources{Kinds: []string{filepath.Join("..", "deploy_approval.sigil")}}, nil, nil)
 	if herr == nil || !strings.Contains(out.String(), "error: let unused is never read [unused-let]") {
 		t.Fatalf("run() = %v with output %q, want the unused-let lint as an error", herr, out.String())
 	}

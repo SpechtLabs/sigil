@@ -6,11 +6,13 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sierrasoftworks/humane-errors-go"
 
 	"github.com/spechtlabs/sigil/cmd/internal/output"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files under testdata")
@@ -55,9 +57,42 @@ func TestTest(t *testing.T) {
 				kinds = nil
 			}
 			var out bytes.Buffer
-			err := runTests(context.Background(), &out, &options{output: &format}, kinds, tt.run, tt.verbose, tt.paths)
+			err := runTests(context.Background(), &out, &options{output: &format}, project.Sources{Paths: tt.paths, Kinds: kinds}, tt.run, tt.verbose)
 			golden(t, tt.name, render(out.String(), err))
 		})
+	}
+}
+
+// TestCurrentDirectory checks that without paths, test searches the
+// working directory, every level of it, kind file included.
+func TestCurrentDirectory(t *testing.T) {
+	dir := t.TempDir()
+	inputs, err := filepath.Glob(filepath.Join("testdata", "access", "testdata", "*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := append([]string{"testdata/access.sigil", "testdata/access/main.sigil", "testdata/access/main_test.yaml"}, inputs...)
+	for _, f := range files {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		to := filepath.Join(dir, filepath.FromSlash(f)[len("testdata")+1:])
+		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(to, src, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(dir)
+	format := output.Text
+	var out bytes.Buffer
+	if err := runTests(context.Background(), &out, &options{output: &format}, project.Sources{}, "", false); err != nil {
+		t.Fatalf("runTests() = %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "ok    access/main_test.yaml") {
+		t.Errorf("output = %q, want access/main_test.yaml run", out.String())
 	}
 }
 

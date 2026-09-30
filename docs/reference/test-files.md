@@ -37,7 +37,7 @@ cases:
 ```
 
 - A test file is named `*_test.yaml` or `*_test.yml`, and lives next to the policies it tests, one file per policy.
-- `sigil test` finds test files in its paths recursively; `policytest.Run` in every directory of its `fs.FS`, skipping entries whose names start with `.`.
+- `sigil test` finds test files below its paths, the way every command reads [directories](/reference/cli/#inputs); `policytest.Run` in every directory of its `fs.FS`, skipping entries whose names start with `.`.
 
 | Key | Holds |
 | --- | --- |

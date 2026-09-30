@@ -17,7 +17,6 @@ import (
 
 	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
-	"github.com/spechtlabs/sigil/cmd/internal/usage"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/internal/bundle"
@@ -35,7 +34,7 @@ func NewCommand(opts ...Option) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:        "explain PATH...",
+		Use:        "explain [PATH...]",
 		SuggestFor: []string{"flatten", "expand", "show"},
 		Short:      "Flatten a policy into the guarded decisions it can produce",
 		Long: `Flattens a policy into one list of guarded decisions. Every policy invocation
@@ -44,9 +43,9 @@ rules' conditions, and params show as the values they are bound to. The result
 answers what a policy actually does without reading every document it invokes.
 
 Every PATH is a file, a directory, or "-" for stdin, and a file may hold several
-documents. All documents from all paths form one bundle, indexed by the names in
-their headers. A directory contributes the .sigil files directly inside it, or
-every one below it with --recursive. --policy names the policy to explain, or
+documents; with no PATH, explain reads the current directory. A directory
+contributes every .sigil file below it. All documents from all paths form one
+bundle, indexed by the names in their headers. --policy names the policy to explain, or
 a pattern such as 'payments.*' to explain several; without it, explain explains
 every policy in the bundle, one after another.
 
@@ -66,20 +65,22 @@ sigil explain --policy payments.production deploy_approval.sigil deploy/ payment
 
 # Review every policy in a ConfigMap's bundle against a kind file kept elsewhere
 sigil explain --kind deploy_approval.sigil policies.sigil`,
-		Args:              usage.AtLeast(1, "PATH"),
+		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: complete.SigilFiles,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kindFiles, _ := cmd.Flags().GetStringSlice("kind")
 			pattern, _ := cmd.Flags().GetString("policy")
-			recursive, _ := cmd.Flags().GetBool("recursive")
-			src := project.Sources{Paths: args, Kinds: kindFiles, Recursive: recursive, Stdin: cmd.InOrStdin()}
+			src := project.Sources{Paths: args, Kinds: kindFiles, Stdin: cmd.InOrStdin()}
 			return run(cmd.OutOrStdout(), o, pattern, src)
 		},
 	}
 
 	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policies' kinds are found among the paths and the kinds linked in (repeatable)")
 	cmd.Flags().StringP("policy", "p", "", "Name or pattern of the policies to explain; every policy in the bundle when omitted")
-	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories of directory arguments too")
+	// -R read subdirectories before every command did; it stays so scripts
+	// that pass it keep working.
+	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories too; always on")
+	_ = cmd.Flags().MarkDeprecated("recursive", "directories are always read recursively")
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagFilename("kind", "sigil")
 	_ = cmd.RegisterFlagCompletionFunc("policy", cobra.NoFileCompletions)
@@ -110,6 +111,9 @@ type Entry struct {
 }
 
 func run(out io.Writer, o *options, pattern string, src project.Sources) humane.Error {
+	if len(src.Paths) == 0 {
+		src.Paths = []string{"."}
+	}
 	proj, err := project.Load(src, o.kinds)
 	if err != nil {
 		return err

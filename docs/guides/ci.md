@@ -26,14 +26,14 @@ payments/production.sigil
 Check every document in the repository against the kind:
 
 ```text
-sigil check --recursive .
+sigil check
 ```
 
 `check` type-checks and compiles every document it's given, including ones no policy imports, so a broken document fails the pull request instead of failing the host's `Load` later. Errors fail the job; warnings from [lints](/reference/lints/) are printed and don't.
 
-`--recursive .` also picks up the checked-in `deploy_approval.sigil`, which is where `check` finds the kind the policies name, and checks the kind file itself. A repository with policies of several kinds checks them all in this one run. In a host binary, the kind file must match the kind linked in, so CI notices an export that wasn't regenerated.
+With no paths, `check` reads every `.sigil` file below the current directory. That includes the checked-in `deploy_approval.sigil`: `check` finds the kind the policies name there, and checks the kind file itself. A repository with policies of several kinds checks them all in this one run. In a host binary, the kind file must match the kind linked in, so CI notices an export that wasn't regenerated.
 
-Point it at the right directory. When the paths hold no `.sigil` files, `check` warns `no .sigil files found, so nothing was checked` and still exits 0, so a job that checks the wrong directory passes. Directory arguments contribute only the files directly inside them unless you pass `--recursive`.
+Point it at the right directory. When the paths hold no `.sigil` files, `check` warns `no .sigil files found, so nothing was checked` and still exits 0, so a job that checks the wrong directory passes.
 
 ### Set lint levels
 
@@ -70,7 +70,7 @@ sigil check \
      = help: the host requires deploy.guardrails for every DeployApproval policy; move the call to the top level
    ```
 
-2. **Pass the host's trusted source with `--trusted`.** Required policies, and everything they import and invoke, then come from `deploy/`, the way `policy.From` reads them in the host, and a team document that claims one of their names is an error. Use the same source the host uses; a trusted directory is always read recursively. A trusted directory that's also among the bundle paths, by name or through `--recursive .`, is read as trusted only.
+2. **Pass the host's trusted source with `--trusted`.** Required policies, and everything they import and invoke, then come from `deploy/`, the way `policy.From` reads them in the host, and a team document that claims one of their names is an error. Use the same source the host uses; a trusted directory is always read recursively. A trusted directory that's also among the bundle paths, by name or because it's below one, is read as trusted only.
 
 3. **Name the roots with `--policy`.** Give a name or a pattern per team, and add one when a team joins. A pattern that matches nothing is an error, so a renamed team can't drop out of the check unnoticed.
 
@@ -109,7 +109,7 @@ With `-o json`, `check` prints one record per diagnostic, with `severity`, `mess
 
 ```sh
 status=0
-sigil check --recursive . -o json > check.json || status=$?
+sigil check -o json > check.json || status=$?
 jq -r '.[] | "::\(.severity) file=\(.file),line=\(.line),col=\(.column),title=\(.lint // "sigil check")::\(.message)"' check.json
 exit "$status"
 ```
@@ -135,7 +135,7 @@ A test file that can't run at all, because it's invalid or its policy doesn't co
 ```sh
 set -eu
 sigil fmt --check .
-sigil check --recursive .
+sigil check
 sigil check \
   --require deploy.guardrails --trusted deploy/ \
   --policy 'payments.*' --policy 'checkout.*' \

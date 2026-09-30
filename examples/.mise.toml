@@ -37,7 +37,7 @@ run = "../custom-gcl run --config ../.golangci.yaml --build-tags e2e ./..."
 [tasks.policies]
 description = "Check the example deploy and access policies against the platform's guardrails and run their test files with sigilc"
 run = [
-  "go run ./cmd/sigilc check --config policies/sigil.yaml --require deploy.guardrails --trusted policies/platform/deploy --policy 'payments.*' --policy 'checkout.*' -R policies/teams",
+  "go run ./cmd/sigilc check --config policies/sigil.yaml --require deploy.guardrails --trusted policies/platform/deploy --policy 'payments.*' --policy 'checkout.*' policies/teams",
   "go run ./cmd/sigilc check --config policies/sigil.yaml --require access.guardrails --trusted policies/platform/access --policy access.main policies/access",
   "go run ./cmd/sigilc test policies",
 ]

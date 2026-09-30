@@ -124,6 +124,33 @@ func TestEvalErrors(t *testing.T) {
 	}
 }
 
+// TestCurrentDirectory checks that without paths, eval reads the working
+// directory, every level of it.
+func TestCurrentDirectory(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"access.sigil", "access/main.sigil", "inputs/admin.json"} {
+		src, err := os.ReadFile(filepath.Join("testdata", f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(f)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, f), src, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(dir)
+	format := output.Text
+	var out bytes.Buffer
+	if err := run(context.Background(), &out, &options{output: &format}, "inputs/admin.json", "", project.Sources{}); err != nil {
+		t.Fatalf("run() = %v", err)
+	}
+	if !strings.HasPrefix(out.String(), "access.main: allow(reason: admin)") {
+		t.Errorf("output = %q, want access.main's decision", out.String())
+	}
+}
+
 // bundleOf joins files into one self-contained bundle, the way a
 // ConfigMap key holds the kind and its policies.
 func bundleOf(t *testing.T, files ...string) string {

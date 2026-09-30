@@ -69,7 +69,7 @@ export fails the check.
 # the top level. This is the check the service makes when it loads the bundle.
 mise run sigilc check --config policies/sigil.yaml \
   --require deploy.guardrails --trusted policies/platform/deploy \
-  --policy 'payments.*' --policy 'checkout.*' -R policies/teams
+  --policy 'payments.*' --policy 'checkout.*' policies/teams
 
 # The same check for the access policy.
 mise run sigilc check --config policies/sigil.yaml \

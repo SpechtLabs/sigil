@@ -17,7 +17,7 @@ func TestExecute(t *testing.T) {
 	}{
 		{name: "success", args: []string{"--color=never", "version", "-o", "json"}, wantOut: `{"version":"1.2.3"`},
 		{name: "usage error is translated", args: []string{"--color=never", "chekc"}, wantCode: 1, wantErr: "did you mean sigil check?"},
-		{name: "missing argument", args: []string{"--color=never", "check"}, wantCode: 1, wantErr: "check needs at least one PATH"},
+		{name: "missing argument", args: []string{"--color=never", "breaking", "old.sigil"}, wantCode: 1, wantErr: "breaking needs OLD_KIND_FILE and NEW_KIND_FILE, got 1"},
 		{name: "failed command prints why", args: []string{"--color=never", "check", "--kind", "nope.sigil", "p.sigil"}, wantCode: 1, wantErr: "Error: the kind file couldn't be read"},
 	}
 	for _, tt := range tests {

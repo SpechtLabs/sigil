@@ -19,7 +19,6 @@ import (
 
 	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
-	"github.com/spechtlabs/sigil/cmd/internal/usage"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/report"
@@ -39,7 +38,7 @@ func NewCommand(opts ...Option) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:        "eval PATH...",
+		Use:        "eval [PATH...]",
 		Aliases:    []string{"evaluate"},
 		SuggestFor: []string{"run", "exec"},
 		Short:      "Evaluate a policy against a JSON input and show the trace",
@@ -47,9 +46,9 @@ func NewCommand(opts ...Option) *cobra.Command {
 trace: every candidate, the winner, and which of the winner's conditions held.
 
 Every PATH is a file, a directory, or "-" for stdin, and a file may hold several
-documents. All documents from all paths form one bundle, indexed by the names in
-their headers. A directory contributes the .sigil files directly inside it, or
-every one below it with --recursive. If the bundle holds exactly one policy,
+documents; with no PATH, eval reads the current directory. A directory
+contributes every .sigil file below it. All documents from all paths form one
+bundle, indexed by the names in their headers. If the bundle holds exactly one policy,
 that policy is evaluated; otherwise --policy names the one to evaluate.
 
 Each document's header names its kind, and the kind is found among the
@@ -77,14 +76,13 @@ sigil eval --input release.json --policy payments.production deploy_approval.sig
 
 # Read a self-contained bundle from stdin, for example a rendered ConfigMap key
 kustomize build . | yq '.data["policies.sigil"]' | sigil eval --input release.json --policy payments.production -`,
-		Args:              usage.AtLeast(1, "PATH"),
+		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: complete.SigilFiles,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kindFiles, _ := cmd.Flags().GetStringSlice("kind")
 			input, _ := cmd.Flags().GetString("input")
 			name, _ := cmd.Flags().GetString("policy")
-			recursive, _ := cmd.Flags().GetBool("recursive")
-			src := project.Sources{Paths: args, Kinds: kindFiles, Recursive: recursive, Stdin: cmd.InOrStdin()}
+			src := project.Sources{Paths: args, Kinds: kindFiles, Stdin: cmd.InOrStdin()}
 			return run(cmd.Context(), cmd.OutOrStdout(), o, input, name, src)
 		},
 	}
@@ -92,7 +90,10 @@ kustomize build . | yq '.data["policies.sigil"]' | sigil eval --input release.js
 	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policy's kind is found among the paths and the kinds linked in (repeatable)")
 	cmd.Flags().StringP("input", "i", "", `Input document (JSON) to evaluate the policy against, or "-" for stdin (required)`)
 	cmd.Flags().StringP("policy", "p", "", "Name of the policy to evaluate; required when the bundle holds more than one")
-	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories of directory arguments too")
+	// -R read subdirectories before every command did; it stays so scripts
+	// that pass it keep working.
+	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories too; always on")
+	_ = cmd.Flags().MarkDeprecated("recursive", "directories are always read recursively")
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagRequired("input")
 	_ = cmd.MarkFlagFilename("kind", "sigil")
@@ -103,6 +104,9 @@ kustomize build . | yq '.data["policies.sigil"]' | sigil eval --input release.js
 }
 
 func run(ctx context.Context, out io.Writer, o *options, input, name string, src project.Sources) humane.Error {
+	if len(src.Paths) == 0 {
+		src.Paths = []string{"."}
+	}
 	if input == "-" && slices.Contains(src.Paths, "-") {
 		return humane.New("the input and the bundle can't both come from stdin", "pass the input with --input FILE, or name the bundle's files")
 	}

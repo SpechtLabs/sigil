@@ -11,13 +11,14 @@
 //
 //	sigil <command> [flags] [PATH...]
 //
-// Every PATH is a file, a directory or "-" for stdin, and the documents
-// found in all of them form one bundle, indexed by the names in their
-// headers. Each document is checked against the kind its header names,
-// found among the paths, in a kind file named with --kind (-k), or linked
-// into a host binary; one run can hold documents of several kinds. Every
-// command takes two global flags: --output (-o) picks text,
-// json or yaml, and --color picks auto, always or never. Every command
+// Every PATH is a file, a directory, whose .sigil files at any depth are
+// read, or "-" for stdin; with no PATH, a command reads the current
+// directory. The documents found in all of them form one bundle, indexed
+// by the names in their headers. Each document is checked against the
+// kind its header names, found among the paths, in a kind file named with
+// --kind (-k), or linked into a host binary; one run can hold documents of
+// several kinds. Every command takes two global flags: --output (-o) picks
+// text, json or yaml, and --color picks auto, always or never. Every command
 // exits with status 0 on success and 1 on any failure.
 //
 // The commands are:
