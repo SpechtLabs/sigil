@@ -67,8 +67,10 @@ const failures: [string, Break, string, number][] = [
   ["a timeout", (e) => e.writeTeamFile(CHECKOUT_POLICY, slowPolicy(10_000)), "timeout", 503],
 ];
 
-async function brokenEnv(breakIt: Break): Promise<Env> {
-  const e = await newEnv({ evaluationTimeoutMs: 100 });
+// Only the timeout case gets a short evaluation timeout; the others keep the
+// env's generous one, so a busy machine can't turn their failure into a timeout.
+async function brokenEnv(breakIt: Break, kind = ""): Promise<Env> {
+  const e = await newEnv(kind === "timeout" ? { evaluationTimeoutMs: 100 } : {});
   breakIt(e);
   await e.reloadOK();
   e.resetSpans();
@@ -79,7 +81,7 @@ describe("A critical alert whose team evaluation fails", () => {
   test.each(failures)(
     "still pages the team's on-call through platform.paging: %s",
     async (_, breakIt, kind, status) => {
-      const e = await brokenEnv(breakIt);
+      const e = await brokenEnv(breakIt, kind);
 
       const a = await e.client.route(TEAM_CHECKOUT, firingAlert(CHECKOUT_ERROR_RATE, SEVERITY_CRITICAL));
       expectStatus(a, status);
@@ -108,8 +110,8 @@ describe("A critical alert whose team evaluation fails", () => {
     },
   );
 
-  test.each(failures)("pages from a webhook as well, as a failed result: %s", async (_, breakIt) => {
-    const e = await brokenEnv(breakIt);
+  test.each(failures)("pages from a webhook as well, as a failed result: %s", async (_, breakIt, kind) => {
+    const e = await brokenEnv(breakIt, kind);
     const alert = firing(
       "critical",
       alertLabels(TEAM_CHECKOUT, CHECKOUT_ERROR_RATE, SEVERITY_CRITICAL),

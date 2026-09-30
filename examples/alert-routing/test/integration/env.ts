@@ -64,6 +64,9 @@ export const failingRule = `${CHECKOUT_RULES}\n\nlet names = ["only"]\n\nwhen na
  */
 export const assertingRule = `${CHECKOUT_RULES}\n\nassert("names_service", alert.labels["service"] != "")\n`;
 
+/** The evaluation timeout of an env whose spec isn't about timeouts. */
+const GENEROUS_EVALUATION_TIMEOUT_MS = 1_000;
+
 /** The team policies the checkout ships. */
 const TEAMS_DIR = join(EXAMPLES_DIR, "policies", "teams");
 
@@ -107,7 +110,11 @@ export interface EnvOptions {
   embedded?: boolean;
   /** Builds the env without loading the bundle, the state before the first load succeeds. */
   unloaded?: boolean;
-  /** Bounds each evaluation instead of the service's default. */
+  /**
+   * Bounds each evaluation. It defaults to a generous second instead of the
+   * service's 50ms, so a busy machine can't turn a spec's decision into a
+   * timeout; the specs about timeouts set their own.
+   */
   evaluationTimeoutMs?: number;
   /**
    * Dispatches through the service's own LogNotifier, so a spec can read
@@ -281,7 +288,7 @@ export class Env {
       // The specs drive polls themselves; see tick.
       reloadIntervalMs: 0,
       shutdownTimeoutMs: 2_000,
-      evaluationTimeoutMs: opts.evaluationTimeoutMs ?? DEFAULTS.evaluationTimeoutMs,
+      evaluationTimeoutMs: opts.evaluationTimeoutMs ?? GENEROUS_EVALUATION_TIMEOUT_MS,
       dedupTtlMs: opts.dedupTtlMs ?? DEFAULTS.dedupTtlMs,
       batchTimeoutMs: opts.batchTimeoutMs ?? DEFAULTS.batchTimeoutMs,
       dedupMaxEntries: opts.dedupMaxEntries ?? DEFAULTS.dedupMaxEntries,
