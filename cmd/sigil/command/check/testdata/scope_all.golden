@@ -1,0 +1,21 @@
+<stdin>:4:1: error: expected an expression, found end of file
+  |
+4 | 
+  | ^
+
+testdata/scope/other/b.sigil:3:14 (scope.b): error: unknown field "teir" on type Service
+  |
+3 | when service.teir == "critical" {
+  |              ^^^^
+  = help: did you mean "tier"? Service declares: name, tier, owners, labels
+
+testdata/scope/other/c.sigil:3:5 (scope.c): error: unknown document `scope.missing`
+  |
+3 | use scope.missing
+  |     ^^^^^^^^^^^^^
+  = help: `use` names a policy or module by the name in its header, wherever its file is
+
+✗ checked 6 files, 3 errors
+--- error ---
+check found 3 errors
+advice: each diagnostic above says where the problem is and how to fix it

@@ -1,0 +1,10 @@
+access.main: allow(reason: team_member)
+  ttl = 1h
+  scopes = []
+
+trace: 1 candidate
+  * allow(reason: team_member)  testdata/access/main.sigil:10:3
+      when "platform" in user.teams
+      ttl = 1h
+      scopes = []
+--- ok ---

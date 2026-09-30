@@ -31,7 +31,7 @@ func TestEval(t *testing.T) {
 		name     string
 		kind     string // access, grants, reviews or tiers
 		kindFile string // the kind file under testdata, without .sigil; the kind's own when empty
-		input    string // under testdata/inputs, or "-" for stdin
+		input    string // under testdata/inputs, "-" for stdin, or empty for no --input
 		stdin    string
 		policy   string
 		format   output.Format
@@ -52,6 +52,11 @@ func TestEval(t *testing.T) {
 		{name: "duration_as_number", kind: access, input: "number_age.json"},
 		{name: "invalid_json", kind: access, input: "broken.json"},
 		{name: "stdin", kind: access, input: "-", stdin: `{"user": {"name": "cy", "teams": ["platform"]}}`},
+		{name: "stdin_implicit", kind: access, stdin: `{"user": {"name": "cy", "teams": ["platform"]}}`},
+		{name: "stdin_yaml", kind: access, stdin: "user: {name: cy, teams: [platform]}\n"},
+		{name: "yaml_file", kind: access, input: "admin.yaml"},
+		{name: "neither_json_nor_yaml", kind: access, input: "garbage.txt"},
+		{name: "stdin_unknown_field", kind: access, stdin: `{"user": {"admn": true}}`},
 		{name: "named_policy", kind: access, input: "admin.json", policy: "access.main"},
 		{name: "unknown_policy", kind: access, input: "admin.json", policy: "access.nope"},
 		{name: "collect", kind: grants, input: "grants.json"},
@@ -77,7 +82,7 @@ func TestEval(t *testing.T) {
 				format = output.Text
 			}
 			input := tt.input
-			if input != "-" {
+			if input != "-" && input != "" {
 				input = filepath.Join("testdata", "inputs", input)
 			}
 			kindFile := tt.kindFile
@@ -89,7 +94,7 @@ func TestEval(t *testing.T) {
 				src.Paths, src.Kinds = tt.paths, nil
 			}
 			var out bytes.Buffer
-			err := run(context.Background(), &out, &options{output: &format}, input, tt.policy, src)
+			err := run(context.Background(), &out, &options{output: &format}, request{src: src, input: input, policy: tt.policy})
 			golden(t, tt.name, render(out.String(), err))
 		})
 	}
@@ -99,11 +104,13 @@ func TestEval(t *testing.T) {
 // evaluated.
 func TestEvalErrors(t *testing.T) {
 	tests := []struct {
-		name    string
-		kind    string
-		input   string
-		paths   []string
-		wantErr string
+		name     string
+		kind     string
+		input    string
+		paths    []string
+		stdin    string
+		terminal bool
+		wantErr  string
 	}{
 		{name: "input and bundle from stdin", kind: "testdata/access.sigil", input: "-", paths: []string{"-"}, wantErr: "can't both come from stdin"},
 		{name: "several policies", kind: "testdata/access.sigil", input: "testdata/inputs/admin.json", paths: []string{"testdata/access", "testdata/multi.sigil"}, wantErr: "the bundle holds several policies"},
@@ -111,12 +118,15 @@ func TestEvalErrors(t *testing.T) {
 		{name: "missing input", kind: "testdata/access.sigil", input: "testdata/inputs/nope.json", paths: []string{"testdata/access"}, wantErr: "the input couldn't be read"},
 		{name: "missing kind", kind: "testdata/nope.sigil", input: "testdata/inputs/admin.json", paths: []string{"testdata/access"}, wantErr: "the kind file couldn't be read"},
 		{name: "wrong kind", kind: "testdata/grants.sigil", input: "testdata/inputs/admin.json", paths: []string{"testdata/access"}, wantErr: "the bundle doesn't check"},
+		{name: "no input on a terminal", kind: "testdata/access.sigil", paths: []string{"testdata/access"}, terminal: true, wantErr: "--input is required when stdin is a terminal"},
+		{name: "no input with the bundle on stdin", kind: "testdata/access.sigil", paths: []string{"-"}, wantErr: "--input is required when the bundle comes from stdin"},
+		{name: "empty stdin", kind: "testdata/access.sigil", paths: []string{"testdata/access"}, stdin: " \n", wantErr: "the input from stdin is empty"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			format := output.Text
-			src := project.Sources{Paths: tt.paths, Kinds: []string{tt.kind}, Stdin: strings.NewReader("")}
-			err := run(context.Background(), &bytes.Buffer{}, &options{output: &format}, tt.input, "", src)
+			src := project.Sources{Paths: tt.paths, Kinds: []string{tt.kind}, Stdin: strings.NewReader(tt.stdin)}
+			err := run(context.Background(), &bytes.Buffer{}, &options{output: &format}, request{src: src, input: tt.input, terminal: tt.terminal})
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("run() = %v, want %q", err, tt.wantErr)
 			}
@@ -143,7 +153,7 @@ func TestCurrentDirectory(t *testing.T) {
 	t.Chdir(dir)
 	format := output.Text
 	var out bytes.Buffer
-	if err := run(context.Background(), &out, &options{output: &format}, "inputs/admin.json", "", project.Sources{}); err != nil {
+	if err := run(context.Background(), &out, &options{output: &format}, request{input: "inputs/admin.json"}); err != nil {
 		t.Fatalf("run() = %v", err)
 	}
 	if !strings.HasPrefix(out.String(), "access.main: allow(reason: admin)") {
@@ -193,5 +203,18 @@ func golden(t *testing.T, name, got string) {
 	}
 	if got != string(want) {
 		t.Errorf("output differs from %s (run with -update to accept):\n--- got ---\n%s\n--- want ---\n%s", path, got, want)
+	}
+}
+
+// TestIsTerminal checks that neither a reader nor a regular file counts
+// as a terminal, so eval reads them as the input.
+func TestIsTerminal(t *testing.T) {
+	f, err := os.Open(filepath.Join("testdata", "inputs", "admin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	if isTerminal(strings.NewReader("")) || isTerminal(f) {
+		t.Error("isTerminal() = true for a reader or a regular file")
 	}
 }

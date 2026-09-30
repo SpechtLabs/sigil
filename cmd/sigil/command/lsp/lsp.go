@@ -1,7 +1,7 @@
 // Package lsp implements the `sigil lsp` command, which will run the Sigil
-// language server over stdin and stdout. It isn't implemented yet.
-// [NewCommand] registers the command with its help and flags, and running
-// it reports a not-implemented error.
+// language server over stdin and stdout. It isn't implemented yet, so
+// it's hidden from the root help. [NewCommand] registers the command with
+// its help and flags, and running it reports a not-implemented error.
 package lsp
 
 import (
@@ -23,7 +23,9 @@ func NewCommand(opts ...Option) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:        "lsp",
 		SuggestFor: []string{"language-server", "server"},
-		Short:      "Run the Sigil language server (planned)",
+		// Hidden from help until it is implemented; it still runs.
+		Hidden: true,
+		Short:  "Run the Sigil language server (planned)",
 		Long: `Planned: this command is not implemented yet, and exits with an error.
 
 Runs the Sigil language server, which editors start in the background. It

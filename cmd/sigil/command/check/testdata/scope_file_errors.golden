@@ -1,0 +1,16 @@
+<stdin>:1:1: error: expected a document header (`policy`, `module` or `kind`), found `stray`
+  |
+1 | stray text before the header
+  | ^^^^^
+  = help: every document starts with `policy name: Kind`, `module name: Kind` or `kind Name version N`
+
+<stdin>:5:14 (scope.stray): error: unknown field "teir" on type Service
+  |
+5 | when service.teir == "critical" {
+  |              ^^^^
+  = help: did you mean "tier"? Service declares: name, tier, owners, labels
+
+✗ checked 6 files, 2 errors
+--- error ---
+check found 2 errors
+advice: each diagnostic above says where the problem is and how to fix it

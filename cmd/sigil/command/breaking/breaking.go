@@ -1,8 +1,9 @@
 // Package breaking implements the `sigil breaking` command, which will
 // compare two versions of a kind file and flag the changes that break
-// existing policies. It isn't implemented yet. [NewCommand] registers the
-// command with its help and argument checks, and running it reports a
-// not-implemented error, as text or as a JSON or YAML error record.
+// existing policies. It isn't implemented yet, so it's hidden from the
+// root help. [NewCommand] registers the command with its help and argument
+// checks, and running it reports a not-implemented error, as text or as a
+// JSON or YAML error record.
 package breaking
 
 import (
@@ -25,7 +26,9 @@ func NewCommand(opts ...Option) *cobra.Command {
 	return &cobra.Command{
 		Use:        "breaking OLD_KIND_FILE NEW_KIND_FILE",
 		SuggestFor: []string{"compat", "compatible", "diff"},
-		Short:      "Detect kind changes that break existing policies (planned)",
+		// Hidden from help until it is implemented; it still runs.
+		Hidden: true,
+		Short:  "Detect kind changes that break existing policies (planned)",
 		Long: `Planned: this command is not implemented yet, and exits with an error.
 
 Compares two versions of a kind file and flags changes that would break

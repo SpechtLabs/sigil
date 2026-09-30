@@ -14,6 +14,7 @@
 package command
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -31,8 +32,10 @@ import (
 	"github.com/spechtlabs/sigil/cmd/sigil/command/version"
 )
 
-// Command groups, in the order help lists them. Every subcommand belongs to
-// one; the root assigns them so subcommand packages stay unaware of the layout.
+// Command groups, in the order help lists them. Every subcommand help lists
+// belongs to one; the root assigns them so subcommand packages stay unaware
+// of the layout. A group whose commands are all hidden, such as the planned
+// ones, isn't added, so help shows no empty heading.
 var (
 	groupPolicy = &cobra.Group{ID: "policy", Title: "Policy commands"}
 	groupKind   = &cobra.Group{ID: "kind", Title: "Kind commands"}
@@ -61,11 +64,14 @@ func NewCommand(opts ...Option) *cobra.Command {
 or review. Every decision carries a reason and a payload, every policy is
 type-checked against a kind the host defines in Go, and every evaluation is
 guaranteed to halt.`,
-		Example: `# Type-check a policy against its kind
-sigil check --kind deploy_approval.sigil deploy/production.sigil
+		Example: `# Type-check every policy in the current directory against its kind
+sigil check
 
-# Evaluate it against an input and see why it decided what it did
-sigil eval --kind deploy_approval.sigil --input release.json deploy/production.sigil`,
+# Evaluate a policy against an input and see why it decided what it did
+sigil eval --input release.json --policy payments.production
+
+# Run the policy tests
+sigil test`,
 		// No Args validator: cobra then reports an unknown subcommand and
 		// suggests the closest one.
 		SilenceUsage:  true,
@@ -81,7 +87,6 @@ sigil eval --kind deploy_approval.sigil --input release.json deploy/production.s
 	_ = cmd.RegisterFlagCompletionFunc("output", cobra.FixedCompletions(output.Formats, cobra.ShellCompDirectiveNoFileComp))
 	_ = cmd.RegisterFlagCompletionFunc("color", cobra.FixedCompletions(output.Colors, cobra.ShellCompDirectiveNoFileComp))
 
-	cmd.AddGroup(groupPolicy, groupKind, groupEditor, groupOther)
 	cmd.SetHelpCommandGroupID(groupOther.ID)
 	cmd.SetCompletionCommandGroupID(groupOther.ID)
 	addCommands(cmd, o, &outputFormat)
@@ -90,9 +95,10 @@ sigil eval --kind deploy_approval.sigil --input release.json deploy/production.s
 }
 
 // addCommands attaches every subcommand to root, in its help group. Each
-// one reads the root --output flag through outputFormat.
+// one reads the root --output flag through outputFormat. The planned
+// commands, and export when no kind is linked, hide themselves.
 func addCommands(root *cobra.Command, o *options, outputFormat *output.Format) {
-	addToGroup(root, groupPolicy.ID,
+	addToGroup(root, groupPolicy,
 		format.NewCommand(format.WithOutput(outputFormat)),
 		check.NewCommand(
 			check.WithOutput(outputFormat),
@@ -111,7 +117,7 @@ func addCommands(root *cobra.Command, o *options, outputFormat *output.Format) {
 			test.WithKinds(o.kinds),
 		),
 	)
-	addToGroup(root, groupKind.ID,
+	addToGroup(root, groupKind,
 		export.NewCommand(
 			export.WithOutput(outputFormat),
 			export.WithKinds(o.kinds),
@@ -119,10 +125,10 @@ func addCommands(root *cobra.Command, o *options, outputFormat *output.Format) {
 		breaking.NewCommand(breaking.WithOutput(outputFormat)),
 		gen.NewCommand(gen.WithOutput(outputFormat)),
 	)
-	addToGroup(root, groupEditor.ID,
+	addToGroup(root, groupEditor,
 		lsp.NewCommand(lsp.WithOutput(outputFormat)),
 	)
-	addToGroup(root, groupOther.ID,
+	addToGroup(root, groupOther,
 		version.NewCommand(
 			version.WithVersion(o.version),
 			version.WithOutput(outputFormat),
@@ -130,9 +136,15 @@ func addCommands(root *cobra.Command, o *options, outputFormat *output.Format) {
 	)
 }
 
-func addToGroup(parent *cobra.Command, groupID string, cmds ...*cobra.Command) {
-	for _, c := range cmds {
-		c.GroupID = groupID
+// addToGroup attaches cmds to parent in group. The group is added to
+// parent when help lists one of cmds; otherwise they are all hidden, and
+// stay out of every group.
+func addToGroup(parent *cobra.Command, group *cobra.Group, cmds ...*cobra.Command) {
+	if slices.ContainsFunc(cmds, func(c *cobra.Command) bool { return !c.Hidden }) {
+		parent.AddGroup(group)
+		for _, c := range cmds {
+			c.GroupID = group.ID
+		}
 	}
 	parent.AddCommand(cmds...)
 }

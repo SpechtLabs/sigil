@@ -1,0 +1,12 @@
+- file: a.sigil
+  formatted: false
+  diff: |
+    --- a.sigil.orig
+    +++ a.sigil
+    @@ -1,2 +1,3 @@
+     policy a: K@1
+    -when x==1{deny( r )}
+    +
+    +when x == 1 { deny(reason: r) }
+- file: b.sigil
+  formatted: true

@@ -1,0 +1,5 @@
+policy scope.guard: DeployApproval@1
+
+when not release.hotfix {
+  deny(reason: soak_too_short)
+}

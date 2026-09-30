@@ -19,6 +19,16 @@ var update = flag.Bool("update", false, "rewrite the golden files under testdata
 // TestCheck runs check over the testdata bundles and compares what it
 // prints, and the error it fails with, with the golden files.
 func TestCheck(t *testing.T) {
+	// What --policy leaves out and keeps: a parse error in another file,
+	// one in the file of the policy it checks, and a second scope.lib,
+	// which scope.a uses and scope.b doesn't. They come from stdin, since
+	// every .sigil file in the repository must be formatted and defined
+	// once.
+	const (
+		redefined = "module scope.lib: DeployApproval@1\n\npub let hotfix = true\n"
+		broken    = "policy scope.broken: DeployApproval@1\n\nwhen {\n"
+		stray     = "stray text before the header\n\npolicy scope.stray: DeployApproval@1\n\nwhen service.teir == \"critical\" {\n  approve(reason: release_manager)\n}\n"
+	)
 	tests := []struct {
 		name     string
 		config   string // under testdata/config; defaults.yaml when empty
@@ -29,6 +39,7 @@ func TestCheck(t *testing.T) {
 		patterns []string
 		requires []string
 		noKind   bool // no --kind: the kinds come from the paths
+		stdin    string
 	}{
 		{name: "lints", paths: []string{"testdata/lints"}},
 		{name: "lints_strict", config: "strict.yaml", paths: []string{"testdata/lints"}},
@@ -51,6 +62,15 @@ func TestCheck(t *testing.T) {
 		{name: "require_other_kind", paths: []string{"testdata/multikind"}, requires: []string{"roles.main"}, noKind: true},
 		{name: "require_missing", paths: []string{"testdata/multikind"}, requires: []string{"nope.guard"}, noKind: true},
 		{name: "unknown_kind", paths: []string{"testdata/unknown_kind"}, noKind: true},
+		{name: "scope_all", paths: []string{"testdata/scope", "-"}, stdin: broken},
+		{name: "scope_policy", paths: []string{"testdata/scope", "-"}, stdin: broken, patterns: []string{"scope.a"}},
+		{name: "scope_file_errors", paths: []string{"testdata/scope", "-"}, stdin: stray, patterns: []string{"scope.stray"}},
+		{name: "scope_no_match", paths: []string{"testdata/scope"}, patterns: []string{"scope.nope"}},
+		{name: "scope_unknown_use", paths: []string{"testdata/scope"}, patterns: []string{"scope.c"}},
+		{name: "scope_redefined", paths: []string{"testdata/scope", "-"}, stdin: redefined, patterns: []string{"scope.a"}},
+		{name: "scope_redefined_elsewhere", paths: []string{"testdata/scope", "-"}, stdin: redefined, patterns: []string{"scope.b"}},
+		{name: "scope_require", paths: []string{"testdata/scope", "-"}, stdin: broken, patterns: []string{"scope.a"}, requires: []string{"scope.guard"}},
+		{name: "scope_trusted", paths: []string{"testdata/scope"}, trusted: []string{"testdata/scope/team/lib.sigil"}, patterns: []string{"scope.a"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -70,7 +90,7 @@ func TestCheck(t *testing.T) {
 				kinds = []string{tt.kind}
 			}
 			var out bytes.Buffer
-			src := project.Sources{Paths: tt.paths, Trusted: tt.trusted, Kinds: kinds, Stdin: strings.NewReader("")}
+			src := project.Sources{Paths: tt.paths, Trusted: tt.trusted, Kinds: kinds, Stdin: strings.NewReader(tt.stdin)}
 			err := run(&out, &options{output: &format}, filepath.Join("testdata", "config", config), src, tt.patterns, tt.requires)
 			golden(t, tt.name, render(out.String(), err))
 		})

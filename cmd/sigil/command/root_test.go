@@ -2,6 +2,7 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
@@ -51,7 +52,7 @@ func TestCommandSurface(t *testing.T) {
 		{args: []string{"check", "--kind", "k.sigil", "--recursive", "."}, wantErr: noKindFile},
 		{args: []string{"check", "-k", "k.sigil", "--require", "deploy.guardrails", "--trusted", "deploy/", "-p", "payments.*", "payments/"}, wantErr: noKindFile},
 		{args: []string{"eval", "--kind", "k.sigil", "--input", "in.json", "p.sigil"}, wantErr: noKindFile},
-		{args: []string{"eval", "--kind", "k.sigil", "p.sigil"}, wantErr: `required flag(s) "input" not set`},
+		{args: []string{"eval", "--kind", "k.sigil", "-"}, wantErr: "--input is required when the bundle comes from stdin"},
 		{args: []string{"eval", "-k", "k.sigil", "-i", "in.json", "-p", "payments.production", "-R", "deploy/", "payments/"}, wantErr: noKindFile},
 		{args: []string{"eval", "--kind", "k.sigil", "--input", "-", "-"}, wantErr: "can't both come from stdin"},
 		{args: []string{"eval", "--kind", "k.sigil", "--input", "in.json"}, wantErr: noKindFile},
@@ -73,7 +74,8 @@ func TestCommandSurface(t *testing.T) {
 		{args: []string{"lsp"}, wantErr: notImplemented},
 		{args: []string{"fmt", "--write", "--check"}, wantErr: "none of the others can be"},
 		{args: []string{"evaluate", "-k", "k.sigil", "-i", "in.json", "p.sigil"}, wantErr: noKindFile},
-		{args: []string{"schema"}, wantErr: "Did you mean this?\n\texport"},
+		// export is hidden without a linked kind, so nothing suggests it.
+		{args: []string{"schema"}, wantErr: `unknown command "schema" for "sigil"`},
 		{args: []string{"generate", "golang", "k.sigil"}, wantErr: notImplemented},
 		{args: []string{"chek"}, wantErr: "Did you mean this?\n\tcheck"},
 		{args: []string{"validate"}, wantErr: "Did you mean this?\n\tcheck"},
@@ -99,10 +101,10 @@ func TestCommandSurface(t *testing.T) {
 }
 
 // TestEveryCommandIsDocumented keeps help output complete: every command needs
-// a short and long description and examples, and every top-level command a
-// help group.
+// a short and long description and examples, and every top-level command help
+// lists a help group. It builds a host binary, so export is listed too.
 func TestEveryCommandIsDocumented(t *testing.T) {
-	root := NewCommand()
+	root := NewCommand(WithKind(hostAccess))
 
 	var walk func(c *cobra.Command)
 	walk = func(c *cobra.Command) {
@@ -116,7 +118,7 @@ func TestEveryCommandIsDocumented(t *testing.T) {
 			if c.Example == "" {
 				t.Error("missing Example")
 			}
-			if c.Parent() == root && c.GroupID == "" {
+			if c.Parent() == root && !c.Hidden && c.GroupID == "" {
 				t.Error("missing GroupID")
 			}
 		})
@@ -174,5 +176,69 @@ func TestOutputFlagReachesEveryCommand(t *testing.T) {
 				t.Errorf("output = %q, want it to start with %q", out.String(), tt.want)
 			}
 		})
+	}
+}
+
+// TestHelpListsWhatRuns checks the root help: the planned commands are
+// hidden, and export is hidden unless a kind is linked in, which also
+// leaves a group whose commands are all hidden out of the help. Hidden
+// commands still run, and a host binary still suggests export.
+func TestHelpListsWhatRuns(t *testing.T) {
+	tests := []struct {
+		name   string
+		opts   []Option
+		listed []string // commands and groups the help shows
+		absent []string // commands and groups it doesn't
+	}{
+		{
+			name:   "stock binary",
+			listed: []string{"POLICY COMMANDS", "fmt [PATH...]", "OTHER COMMANDS", "version"},
+			absent: []string{"KIND COMMANDS", "EDITOR INTEGRATION", "export", "breaking", "gen", "lsp", "--kind"},
+		},
+		{
+			name:   "host binary",
+			opts:   []Option{WithKind(hostAccess)},
+			listed: []string{"POLICY COMMANDS", "KIND COMMANDS", "export [KIND]", "OTHER COMMANDS"},
+			absent: []string{"EDITOR INTEGRATION", "breaking", "gen", "lsp"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("NO_COLOR", "")
+			t.Setenv("CLICOLOR_FORCE", "")
+			cmd := NewCommand(tt.opts...)
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&bytes.Buffer{})
+			if code := Execute(context.Background(), cmd, []string{"--color=never", "--help"}); code != 0 {
+				t.Fatalf("Execute() = %d", code)
+			}
+			help := out.String()
+			for _, s := range tt.listed {
+				if !strings.Contains(help, s) {
+					t.Errorf("help doesn't list %q:\n%s", s, help)
+				}
+			}
+			for _, s := range tt.absent {
+				if strings.Contains(help, s) {
+					t.Errorf("help lists %q:\n%s", s, help)
+				}
+			}
+			// cobra's own usage template prints every group it knows,
+			// so an empty one shows up there as a bare heading.
+			if usage := cmd.UsageString(); strings.Contains(usage, groupEditor.Title) {
+				t.Errorf("usage lists the empty %q group:\n%s", groupEditor.Title, usage)
+			}
+			if got := cmd.ContainsGroup(groupKind.ID); got != (len(tt.opts) > 0) {
+				t.Errorf("ContainsGroup(%q) = %v, want it only with a linked kind", groupKind.ID, got)
+			}
+		})
+	}
+
+	host := NewCommand(WithKind(hostAccess))
+	host.SetOut(&bytes.Buffer{})
+	host.SetArgs([]string{"schema"})
+	if err := host.Execute(); err == nil || !strings.Contains(err.Error(), "Did you mean this?\n\texport") {
+		t.Errorf("Execute(schema) in a host binary = %v, want a suggestion of export", err)
 	}
 }

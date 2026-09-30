@@ -1,0 +1,8 @@
+# The admin input of admin.json, as YAML
+user:
+  name: ada
+  admin: true
+  expires: 2026-09-30T12:00:00Z
+age: 2h
+labels:
+  tier: 1

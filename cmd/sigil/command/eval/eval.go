@@ -1,7 +1,7 @@
 // Package eval implements the `sigil eval` command. It compiles the root
-// policy of a bundle, decodes a JSON input into the kind's input types,
-// evaluates the policy, and prints the decision with its full trace, as
-// package report renders it. The command fails when the evaluation does:
+// policy of a bundle, decodes a JSON or YAML input into the kind's input
+// types, evaluates the policy, and prints the decision with its full
+// trace, as package report renders it. The command fails when the evaluation does:
 // on a runtime error, a conflict or a failing assert.
 package eval
 
@@ -9,10 +9,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"slices"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/sierrasoftworks/humane-errors-go"
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
@@ -26,6 +29,19 @@ import (
 	"github.com/spechtlabs/sigil/internal/eval"
 	"github.com/spechtlabs/sigil/internal/result"
 )
+
+// inputHelp describes the input, in advice on one eval can't use.
+const inputHelp = "the input is a JSON or YAML object with one key per input the kind declares"
+
+// request is what one run of eval was asked for on the command line.
+type request struct {
+	src    project.Sources
+	input  string // --input: a file, "-" for stdin, or empty to read stdin unless terminal is set
+	policy string // --policy: the root's name; empty for the bundle's only policy
+	// terminal is set when stdin is a terminal, which eval never waits on
+	// for an input nobody asked it to read.
+	terminal bool
+}
 
 // NewCommand returns the eval command, configured by opts. Without
 // [WithOutput] it prints text, and without [WithKinds] the kinds come from
@@ -41,8 +57,8 @@ func NewCommand(opts ...Option) *cobra.Command {
 		Use:        "eval [PATH...]",
 		Aliases:    []string{"evaluate"},
 		SuggestFor: []string{"run", "exec"},
-		Short:      "Evaluate a policy against a JSON input and show the trace",
-		Long: `Evaluates a policy against a JSON input and prints the decision with its full
+		Short:      "Evaluate a policy against an input and show the trace",
+		Long: `Evaluates a policy against an input and prints the decision with its full
 trace: every candidate, the winner, and which of the winner's conditions held.
 
 Every PATH is a file, a directory, or "-" for stdin, and a file may hold several
@@ -57,10 +73,12 @@ policies. --kind adds a kind file the paths don't hold, and a host binary has
 its kinds linked in. The same kind from two sources must be identical, which
 catches a stale export.
 
-The input is a JSON object with one key per input. A key the kind doesn't
-declare is an error, and a missing one reads as its zero value. Durations are
-strings in Sigil's syntax ("1h30m"), timestamps RFC 3339 strings, and only
-optionals, lists and maps may be null.
+The input is a JSON or YAML object with one key per input. A key the kind
+doesn't declare is an error, and a missing one reads as its zero value.
+Durations are strings in Sigil's syntax ("1h30m"), timestamps RFC 3339 strings,
+and only optionals, lists and maps may be null. --input names the file, or "-"
+for stdin; without it, eval reads the input from stdin, unless stdin is a
+terminal or the bundle comes from stdin.
 
 The stock sigil binary knows the host functions' signatures but not their
 implementations, so a rule that calls one fails with a runtime error. A host
@@ -74,6 +92,9 @@ sigil eval --kind deploy_approval.sigil --input release.json gate.sigil
 # Pick the root policy from the documents in two directories and the kind file
 sigil eval --input release.json --policy payments.production deploy_approval.sigil deploy/ payments/
 
+# Pipe the input in, as JSON or YAML, and read the policies from the current directory
+yq '.release' request.yaml | sigil eval --policy payments.production
+
 # Read a self-contained bundle from stdin, for example a rendered ConfigMap key
 kustomize build . | yq '.data["policies.sigil"]' | sigil eval --input release.json --policy payments.production -`,
 		Args:              cobra.ArbitraryArgs,
@@ -82,35 +103,44 @@ kustomize build . | yq '.data["policies.sigil"]' | sigil eval --input release.js
 			kindFiles, _ := cmd.Flags().GetStringSlice("kind")
 			input, _ := cmd.Flags().GetString("input")
 			name, _ := cmd.Flags().GetString("policy")
-			src := project.Sources{Paths: args, Kinds: kindFiles, Stdin: cmd.InOrStdin()}
-			return run(cmd.Context(), cmd.OutOrStdout(), o, input, name, src)
+			return run(cmd.Context(), cmd.OutOrStdout(), o, request{
+				src:      project.Sources{Paths: args, Kinds: kindFiles, Stdin: cmd.InOrStdin()},
+				input:    input,
+				policy:   name,
+				terminal: isTerminal(cmd.InOrStdin()),
+			})
 		},
 	}
 
+	addFlags(cmd)
+	return cmd
+}
+
+// addFlags declares the eval command's flags.
+func addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policy's kind is found among the paths and the kinds linked in (repeatable)")
-	cmd.Flags().StringP("input", "i", "", `Input document (JSON) to evaluate the policy against, or "-" for stdin (required)`)
+	cmd.Flags().StringP("input", "i", "", `Input document (JSON or YAML) to evaluate the policy against, or "-" for stdin; stdin when omitted and it isn't a terminal`)
 	cmd.Flags().StringP("policy", "p", "", "Name of the policy to evaluate; required when the bundle holds more than one")
 	// -R read subdirectories before every command did; it stays so scripts
 	// that pass it keep working.
 	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories too; always on")
 	_ = cmd.Flags().MarkDeprecated("recursive", "directories are always read recursively")
 	// These only fail for an undefined flag, which the tests would catch.
-	_ = cmd.MarkFlagRequired("input")
 	_ = cmd.MarkFlagFilename("kind", "sigil")
-	_ = cmd.MarkFlagFilename("input", "json")
-	_ = cmd.RegisterFlagCompletionFunc("policy", cobra.NoFileCompletions)
-
-	return cmd
+	_ = cmd.MarkFlagFilename("input", "json", "yaml", "yml")
+	_ = cmd.RegisterFlagCompletionFunc("policy", complete.Policies)
 }
 
-func run(ctx context.Context, out io.Writer, o *options, input, name string, src project.Sources) humane.Error {
+func run(ctx context.Context, out io.Writer, o *options, req request) humane.Error {
+	src := req.src
 	if len(src.Paths) == 0 {
 		src.Paths = []string{"."}
 	}
-	if input == "-" && slices.Contains(src.Paths, "-") {
-		return humane.New("the input and the bundle can't both come from stdin", "pass the input with --input FILE, or name the bundle's files")
+	input, err := inputFile(req.input, slices.Contains(src.Paths, "-"), req.terminal)
+	if err != nil {
+		return err
 	}
-	k, prog, err := compile(o, name, src)
+	k, prog, err := compile(o, req.policy, src)
 	if err != nil {
 		return err
 	}
@@ -133,6 +163,29 @@ func run(ctx context.Context, out io.Writer, o *options, input, name string, src
 		return pretty.Fail("the evaluation failed; the host would act on the fallback shown above", r.Error.Help)
 	}
 	return nil
+}
+
+// inputFile returns where the input comes from: the file --input names,
+// or "-" for stdin, which is also where it comes from without --input,
+// unless stdin holds the bundle or is a terminal.
+func inputFile(input string, bundleFromStdin, terminal bool) (string, humane.Error) {
+	switch {
+	case input == "-" && bundleFromStdin:
+		return "", humane.New("the input and the bundle can't both come from stdin", "pass the input with --input FILE, or name the bundle's files")
+	case input != "":
+		return input, nil
+	case bundleFromStdin:
+		return "", humane.New("--input is required when the bundle comes from stdin", "name the input file with --input")
+	case terminal:
+		return "", humane.New("--input is required when stdin is a terminal", "name the input file with --input, or pipe the input in, such as `sigil eval < release.json`")
+	}
+	return "-", nil
+}
+
+// isTerminal reports whether r is a terminal.
+func isTerminal(r io.Reader) bool {
+	f, ok := r.(interface{ Fd() uintptr })
+	return ok && term.IsTerminal(f.Fd())
 }
 
 // compile loads the project and compiles the root policy against its
@@ -158,7 +211,8 @@ func compile(o *options, name string, src project.Sources) (*project.Kind, *eval
 	return g.Kind, prog, nil
 }
 
-// readInput reads and parses the input document.
+// readInput reads and parses the input document: as JSON, with its
+// numbers kept as [json.Number], and as YAML when it isn't JSON.
 func readInput(file string, stdin io.Reader) (any, humane.Error) {
 	var data []byte
 	var err error
@@ -168,24 +222,36 @@ func readInput(file string, stdin io.Reader) (any, humane.Error) {
 		data, err = os.ReadFile(file) //nolint:gosec // the path comes from the command line, which is the point
 	}
 	if err != nil {
-		return nil, humane.Wrap(err, "the input couldn't be read", "pass a JSON file with --input, or - for stdin")
+		return nil, humane.Wrap(err, "the input couldn't be read", "name a JSON or YAML file with --input, or - for stdin")
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, humane.New(inputName(file)+" is empty", "pipe the input in, or name the input file with --input")
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 	var raw any
-	if err := dec.Decode(&raw); err != nil {
-		name := file
-		if file == "-" {
-			name = "the input from stdin"
-		}
-		return nil, humane.Wrap(err, name+" isn't valid JSON: "+err.Error(), "the input is a JSON object with one key per input the kind declares")
+	jerr := dec.Decode(&raw)
+	if jerr == nil {
+		return raw, nil
+	}
+	if yerr := yaml.Unmarshal(data, &raw); yerr != nil {
+		return nil, humane.Wrap(errors.Join(jerr, yerr), fmt.Sprintf("%s is neither JSON (%v) nor YAML (%v)", inputName(file), jerr, yerr), inputHelp)
 	}
 	return raw, nil
 }
 
 // decodeError explains an input that doesn't fit the kind.
 func decodeError(file string, err humane.Error) humane.Error {
-	return humane.New(file+": "+err.Error(), append(err.Advice(), "the input is a JSON object with one key per input the kind declares")...)
+	return humane.New(inputName(file)+": "+err.Error(), append(err.Advice(), inputHelp)...)
+}
+
+// inputName names the input in messages: its file, or the input from
+// stdin.
+func inputName(file string) string {
+	if file == "-" {
+		return "the input from stdin"
+	}
+	return file
 }
 
 // write prints the report in the chosen format.

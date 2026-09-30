@@ -13,19 +13,24 @@ The tools read the exported kind file (`deploy_approval.sigil` in the running ex
 | --- | --- | --- |
 | [`sigil fmt`](#sigil-fmt) | Rewrites files into the one canonical style, like `gofmt` | Nothing |
 | [`sigil check`](#sigil-check) | Parses, type-checks and compiles policies against their kinds, and lints them | Kind file |
-| [`sigil eval`](#sigil-eval) | Evaluates a policy against a JSON input and prints the result and trace | Kind file; a host binary for functions |
+| [`sigil eval`](#sigil-eval) | Evaluates a policy against a JSON or YAML input and prints the result and trace | Kind file; a host binary for functions |
 | [`sigil explain`](#sigil-explain) | Flattens a policy into its guarded decisions, with every invocation inlined | Kind file |
 | [`sigil test`](#sigil-test) | Runs test cases: an input plus the expected decision and reason, or the asserts that fail | Kind file; a host binary for functions |
-| [`sigil export`](#sigil-export) | Writes the kind file of a kind linked into a host binary | A host binary |
+| [`sigil export`](#sigil-export) | Writes the kind file of a kind linked into a host binary | A host binary; `sigil --help` lists it only there |
 | [`sigil version`](#sigil-version) | Shows the version and build information | Nothing |
-| [`sigil breaking`](#sigil-breaking) | Not implemented yet. Will compare two kind versions and flag incompatible changes | Two kind files |
-| [`sigil gen go`](#sigil-gen-go) | Not implemented yet. Will generate typed Go code from a kind file | Kind file |
-| [`sigil lsp`](#sigil-lsp) | Not implemented yet. Will run the language server | Kind file |
 
-`sigil completion bash|fish|powershell|zsh` prints a shell completion script, and `sigil help <command>` or `--help` (`-h`) prints any command's help.
+`sigil completion bash|fish|powershell|zsh` prints a shell completion script, and `sigil help <command>` or `--help` (`-h`) prints any command's help. The script completes `--policy` and `--require` with the names of the policies in the command's paths, or in `.` when it names none. It reads only the documents' headers, so it needs no kind file, and it completes `--require` from the `--trusted` paths when the command line has any.
+
+`sigil breaking`, `sigil gen go` and `sigil lsp` are planned:
+
+| Command | Will | Needs |
+| --- | --- | --- |
+| [`sigil breaking`](#sigil-breaking) | Compare two kind versions and flag incompatible changes | Two kind files |
+| [`sigil gen go`](#sigil-gen-go) | Generate typed Go code from a kind file | Kind file |
+| [`sigil lsp`](#sigil-lsp) | Run the language server | Kind file |
 
 ::: warning Planned
-`sigil breaking`, `sigil gen go`, `sigil lsp` and `explain --input` aren't implemented. The first three are registered, so their help is there, but each one only prints an error. Their designs are in [Planned designs](/project/planned/), and the [roadmap](/project/roadmap/) tracks them.
+`sigil breaking`, `sigil gen go`, `sigil lsp` and `explain --input` aren't implemented. The first three still run, so their help is there (`sigil breaking --help`), but `sigil --help` doesn't list them, and each one only prints an error. Their designs are in [Planned designs](/project/planned/), and the [roadmap](/project/roadmap/) tracks them.
 :::
 
 ## Inputs
@@ -43,7 +48,7 @@ cat policies.sigil | sigil eval --input release.json --policy payments.productio
 | --- | --- |
 | A file | Any number of documents. The shell expands globs; the CLI never does |
 | A directory | Every `*.sigil` file below it, at any depth, and for `test` every [test file](/reference/test-files/) too. Entries whose names start with `.` are skipped, as the [loader](/reference/bundles/#loading-files) skips them, so a mounted ConfigMap volume reads as its keys. Symbolic links are followed |
-| `-` | One stream from stdin, which may hold several documents. `eval` can't read both the bundle and `--input` from stdin |
+| `-` | One stream from stdin, which may hold several documents. `eval` then needs `--input` naming a file, since stdin can't hold both |
 
 - Documents from all arguments form one bundle, indexed by the names in their headers, as the host's `Load` does. A name defined in two files is an error here too, even when the two documents are of different kinds.
 - Every file is read and parsed once, however many arguments name it, and a parse error is reported once.
@@ -150,12 +155,14 @@ sigil fmt [PATH...] [flags]
 | --- | --- | --- |
 | `-w`, `--write` | off | Writes the result back to the files instead of printing it |
 | `--check` | off | Only lists the files that aren't formatted, and fails if there are any |
+| `-d`, `--diff` | off | Prints a unified diff of every file that would change, even for a single file |
 
 - With no paths, formats the current directory. Directories are searched recursively, and `-` reads stdin.
-- Without flags, prints the formatted source.
+- Without flags, a single file or stdin prints its formatted source. A directory or several paths print a unified diff of every file that would change, then a line counting them, so `sigil fmt`, which is `sigil fmt .`, shows what `sigil fmt -w` would change.
+- The diff is labeled the way `gofmt -d` labels it: `--- path.orig` and `+++ path`. Diff mode exits 0 whether or not a file would change; `--check` is the mode that fails.
 - `--write` rewrites the files in place, touches only files that change, keeps their permissions, and lists what it rewrote.
 - `--check` prints the path of every file that isn't formatted.
-- `--write` and `--check` can't be combined, and `--write` can't write back to stdin.
+- `--write`, `--check` and `--diff` can't be combined, and `--write` can't write back to stdin.
 - A file that doesn't parse is reported with its syntax errors and left alone, and fails the run.
 - It rewrites the old decision syntax, `decision approve(bake: duration = 1h) { release_manager }`, and a positional reason, `deny(soak_too_short)`, into the forms `check` accepts; see [Migrate to the new decision syntax](/guides/evolve-a-kind/#migrate-to-the-new-decision-syntax).
 
@@ -190,9 +197,35 @@ The canonical style:
 `Schema()` prints kinds in this style, so an exported kind file passes `sigil fmt --check` as it is. Why there's one style: [Why the language looks like this](/understanding/language-choices/).
 
 ```text
+$ sigil fmt
+--- payments/production.sigil.orig
++++ payments/production.sigil
+@@ -4,7 +4,7 @@
+ use deploy.production
+ use deploy.common.{cleared}
+ 
+-guardrails( min_soak:4h )
++guardrails(min_soak: 4h)
+ 
+ when service.labels["compliance"] == "pci" {
+   production(approvers: ["payments-leads", "security-leads"])
+@@ -15,7 +15,7 @@
+ }
+ 
+ when cleared and "payments-sre" in actor.teams {
+-    approve(reason: payments_sre,bake: 15m)
++  approve(reason: payments_sre, bake: 15m)
+ }
+ 
+ assert("named_actor", actor.name != "")
+ℹ 1 of 5 files would be reformatted
+  run `sigil fmt -w` on the same paths to rewrite it
+```
+
+```text
 $ sigil fmt --check .
 payments/production.sigil
-✗ 1 of 4 files is not formatted
+✗ 1 of 5 files is not formatted
 ```
 
 `-o json` and `-o yaml` print a list with one record per file, in every mode:
@@ -202,14 +235,19 @@ payments/production.sigil
 | `file` | The path; stdin is `<stdin>` |
 | `formatted` | Whether the file was already in the canonical style |
 | `written` | `true` when `--write` rewrote it |
-| `source` | The formatted source, when `fmt` prints rather than checks or writes |
+| `source` | The formatted source, when `fmt` prints a single file or stdin |
+| `diff` | The unified diff to the formatted source, in diff mode, for a file that would change |
 | `diagnostics` | The syntax errors of a file that doesn't parse, with the fields of [`check`'s records](#sigil-check) |
 
-A file with diagnostics was left alone, so it has neither `formatted: true` nor a `source`.
+A file with diagnostics was left alone, so it has neither `formatted: true` nor a `source` or `diff`.
 
 ```text
 $ sigil fmt --check -o json .
 [
+  {
+    "file": "deploy_approval.sigil",
+    "formatted": true
+  },
   {
     "file": "deploy/common.sigil",
     "formatted": true
@@ -244,7 +282,7 @@ sigil check [PATH...] [flags]
 | `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `--require` | none | Policy every root must invoke unconditionally. Repeatable |
 | `--trusted` | none | File or directory to read required policies from, as `policy.From` does. Repeatable |
-| `-p`, `--policy` | every uninvoked policy | Root policy name or pattern for `--require`. Repeatable |
+| `-p`, `--policy` | every policy | Name or pattern of the policies to check, with what they use; the roots for `--require`. Repeatable |
 | `--config` | nearest `sigil.yaml` | Configuration file with [lint levels](/reference/lints/#sigil-yaml) |
 
 - Needs host function signatures from the kind file, not their implementations.
@@ -255,12 +293,26 @@ sigil check [PATH...] [flags]
 - When the paths hold no `.sigil` files at all, `check` warns `no .sigil files found, so nothing was checked` and exits 0.
 - `sigil check` doesn't compute costs; see [Static cost analysis](/project/planned/#static-cost-analysis).
 
+`--policy` narrows the check to the policies it matches and every document they use, directly or through the documents they use, trusted ones included:
+
+- Only those policies are compiled, and only the diagnostics and lint findings in those documents are reported, along with a second definition of one of their names. A parse error outside every document counts when it's in one of their files.
+- An error elsewhere in the bundle doesn't stop them from compiling, so `check --policy 'payments.*'` passes while another team's policy is broken. The host's `Load` fails on any error in the bundle, so CI also runs `check` without `--policy`.
+- A pattern that matches no policy is an error that lists the policies found:
+
+```text
+$ sigil check --policy 'checkout.*'
+Error: no policy matches "checkout.*"
+
+What you can do
+  • the bundle defines: deploy.guardrails, deploy.production, payments.production
+```
+
 `--require`, `--trusted` and `--policy`:
 
 - `--require` makes the check a host makes with [`policy.Require`](/reference/go-api/#require): every root policy must invoke the named policy unconditionally, through top-level invocations only. Repeat it to require several.
 - `--trusted` does what [`policy.From`](/reference/go-api/#from) does: required policies, and everything they import and invoke, are read from those paths, and the bundle may not define any name they define. Trusted directories are always read recursively.
 - A file under a trusted path is read as trusted only, even when a path argument also holds it, so `--trusted deploy/ .` reads `deploy/` once.
-- `--policy` names the roots, by name or by pattern, and can be repeated. Without it, the roots are the bundle's policies that no other policy invokes, apart from the required ones.
+- The policies `--policy` matches are the roots. Without it, the roots are the bundle's policies that no other policy invokes, apart from the required ones.
 - A required policy applies to the roots of its own kind. A required name no document defines applies to every root, which then fails for not invoking it.
 - With `--trusted`, the trusted documents aren't part of the bundle, so they're never roots.
 
@@ -300,15 +352,15 @@ Exits 1 when there's an error, including a lint set to `error` and a failed `--r
 
 ## `sigil eval`
 
-Evaluates a policy against a JSON input and prints the result and the full trace: every candidate, the outcome, which conditions held for each candidate of the winning decision, and any failing asserts. Alias: `sigil evaluate`.
+Evaluates a policy against an input and prints the result and the full trace: every candidate, the outcome, which conditions held for each candidate of the winning decision, and any failing asserts. Alias: `sigil evaluate`.
 
 ```text
-sigil eval [PATH...] --input FILE [flags]
+sigil eval [PATH...] [--input FILE] [flags]
 ```
 
 | Flag | Default | Does |
 | --- | --- | --- |
-| `-i`, `--input` | required | Input document (JSON) to evaluate against, or `-` for stdin |
+| `-i`, `--input` | stdin | Input document, JSON or YAML, to evaluate against, or `-` for stdin |
 | `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `-p`, `--policy` | the bundle's only policy | Name of the policy to evaluate; required when the bundle holds more than one |
 
@@ -333,14 +385,18 @@ trace: 2 candidates
 
 ### Input documents
 
-The input is a JSON object with one key per input the kind declares.
+The input is a JSON or YAML object with one key per input the kind declares.
+
+- `--input` names the file, or `-` for stdin. Without it, `eval` reads the input from stdin, unless the bundle comes from stdin or stdin is a terminal; then it fails with `--input is required when ...`.
+- `eval` reads the input as JSON first, keeping every number exact, and as YAML when it isn't JSON. An input that's neither fails with both parsers' errors.
+- An empty input is an error, not an input with every key missing.
 
 | Input                                        | Rule                                                                                                                                                                                         |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A key the kind doesn't declare, at any depth | An error with a did-you-mean hint                                                                                                                                                            |
 | A missing key                                | Its type's zero value, as after `encoding/json` decoded into the host's struct. For an enum that's the empty string, which isn't a value, so a rule that reads it fails with a runtime error |
 | A `duration`                                 | A string in Sigil's syntax, `"1h30m"`. A number is an error: `90` could mean seconds or nanoseconds                                                                                          |
-| A `timestamp`                                | An RFC 3339 string, `"2026-09-28T14:00:00Z"`                                                                                                                                                 |
+| A `timestamp`                                | An RFC 3339 string, `"2026-09-28T14:00:00Z"`, which YAML may leave unquoted                                                                                                                  |
 | An [enum](/reference/types/#enums)           | A string naming one of its values, `"critical"`. Any other string is an error with a did-you-mean hint                                                                                       |
 | `null`                                       | Allowed for optionals, lists and maps                                                                                                                                                        |
 | A map key of a non-string type               | Written the way its values are: `"3"` for an `int` key                                                                                                                                       |
@@ -350,13 +406,13 @@ Error: bad.json: actor.nmae: unknown field "nmae" on type Actor
 
 What you can do
   • did you mean "name"? declared: name, teams, roles, regions
-  • the input is a JSON object with one key per input the kind declares
+  • the input is a JSON or YAML object with one key per input the kind declares
 
 Error: badtier.json: service.tier: "standrd" is not a value of Tier
 
 What you can do
   • did you mean `standard`? Tier declares: critical, standard, internal
-  • the input is a JSON object with one key per input the kind declares
+  • the input is a JSON or YAML object with one key per input the kind declares
 ```
 
 ### Failed evaluations

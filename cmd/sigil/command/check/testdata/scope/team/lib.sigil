@@ -1,0 +1,3 @@
+module scope.lib: DeployApproval@1
+
+pub let hotfix = release.hotfix
