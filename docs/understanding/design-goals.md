@@ -51,9 +51,9 @@ A compiled policy is immutable and safe for concurrent use, the same way a compi
 
 Sigil isn't Turing complete and never will be. If a rule needs something the language can't express, the host adds a pure function to the kind. That keeps the escape hatch in Go, where it gets reviewed, tested and profiled like the rest of the host's code.
 
-### Evaluators in other languages, for now
+### Evaluators written in other languages
 
-Only Go programs can embed the evaluator. Everything else works from the exported kind file (`deploy_approval.sigil`, say): the `sigil` CLI checks and tests policies against it in CI without the host's code, but a service written in another language can't evaluate policies in-process. A WASM build of the evaluator is plausible later; it's parked under [open questions](/project/open-questions/#non-go-evaluators) until the Go library is stable.
+There's one implementation of Sigil, and it's in Go. Go programs embed it as a library. A host in any other language runs the same engine compiled to WebAssembly, through the TypeScript package or the module's JSON ABI, rather than a port that would decide some policies differently. [One engine for every host](/understanding/one-engine/) explains why, and what it costs.
 
 ### Org-wide authorization
 

@@ -1,0 +1,60 @@
+{
+  "name": "@spechtlabs/sigil",
+  "version": "0.6.0",
+  "description": "The Sigil policy language in JavaScript: the Go engine compiled to WebAssembly, with typed bindings",
+  "type": "module",
+  "author": "Cedric Specht <cedric@specht-labs.de>",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SpechtLabs/sigil.git",
+    "directory": "bindings/typescript"
+  },
+  "homepage": "https://github.com/SpechtLabs/sigil/tree/main/bindings/typescript#readme",
+  "bugs": {
+    "url": "https://github.com/SpechtLabs/sigil/issues"
+  },
+  "keywords": [
+    "policy",
+    "policy-language",
+    "sigil",
+    "webassembly",
+    "wasm"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "import": "./dist/worker.js"
+    },
+    "./worker-entry": {
+      "types": "./dist/worker-entry.d.ts",
+      "import": "./dist/worker-entry.js"
+    },
+    "./sigil.wasm": "./dist/sigil.wasm"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && bun run scripts/copy-wasm.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  }
+}

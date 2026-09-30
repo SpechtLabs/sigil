@@ -34,6 +34,9 @@ pinact = "5.0.0"
 # is the same version the docs workflow runs.
 bun = "1.4.2"
 markdownlint-cli2 = "0.23.3"
+# Node, for npm: the release workflow publishes @spechtlabs/sigil with it (see
+# release.yaml), and trusted publishing needs npm 11.5 or later.
+node = "24.21.0"
 # Renders roadmap.yml into docs/project/roadmap.md (see the docs-roadmap task).
 "github:SierraSoftworks/roadmap" = "1.4.2"
 # Serves the Go API documentation as pkg.go.dev renders it (see the docs-godoc task).
@@ -222,7 +225,7 @@ depends = ["docs-roadmap"]
 run = "cd docs && bun install --frozen-lockfile && bun run build"
 
 # The WebAssembly module (cmd/sigil-wasm): the CLI's engine as a wasip1
-# reactor, which hosts in other languages load. -s -w and
+# reactor, which bindings/typescript and the docs playground load. -s -w and
 # -trimpath keep it small and free of local paths.
 [tasks.wasm-build]
 description = "Build the WebAssembly module into dist/wasm/sigil.wasm"
@@ -259,3 +262,24 @@ run = [
   "cd cmd/sigil-wasm/test && ../../../custom-gcl run --config ../../../.golangci.yaml ./...",
 ]
 
+# bindings/typescript: the module's TypeScript package, which loads the module
+# wasm-build writes. It isn't published yet, so nothing but these tasks and CI
+# builds it.
+[tasks.ts-install]
+description = "Install the TypeScript package's dev dependencies"
+dir = "bindings/typescript"
+run = "bun install --frozen-lockfile"
+
+[tasks.ts-build]
+description = "Build the TypeScript package, with the WebAssembly module copied in, into bindings/typescript/dist"
+depends = ["wasm-build", "ts-install"]
+dir = "bindings/typescript"
+run = "bun run build"
+
+# The tests build the sigil CLI with go, to compare their records with its
+# JSON, so go must be on PATH too.
+[tasks.ts-test]
+description = "Type-check the TypeScript package and test it against the WebAssembly module and the sigil CLI"
+depends = ["wasm-build", "ts-install"]
+dir = "bindings/typescript"
+run = ["bun run typecheck", "bun test"]

@@ -43,6 +43,10 @@ export const navbar = defineNavbarConfig([
           { text: "The example service", link: "/guides/example-service", icon: "mdi:rocket-launch-outline" },
         ],
       },
+      {
+        text: "Embedding in TypeScript",
+        items: [{ text: "Embed Sigil in TypeScript", link: "/guides/embed-typescript", icon: "mdi:language-typescript" }],
+      },
     ],
   },
 
@@ -61,6 +65,7 @@ export const navbar = defineNavbarConfig([
       { text: "Halting by construction", link: "/understanding/halting", icon: "mdi:timer-sand-complete" },
       { text: "Composition without templating", link: "/understanding/composition", icon: "mdi:layers-triple" },
       { text: "Bundles and trust", link: "/understanding/bundles", icon: "mdi:package-variant-closed" },
+      { text: "One engine for every host", link: "/understanding/one-engine", icon: "mdi:cube-outline" },
     ],
   },
 
@@ -97,6 +102,10 @@ export const navbar = defineNavbarConfig([
           { text: "Go API", link: "/reference/go-api", icon: "mdi:language-go" },
           { text: "Performance", link: "/reference/performance", icon: "mdi:speedometer" },
         ],
+      },
+      {
+        text: "Other hosts",
+        items: [{ text: "WebAssembly module", link: "/reference/wasm", icon: "mdi:cube-outline" }],
       },
     ],
   },
