@@ -5,8 +5,9 @@
 // [Load] reads the paths, finds the kinds among the linked ones, the
 // --kind files and the inputs themselves, and returns a [Project] with one
 // [Group] per kind: the kind and a bundle of that kind's documents. A name
-// has one definition across the whole project, across kinds too. [Match]
-// and [Root] pick the policies a command works on, by name or by pattern.
+// has one definition across the whole project, across kinds too. [Expand]
+// holds the path rules every command shares, and [Match] and [Root] pick
+// the policies a command works on, by name or by pattern.
 package project
 
 import (
@@ -44,11 +45,10 @@ type Linked struct {
 // Sources are what a command reads: the paths it was given, the trusted
 // paths, and kind files from outside the paths.
 type Sources struct {
-	Stdin     io.Reader // what a "-" path reads
-	Paths     []string  // files, directories, or "-" for stdin
-	Trusted   []string  // read into each kind's trusted bundle, as policy.From does
-	Kinds     []string  // kind files the paths don't hold, such as --kind names
-	Recursive bool      // directories contribute the .sigil files below them, not only those directly inside
+	Stdin   io.Reader // what a "-" path reads
+	Paths   []string  // files, directories, or "-" for stdin, as [Expand] reads them
+	Trusted []string  // read into each kind's trusted bundle, as policy.From does
+	Kinds   []string  // kind files the paths don't hold, such as --kind names
 }
 
 // Project is every document a command read, grouped by kind.
@@ -81,6 +81,9 @@ type Group struct {
 // file's other documents are read only when the file is also among the
 // paths, and a file under a trusted path is read as trusted only.
 //
+// The paths are expanded by [Expand]'s rules, each directory contributing
+// the `.sigil` files below it.
+//
 // Parse errors, kind documents that don't check or don't agree, documents
 // naming a kind nobody provides and names defined twice are diagnostics,
 // for [Project.Errors]; only a path that can't be read, or a kind file that
@@ -97,11 +100,11 @@ func Load(s Sources, linked []Linked) (*Project, humane.Error) {
 			return nil, err
 		}
 	}
-	trusted, err := expand(s.Trusted, true)
+	trusted, err := Expand(s.Trusted, IsSigil)
 	if err != nil {
 		return nil, err
 	}
-	regular, err := expand(s.Paths, s.Recursive)
+	regular, err := Expand(s.Paths, IsSigil)
 	if err != nil {
 		return nil, err
 	}

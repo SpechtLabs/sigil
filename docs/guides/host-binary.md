@@ -43,7 +43,7 @@ func main() {
 `cli.Main` runs the command line on `os.Args` and exits. `cli.WithVersion` sets what `sigil version` reports. Build and run it like any Go command:
 
 ```sh
-go run ./cmd/sigil eval --policy payments.production --input request.json -R policies/
+go run ./cmd/sigil eval --policy payments.production --input request.json policies/
 ```
 
 Every command uses the linked kind for the documents written against it, with no kind file. A kind file for the same kind, whether among the paths or named with `--kind`, must match the linked kind exactly, which catches a stale export.

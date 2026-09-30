@@ -117,7 +117,7 @@ The stock `sigil` binary can't run the kind's `split` host function, so the exam
 ```bash
 mise run sigilc check --config policies/sigil.yaml \
   --require deploy.guardrails --trusted policies/platform/deploy \
-  --policy 'payments.*' --policy 'checkout.*' -R policies/teams
+  --policy 'payments.*' --policy 'checkout.*' policies/teams
 ```
 
 The README's [sigilc section](https://github.com/SpechtLabs/sigil/tree/main/examples#your-own-sigil-binary-sigilc) has the access policy's check, the test runs, `explain` output for both kinds and the `export --check` that catches a stale kind file.

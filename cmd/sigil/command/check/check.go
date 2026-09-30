@@ -17,7 +17,6 @@ import (
 
 	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
-	"github.com/spechtlabs/sigil/cmd/internal/usage"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/config"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
@@ -37,7 +36,7 @@ func NewCommand(opts ...Option) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:        "check PATH...",
+		Use:        "check [PATH...]",
 		SuggestFor: []string{"validate", "verify", "lint"},
 		Short:      "Check policies against their kinds and lint them",
 		Long: `Parses and type-checks policies and modules against their kinds, resolves
@@ -45,10 +44,10 @@ imports and policy invocations, detects let, import and invocation cycles,
 compiles every policy, and reports lints.
 
 Every PATH is a file, a directory, or "-" for stdin, and a file may hold several
-documents. All documents from all paths are checked together as one bundle,
-indexed by the names in their headers, so a name defined twice is an error. A
-directory contributes the .sigil files directly inside it, or every one below
-it with --recursive.
+documents; with no PATH, check reads the current directory. A directory
+contributes every .sigil file below it. All documents from all paths are
+checked together as one bundle, indexed by the names in their headers, so a
+name defined twice is an error.
 
 --require names a policy that every root policy must invoke unconditionally,
 the same check a host makes with policy.Require. Repeat it to require several.
@@ -83,23 +82,22 @@ non-zero when there is an error, including a lint set to error.`,
 sigil check --kind deploy_approval.sigil deploy/production.sigil
 
 # Check every document in a policy repository, every kind in it, as CI would
-sigil check --recursive .
+sigil check
 
 # Check a self-contained file that holds its kind and its policies
 sigil check bundle.sigil
 
 # Check that every team policy invokes the guardrails unconditionally
 sigil check --require deploy.guardrails --trusted deploy/ --policy 'payments.*' deploy_approval.sigil payments/`,
-		Args:              usage.AtLeast(1, "PATH"),
+		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: complete.SigilFiles,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kindFiles, _ := cmd.Flags().GetStringSlice("kind")
-			recursive, _ := cmd.Flags().GetBool("recursive")
 			patterns, _ := cmd.Flags().GetStringSlice("policy")
 			trusted, _ := cmd.Flags().GetStringSlice("trusted")
 			requires, _ := cmd.Flags().GetStringSlice("require")
 			configFile, _ := cmd.Flags().GetString("config")
-			src := project.Sources{Paths: args, Trusted: trusted, Kinds: kindFiles, Recursive: recursive, Stdin: cmd.InOrStdin()}
+			src := project.Sources{Paths: args, Trusted: trusted, Kinds: kindFiles, Stdin: cmd.InOrStdin()}
 			return run(cmd.OutOrStdout(), o, configFile, src, patterns, requires)
 		},
 	}
@@ -111,7 +109,10 @@ sigil check --require deploy.guardrails --trusted deploy/ --policy 'payments.*' 
 // addFlags declares the check command's flags.
 func addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policies' kinds are found among the paths and the kinds linked in (repeatable)")
-	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories of directory arguments too")
+	// -R read subdirectories before every command did; it stays so scripts
+	// that pass it keep working.
+	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories too; always on")
+	_ = cmd.Flags().MarkDeprecated("recursive", "directories are always read recursively")
 	cmd.Flags().StringSliceP("policy", "p", nil, "Root policy name or pattern for --require checks, such as 'payments.*' (repeatable)")
 	cmd.Flags().StringSlice("trusted", nil, "File or directory to read required policies from, as policy.From does (repeatable)")
 	cmd.Flags().StringSlice("require", nil, "Policy that every checked policy must invoke unconditionally (repeatable)")
@@ -125,6 +126,9 @@ func addFlags(cmd *cobra.Command) {
 }
 
 func run(out io.Writer, o *options, configFile string, src project.Sources, patterns, requires []string) humane.Error {
+	if len(src.Paths) == 0 {
+		src.Paths = []string{"."}
+	}
 	cfg, err := config.Load(configFile, ".")
 	if err != nil {
 		return err
@@ -273,7 +277,7 @@ func reportText(out io.Writer, proj *project.Project, diags diag.ErrorList, fail
 		return err
 	}
 	if proj.Files() == 0 && failed == 0 {
-		return p.Warning("no .sigil files found, so nothing was checked", "a directory contributes the files directly inside it; pass --recursive to include its subdirectories")
+		return p.Warning("no .sigil files found, so nothing was checked", "name the files or directories that hold the policies")
 	}
 	files := fmt.Sprintf("checked %d %s, ", proj.Files(), plural(proj.Files(), "file", "files"))
 	warnings := len(diags) - failed

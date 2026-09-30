@@ -30,7 +30,7 @@ The tools read the exported kind file (`deploy_approval.sigil` in the running ex
 
 ## Inputs
 
-Commands that read policies take their input the way `kubectl -f` does: every argument is a file, a directory or `-` for stdin, and the tool combines all the documents it finds into one bundle.
+Commands that read policies take their input the way `kubectl -f` does: every argument is a file, a directory or `-` for stdin, and the tool combines all the documents it finds into one bundle. `fmt`, `check`, `eval`, `explain` and `test` all follow the same rules, and with no arguments each reads the current directory, `.`.
 
 ```text
 sigil check   deploy_approval.sigil deploy/*.sigil payments/*.sigil
@@ -42,11 +42,13 @@ cat policies.sigil | sigil eval --input release.json --policy payments.productio
 | Argument | Reads |
 | --- | --- |
 | A file | Any number of documents. The shell expands globs; the CLI never does |
-| A directory | The `*.sigil` files directly inside it. `check`, `eval` and `explain` include subdirectories with `-R` (`--recursive`); `fmt` and `test` always search directories recursively. Entries whose names start with `.` are skipped, as the [loader](/reference/bundles/#loading-files) skips them, so a mounted ConfigMap volume reads as its keys |
+| A directory | Every `*.sigil` file below it, at any depth, and for `test` every [test file](/reference/test-files/) too. Entries whose names start with `.` are skipped, as the [loader](/reference/bundles/#loading-files) skips them, so a mounted ConfigMap volume reads as its keys. Symbolic links are followed |
 | `-` | One stream from stdin, which may hold several documents. `eval` can't read both the bundle and `--input` from stdin |
 
 - Documents from all arguments form one bundle, indexed by the names in their headers, as the host's `Load` does. A name defined in two files is an error here too, even when the two documents are of different kinds.
 - Every file is read and parsed once, however many arguments name it, and a parse error is reported once.
+- There's no Go-style `./...`: a bundle isn't a package per directory, so there's nothing a non-recursive mode would select. To narrow a run, name the files or directories.
+- `-R` (`--recursive`) is still accepted by `check`, `eval` and `explain` and does nothing, since directories are always read recursively. It prints a deprecation notice.
 
 ### Kinds
 
@@ -234,13 +236,12 @@ Exits 1 under `--check` when a file isn't formatted, and in any mode when a file
 Parses and type-checks policies and modules against their kinds, resolves imports and invocations, detects `let`, import and invocation cycles, compiles every policy, and reports [lints](/reference/lints/).
 
 ```text
-sigil check PATH... [flags]
+sigil check [PATH...] [flags]
 ```
 
 | Flag | Default | Does |
 | --- | --- | --- |
 | `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
-| `-R`, `--recursive` | off | Reads `.sigil` files in subdirectories of directory arguments too |
 | `--require` | none | Policy every root must invoke unconditionally. Repeatable |
 | `--trusted` | none | File or directory to read required policies from, as `policy.From` does. Repeatable |
 | `-p`, `--policy` | every uninvoked policy | Root policy name or pattern for `--require`. Repeatable |
@@ -302,7 +303,7 @@ Exits 1 when there's an error, including a lint set to `error` and a failed `--r
 Evaluates a policy against a JSON input and prints the result and the full trace: every candidate, the outcome, which conditions held for each candidate of the winning decision, and any failing asserts. Alias: `sigil evaluate`.
 
 ```text
-sigil eval PATH... --input FILE [flags]
+sigil eval [PATH...] --input FILE [flags]
 ```
 
 | Flag | Default | Does |
@@ -310,7 +311,6 @@ sigil eval PATH... --input FILE [flags]
 | `-i`, `--input` | required | Input document (JSON) to evaluate against, or `-` for stdin |
 | `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `-p`, `--policy` | the bundle's only policy | Name of the policy to evaluate; required when the bundle holds more than one |
-| `-R`, `--recursive` | off | Reads `.sigil` files in subdirectories of directory arguments too |
 
 - Candidates read the way a policy writes them, `review(reason: service_owner)`, with the conditions that held after `when` and the payload beneath. The ones in the outcome are marked with `*`.
 - Diagnostics and trace entries name the document as well as the position, `policies.sigil:42:5 (payments.production)`. The name is left out when the file's path matches the name, as in `deploy/production.sigil:16:5`. This is the text form of [`policy.Position`](/reference/go-api/#positions).
@@ -460,14 +460,13 @@ Exits 1 when the bundle doesn't check, the root doesn't compile, the input doesn
 Flattens a policy into one list of guarded decisions. Every invocation is inlined, and its gates are pushed down into each rule's condition.
 
 ```text
-sigil explain PATH... [flags]
+sigil explain [PATH...] [flags]
 ```
 
 | Flag | Default | Does |
 | --- | --- | --- |
 | `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `-p`, `--policy` | every policy | Name or pattern of the policies to explain |
-| `-R`, `--recursive` | off | Reads `.sigil` files in subdirectories of directory arguments too |
 
 ```text
 $ sigil explain --policy payments.production deploy_approval.sigil deploy/ payments/
@@ -553,7 +552,6 @@ sigil test [PATH...] [flags]
 | `--run` | every case | Only runs cases whose name matches this regular expression |
 | `-v`, `--verbose` | off | Lists passing cases too |
 
-- Every path is a file or a directory, searched recursively. With no paths, `test` searches the current directory.
 - The `.sigil` files it finds form one bundle, and every test file found runs against it, with the kind of the policy it names.
 - A case that reaches a host function needs a [host binary](#host-functions-and-host-binaries); the stock binary fails it with the runtime error.
 

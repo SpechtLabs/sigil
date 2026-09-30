@@ -14,7 +14,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -73,10 +72,10 @@ A case expects a decision and reason, with the payload fields it lists; the
 whole outcome of a collect all kind under outcome:, in any order; or the
 reasons of the asserts that fail. Inputs follow the rules of sigil eval.
 
-Every PATH is a file or a directory, searched recursively. The .sigil files
-found form one bundle, and every test file found runs against it, with the
-kind of the policy it names. With no paths, test searches the current
-directory.
+Every PATH is a file or a directory; with no PATH, test searches the current
+directory. A directory contributes every .sigil file and test file below it.
+The .sigil files found form one bundle, and every test file found runs against
+it, with the kind of the policy it names.
 
 Each document's header names its kind, and the kind is found among the
 inputs: a kind file among the paths, or a kind document in the same file as the
@@ -98,10 +97,7 @@ sigil test --run 'freeze'`,
 			kindFiles, _ := cmd.Flags().GetStringSlice("kind")
 			run, _ := cmd.Flags().GetString("run")
 			verbose, _ := cmd.Flags().GetBool("verbose")
-			if len(args) == 0 {
-				args = []string{"."}
-			}
-			return runTests(cmd.Context(), cmd.OutOrStdout(), o, kindFiles, run, verbose, args)
+			return runTests(cmd.Context(), cmd.OutOrStdout(), o, project.Sources{Paths: args, Kinds: kindFiles, Stdin: cmd.InOrStdin()}, run, verbose)
 		},
 	}
 
@@ -148,7 +144,7 @@ type osFS struct{}
 // Open opens a file by its path on disk.
 func (osFS) Open(name string) (fs.File, error) { return os.Open(name) } //nolint:gosec,wrapcheck,humaneerror // fs.FS fixes the signature; input files are named by test files the user asked to run
 
-func runTests(ctx context.Context, out io.Writer, o *options, kindFiles []string, run string, verbose bool, paths []string) humane.Error {
+func runTests(ctx context.Context, out io.Writer, o *options, src project.Sources, run string, verbose bool) humane.Error {
 	var filter *regexp.Regexp
 	if run != "" {
 		re, err := regexp.Compile(run)
@@ -157,14 +153,18 @@ func runTests(ctx context.Context, out io.Writer, o *options, kindFiles []string
 		}
 		filter = re
 	}
-	sources, tests, err := find(paths)
+	if len(src.Paths) == 0 {
+		src.Paths = []string{"."}
+	}
+	sources, tests, err := find(src.Paths)
 	if err != nil {
 		return err
 	}
 	if len(tests) == 0 {
-		return humane.New("no test files among "+strings.Join(paths, ", "), "test files are YAML files named *_test.yaml, next to the policies they test")
+		return humane.New("no test files among "+strings.Join(src.Paths, ", "), "test files are YAML files named *_test.yaml, next to the policies they test")
 	}
-	p, err := project.Load(project.Sources{Paths: sources, Kinds: kindFiles}, o.kinds)
+	src.Paths = sources
+	p, err := project.Load(src, o.kinds)
 	if err != nil {
 		return err
 	}
@@ -281,43 +281,21 @@ func outcome(res *result.Result) *testsuite.Outcome {
 	return out
 }
 
-// find walks the paths for .sigil files and test files. Entries whose
-// names start with `.` are skipped, as the loader does.
+// find expands the paths for .sigil files and test files, by the rules
+// every command shares, and splits them. A file named on the command line
+// is a test file by its name, and a .sigil file otherwise.
 func find(paths []string) (sources, tests []string, err humane.Error) {
-	for _, p := range paths {
-		info, serr := os.Stat(p)
-		if serr != nil {
-			return nil, nil, humane.Wrap(serr, p+" can't be read", "name a directory, a .sigil file or a test file")
-		}
-		if !info.IsDir() {
-			if testsuite.IsTestFile(p) {
-				tests = append(tests, p)
-			} else {
-				sources = append(sources, p)
-			}
-			continue
-		}
-		werr := filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if path != p && strings.HasPrefix(d.Name(), ".") {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			switch {
-			case d.IsDir():
-			case strings.HasSuffix(path, ".sigil"):
-				sources = append(sources, path)
-			case testsuite.IsTestFile(path):
-				tests = append(tests, path)
-			}
-			return nil
-		})
-		if werr != nil {
-			return nil, nil, humane.Wrap(werr, p+" couldn't be searched", "check the directory's permissions")
+	files, err := project.Expand(paths, func(name string) bool {
+		return project.IsSigil(name) || testsuite.IsTestFile(name)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, f := range files {
+		if testsuite.IsTestFile(f) {
+			tests = append(tests, f)
+		} else {
+			sources = append(sources, f)
 		}
 	}
 	sort.Strings(tests)

@@ -484,7 +484,7 @@ Check every team policy against its kind, with the platform's deploy documents a
 ```bash
 mise run sigilc check --config policies/sigil.yaml \
   --require deploy.guardrails --trusted policies/platform/deploy \
-  --policy 'payments.*' --policy 'checkout.*' -R policies/teams
+  --policy 'payments.*' --policy 'checkout.*' policies/teams
 ```
 
 The access policy gets the same check against the other kind:
@@ -512,7 +512,7 @@ Flatten a team policy into the rules it adds up to, with each invocation's condi
 
 ```bash
 mise run sigilc explain \
-  --policy payments.production -R policies/platform/deploy policies/teams
+  --policy payments.production policies/platform/deploy policies/teams
 ```
 
 ```text
@@ -555,7 +555,7 @@ payments.production: 7 rules from 3 policies and 1 module
 
 ```bash
 mise run sigilc explain \
-  --policy access.main -R policies/platform/access policies/access
+  --policy access.main policies/platform/access policies/access
 ```
 
 ```text

@@ -44,7 +44,7 @@ func TestExplain(t *testing.T) {
 			if format == "" {
 				format = output.Text
 			}
-			src := project.Sources{Paths: tt.paths, Kinds: []string{kind}, Recursive: true, Stdin: strings.NewReader("")}
+			src := project.Sources{Paths: tt.paths, Kinds: []string{kind}, Stdin: strings.NewReader("")}
 			if tt.noKind {
 				src.Kinds = nil
 			}
@@ -73,6 +73,24 @@ func TestExplain(t *testing.T) {
 				t.Errorf("output differs from %s (run with -update to accept):\n--- got ---\n%s\n--- want ---\n%s", golden, out.String(), want)
 			}
 		})
+	}
+}
+
+// TestCurrentDirectory checks that without paths, explain reads the
+// working directory, every level of it, kind file included.
+func TestCurrentDirectory(t *testing.T) {
+	want, err := os.ReadFile(filepath.Join("testdata", "pattern.golden"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir("testdata")
+	format := output.Text
+	var out bytes.Buffer
+	if err := run(&out, &options{output: &format}, "deploy.*", project.Sources{}); err != nil {
+		t.Fatalf("run() = %v", err)
+	}
+	if out.String() != string(want) {
+		t.Errorf("output = %q, want pattern.golden's", out.String())
 	}
 }
 
