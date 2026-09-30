@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/SpechtLabs/sigil/compare/v0.5.0...v0.5.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **docs:** Add Releases to docs page ([7641013](https://github.com/SpechtLabs/sigil/commit/7641013fae4fed671de8b81bb2c8b2372c747036))
+* **eval:** don't panic on an invocation argument for a param with a single bound ([#90](https://github.com/SpechtLabs/sigil/issues/90)) ([dc526b0](https://github.com/SpechtLabs/sigil/commit/dc526b058a07ac7b90b95ca3532ebc121c6603fe))
+
 ## [0.5.0](https://github.com/SpechtLabs/sigil/compare/v0.4.0...v0.5.0) (2026-09-30)
 
 
