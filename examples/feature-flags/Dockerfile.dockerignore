@@ -1,0 +1,18 @@
+# The build context of examples/feature-flags/Dockerfile, which BuildKit reads
+# instead of the root .dockerignore. The context is the repository root, and
+# the image needs only the Go sources of sigil.wasm, the Rust binding and the
+# example, so everything else is left out, local builds above all: target/
+# directories are gigabytes and would shadow what the image builds itself.
+*
+!go.mod
+!go.sum
+!cmd/sigil-wasm/
+!internal/
+!bindings/rust/
+!examples/feature-flags/
+
+**/target/
+**/dist/
+**/*_test.go
+**/testdata/
+examples/feature-flags/results/

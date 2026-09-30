@@ -1,0 +1,23 @@
+policy flags.new_checkout: FeatureRollout@1
+
+use platform.guardrails
+
+guardrails()
+
+param percent: int = 25, min: 0, max: 100
+
+when user.plan == enterprise {
+  enable(reason: enterprise)
+}
+
+when user.beta {
+  enable(reason: beta_tester)
+}
+
+when user.attributes["cohort"] == "checkout-pilot" {
+  enable(reason: targeted)
+}
+
+when bucket < percent {
+  enable(reason: rollout)
+}

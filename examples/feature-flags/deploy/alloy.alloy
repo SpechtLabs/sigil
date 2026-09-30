@@ -1,0 +1,107 @@
+// Alloy collects all three signals for the local LGTM stack.
+otelcol.receiver.otlp "featuregate" {
+	grpc {
+		endpoint = "0.0.0.0:4317"
+	}
+
+	http {
+		endpoint = "0.0.0.0:4318"
+	}
+
+	output {
+		traces = [otelcol.processor.batch.traces.input]
+	}
+}
+
+otelcol.processor.batch "traces" {
+	timeout = "1s"
+
+	output {
+		traces = [otelcol.exporter.otlp.tempo.input]
+	}
+}
+
+otelcol.exporter.otlp "tempo" {
+	client {
+		endpoint = "tempo:4317"
+
+		tls {
+			insecure = true
+		}
+	}
+}
+
+prometheus.scrape "featuregate" {
+	targets         = [{__address__ = "featuregate:8080", job = "featuregate"}]
+	scrape_interval = "5s"
+	scrape_timeout  = "4s"
+	forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+prometheus.scrape "backends" {
+	targets = [
+		{__address__ = "alloy:12345", job = "alloy"},
+		{__address__ = "tempo:3200", job = "tempo"},
+		{__address__ = "loki:3100", job = "loki"},
+		{__address__ = "mimir:9009", job = "mimir"},
+		{__address__ = "pyroscope:4040", job = "pyroscope"},
+	]
+	scrape_interval = "5s"
+	scrape_timeout  = "4s"
+	forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+prometheus.remote_write "mimir" {
+	endpoint {
+		url = "http://mimir:9009/api/v1/push"
+	}
+}
+
+// Restrict discovery to this Compose project and its featuregate service.
+// COMPOSE_PROJECT_NAME also keeps `docker compose -p ...` instances separate.
+discovery.docker "featuregate" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "5s"
+
+	filter {
+		name   = "label"
+		values = [
+			"com.docker.compose.project=" + sys.env("COMPOSE_PROJECT_NAME"),
+			"com.docker.compose.service=featuregate",
+		]
+	}
+}
+
+discovery.relabel "logs" {
+	targets = []
+
+	rule {
+		target_label = "service_name"
+		replacement  = "featuregate"
+	}
+}
+
+loki.source.docker "featuregate" {
+	host          = "unix:///var/run/docker.sock"
+	targets       = discovery.docker.featuregate.targets
+	relabel_rules = discovery.relabel.logs.rules
+	forward_to    = [loki.process.featuregate.receiver]
+}
+
+loki.process "featuregate" {
+	stage.json {
+		expressions = {level = "level", flag = "flag", decision = "decision"}
+	}
+	// Only bounded fields become labels: a handful of flags and two
+	// decisions. The targeting key, policy and trace_id stay in the JSON body.
+	stage.labels {
+		values = {level = "", flag = "", decision = ""}
+	}
+	forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}

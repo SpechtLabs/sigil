@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://sigil.specht-labs.de/schema/config.json
+
+# What `sigil check` enforces; CI runs from examples/feature-flags/, so pass
+# --config policies/sigil.yaml. Paths are relative to this file.
+kinds: [feature_rollout.sigil]
+
+require:
+  # What featuregate requires when it loads a flag policy: every flag root
+  # invokes the platform's guardrails, read from the platform's own documents
+  # and never gated by a `when`.
+  - policy: platform.guardrails
+    trusted: [platform]
+    roots: ["flags.*"]
+lints:
+  gated-deny: error
+  path-matches-name: error

@@ -296,6 +296,46 @@ jobs:
       - name: UI smoke test
         run: bun run test:ui
 
+  # examples/feature-flags is a Rust service on the crate above, not a Go
+  # module, so the examples matrix doesn't cover it. Its tasks build sigil.wasm
+  # from this checkout first, and the policy check runs the sigil CLI with go.
+  feature-flags:
+    name: Example (feature-flags)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/feature-flags
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5 # v5.0.0
+        with:
+          install_args: go rust k6
+          working_directory: examples/feature-flags
+
+      - name: Cache cargo registry and build output
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            examples/feature-flags/target
+          key: cargo-feature-flags-${{ runner.os }}-${{ hashFiles('examples/feature-flags/Cargo.lock', 'bindings/rust/Cargo.lock', '.mise.toml') }}
+          restore-keys: cargo-feature-flags-${{ runner.os }}-
+
+      # Lint, unit and integration tests, the policies through the sigil CLI,
+      # the k6 suite parsed, and the release build.
+      - name: Check
+        run: mise run check
+
+      # The e2e suite needs the compose stack; the image builds on its own,
+      # from the repository root, as compose builds it.
+      - name: Build the image
+        working-directory: .
+        run: docker build -f examples/feature-flags/Dockerfile .
+
   build:
     name: Build with GoReleaser
     runs-on: ubuntu-latest
