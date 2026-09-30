@@ -7,6 +7,7 @@ import (
 	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/check"
 	"github.com/spechtlabs/sigil/internal/gokind"
+	"github.com/spechtlabs/sigil/internal/parser"
 )
 
 const kindSrc = `kind K version 1
@@ -148,5 +149,50 @@ func TestDocuments(t *testing.T) {
 		if d.Clean() {
 			t.Errorf("%s is clean before Check", d.Name)
 		}
+	}
+}
+
+// TestIndex checks that documents parsed elsewhere index as Add's do,
+// without the parse errors or the kind check Add makes, and that a name
+// indexed twice is reported with Redefined's diagnostic.
+func TestIndex(t *testing.T) {
+	k, errs := check.LoadKind("k.sigil", []byte(kindSrc))
+	if errs != nil {
+		t.Fatal(errs)
+	}
+	stale := strings.Replace(kindSrc, "version 1", "version 2", 1)
+	src := []byte(stale + "---\n" + library + "---\nmodule lib: K@1\n")
+	f, perrs := parser.ParseFile("p.sigil", src)
+	if perrs != nil {
+		t.Fatal(perrs)
+	}
+	b := bundle.New(k)
+	b.Index("p.sigil", src, f.Docs)
+	if got, want := b.Policies(), []string{"guard", "good", "gated"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("Policies() = %v, want %v", got, want)
+	}
+	if d := b.Document("K"); d == nil || !d.Kind {
+		t.Errorf("Document(K) = %v, want the kind document, indexed", d)
+	}
+	errs = b.Errors()
+	if len(errs) != 1 || errs[0].Msg != "module lib is defined twice" || !strings.Contains(errs[0].Help, "first defined at p.sigil:") {
+		t.Fatalf("Errors() = %v, want only lib defined twice, not the stale kind", errs)
+	}
+	if string(b.SourceOf("p.sigil")) != string(src) {
+		t.Error("Index didn't keep the source")
+	}
+
+	trusted := &bundle.Document{Node: f.Docs[1], Name: "lib", File: "t.sigil", Trusted: true}
+	if e := bundle.Redefined("p.sigil", f.Docs[1], trusted); !strings.HasPrefix(e.Help, "the name belongs to the trusted source, defined at t.sigil:") {
+		t.Errorf("Redefined() of a trusted name = %v", e)
+	}
+	if e := bundle.Redefined("q.sigil", f.Docs[2], trusted); e.Msg != "policy guard is defined twice" || e.File != "q.sigil" {
+		t.Errorf("Redefined() of a policy = %v", e)
+	}
+	if e := bundle.Redefined("p.sigil", f.Docs[1], nil); e != nil {
+		t.Errorf("Redefined() without a previous definition = %v, want nil", e)
+	}
+	if e := bundle.Redefined("p.sigil", f.Docs[0], trusted); e != nil {
+		t.Errorf("Redefined() of a kind document = %v, want nil", e)
 	}
 }

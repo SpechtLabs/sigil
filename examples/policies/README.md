@@ -58,31 +58,26 @@ policy then denies `not_eligible`.
 ## Checks
 
 CI runs these from `examples/`, through `mise run policies`. The same
-commands work locally. `sigilc` links both kinds, so every command that reads
-policies picks one with `--kind`. The flag takes the exported kind file, not
-the kind's name, and the linked kind must match that file exactly, which is
-how a stale export fails the check.
+commands work locally. `sigilc` links both kinds, so no command needs
+`--kind`: each document is checked against the kind its header names. A kind
+file among the paths must match the linked kind exactly, which is how a stale
+export fails the check.
 
 ```sh
 # Type-check every team policy with the platform's deploy documents as the
 # trusted source, and fail if a team policy doesn't invoke the guardrails at
 # the top level. This is the check the service makes when it loads the bundle.
-mise run sigilc check --kind policies/deploy_approval.sigil \
-  --config policies/sigil.yaml \
+mise run sigilc check --config policies/sigil.yaml \
   --require deploy.guardrails --trusted policies/platform/deploy \
   --policy 'payments.*' --policy 'checkout.*' -R policies/teams
 
 # The same check for the access policy.
-mise run sigilc check --kind policies/access_grant.sigil \
-  --config policies/sigil.yaml \
+mise run sigilc check --config policies/sigil.yaml \
   --require access.guardrails --trusted policies/platform/access \
   --policy access.main policies/access
 
-# Run the test files, once per kind: each run reads that kind's documents only.
-mise run sigilc test -v --kind policies/deploy_approval.sigil \
-  policies/platform/deploy policies/teams
-mise run sigilc test -v --kind policies/access_grant.sigil \
-  policies/platform/access policies/access
+# Run every test file, for both kinds; each runs with its policy's kind.
+mise run sigilc test -v policies
 
 # The same test files from go test, loaded the way the service loads them.
 go test ./internal/deploy/... ./internal/access/...

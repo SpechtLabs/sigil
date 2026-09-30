@@ -23,10 +23,12 @@ func TestExplain(t *testing.T) {
 		format  output.Format
 		paths   []string
 		err     string
+		noKind  bool // no --kind: the kind comes from the paths
 	}{
 		{name: "team", pattern: "payments.production", format: output.Text, paths: []string{"testdata/deploy", "testdata/payments"}},
 		{name: "team_json", pattern: "payments.production", format: output.JSON, paths: []string{"testdata/deploy", "testdata/payments"}},
 		{name: "pattern", pattern: "deploy.*", format: output.Text, paths: []string{"testdata"}},
+		{name: "kind_among_paths", pattern: "deploy.*", paths: []string{"testdata"}, noKind: true},
 		{name: "no match", pattern: "nope.*", paths: []string{"testdata"}, err: `no policy matches "nope.*"`},
 		{name: "unknown kind file", pattern: "", paths: []string{"testdata"}, err: "the kind file couldn't be read"},
 		{name: "no policies", paths: []string{"testdata/deploy_approval.sigil"}, err: "the bundle holds no policies"},
@@ -42,8 +44,11 @@ func TestExplain(t *testing.T) {
 			if format == "" {
 				format = output.Text
 			}
-			src := project.Sources{Paths: tt.paths, Recursive: true, Stdin: strings.NewReader("")}
-			err := run(&out, &options{output: &format}, kind, tt.pattern, src)
+			src := project.Sources{Paths: tt.paths, Kinds: []string{kind}, Recursive: true, Stdin: strings.NewReader("")}
+			if tt.noKind {
+				src.Kinds = nil
+			}
+			err := run(&out, &options{output: &format}, tt.pattern, src)
 			if tt.err != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.err) {
 					t.Fatalf("run() error = %v, want %q", err, tt.err)

@@ -36,8 +36,8 @@ import (
 )
 
 // NewCommand returns the test command, configured by opts. Without
-// [WithOutput] it prints text, and without [WithKinds] every run needs
-// --kind.
+// [WithOutput] it prints text, and without [WithKinds] the kinds come from
+// the paths and --kind.
 func NewCommand(opts ...Option) *cobra.Command {
 	format := output.Text
 	o := &options{output: &format}
@@ -74,31 +74,38 @@ whole outcome of a collect all kind under outcome:, in any order; or the
 reasons of the asserts that fail. Inputs follow the rules of sigil eval.
 
 Every PATH is a file or a directory, searched recursively. The .sigil files
-found form one bundle, and every test file found runs against it. With no
-paths, test searches the current directory. Like eval, a case that calls a
-host function needs a host binary with the functions linked in.`,
-		Example: `# Run every test case under the current directory
-sigil test --kind deploy_approval.sigil
+found form one bundle, and every test file found runs against it, with the
+kind of the policy it names. With no paths, test searches the current
+directory.
 
-# Run only the test cases for the production policies
+Each document's header names its kind, and the kind is found among the
+inputs: a kind file among the paths, or a kind document in the same file as the
+policies. --kind adds a kind file the paths don't hold, and a host binary has
+its kinds linked in. The same kind from two sources must be identical, which
+catches a stale export. Like eval, a case that calls a
+host function needs a host binary with the functions linked in.`,
+		Example: `# Run every test case under the current directory, for every kind in it
+sigil test
+
+# Run only the test cases for the production policies, with a kind file kept elsewhere
 sigil test --kind deploy_approval.sigil deploy/
 
 # Run the test cases whose name matches a regular expression
-sigil test --kind deploy_approval.sigil --run 'freeze'`,
+sigil test --run 'freeze'`,
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: complete.SigilFiles,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			kindFile, _ := cmd.Flags().GetString("kind")
+			kindFiles, _ := cmd.Flags().GetStringSlice("kind")
 			run, _ := cmd.Flags().GetString("run")
 			verbose, _ := cmd.Flags().GetBool("verbose")
 			if len(args) == 0 {
 				args = []string{"."}
 			}
-			return runTests(cmd.Context(), cmd.OutOrStdout(), o, kindFile, run, verbose, args)
+			return runTests(cmd.Context(), cmd.OutOrStdout(), o, kindFiles, run, verbose, args)
 		},
 	}
 
-	cmd.Flags().StringP("kind", "k", "", "Kind file the policies are written against; optional in a binary with the kind linked in")
+	cmd.Flags().StringSliceP("kind", "k", nil, "Kind file the paths don't hold; the policies' kinds are found among the paths and the kinds linked in (repeatable)")
 	cmd.Flags().String("run", "", "Only run test cases whose name matches this regular expression")
 	cmd.Flags().BoolP("verbose", "v", false, "List every test case, not only the ones that fail")
 	// These only fail for an undefined flag, which the tests would catch.
@@ -141,7 +148,7 @@ type osFS struct{}
 // Open opens a file by its path on disk.
 func (osFS) Open(name string) (fs.File, error) { return os.Open(name) } //nolint:gosec,wrapcheck,humaneerror // fs.FS fixes the signature; input files are named by test files the user asked to run
 
-func runTests(ctx context.Context, out io.Writer, o *options, kindFile, run string, verbose bool, paths []string) humane.Error {
+func runTests(ctx context.Context, out io.Writer, o *options, kindFiles []string, run string, verbose bool, paths []string) humane.Error {
 	var filter *regexp.Regexp
 	if run != "" {
 		re, err := regexp.Compile(run)
@@ -150,10 +157,6 @@ func runTests(ctx context.Context, out io.Writer, o *options, kindFile, run stri
 		}
 		filter = re
 	}
-	k, err := project.LoadKind(kindFile, o.kinds)
-	if err != nil {
-		return err
-	}
 	sources, tests, err := find(paths)
 	if err != nil {
 		return err
@@ -161,24 +164,24 @@ func runTests(ctx context.Context, out io.Writer, o *options, kindFile, run stri
 	if len(tests) == 0 {
 		return humane.New("no test files among "+strings.Join(paths, ", "), "test files are YAML files named *_test.yaml, next to the policies they test")
 	}
-	b, err := k.Bundle(project.Sources{Paths: sources})
+	p, err := project.Load(project.Sources{Paths: sources, Kinds: kindFiles}, o.kinds)
 	if err != nil {
 		return err
 	}
-	b.Check()
-	if errs := b.Errors(); errs != nil {
-		return pretty.Diagnose(b.Resolve(errs), b.SourceOf, "the bundle doesn't check, so no test ran", "fix the errors above; sigil check reports every problem in a bundle at once")
+	p.Check()
+	if errs := p.Errors(); errs != nil {
+		return pretty.Diagnose(p.Resolve(errs), p.SourceOf, "the bundle doesn't check, so no test ran", "fix the errors above; sigil check reports every problem in a bundle at once")
 	}
-	runner := &testsuite.Runner{Kind: k.Model, Binding: k.Binding, FS: osFS{}}
 	var results []SuiteResult
 	for _, file := range tests {
-		results = append(results, runSuite(ctx, runner, b, file, filter))
+		results = append(results, runSuite(ctx, p, file, filter))
 	}
 	return write(out, results, *o.output, verbose)
 }
 
-// runSuite runs one test file's cases.
-func runSuite(ctx context.Context, runner *testsuite.Runner, b *bundle.Bundle, file string, filter *regexp.Regexp) SuiteResult {
+// runSuite runs one test file's cases against the policy it names, with
+// that policy's kind.
+func runSuite(ctx context.Context, p *project.Project, file string, filter *regexp.Regexp) SuiteResult {
 	res := SuiteResult{File: file}
 	src, err := os.ReadFile(file) //nolint:gosec // the path was found under the command line's paths
 	if err != nil {
@@ -194,6 +197,14 @@ func runSuite(ctx context.Context, runner *testsuite.Runner, b *bundle.Bundle, f
 		return res
 	}
 	res.Policy = s.Policy
+	g := p.Group(s.Policy)
+	if g == nil {
+		errs := diag.ErrorList{noPolicy(p, s.Policy)}
+		res.Error = p.Render(errs)
+		res.diags, res.src = p.Resolve(errs), p.SourceOf
+		return res
+	}
+	runner := &testsuite.Runner{Kind: g.Kind.Model, Binding: g.Kind.Binding, FS: osFS{}}
 	if errs := s.Validate(runner.Kind); len(errs) > 0 {
 		msgs := make([]string, len(errs))
 		for i, e := range errs {
@@ -206,10 +217,10 @@ func runSuite(ctx context.Context, runner *testsuite.Runner, b *bundle.Bundle, f
 		res.problems = errs
 		return res
 	}
-	prog, errs := b.Compile(s.Policy, bundle.Options{Binding: runner.Binding})
+	prog, errs := g.Bundle.Compile(s.Policy, bundle.Options{Binding: runner.Binding})
 	if errs != nil {
-		res.Error = b.Render(errs)
-		res.diags, res.src = b.Resolve(errs), b.SourceOf
+		res.Error = p.Render(errs)
+		res.diags, res.src = p.Resolve(errs), p.SourceOf
 		return res
 	}
 	evaluate := evaluator(prog)
@@ -231,6 +242,16 @@ func runSuite(ctx context.Context, runner *testsuite.Runner, b *bundle.Bundle, f
 		res.Cases = append(res.Cases, cr)
 	}
 	return res
+}
+
+// noPolicy describes a test file's policy that isn't in the project,
+// listing what is.
+func noPolicy(p *project.Project, name string) *diag.Error {
+	help := "the bundle defines no policies"
+	if policies := p.Policies(); len(policies) > 0 {
+		help = "the bundle defines: " + strings.Join(policies, ", ")
+	}
+	return &diag.Error{Msg: "bundle has no policy " + name, Help: help}
 }
 
 // evaluator evaluates the compiled policy for the runner.

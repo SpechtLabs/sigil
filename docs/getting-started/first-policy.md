@@ -72,7 +72,7 @@ A policy with no rules is valid. Evaluate it:
 ::: terminal Evaluate the empty policy
 
 ```shell
-$ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
+$ sigil eval --input owner-deploy.json deploy_approval.sigil deploy/production.sigil
 deploy.production: deny(reason: no_rule_matched), the kind's default
 
 trace: no rule fired
@@ -99,7 +99,7 @@ when release.soak < 24h and not release.hotfix {
 ::: terminal Evaluate a release with six hours of soak
 
 ```shell
-$ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
+$ sigil eval --input owner-deploy.json deploy_approval.sigil deploy/production.sigil
 deploy.production: deny(reason: soak_too_short)
 
 trace: 1 candidate
@@ -139,7 +139,7 @@ There's a typo on line 5. Check the file:
 ::: terminal Check the policy
 
 ```shell
-$ sigil check --kind deploy_approval.sigil deploy/production.sigil
+$ sigil check deploy_approval.sigil deploy/production.sigil
 deploy/production.sigil:5:15: error: unknown field "lables" on type Service
   |
 5 |   and service.lables has {
@@ -156,7 +156,7 @@ In a YAML matcher, or in a language where unknown fields resolve to `null`, this
 ::: terminal Evaluate a deploy of a beta service
 
 ```shell
-$ sigil eval --kind deploy_approval.sigil --input wrong-lifecycle.json deploy/production.sigil
+$ sigil eval --input wrong-lifecycle.json deploy_approval.sigil deploy/production.sigil
 deploy.production: deny(reason: not_eligible)
 
 trace: 2 candidates
@@ -243,7 +243,7 @@ when cleared {
 ::: terminal Check the policy
 
 ```shell
-$ sigil check --kind deploy_approval.sigil deploy/production.sigil
+$ sigil check deploy_approval.sigil deploy/production.sigil
 deploy/production.sigil:25:24: error: Tier has no value `critcal`
    |
 25 |   when service.tier == critcal
@@ -286,7 +286,7 @@ Try to evaluate the base policy on its own:
 ::: terminal Evaluate the base policy directly
 
 ```shell
-$ sigil eval --kind deploy_approval.sigil --input owner-deploy.json deploy/production.sigil
+$ sigil eval --input owner-deploy.json deploy_approval.sigil deploy/production.sigil
 deploy/production.sigil:4:1: error: param `approvers` has no value
   |
 4 | param approvers: list<string>
@@ -323,7 +323,7 @@ when "payments-sre" in actor.teams {
 ::: terminal Evaluate the team policy
 
 ```shell
-$ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
+$ sigil eval --input owner-deploy.json --policy payments.production deploy_approval.sigil deploy/ payments/
 payments.production: review(reason: service_owner)
   approvers = ["payments-leads"]
 
@@ -419,7 +419,7 @@ The host now loads every team policy with `policy.Require("deploy.guardrails")`,
 ::: terminal Check the team policy against the requirement
 
 ```shell
-$ sigil check --kind deploy_approval.sigil --require deploy.guardrails deploy/ payments/
+$ sigil check --require deploy.guardrails deploy_approval.sigil deploy/ payments/
 payments/production.sigil:1:1: error: payments.production doesn't invoke deploy.guardrails
   |
 1 | policy payments.production: DeployApproval@1
@@ -460,7 +460,7 @@ Here the `when` around `production(...)` is exactly what you want: the block's c
 ::: terminal Evaluate the split policy
 
 ```shell
-$ sigil eval --kind deploy_approval.sigil --input owner-deploy.json --policy payments.production deploy/ payments/
+$ sigil eval --input owner-deploy.json --policy payments.production deploy_approval.sigil deploy/ payments/
 payments.production: review(reason: service_owner)
   approvers = ["payments-leads"]
 
@@ -502,7 +502,7 @@ cases:
 ::: terminal Run the test cases
 
 ```shell
-$ sigil test --kind deploy_approval.sigil -v
+$ sigil test -v
 --- PASS: payments/production_test.yaml:3: the owner's deploy goes to review
 --- PASS: payments/production_test.yaml:10: a beta service isn't eligible
 ok    payments/production_test.yaml  2 cases

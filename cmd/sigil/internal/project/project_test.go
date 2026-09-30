@@ -9,6 +9,7 @@ import (
 
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/internal/check"
+	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/gokind"
 )
 
@@ -38,47 +39,251 @@ collect all
 `
 )
 
-func TestLoadKind(t *testing.T) {
+// TestLoad loads a fixture tree in many ways and checks what the project
+// holds: its groups, its policies, the files it read and the diagnostics
+// loading and checking found.
+func TestLoad(t *testing.T) {
 	dir := t.TempDir()
-	write := func(name, src string) string {
+	files := map[string]string{
+		"access.sigil":           accessKind,
+		"roles.sigil":            rolesKind,
+		"stale.sigil":            strings.Replace(accessKind, "version 1", "version 2", 1),
+		"broken.sigil":           "kind Broken version 1\n\ninput x: nope\n",
+		"bundle.sigil":           accessKind + "\n---\npolicy b.main: Access@1\n",
+		"kindplus.sigil":         accessKind + "\n---\npolicy k.extra: Access@1\n",
+		"access/main.sigil":      "policy access.main: Access@1\n",
+		"access/sub/deep.sigil":  "policy access.deep: Access@1\n",
+		"access/.hidden.sigil":   "policy access.hidden: Access@1\n",
+		"access/notes.txt":       "not sigil",
+		"roles/main.sigil":       "policy roles.main: Roles@1\n",
+		"platform/base.sigil":    "policy platform.base: Access@1\n",
+		"typo/main.sigil":        "policy typo.main: Acess@1\n",
+		"typo/lib.sigil":         "module typo.lib: Acess@1\n",
+		"dup/main.sigil":         "policy access.main: Roles@1\n",
+		"parse/bad.sigil":        "policy parse.bad: Access@1\n\nlet = \n",
+		"brokenuse/main.sigil":   "policy brokenuse.main: Broken@1\n",
+		"useskind/main.sigil":    "policy useskind.main: Access@1\n\nuse Access\n",
+		"trustedin/team.sigil":   "policy team.main: Access@1\n",
+		"trustedin/plat/p.sigil": "policy plat.p: Access@1\n",
+	}
+	for name, src := range files {
 		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		return p
 	}
-	same := write("access.sigil", accessKind)
-	stale := write("stale.sigil", strings.Replace(accessKind, "version 1", "version 2", 1))
-	other := write("roles.sigil", rolesKind)
-	broken := write("broken.sigil", "kind Broken version 1\n\ninput x: nope\n")
-
+	in := func(names ...string) []string {
+		out := make([]string, len(names))
+		for i, n := range names {
+			out[i] = filepath.Join(dir, n)
+			if n == "-" {
+				out[i] = n
+			}
+		}
+		return out
+	}
 	access, roles := linked(t, accessKind), linked(t, rolesKind)
 
 	tests := []struct {
-		name   string
-		file   string
-		linked []project.Linked
-		kind   string // the loaded kind's name
-		host   bool
-		err    string
-		advice string
+		name     string
+		src      project.Sources
+		linked   []project.Linked
+		groups   []string // kind names
+		policies []string
+		files    int
+		diags    []string // every diagnostic, by message, in order
+		help     string   // part of the first diagnostic's help
+		host     bool     // the first group's kind is the linked one
+		err      string   // Load fails
+		advice   string
 	}{
-		{name: "no file, nothing linked", err: "no kind file given", advice: "--kind"},
-		{name: "no file, one kind linked", linked: []project.Linked{access}, kind: "Access", host: true},
-		{name: "no file, two kinds linked", linked: []project.Linked{access, roles}, err: "this binary links several kinds", advice: "linked: Access, Roles"},
-		{name: "file matches the linked kind", file: same, linked: []project.Linked{roles, access}, kind: "Access", host: true},
-		{name: "file is a stale export", file: stale, linked: []project.Linked{access}, err: "doesn't match the kind Access linked into this binary", advice: "`export Access --out " + stale + "`"},
-		{name: "file for an unlinked kind", file: other, linked: []project.Linked{access}, kind: "Roles"},
-		{name: "file without linked kinds", file: same, kind: "Access"},
-		{name: "missing file", file: filepath.Join(dir, "nope.sigil"), err: "the kind file couldn't be read"},
-		{name: "invalid kind file", file: broken, err: "nope", advice: "regenerate it from the host's Schema()"},
+		{
+			name:     "a kind file among the paths",
+			src:      project.Sources{Paths: in("access.sigil", "access"), Recursive: true},
+			groups:   []string{"Access"},
+			policies: []string{"access.deep", "access.main"},
+			files:    3,
+		},
+		{
+			name:     "not recursive",
+			src:      project.Sources{Paths: in("access.sigil", "access")},
+			groups:   []string{"Access"},
+			policies: []string{"access.main"},
+			files:    2,
+		},
+		{
+			name:     "a self-contained file",
+			src:      project.Sources{Paths: in("bundle.sigil")},
+			groups:   []string{"Access"},
+			policies: []string{"b.main"},
+			files:    1,
+		},
+		{
+			name:     "stdin",
+			src:      project.Sources{Paths: in("-"), Stdin: strings.NewReader(accessKind + "---\npolicy s.p: Access@1\n")},
+			groups:   []string{"Access"},
+			policies: []string{"s.p"},
+			files:    1,
+		},
+		{
+			name:     "two kinds",
+			src:      project.Sources{Paths: in("access.sigil", "roles.sigil", "access", "roles")},
+			groups:   []string{"Access", "Roles"},
+			policies: []string{"access.main", "roles.main"},
+			files:    4,
+		},
+		{
+			name:     "a --kind file",
+			src:      project.Sources{Paths: in("access"), Kinds: in("access.sigil")},
+			groups:   []string{"Access"},
+			policies: []string{"access.main"},
+			files:    1,
+		},
+		{
+			name:     "a --kind file's other documents",
+			src:      project.Sources{Paths: in("access"), Kinds: in("kindplus.sigil")},
+			groups:   []string{"Access"},
+			policies: []string{"access.main"},
+			files:    1,
+		},
+		{
+			name:     "a --kind file among the paths too",
+			src:      project.Sources{Paths: in("kindplus.sigil", "access"), Kinds: in("kindplus.sigil")},
+			groups:   []string{"Access"},
+			policies: []string{"access.main", "k.extra"},
+			files:    2,
+		},
+		{
+			name:     "a path named twice",
+			src:      project.Sources{Paths: in("access.sigil", "access", "access/main.sigil")},
+			groups:   []string{"Access"},
+			policies: []string{"access.main"},
+			files:    2,
+		},
+		{
+			name:     "a linked kind",
+			src:      project.Sources{Paths: in("access")},
+			linked:   []project.Linked{roles, access},
+			groups:   []string{"Access"},
+			policies: []string{"access.main"},
+			files:    1,
+			host:     true,
+		},
+		{
+			name:     "a kind file matching the linked kind",
+			src:      project.Sources{Paths: in("access.sigil", "access"), Kinds: in("access.sigil")},
+			linked:   []project.Linked{access},
+			groups:   []string{"Access"},
+			policies: []string{"access.main"},
+			files:    2,
+			host:     true,
+		},
+		{
+			name:   "a --kind file that's a stale export",
+			src:    project.Sources{Paths: in("access"), Kinds: in("stale.sigil")},
+			linked: []project.Linked{access},
+			err:    "stale.sigil doesn't match the kind Access linked into this binary",
+			advice: "export Access --out " + filepath.ToSlash(filepath.Join(dir, "stale.sigil")),
+		},
+		{
+			name:     "a stale export among the paths",
+			src:      project.Sources{Paths: in("stale.sigil", "access")},
+			linked:   []project.Linked{access},
+			groups:   []string{"Access"},
+			policies: []string{"access.main"},
+			files:    2,
+			diags:    []string{"kind document Access doesn't match the kind Access linked into this binary"},
+			help:     "export Access --out",
+			host:     true,
+		},
+		{
+			name:     "two kind documents that differ",
+			src:      project.Sources{Paths: in("access", "stale.sigil"), Kinds: in("access.sigil")},
+			groups:   []string{"Access"},
+			policies: []string{"access.main"},
+			files:    2,
+			diags:    []string{"kind document Access differs from the one at " + filepath.ToSlash(filepath.Join(dir, "access.sigil")) + ":1:6"},
+		},
+		{
+			name:     "an unknown kind",
+			src:      project.Sources{Paths: in("access.sigil", "typo")},
+			files:    3,
+			policies: nil,
+			diags:    []string{"module typo.lib is written against kind Acess, but no kind Acess was found", "policy typo.main is written against kind Acess, but no kind Acess was found"},
+			help:     "did you mean `Access`? add its kind file to the paths or name it with --kind",
+		},
+		{
+			name:  "an unknown kind, nothing close",
+			src:   project.Sources{Paths: in("roles")},
+			files: 1,
+			diags: []string{"policy roles.main is written against kind Roles, but no kind Roles was found"},
+			help:  "add its kind file",
+		},
+		{
+			name:     "a name defined twice across kinds",
+			src:      project.Sources{Paths: in("access.sigil", "roles.sigil", "access", "dup")},
+			groups:   []string{"Access"},
+			policies: []string{"access.main"},
+			files:    4,
+			diags:    []string{"policy access.main is defined twice"},
+			help:     "first defined at " + filepath.ToSlash(filepath.Join(dir, "access", "main.sigil")) + ":1:1",
+		},
+		{
+			name:     "a parse error, reported once",
+			src:      project.Sources{Paths: in("access.sigil", "roles.sigil", "parse", "roles")},
+			groups:   []string{"Access", "Roles"},
+			policies: []string{"parse.bad", "roles.main"},
+			files:    4,
+			diags:    []string{"expected a name after `let`, found `=`"},
+		},
+		{
+			name:  "a kind document that doesn't check",
+			src:   project.Sources{Paths: in("broken.sigil", "brokenuse")},
+			files: 2,
+			diags: []string{"kind Broken declares no decisions", "unknown type `nope`"},
+		},
+		{
+			name:     "use of a kind",
+			src:      project.Sources{Paths: in("access.sigil", "useskind")},
+			groups:   []string{"Access"},
+			policies: []string{"useskind.main"},
+			files:    2,
+			diags:    []string{"`Access` is a kind, not a policy or module"},
+		},
+		{
+			name:     "trusted",
+			src:      project.Sources{Paths: in("access.sigil", "access"), Trusted: in("platform")},
+			groups:   []string{"Access"},
+			policies: []string{"access.main"},
+			files:    2,
+		},
+		{
+			name:     "trusted inside the paths",
+			src:      project.Sources{Paths: in("access.sigil", "trustedin"), Trusted: in("trustedin/plat"), Recursive: true},
+			groups:   []string{"Access"},
+			policies: []string{"team.main"},
+			files:    2,
+		},
+		{
+			name:     "a trusted path among the paths",
+			src:      project.Sources{Paths: in("access.sigil", "platform"), Trusted: in("platform")},
+			groups:   []string{"Access"},
+			files:    1,
+			policies: nil,
+		},
+		{name: "a missing path", src: project.Sources{Paths: in("nope")}, err: "can't be read"},
+		{name: "a missing trusted path", src: project.Sources{Paths: in("access"), Trusted: in("nope")}, err: "can't be read"},
+		{name: "a missing kind file", src: project.Sources{Paths: in("access"), Kinds: in("nope.sigil")}, err: "the kind file couldn't be read", advice: "--kind"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k, err := project.LoadKind(tt.file, tt.linked)
+			p, err := project.Load(tt.src, tt.linked)
 			if tt.err != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.err) {
-					t.Fatalf("LoadKind() error = %v, want %q", err, tt.err)
+					t.Fatalf("Load() error = %v, want %q", err, tt.err)
 				}
 				if advice := strings.Join(err.Advice(), "; "); !strings.Contains(advice, tt.advice) {
 					t.Errorf("advice = %q, want %q", advice, tt.advice)
@@ -86,15 +291,42 @@ func TestLoadKind(t *testing.T) {
 				return
 			}
 			if err != nil {
-				t.Fatalf("LoadKind() error = %v", err)
+				t.Fatalf("Load() error = %v", err)
 			}
-			if k.Model.Name != tt.kind || k.Host != tt.host || k.Binding == nil {
-				t.Errorf("LoadKind() = %s, host %v, binding %v; want %s, host %v", k.Model.Name, k.Host, k.Binding != nil, tt.kind, tt.host)
+			p.Check()
+			var groups []string
+			for _, g := range p.Groups() {
+				groups = append(groups, g.Kind.Model.Name)
+				if g.Kind.Binding == nil {
+					t.Errorf("group %s has no binding", g.Kind.Model.Name)
+				}
 			}
-			if tt.host {
-				for _, l := range tt.linked {
-					if l.Model.Name == tt.kind && (k.Model != l.Model || k.Binding != l.Binding) {
-						t.Error("LoadKind() didn't use the linked kind's model and binding")
+			if !reflect.DeepEqual(groups, tt.groups) {
+				t.Errorf("Groups() = %v, want %v", groups, tt.groups)
+			}
+			if got := p.Policies(); !reflect.DeepEqual(got, tt.policies) {
+				t.Errorf("Policies() = %v, want %v", got, tt.policies)
+			}
+			if p.Files() != tt.files {
+				t.Errorf("Files() = %d, want %d", p.Files(), tt.files)
+			}
+			var diags []string
+			for _, e := range p.Errors() {
+				diags = append(diags, e.Msg)
+			}
+			if !reflect.DeepEqual(diags, tt.diags) {
+				t.Fatalf("Errors() = %q, want %q", diags, tt.diags)
+			}
+			if tt.help != "" && !strings.Contains(p.Errors()[0].Help, tt.help) {
+				t.Errorf("help = %q, want %q", p.Errors()[0].Help, tt.help)
+			}
+			if tt.host != (len(p.Groups()) > 0 && p.Groups()[0].Kind.Host) {
+				t.Errorf("host = %v, want %v", !tt.host, tt.host)
+			}
+			for _, g := range p.Groups() {
+				for _, name := range g.Bundle.Policies() {
+					if p.Group(name) != g {
+						t.Errorf("Group(%s) isn't the group holding it", name)
 					}
 				}
 			}
@@ -102,12 +334,15 @@ func TestLoadKind(t *testing.T) {
 	}
 }
 
-func TestBundle(t *testing.T) {
+// TestTrusted checks that a trusted document resolves in its kind's
+// group, as trusted, and that a regular document can't take its name.
+func TestTrusted(t *testing.T) {
 	dir := t.TempDir()
 	for name, src := range map[string]string{
+		"access.sigil":        accessKind,
 		"platform/base.sigil": "policy platform.base: Access@1\n",
 		"team/main.sigil":     "policy team.main: Access@1\n",
-		"team/sub/deep.sigil": "policy team.deep: Access@1\n",
+		"team/base.sigil":     "policy platform.base: Access@1\n",
 	} {
 		p := filepath.Join(dir, name)
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -117,46 +352,50 @@ func TestBundle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	k, err := project.LoadKind("", []project.Linked{linked(t, accessKind)})
+	p, err := project.Load(project.Sources{
+		Paths:   []string{filepath.Join(dir, "team")},
+		Trusted: []string{filepath.Join(dir, "platform")},
+		Kinds:   []string{filepath.Join(dir, "access.sigil")},
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	tests := []struct {
-		name string
-		src  project.Sources
-		want []string
-		doc  string // a trusted document the bundle must resolve
-		err  string
-	}{
-		{name: "one directory", src: project.Sources{Paths: []string{filepath.Join(dir, "team")}}, want: []string{"team.main"}},
-		{name: "recursive", src: project.Sources{Paths: []string{filepath.Join(dir, "team")}, Recursive: true}, want: []string{"team.main", "team.deep"}},
-		{name: "trusted", src: project.Sources{Paths: []string{filepath.Join(dir, "team")}, Trusted: []string{filepath.Join(dir, "platform")}}, want: []string{"team.main"}, doc: "platform.base"},
-		{name: "stdin", src: project.Sources{Paths: []string{"-"}, Stdin: strings.NewReader("policy s.p: Access@1\n")}, want: []string{"s.p"}},
-		{name: "missing path", src: project.Sources{Paths: []string{filepath.Join(dir, "nope")}}, err: "can't be read"},
-		{name: "missing trusted path", src: project.Sources{Paths: []string{"-"}, Trusted: []string{filepath.Join(dir, "nope")}}, err: "can't be read"},
+	g := p.Group("platform.base")
+	if g == nil {
+		t.Fatal("Group(platform.base) = nil, want the Access group")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			b, err := k.Bundle(tt.src)
-			if tt.err != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.err) {
-					t.Fatalf("Bundle() error = %v, want %q", err, tt.err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("Bundle() error = %v", err)
-			}
-			if got := b.Policies(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Policies() = %v, want %v", got, tt.want)
-			}
-			if tt.doc != "" {
-				if d := b.Document(tt.doc); d == nil || !d.Trusted {
-					t.Errorf("Document(%s) = %v, want a trusted document", tt.doc, d)
-				}
-			}
-		})
+	if d := g.Bundle.Document("platform.base"); d == nil || !d.Trusted {
+		t.Errorf("Document(platform.base) = %v, want a trusted document", d)
+	}
+	errs := p.Errors()
+	if len(errs) != 1 || !strings.Contains(errs[0].Help, "the name belongs to the trusted source") {
+		t.Fatalf("Errors() = %v, want the trusted name taken", errs)
+	}
+	if got := p.Policies(); !reflect.DeepEqual(got, []string{"team.main"}) {
+		t.Errorf("Policies() = %v, want the bundle's own", got)
+	}
+}
+
+// TestResolve checks that diagnostics are named by their document,
+// sorted, and rendered with the source they point into.
+func TestResolve(t *testing.T) {
+	src := accessKind + "---\npolicy p.first: Access@1\n\nlet x = nope\n---\npolicy p.second: Access@1\n\nlet y = nada\n"
+	p, err := project.Load(project.Sources{Paths: []string{"-"}, Stdin: strings.NewReader(src)}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Check()
+	p.Check()
+	errs := p.Resolve(append(p.Errors(), &diag.Error{Msg: "nowhere"}))
+	if len(errs) != 3 || errs[0].Doc != "" || errs[0].Msg != "nowhere" || errs[1].Doc != "p.first" || errs[2].Doc != "p.second" {
+		t.Fatalf("Resolve() = %v, want one diagnostic in each policy", errs)
+	}
+	if p.SourceOf("<stdin>") == nil || p.SourceOf("nope.sigil") != nil {
+		t.Error("SourceOf() doesn't return exactly the files read")
+	}
+	out := p.Render(p.Errors())
+	if !strings.Contains(out, "<stdin>:") || !strings.Contains(out, "let x = nope") {
+		t.Errorf("Render() = %q, want positions and source lines", out)
 	}
 }
 

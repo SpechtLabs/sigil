@@ -46,9 +46,9 @@ func main() {
 go run ./cmd/sigil eval --policy payments.production --input request.json -R policies/
 ```
 
-Every command uses the linked kind without `--kind`. If you pass a `--kind` file for the same kind anyway, it must match the linked kind exactly, which catches a stale export.
+Every command uses the linked kind for the documents written against it, with no kind file. A kind file for the same kind, whether among the paths or named with `--kind`, must match the linked kind exactly, which catches a stale export.
 
-A host with several kinds repeats `cli.WithKind`, and every policy command then takes `--kind` with the exported kind file to pick one. The example service's `sigilc` links both `DeployApproval` and `AccessGrant`:
+A host with several kinds repeats `cli.WithKind`, and each document then uses the kind its header names. The example service's `sigilc` links both `DeployApproval` and `AccessGrant`:
 
 ```go
 cli.Main(cli.WithKind(deploy.Kind), cli.WithKind(access.Kind), cli.WithVersion(version))

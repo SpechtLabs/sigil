@@ -4,7 +4,8 @@ testdata/kinds/invalid.sigil:3:34: error: enum Tier: value "standard" is declare
   |                                  ^^^^^^^^
   = help: declare each value once
 
-✗ the kind file doesn't load, so nothing was checked
+✗ checked 2 files, 1 error
 --- error ---
-the kind file has 1 error
+check found 1 error
+advice: each diagnostic above says where the problem is and how to fix it
 advice: fix the kind file, or regenerate it from the host's Schema(); `sigil fmt --write` rewrites the old decision syntax

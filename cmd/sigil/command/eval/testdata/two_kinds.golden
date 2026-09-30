@@ -1,0 +1,15 @@
+grants: 3 decisions
+  read(reason: member)   testdata/grants/grants.sigil:4:3
+    scope = "eng"
+  write(reason: owner)   testdata/grants/grants.sigil:8:3
+  write(reason: oncall)  testdata/grants/grants.sigil:12:3
+
+trace: 3 candidates
+  * read(reason: member)   testdata/grants/grants.sigil:4:3
+      when "eng" in teams
+      scope = "eng"
+  * write(reason: owner)   testdata/grants/grants.sigil:8:3
+      when "platform" in teams
+  * write(reason: oncall)  testdata/grants/grants.sigil:12:3
+      when "oncall" in teams
+--- ok ---

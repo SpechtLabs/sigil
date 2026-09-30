@@ -1,0 +1,18 @@
+deploy.guardrails: 2 rules from 1 policy and 1 module
+
+  deny(reason: not_eligible)    deploy.guardrails:8
+    when not eligible
+
+  deny(reason: soak_too_short)  deploy.guardrails:12
+    when release.soak < 1d and not release.hotfix
+
+deploy.production: 2 rules from 1 policy and 1 module
+
+  approve(reason: release_manager)  deploy.production:11
+    when cleared
+     and service.tier == "critical" and "release_manager" in actor.roles
+
+  review(reason: service_owner)     deploy.production:16
+    when cleared
+     and service.tier in ["standard", "internal"] and owns_service
+    with approvers = approvers

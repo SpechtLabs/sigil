@@ -16,7 +16,8 @@ testdata/kinds/legacy.sigil:17:14: error: the reason is a named argument
    |              ^^^^^^^^^^^^^^^
    = help: write `deny(reason: no_rule_matched)`
 
-✗ the kind file doesn't load, so nothing was checked
+✗ checked 2 files, 3 errors
 --- error ---
-the kind file has 3 errors
+check found 3 errors
+advice: each diagnostic above says where the problem is and how to fix it
 advice: fix the kind file, or regenerate it from the host's Schema(); `sigil fmt --write` rewrites the old decision syntax

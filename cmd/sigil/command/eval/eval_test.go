@@ -35,6 +35,7 @@ func TestEval(t *testing.T) {
 		stdin    string
 		policy   string
 		format   output.Format
+		paths    []string // instead of testdata/<kind>, with no --kind
 	}{
 		{name: "winner", kind: access, input: "admin.json"},
 		{name: "winner_json", kind: access, input: "admin.json", format: output.JSON},
@@ -65,6 +66,9 @@ func TestEval(t *testing.T) {
 		{name: "enum_json", kind: tiers, input: "tier_standard.json", format: output.JSON},
 		{name: "enum_yaml", kind: tiers, input: "tier_standard.json", format: output.YAML},
 		{name: "enum_outside_the_set", kind: tiers, input: "tier_typo.json"},
+		{name: "kind_among_paths", input: "admin.json", paths: []string{"testdata/access.sigil", "testdata/access"}},
+		{name: "two_kinds", input: "grants.json", policy: "grants", paths: []string{"testdata/access.sigil", "testdata/access", "testdata/grants.sigil", "testdata/grants"}},
+		{name: "stdin_bundle", input: "admin.json", paths: []string{"-"}, stdin: bundleOf(t, "testdata/access.sigil", "testdata/access/main.sigil")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -80,9 +84,12 @@ func TestEval(t *testing.T) {
 			if kindFile == "" {
 				kindFile = tt.kind
 			}
+			src := project.Sources{Paths: []string{filepath.Join("testdata", tt.kind)}, Kinds: []string{filepath.Join("testdata", kindFile+".sigil")}, Stdin: strings.NewReader(tt.stdin)}
+			if tt.paths != nil {
+				src.Paths, src.Kinds = tt.paths, nil
+			}
 			var out bytes.Buffer
-			src := project.Sources{Paths: []string{filepath.Join("testdata", tt.kind)}, Stdin: strings.NewReader(tt.stdin)}
-			err := run(context.Background(), &out, &options{output: &format}, filepath.Join("testdata", kindFile+".sigil"), input, tt.policy, src)
+			err := run(context.Background(), &out, &options{output: &format}, input, tt.policy, src)
 			golden(t, tt.name, render(out.String(), err))
 		})
 	}
@@ -103,18 +110,33 @@ func TestEvalErrors(t *testing.T) {
 		{name: "no policies", kind: "testdata/grants.sigil", input: "testdata/inputs/grants.json", paths: []string{"testdata/grants.sigil"}, wantErr: "the bundle holds no policies"},
 		{name: "missing input", kind: "testdata/access.sigil", input: "testdata/inputs/nope.json", paths: []string{"testdata/access"}, wantErr: "the input couldn't be read"},
 		{name: "missing kind", kind: "testdata/nope.sigil", input: "testdata/inputs/admin.json", paths: []string{"testdata/access"}, wantErr: "the kind file couldn't be read"},
-		{name: "wrong kind", kind: "testdata/grants.sigil", input: "testdata/inputs/admin.json", paths: []string{"testdata/access"}, wantErr: "document is for kind Access, not Grants"},
+		{name: "wrong kind", kind: "testdata/grants.sigil", input: "testdata/inputs/admin.json", paths: []string{"testdata/access"}, wantErr: "the bundle doesn't check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			format := output.Text
-			src := project.Sources{Paths: tt.paths, Stdin: strings.NewReader("")}
-			err := run(context.Background(), &bytes.Buffer{}, &options{output: &format}, tt.kind, tt.input, "", src)
+			src := project.Sources{Paths: tt.paths, Kinds: []string{tt.kind}, Stdin: strings.NewReader("")}
+			err := run(context.Background(), &bytes.Buffer{}, &options{output: &format}, tt.input, "", src)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("run() = %v, want %q", err, tt.wantErr)
 			}
 		})
 	}
+}
+
+// bundleOf joins files into one self-contained bundle, the way a
+// ConfigMap key holds the kind and its policies.
+func bundleOf(t *testing.T, files ...string) string {
+	t.Helper()
+	docs := make([]string, len(files))
+	for i, f := range files {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		docs[i] = string(src)
+	}
+	return strings.Join(docs, "\n---\n")
 }
 
 // render joins what the command printed and the error it returned.

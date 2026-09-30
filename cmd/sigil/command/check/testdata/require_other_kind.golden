@@ -1,0 +1,8 @@
+testdata/multikind/roles/main.sigil:3:5: warning: let unused is never read [unused-let]
+  |
+3 | let unused = user
+  |     ^^^^^^
+  = help: remove the let, or read it; a private let can't be imported
+
+! checked 3 files, 1 warning
+--- ok ---

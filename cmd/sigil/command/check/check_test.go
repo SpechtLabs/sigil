@@ -28,6 +28,7 @@ func TestCheck(t *testing.T) {
 		trusted  []string
 		patterns []string
 		requires []string
+		noKind   bool // no --kind: the kinds come from the paths
 	}{
 		{name: "lints", paths: []string{"testdata/lints"}},
 		{name: "lints_strict", config: "strict.yaml", paths: []string{"testdata/lints"}},
@@ -44,7 +45,12 @@ func TestCheck(t *testing.T) {
 		{name: "require_gated", paths: []string{"testdata/lints/teams"}, trusted: []string{"testdata/lints/deploy"}, patterns: []string{"teams.payments"}, requires: []string{"deploy.guardrails"}},
 		{name: "require_roots", paths: []string{"testdata/lints"}, requires: []string{"deploy.guardrails"}},
 		{name: "require_no_match", paths: []string{"testdata/lints"}, patterns: []string{"nope.*"}, requires: []string{"deploy.guardrails"}},
-		{name: "trusted_collision", paths: []string{"testdata/lints"}, trusted: []string{"testdata/lints/deploy"}},
+		{name: "trusted_in_paths", paths: []string{"testdata/lints"}, trusted: []string{"testdata/lints/deploy"}},
+		{name: "trusted_collision", paths: []string{"testdata/collision"}, trusted: []string{"testdata/lints/deploy"}},
+		{name: "kinds", paths: []string{"testdata/multikind"}, noKind: true},
+		{name: "require_other_kind", paths: []string{"testdata/multikind"}, requires: []string{"roles.main"}, noKind: true},
+		{name: "require_missing", paths: []string{"testdata/multikind"}, requires: []string{"nope.guard"}, noKind: true},
+		{name: "unknown_kind", paths: []string{"testdata/unknown_kind"}, noKind: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -56,13 +62,16 @@ func TestCheck(t *testing.T) {
 			if config == "" {
 				config = "defaults.yaml"
 			}
-			kindFile := tt.kind
-			if kindFile == "" {
-				kindFile = filepath.Join("testdata", "deploy_approval.sigil")
+			kinds := []string{filepath.Join("testdata", "deploy_approval.sigil")}
+			switch {
+			case tt.noKind:
+				kinds = nil
+			case tt.kind != "":
+				kinds = []string{tt.kind}
 			}
 			var out bytes.Buffer
-			src := project.Sources{Paths: tt.paths, Trusted: tt.trusted, Recursive: true, Stdin: strings.NewReader("")}
-			err := run(&out, &options{output: &format}, filepath.Join("testdata", "config", config), kindFile, src, tt.patterns, tt.requires)
+			src := project.Sources{Paths: tt.paths, Trusted: tt.trusted, Kinds: kinds, Recursive: true, Stdin: strings.NewReader("")}
+			err := run(&out, &options{output: &format}, filepath.Join("testdata", "config", config), src, tt.patterns, tt.requires)
 			golden(t, tt.name, render(out.String(), err))
 		})
 	}
@@ -93,7 +102,7 @@ func TestConfigDiscovery(t *testing.T) {
 	t.Chdir(filepath.Join(dir, "sub"))
 	format := output.Text
 	var out bytes.Buffer
-	herr := run(&out, &options{output: &format}, "", filepath.Join("..", "deploy_approval.sigil"), project.Sources{Paths: []string{"."}}, nil, nil)
+	herr := run(&out, &options{output: &format}, "", project.Sources{Paths: []string{"."}, Kinds: []string{filepath.Join("..", "deploy_approval.sigil")}}, nil, nil)
 	if herr == nil || !strings.Contains(out.String(), "error: let unused is never read [unused-let]") {
 		t.Fatalf("run() = %v with output %q, want the unused-let lint as an error", herr, out.String())
 	}
@@ -138,7 +147,7 @@ func TestNoFiles(t *testing.T) {
 	}
 	format := output.Text
 	var out bytes.Buffer
-	err := run(&out, &options{output: &format}, filepath.Join("testdata", "config", "defaults.yaml"), filepath.Join("testdata", "deploy_approval.sigil"), project.Sources{Paths: []string{dir}}, nil, nil)
+	err := run(&out, &options{output: &format}, filepath.Join("testdata", "config", "defaults.yaml"), project.Sources{Paths: []string{dir}, Kinds: []string{filepath.Join("testdata", "deploy_approval.sigil")}}, nil, nil)
 	if err != nil {
 		t.Fatalf("run() = %v", err)
 	}

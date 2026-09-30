@@ -75,6 +75,35 @@ func New(k *kind.Kind) *Bundle {
 	return &Bundle{kind: k, Sources: map[string][]byte{}, docs: map[string]*Document{}}
 }
 
+// Redefined is the diagnostic for doc, a policy or module in file, taking
+// a name prev already has. A bundle reports it as it indexes; a caller
+// that keeps one namespace across several bundles, as the CLI does across
+// kinds, reports it the same way. It's nil for a kind document or a nil
+// prev.
+func Redefined(file string, doc ast.Doc, prev *Document) *diag.Error {
+	if prev == nil {
+		return nil
+	}
+	var name *ast.PolicyName
+	switch d := doc.(type) {
+	case *ast.PolicyDoc:
+		name = d.Name
+	case *ast.ModuleDoc:
+		name = d.Name
+	default:
+		return nil
+	}
+	where := "first defined at " + at(prev.File, prev.Node.Pos())
+	if prev.Trusted {
+		where = "the name belongs to the trusted source, defined at " + at(prev.File, prev.Node.Pos())
+	}
+	return &diag.Error{
+		File: file, Pos: name.Pos(), End: name.End(),
+		Msg:  fmt.Sprintf("%s %s is defined twice", describe(doc), name.String()),
+		Help: where + "; documents resolve by name, so each name has one definition",
+	}
+}
+
 // Trust adds a trusted bundle: required policies resolve there first,
 // and a document here that takes a trusted name is an error. Call it
 // before adding this bundle's own files, since the name check runs as
@@ -92,27 +121,43 @@ func (b *Bundle) Trust(t *Bundle) {
 // errors and names defined twice are recorded in the bundle, for
 // [Bundle.Errors]. Add keeps src; the caller must not modify it after.
 func (b *Bundle) Add(file string, src []byte) {
-	b.Sources[file] = src
 	f, errs := parser.ParseFile(file, src)
 	b.errs = append(b.errs, errs...)
-	for _, doc := range f.Docs {
-		b.index(file, doc)
+	b.add(file, src, f.Docs, true)
+}
+
+// Index adds documents already parsed from file, whose source is src, for
+// a caller that parses once and splits the documents between bundles, as
+// the CLI does by kind. Unlike [Bundle.Add] it records no parse errors,
+// which are the caller's to report, and doesn't check a kind document
+// against the bundle's kind; a kind document is still indexed, so `use` of
+// its name is an error. Names defined twice are recorded as Add records
+// them. Index keeps src; the caller must not modify it after.
+func (b *Bundle) Index(file string, src []byte, docs []ast.Doc) {
+	b.add(file, src, docs, false)
+}
+
+// add keeps src as file's source and indexes its documents, checking a
+// kind document for the bundle's kind against it when checkKind is set.
+func (b *Bundle) add(file string, src []byte, docs []ast.Doc, checkKind bool) {
+	b.Sources[file] = src
+	for _, doc := range docs {
+		b.index(file, doc, checkKind)
 	}
 }
 
 // index records doc by its header name, or reports the name as defined
-// twice. A kind document with the bundle's kind name must match the
-// contract; one for another kind is ignored.
-func (b *Bundle) index(file string, doc ast.Doc) {
+// twice. With checkKind, a kind document with the bundle's kind name
+// must match the contract; one for another kind is ignored.
+func (b *Bundle) index(file string, doc ast.Doc, checkKind bool) {
 	var name string
-	var pos ast.Node
 	switch d := doc.(type) {
 	case *ast.PolicyDoc:
-		name, pos = d.Name.String(), d.Name
+		name = d.Name.String()
 	case *ast.ModuleDoc:
-		name, pos = d.Name.String(), d.Name
+		name = d.Name.String()
 	case *ast.KindDoc:
-		if d.Name.Name == b.kind.Name {
+		if checkKind && d.Name.Name == b.kind.Name {
 			c := check.New(file)
 			if loaded := c.Kind(d); loaded != nil && loaded.Source() != b.kind.Source() {
 				c.KindMismatch(d, b.kind.Name)
@@ -127,15 +172,7 @@ func (b *Bundle) index(file string, doc ast.Doc) {
 		return
 	}
 	if prev := b.lookup(name); prev != nil && !prev.Kind {
-		where := "first defined at " + at(prev.File, prev.Node.Pos())
-		if prev.Trusted {
-			where = "the name belongs to the trusted source, defined at " + at(prev.File, prev.Node.Pos())
-		}
-		b.errs = append(b.errs, &diag.Error{
-			File: file, Pos: pos.Pos(), End: pos.End(),
-			Msg:  fmt.Sprintf("%s %s is defined twice", describe(doc), name),
-			Help: where + "; documents resolve by name, so each name has one definition",
-		})
+		b.errs = append(b.errs, Redefined(file, doc, prev))
 		return
 	}
 	b.docs[name] = &Document{Node: doc, Name: name, File: file}

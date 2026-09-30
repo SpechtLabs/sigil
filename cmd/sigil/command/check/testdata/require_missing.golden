@@ -1,0 +1,22 @@
+testdata/multikind/bundle.sigil:20:1 (access.main): error: access.main doesn't invoke nope.guard
+   |
+20 | policy access.main: Access@1
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: the host requires nope.guard for every Access policy; import it with `use nope.guard` and invoke it at the top level
+
+testdata/multikind/roles/main.sigil:1:1: error: roles.main doesn't invoke nope.guard
+  |
+1 | policy roles.main: Roles@1
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: the host requires nope.guard for every Roles policy; import it with `use nope.guard` and invoke it at the top level
+
+testdata/multikind/roles/main.sigil:3:5: warning: let unused is never read [unused-let]
+  |
+3 | let unused = user
+  |     ^^^^^^
+  = help: remove the let, or read it; a private let can't be imported
+
+✗ checked 3 files, 2 errors and 1 warning
+--- error ---
+check found 2 errors and 1 warning
+advice: each diagnostic above says where the problem is and how to fix it

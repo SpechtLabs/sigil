@@ -25,5 +25,6 @@
   }
 ]
 --- error ---
-the kind file has 3 errors
+check found 3 errors
+advice: each diagnostic says where the problem is and how to fix it
 advice: fix the kind file, or regenerate it from the host's Schema(); `sigil fmt --write` rewrites the old decision syntax
