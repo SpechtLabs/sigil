@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/SpechtLabs/sigil/compare/v0.6.0...v0.6.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **parser:** limit expression nesting depth ([#105](https://github.com/SpechtLabs/sigil/issues/105)) ([cc036b0](https://github.com/SpechtLabs/sigil/commit/cc036b098452e3f662cd2623c495ce4c6c1ef5f6))
+
 ## [0.6.0](https://github.com/SpechtLabs/sigil/compare/v0.5.2...v0.6.0) (2026-09-30)
 
 
