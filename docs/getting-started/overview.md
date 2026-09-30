@@ -203,4 +203,4 @@ The [tour](/getting-started/tour/) reads one complete policy in five minutes and
 
 :::
 
-Steps 1 to 4 are all a service needs when one team owns its policies. Steps 5 to 7 are for when several teams write policies against the same kind. The same router, grown into a complete service, is [`examples/alert-routing`](https://github.com/SpechtLabs/sigil/tree/main/examples/alert-routing): a TypeScript app on Sigil's WebAssembly build, with an operator console, an observability stack and load tests.
+Steps 1 to 4 are all a service needs when one team owns its policies. Steps 5 to 7 are for when several teams write policies against the same kind.
