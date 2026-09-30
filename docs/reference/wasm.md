@@ -5,12 +5,12 @@ createTime: 2026/09/30 12:00:00
 permalink: /reference/wasm/
 ---
 
-The WebAssembly module `sigil.wasm`, built from `cmd/sigil-wasm`, and the TypeScript package `@spechtlabs/sigil` that loads it: the module's ABI, its requests and responses, and every export of the package.
+The WebAssembly module `sigil.wasm`, built from `cmd/sigil-wasm`, and the TypeScript package `@spechtlabs/sigil` and the Rust crate `spechtlabs-sigil` that load it: the module's ABI, its requests and responses, and every export of the package and the crate.
 
-To embed Sigil in TypeScript step by step, see [Embed Sigil in TypeScript](/guides/embed-typescript/). Why: [One engine for every host](/understanding/one-engine/).
+To embed Sigil step by step, see [Embed Sigil in TypeScript](/guides/embed-typescript/) and [Embed Sigil in Rust](/guides/embed-rust/). Why: [One engine for every host](/understanding/one-engine/).
 
 ::: warning Unpublished
-The package is on npm as `@spechtlabs/sigil`, versioned with Sigil. Each [release](https://github.com/SpechtLabs/sigil/releases) attaches the module as the archive `sigil_<version>_wasip1_wasm`, and [Building](#building) shows how to build it yourself.
+The package is on npm as `@spechtlabs/sigil`, versioned with Sigil. Each [release](https://github.com/SpechtLabs/sigil/releases) attaches the module as the archive `sigil_<version>_wasip1_wasm`, and [Building](#building) shows how to build it yourself. The Rust crate isn't on crates.io yet: [Add the crate](/guides/embed-rust/#add-the-crate) shows how to depend on it from a checkout.
 :::
 
 ## Building
@@ -18,6 +18,7 @@ The package is on npm as `@spechtlabs/sigil`, versioned with Sigil. Each [releas
 ```sh
 mise run wasm-build   # dist/wasm/sigil.wasm
 mise run ts-build     # bindings/typescript/dist, with sigil.wasm copied in
+mise run rust-build   # bindings/rust, with sigil.wasm bundled in
 ```
 
 `wasm-build` runs:
@@ -319,7 +320,7 @@ Past the deadline, the evaluation stops at the next check, and the record's `err
 { "ok": true, "payload": { "channel": "#alerts" }, "error": { "kind": "canceled", "message": "the evaluation was stopped: context deadline exceeded", "help": "the evaluation ran past its deadline or was canceled, so nothing it found counts; give it more time, or look for a loop over a large input" }, "policy": "checkout.alerts", "decision": "notify", "reason": "unrouted", "outcome": [{ "payload": { "channel": "#alerts" }, "decision": "notify", "reason": "unrouted" }], "trace": [] }
 ```
 
-A host function, or one long step between two checks, runs to its end. To bound time strictly, run the module where the host can terminate it, such as a Web Worker.
+A host function, or one long step between two checks, runs to its end. To bound time strictly, run the module where the host can terminate it, such as a Web Worker, or use the Rust crate, whose epoch interruption stops runaway engine work at the next check and which can meter fuel; a blocking host function is still stopped only once it returns. See [Hard deadlines and fuel](#hard-deadlines-and-fuel).
 
 ## Limits
 
@@ -491,3 +492,190 @@ SigilError: invalid duration "90 minutes"
 | --- | --- |
 | `ABI_VERSION` | `1`, the ABI version the package speaks. `Sigil.load` throws for a module that speaks another |
 | `Timestamp` | `string`, an RFC 3339 timestamp as it comes back |
+
+## Rust crate
+
+`spechtlabs-sigil` loads the module on wasmtime and speaks its ABI. The library is named `sigil`. It needs Rust 1.98 or later, and the `bundled` feature (on by default) embeds the module, from `$SIGIL_WASM` or `dist/wasm/sigil.wasm` of the repository.
+
+| Item | Holds |
+| --- | --- |
+| `Module`, `ModuleConfig`, `Limits` | The compiled module, how it's compiled, and the bounds of an instance |
+| `Sigil`, `Policy` | One instance, and a policy compiled in it |
+| `Pool`, `PoolOptions`, `PoolStats` | Several instances, each holding the same policies |
+| `Kind`, `KindBuilder`, `Decision`, `Type`, `FnDecl`, `Outcome` | The kind builder |
+| `Error`, `SigilError`, `StoppedError` | Errors |
+| `Diagnostic`, `EvalResult`, `EvalEntry`, `EvalFailure`, `FailedAssert`, `Explanation`, `ExplainEntry`, `VersionInfo` | The record types, serde `Serialize` and `Deserialize`, field for field the CLI's JSON |
+| `SourceFile`, `Requirement`, `CompileRequirement`, `Stub`, `StubCall`, `LintLevel`, `HostFunction` | The options' types |
+
+To embed Sigil in Rust step by step, see [Embed Sigil in Rust](/guides/embed-rust/).
+
+### `Module` and `Sigil`
+
+| Member | Signature | Does |
+| --- | --- | --- |
+| `Module::bundled` | `() -> Result<Module, Error>` | Compiles the bundled module. Takes seconds; do it once |
+| `Module::from_file` | `(path) -> Result<Module, Error>` | Compiles the module at a path |
+| `Module::from_bytes` | `(&[u8]) -> Result<Module, Error>` | Compiles the module's bytes |
+| `Module::bundled_with`, `from_file_with`, `from_bytes_with` | `(.., ModuleConfig) -> Result<Module, Error>` | The same, with fuel metering on or off |
+| `Sigil::new` | `(&Module) -> Result<Sigil, Error>` | Instantiates the module and starts the Go runtime |
+| `Sigil::with_limits` | `(&Module, Limits) -> Result<Sigil, Error>` | The same, with [limits](#limits-and-options) |
+| `Sigil::bundled` | `() -> Result<Sigil, Error>` | `Module::bundled`, then `Sigil::new` |
+| `sigil.version` | `() -> Result<VersionInfo, Error>` | The [`version`](#version) op |
+| `sigil.check` | `(&[SourceFile], &CheckOptions) -> Result<Vec<Diagnostic>, Error>` | The [`check`](#check) op |
+| `sigil.compile` | `(&[SourceFile], CompileOptions) -> Result<Policy, Error>` | The [`compile`](#compile) op. An `Error::Sigil` carries the diagnostics |
+| `sigil.explain` | `(&[SourceFile], &ExplainOptions) -> Result<Vec<Explanation>, Error>` | The [`explain`](#explain) op on files |
+| `sigil.format` | `(&str, &FormatOptions) -> Result<String, Error>` | The [`format`](#format) op. An `Error::Sigil` carries the syntax errors |
+| `sigil.stopped` | `() -> Option<StoppedError>` | Why the instance stopped, or `None` while it works |
+| `sigil.memory_size` | `() -> Result<usize, Error>` | Bytes of linear memory the instance holds |
+
+- `Module` is cheap to clone. `Sigil`, `Policy`, `Pool` and `Module` are `Send` and `Sync`.
+- An instance runs one call at a time: concurrent calls on one wait for each other. A host function that calls back into the instance that runs it fails with an error.
+- The wasmtime-wasi layer can't block inside a Tokio runtime, so a call made on a runtime's worker thread runs on a thread of its own. Call from `spawn_blocking` instead.
+
+### `Policy`
+
+| Member | Signature | Does |
+| --- | --- | --- |
+| `policy.name` | `() -> &str` | The compiled policy's name |
+| `policy.diagnostics` | `() -> &[Diagnostic]` | Problems in documents the policy doesn't use |
+| `policy.handle` | `() -> u32` | The module's handle |
+| `policy.eval` | `(&I) -> Result<EvalResult, Error>` | The [`eval`](#eval) op, with no timeout. `I: Serialize + ?Sized` |
+| `policy.eval_with` | `(&I, &EvalOptions) -> Result<EvalResult, Error>` | The same, with a timeout, a grace period and fuel |
+| `policy.explain` | `() -> Result<Explanation, Error>` | The [`explain`](#explain) op on the handle |
+| `policy.release` | `(self) -> Result<(), Error>` | The [`release`](#release) op. Dropping a `Policy` releases it too |
+
+A `Policy` keeps its instance alive, so it may outlive the `Sigil` it came from.
+
+### Limits and options
+
+| Option | Of | Is |
+| --- | --- | --- |
+| `policies`, `require`, `trusted_files`, `lints` | `CheckOptions` | The `check` op's fields of those names. `lints` is a `BTreeMap<String, LintLevel>` |
+| `policy`, `require`, `trusted_files`, `stubs` | `CompileOptions` | The `compile` op's fields of those names |
+| `functions` | `CompileOptions` | `HashMap<String, HostFunction>`. Implementations; their names become the op's `functions` |
+| `policy`, `trusted_files` | `ExplainOptions` | The `explain` op's fields |
+| `path` | `FormatOptions` | The `format` op's `path` |
+| `timeout` | `EvalOptions` | The `eval` op's `timeout_ms`, rounded up to whole milliseconds |
+| `grace` | `EvalOptions` | How long past `timeout` a call may run before it's killed. `Limits::grace` when `None` |
+| `fuel` | `EvalOptions` | Stops the call after this much fuel. Needs `ModuleConfig::fuel` |
+| `fuel` | `ModuleConfig` | Meters fuel. Default `false` |
+| `grace` | `Limits` | Default 500 ms |
+| `op_deadline` | `Limits` | The hard deadline of ops without a timeout, and of an evaluation without one. Default 60 s; `None` for none |
+| `max_memory` | `Limits` | The most linear memory an instance may grow to, in bytes. Default 4 GiB. The module needs about 8 MiB to start |
+
+`HostFunction` is `Arc<dyn Fn(Vec<Value>) -> Result<Value, String> + Send + Sync>`, and `host_fn(closure)` builds one. A host function runs on the calling thread, inside `eval`. An `Err` or a panic fails the call with a runtime error that quotes the message.
+
+### Hard deadlines and fuel
+
+| Bound | Fires | Result | The instance |
+| --- | --- | --- | --- |
+| `EvalOptions::timeout` | At the module's next [deadline](#deadlines) check | `EvalResult` with a `canceled` failure | Works |
+| `timeout` plus `grace`, or `Limits::op_deadline` | Epoch interruption, at the next instruction of the module | `Error::Timeout(Duration)` | Stopped |
+| `EvalOptions::fuel` | The call has used its fuel | `Error::OutOfFuel` | Stopped |
+
+- A ticker thread advances the engine's clock every 2 ms while a call with a deadline runs, on an absolute schedule that other calls starting and finishing don't delay, so a deadline fires about 2 ms after its time plus the operating system's scheduling latency, and an idle process has no timer running.
+- Epoch interruption stops WebAssembly, not native code. A blocking host function, and the encoding of a request, run to their end first: give a host function that does I/O its own timeout, or evaluate on `spawn_blocking` and abandon the instance.
+- A stopped instance can't be used again: every later call returns the same `Error::Stopped`, and [`stopped()`](#module-and-sigil) says why.
+
+### `Pool`
+
+| Member | Signature | Does |
+| --- | --- | --- |
+| `Pool::new` | `(&Module, size: usize) -> Result<Pool, Error>` | Builds `size` instances |
+| `Pool::with_options` | `(&Module, PoolOptions) -> Result<Pool, Error>` | The same, with limits and a wait bound |
+| `pool.install` | `(name, recipe: Fn(&Sigil) -> Result<Policy, Error> + Send + Sync) -> Result<(), Error>` | Runs `recipe` in every instance, and again in every replacement. The first instance validates it |
+| `pool.compile` | `(name, &[SourceFile], CompileOptions) -> Result<(), Error>` | `install` with `Sigil::compile` |
+| `pool.remove` | `(name) -> bool` | Drops a policy from every instance |
+| `pool.names` | `() -> Vec<String>` | The installed policies' names, sorted |
+| `pool.evaluate` | `(name, &I, &EvalOptions) -> Result<EvalResult, Error>` | Evaluates on a free instance, waiting for one |
+| `pool.explain` | `(name) -> Result<Explanation, Error>` | The [`explain`](#explain) op on a free instance's policy |
+| `pool.with_policy` | `(name, FnOnce(&Policy) -> Result<T, Error>) -> Result<T, Error>` | Runs a closure with a free instance's policy |
+| `pool.stats` | `() -> PoolStats` | `size`, `idle`, `installed`, `replaced` |
+
+| `PoolOptions` field | Is |
+| --- | --- |
+| `size` | The number of instances. Default: the available parallelism |
+| `limits` | The [`Limits`](#limits-and-options) of every instance |
+| `acquire_timeout` | How long a call waits for a free instance before `Error::Busy`. `None` waits forever |
+
+- An error that stops an instance gets it replaced by a fresh one, with every policy compiled again, before `evaluate` returns.
+- An install reaches the instances one at a time while the rest serve.
+- The API blocks; from async code, call it on `tokio::task::spawn_blocking`.
+
+### Errors
+
+| Variant | Returned for | The instance |
+| --- | --- | --- |
+| `Error::Sigil(SigilError)` | An op with `ok: false`, a kind that breaks a rule, a request that can't be encoded. Fields `message`, `help`, `diagnostics` | Works |
+| `Error::Stopped(StoppedError)` | The module trapped or exited, or a call after one did. Fields `message`, `help` | Stopped |
+| `Error::Timeout(Duration)` | A call killed at its hard deadline | Stopped |
+| `Error::OutOfFuel` | A call that used its fuel | Stopped |
+| `Error::NoPolicy(String)` | A `Pool` without a policy of that name | Works |
+| `Error::Busy(Duration)` | A `Pool` whose instances all stayed busy for `acquire_timeout` | Works |
+
+`error.is_stopped()` is true for the three variants that stop the instance, and `error.diagnostics()` returns a `SigilError`'s. A `StoppedError`'s message quotes the first and last lines of the module's standard error. A failed evaluation isn't an error; its result's `error` says why.
+
+### Defining a kind in Rust
+
+| Item | Signature | Does |
+| --- | --- | --- |
+| `Kind::builder` | `(name) -> KindBuilder` | Starts a kind, as Go's `policy.NewKind` |
+| `builder.build` | `() -> Result<Kind, Error>` | Checks the kind and writes it. An `Error::Sigil` lists every problem |
+| `Decision::new` | `(name, reasons) -> Decision` | A decision, as Go's `policy.NewDecision` |
+| `decision.field`, `field_default` | `(name, Type)`, `(name, Type, serde_json::Value) -> Decision` | A payload field, without or with a default |
+| `Type::string`, `bool`, `int`, `float`, `duration`, `timestamp` | `() -> Type` | The scalar types |
+| `Type::list`, `map`, `optional` | `(Type)`, `(Type, Type)`, `(Type) -> Type` | `list<T>`, `map<K, V>`, `?T` |
+| `Type::enumeration` | `(name, values) -> Type` | An enum, as Go's `policy.WithEnum` |
+| `Type::structure` | `(name, fields) -> Type` | A struct type. Field order is declaration order |
+| `FnDecl::new` | `(params, result) -> FnDecl` | A host function's signature |
+| `fn_decl.implement` | `(HostFunction) -> FnDecl` | Adds its implementation |
+
+| `KindBuilder` call | Kind file equivalent | Rules |
+| --- | --- | --- |
+| `version(n)` | `kind AlertRouting version n` | Required, from 1 |
+| `accepts(n)` | `, accepts: n` | From 1 to `version`. Every version when left out |
+| `input(name, Type)` | `input alert: Alert` | Declaration order |
+| `enumeration(Type)` | `enum ...` | Enums nothing reaches. They print after the ones something uses |
+| `function(name, FnDecl)` | `fn split(string, string) -> list<string>` | A result can't be optional |
+| `decisions([&Decision])` | `collect one`, `precedence page > drop > notify` | Highest precedence first. Needs `default_outcome` |
+| `collect_all([&Decision])` | `collect all` | Instead of `decisions` |
+| `precedence([&Decision])` | `precedence ...` in a `collect all` kind | Lists every decision of `collect_all` |
+| `rank_reasons(&Decision)` | `precedence page: critical_alert > sustained` | Ranks the decision's reasons in declared order |
+| `rank_outcomes([Outcome])` | `precedence page: sustained > critical_alert` | Ranks one decision's reasons in the order given |
+| `exclusive([&Decision or OutcomeRef])` | `exclusive a, b` | Sets of at least two decisions or reasons |
+| `default_outcome(Outcome)` | `default notify(reason: unrouted)` | Required with `decisions`. Every payload field of its decision needs a default |
+| `conflict(Outcome)` | `conflict ...` | Only with `decisions` |
+
+| `Kind` member | Signature | Does |
+| --- | --- | --- |
+| `name`, `version` | `() -> &str`, `() -> u32` | As defined |
+| `schema` | `() -> &str` | The kind file, byte for byte what Go's `Kind.Schema` writes for the same kind |
+| `file` | `(Option<&str>) -> SourceFile` | The kind file as a virtual file, `alert_routing.sigil` for `AlertRouting` by default |
+| `functions` | `() -> HashMap<String, HostFunction>` | The implementations given to `FnDecl::implement` |
+| `check` | `(&Sigil) -> Result<Vec<Diagnostic>, Error>` | Checks the kind file with the engine |
+| `compile` | `(&Sigil, &[SourceFile], KindCompileOptions) -> Result<Policy, Error>` | Compiles with the kind file added when neither `files` nor `trusted_files` holds it, and the kind's implementations passed along. Fails when they hold a kind file that isn't `schema()` |
+
+`KindCompileOptions` holds the `compile` options and `kind_file`, the path of the kind file `compile` adds.
+
+| Handle member | Signature | Does |
+| --- | --- | --- |
+| `decision.reason` | `(&str) -> Outcome` | A reason handle. Panics with a did-you-mean on a reason the decision doesn't declare |
+| `decision.try_reason` | `(&str) -> Result<Outcome, Error>` | The same, as an error |
+| `decision.matches` | `::<P: DeserializeOwned>(&EvalResult) -> Result<Option<P>, Error>` | The typed payload when the outcome is exactly one entry of the decision |
+| `decision.match_all` | `::<P>(&EvalResult) -> Result<Vec<Matched<P>>, Error>` | Every entry of the decision, in outcome order, with `payload`, `reason`, `policy` and `position` |
+| `outcome.is` | `(&EvalResult) -> Result<bool, Error>` | Whether the outcome is exactly one entry, of this decision with this reason |
+
+`matches` and `is` return an error on the result of a `collect all` kind without precedence.
+
+### Durations
+
+| Function | Signature | Does |
+| --- | --- | --- |
+| `parse_duration` | `(&str) -> Result<Duration, Error>` | Parses a duration in Sigil's syntax: `parse_duration("1h30m")` is 90 minutes |
+| `format_duration` | `(Duration) -> Result<String, Error>` | Writes one in canonical form, to whole milliseconds: 5400 seconds is `1h30m` |
+
+### Constants
+
+| Export | Is |
+| --- | --- |
+| `ABI_VERSION` | `1`, the ABI version the crate speaks. `Sigil::new` fails for a module that speaks another |

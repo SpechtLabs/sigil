@@ -1,0 +1,68 @@
+[package]
+name = "spechtlabs-sigil"
+version = "0.6.0"
+edition = "2024"
+rust-version = "1.98"
+description = "Embed Sigil, a typed policy language, in Rust: the Go engine as a WebAssembly module on wasmtime"
+license = "Apache-2.0"
+repository = "https://github.com/SpechtLabs/sigil"
+homepage = "https://github.com/SpechtLabs/sigil/tree/main/bindings/rust#readme"
+readme = "README.md"
+keywords = ["policy", "sigil", "webassembly", "wasmtime", "authorization"]
+categories = ["wasm", "config"]
+# Crates.io is for later: the user decides. Everything else is set up as if it
+# were published, so flipping this is the only change.
+publish = false
+include = ["src/**", "module/sigil.wasm", "build.rs", "README.md", "LICENSE", "Cargo.toml"]
+
+[lib]
+name = "sigil"
+
+[features]
+default = ["bundled"]
+# Embeds sigil.wasm in the crate: Sigil::bundled() and Module::bundled(). build.rs
+# reads it from $SIGIL_WASM or ../../dist/wasm/sigil.wasm (mise run wasm-build).
+# A published crate would ship the module inside the package instead (see README).
+bundled = []
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.21"
+tokio = { version = "1.53.1", default-features = false, features = ["io-util", "rt"] }
+unicode-general-category = "1.1.0"
+# Only what the crate uses: compile with Cranelift, run, epoch interruption and fuel.
+# Not the defaults: GC, components, profiling and the on-disk cache are dead weight here.
+wasmtime = { version = "49", default-features = false, features = ["cranelift", "runtime", "std", "parallel-compilation"] }
+wasmtime-wasi = { version = "49", default-features = false, features = ["p1"] }
+
+[dev-dependencies]
+# Text format for the tiny modules the unit tests assemble.
+wasmtime = { version = "49", default-features = false, features = ["wat"] }
+rstest = "0.27.0"
+tempfile = "3.27.0"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "rt"] }
+
+[[test]]
+name = "kind"
+required-features = ["bundled"]
+
+[[test]]
+name = "limits"
+required-features = ["bundled"]
+
+[[test]]
+name = "pool"
+required-features = ["bundled"]
+
+[[test]]
+name = "require"
+required-features = ["bundled"]
+
+[[test]]
+name = "sigil"
+required-features = ["bundled"]
+
+[[test]]
+name = "async_runtime"
+required-features = ["bundled"]
