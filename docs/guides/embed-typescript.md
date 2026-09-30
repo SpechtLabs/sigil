@@ -30,29 +30,13 @@ The policies are the ones [Getting Started](/getting-started/share-rules/) build
 
 :::
 
-## Build the package
-
-`@spechtlabs/sigil` isn't published to npm yet. Build it from a checkout of the [Sigil repository](https://github.com/SpechtLabs/sigil), with [mise](https://mise.jdx.dev/) installing the toolchain:
+## Install the package
 
 ```sh
-git clone https://github.com/SpechtLabs/sigil.git
-cd sigil
-mise install
-mise run ts-build   # builds dist/wasm/sigil.wasm, then bindings/typescript/dist
+npm install @spechtlabs/sigil
 ```
 
-Depend on the built package by its path:
-
-```json
-{
-  "type": "module",
-  "dependencies": {
-    "@spechtlabs/sigil": "file:../sigil/bindings/typescript"
-  }
-}
-```
-
-The package runs on Node 20 and later, Bun, Deno and browsers, and has no runtime dependencies. Everything below ran under Bun 1.4.2, and `src/route.ts` runs unchanged under Node 24.
+The package's version is the Sigil release it was built from, so `@spechtlabs/sigil@0.7.0` decides exactly as `sigil` v0.7.0 does. It runs on Node 20 and later, Bun and browsers, and has no runtime dependencies. To build it from a checkout of the repository instead, see the [package README](https://github.com/SpechtLabs/sigil/tree/main/bindings/typescript#build-from-the-repository). Everything below ran under Bun 1.4.2, and `src/route.ts` runs unchanged under Node 24.
 
 ## Define the kind
 

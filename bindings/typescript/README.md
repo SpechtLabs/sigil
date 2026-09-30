@@ -6,10 +6,15 @@ The test suite runs under Bun, and it's been run by hand on Node 20 and 24, incl
 
 The module is the stock `sigil` CLI's engine without a filesystem or a terminal. For the same files and input, its answers are the CLI's `-o json` records. Regexes, Unicode comparison, duration arithmetic and integer overflow all behave exactly as they do in Go, because it is the same Go code.
 
-> [!NOTE]
-> The package isn't published to npm yet (`"private": true`). Build it from the repository as described below.
+## Install
 
-## Build
+```sh
+npm install @spechtlabs/sigil
+```
+
+The package is published with each Sigil release and carries its version: `@spechtlabs/sigil@0.7.0` runs the engine of sigil v0.7.0, and its [provenance](https://docs.npmjs.com/generating-provenance-statements) links it to the release workflow that built it. `sigil.wasm` is inside the package; nothing downloads at run time.
+
+## Build from the repository
 
 From the repository root:
 
@@ -68,7 +73,7 @@ Files are virtual: `{ path, source }`. Paths appear in diagnostics and positions
 
 - A `SigilError` has `message`, `help` (how to fix it, when known) and `diagnostics`. It's thrown for files that don't compile, a source that doesn't parse, an input that doesn't fit the kind, a `require` entry that can't hold (the CLI's configuration error), or a released policy.
 - A failed evaluation doesn't throw. A runtime error, a conflict, a failing assert or a `timeoutMs` deadline returns a result whose `error` says why (`kind` is `runtime`, `conflict`, `assertion` or `canceled`), with the kind's fallback as the outcome, like the CLI's JSON.
-- If the Go runtime inside the module panics, every later call throws the same `SigilError`, quoting the panic. Load a new instance.
+- An instance can stop for good. That happens when Go's runtime panics or exits, when the module traps, or when an exception unwinds it mid-call, such as the stack overflow of a policy nested thousands deep. The call throws a `SigilStoppedError` (a `SigilError`) that quotes what the module wrote to standard error, and every later call throws the same error. Go can't resume a call it was unwound from, so reusing the instance would leak memory and fail somewhere unrelated. Detect it with `err instanceof SigilStoppedError` or `sigil.stopped` (undefined while the instance works), and load a new instance.
 
 ### Required policies
 
@@ -139,7 +144,7 @@ Notify.reason("unrouted").is(res); // boolean
 
 ## The worker helper
 
-`@spechtlabs/sigil/worker` runs the module in a Web Worker (a `worker_threads` worker on Node). The API is the same, except that every method returns a promise. A call that runs past its deadline terminates the worker and rejects with a `SigilTimeoutError`. The next call starts a fresh worker, and policies compile again in it by themselves. Use it for UIs that must never freeze.
+`@spechtlabs/sigil/worker` runs the module in a Web Worker (a `worker_threads` worker on Node). The API is the same, except that every method returns a promise. A call that runs past its deadline terminates the worker and rejects with a `SigilTimeoutError`. A call that stops the instance in the worker does the same with the `SigilStoppedError`. Either way, the next call starts a fresh worker, and policies compile again in it by themselves. Use it for UIs that must never freeze.
 
 ```ts
 import { SigilWorker } from "@spechtlabs/sigil/worker";

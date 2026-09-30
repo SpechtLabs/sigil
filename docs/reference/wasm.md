@@ -10,7 +10,7 @@ The WebAssembly module `sigil.wasm`, built from `cmd/sigil-wasm`, and the TypeSc
 To embed Sigil in TypeScript step by step, see [Embed Sigil in TypeScript](/guides/embed-typescript/). Why: [One engine for every host](/understanding/one-engine/).
 
 ::: warning Unpublished
-The package isn't on npm yet; build it from the repository. Each [release](https://github.com/SpechtLabs/sigil/releases) attaches the module as the archive `sigil_<version>_wasip1_wasm`, and [Building](#building) shows how to build it yourself.
+The package is on npm as `@spechtlabs/sigil`, versioned with Sigil. Each [release](https://github.com/SpechtLabs/sigil/releases) attaches the module as the archive `sigil_<version>_wasip1_wasm`, and [Building](#building) shows how to build it yourself.
 :::
 
 ## Building

@@ -112,3 +112,64 @@ jobs:
           CONFIG: ${{ github.event_name == 'workflow_dispatch' && format('{0}/goreleaser.yaml', runner.temp) || '.goreleaser.yaml' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+  # @spechtlabs/sigil carries the release's version (release-please bumps
+  # bindings/typescript/package.json with the Go release), so the package on
+  # npm always holds the engine of the tag it was built from. It publishes
+  # after GoReleaser, so a release that failed to build never reaches npm.
+  #
+  # npm trusted publishing: the registry trusts this workflow through OIDC,
+  # so no token lives in the repository, and every version gets a provenance
+  # attestation. Trust can only be configured for a package that exists, so
+  # the very first version needs NPM_TOKEN once; delete the secret after
+  # configuring the trusted publisher on npmjs.com.
+  npm:
+    name: Publish @spechtlabs/sigil to npm
+    runs-on: ubuntu-latest
+    needs:
+      - release-please
+      - goreleaser
+    if: >-
+      always() &&
+      needs.goreleaser.result == 'success'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Set up mise
+        uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5 # v5.0.0
+        with:
+          install_args: go bun node
+
+      # Builds dist/wasm/sigil.wasm from the tag, then the package with the
+      # module copied in.
+      - name: Build the package
+        run: mise run ts-build
+
+      # A repair of an old tag, or a rerun, finds its version already on npm
+      # and stops there instead of failing: npm never accepts a version twice.
+      - name: Publish unless this version is on npm already
+        working-directory: bindings/typescript
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./package.json").version')"
+          if [ "v${version}" != "${TAG}" ]; then
+            echo "::error::bindings/typescript/package.json is at ${version}, but the release is ${TAG}; release-please's extra-files should keep them in lockstep"
+            exit 1
+          fi
+          if npm view "@spechtlabs/sigil@${version}" version >/dev/null 2>&1; then
+            echo "::notice::@spechtlabs/sigil@${version} is on npm already; nothing to publish"
+            exit 0
+          fi
+          if [ -n "${NPM_TOKEN}" ]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "${HOME}/.npmrc"
+          fi
+          npm publish --provenance --access public

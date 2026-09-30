@@ -121,7 +121,7 @@ Nothing about the language is specific to alerts. The same constructs decide fea
 
 Out of scope: general computation, reimplementations of the evaluator in other languages, and org-wide authorization in the style of OPA or Cedar. Sigil targets decisions embedded in a single application.
 
-**Other languages.** Hosts outside Go run the same engine compiled to WebAssembly, so a policy decides the same everywhere. [`bindings/typescript`](./bindings/typescript) wraps it for TypeScript and JavaScript; it isn't on npm yet. See [Embed Sigil in TypeScript](./docs/guides/embed-typescript.md) and [the WebAssembly module](./docs/reference/wasm.md).
+**Other languages.** Hosts outside Go run the same engine compiled to WebAssembly, so a policy decides the same everywhere. [`bindings/typescript`](./bindings/typescript) wraps it for TypeScript and JavaScript and is published to npm as [`@spechtlabs/sigil`](https://www.npmjs.com/package/@spechtlabs/sigil). See [Embed Sigil in TypeScript](./docs/guides/embed-typescript.md) and [the WebAssembly module](./docs/reference/wasm.md).
 
 ## How evaluation works
 

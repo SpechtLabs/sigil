@@ -106,7 +106,7 @@ Other languages run the Go engine compiled to WebAssembly: `cmd/sigil-wasm` buil
 - **A Component Model wrapper.** A WIT interface over the same ops would give Rust, Python and .NET hosts typed bindings from their own tooling instead of JSON over linear memory. It waits for Go to target WASI preview 2; the ABI underneath doesn't change.
 - **A Rust crate.** The obvious second binding, on Wasmtime, which can meter fuel and so bound an evaluation's work, not only its time, including a host function that never returns.
 - **A binary encoding.** A request that doesn't start with `{` is reserved for one, such as CBOR. Natively, JSON is most of an evaluation's cost through the engine, but the WebAssembly runtime costs more; see [what JSON and WebAssembly cost](/understanding/one-engine/#what-json-and-webassembly-cost). It's worth adding once a host shows the JSON share matters.
-- **Publishing.** Releases attach the module as the archive `sigil_<version>_wasip1_wasm`, but the package isn't on npm. Publishing it needs a versioning story that ties the package, the module's ABI version and the Go release together.
+- **Versioning the ABI.** The package ships with every release at the release's version, and releases attach the module as the archive `sigil_<version>_wasip1_wasm`. A host that loads a newer module than its binding was built for only learns about it from `sigil_abi_version`. Should the ABI version be part of the package's semver contract, and should a binding refuse a module whose ABI it doesn't know?
 
 ## Conflicts in test files
 
