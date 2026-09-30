@@ -7,8 +7,8 @@
   "license": "Apache-2.0",
   "scripts": {
     "dev": "bun run scripts/copy-wasm.ts && next dev",
-    "build": "bun run scripts/copy-wasm.ts && next build",
-    "start": "node .next/standalone/alertrouter.mjs",
+    "build": "bun run scripts/copy-wasm.ts && next build && bun run scripts/assemble-standalone.ts",
+    "start": "cd .next/standalone && node alertrouter.mjs",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "biome ci .",
