@@ -27,3 +27,15 @@ export class SigilError extends Error {
 export class SigilTimeoutError extends SigilError {
   override readonly name: string = "SigilTimeoutError";
 }
+
+/**
+ * The error of a module instance that has stopped: Go's runtime exited or
+ * panicked, the module trapped, or an exception (such as running out of
+ * stack on a deeply nested policy) unwound it mid-call. Go can't resume
+ * after any of these, so every later call on the instance throws this same
+ * error. Load a new instance with Sigil.load; the worker helper starts a
+ * new worker by itself.
+ */
+export class SigilStoppedError extends SigilError {
+  override readonly name: string = "SigilStoppedError";
+}

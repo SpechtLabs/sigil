@@ -11,6 +11,8 @@ export interface FakeOptions {
   crashOnInit?: boolean;
   /** sigil_call traps. */
   trapOnCall?: boolean;
+  /** sigil_call recurses until the engine runs out of stack, which throws a RangeError. */
+  recurseOnCall?: boolean;
   /** Leaves out the sigil_call export. */
   omitCall?: boolean;
   /** Adds an import the package doesn't provide. */
@@ -46,7 +48,7 @@ export function fakeModule(options: FakeOptions = {}): Uint8Array<ArrayBuffer> {
     // sigil_free: count the call
     [0x23, 1, 0x41, 1, 0x6a, 0x24, 1],
     // sigil_call: forward to host_call
-    options.trapOnCall ? [0x00] : [0x20, 0, 0x20, 1, 0x10, 0],
+    options.trapOnCall ? [0x00] : options.recurseOnCall ? [0x20, 0, 0x20, 1, 0x10, ...uleb(n + 3)] : [0x20, 0, 0x20, 1, 0x10, 0],
     // _initialize
     options.crashOnInit
       ? [0x41, 2, 0x41, 16, 0x41, 1, 0x41, 8, 0x10, 2, 0x1a, 0x41, 2, 0x10, 1]

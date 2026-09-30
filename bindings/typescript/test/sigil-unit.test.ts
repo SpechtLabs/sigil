@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { SigilError } from "../src/errors.js";
+import { SigilError, SigilStoppedError } from "../src/errors.js";
 import { compileModule, Sigil, unwrap } from "../src/sigil.js";
 import { fakeModule } from "./fake-module.js";
 
@@ -62,6 +62,21 @@ describe("compileModule", () => {
 });
 
 describe("Sigil.load", () => {
+  test("an instance that stopped says so, on the call and after it", async () => {
+    const sigil = await Sigil.load(fakeModule({ recurseOnCall: true }), { output: () => {} });
+    expect(sigil.stopped).toBeUndefined();
+    const err = (() => {
+      try {
+        sigil.version();
+      } catch (e) {
+        return e;
+      }
+    })();
+    expect(err).toBeInstanceOf(SigilStoppedError);
+    expect(sigil.stopped).toBe(err as SigilStoppedError);
+    expect(() => sigil.format("x")).toThrow(err as SigilStoppedError);
+  });
+
   test("passes the module's output on a line at a time", async () => {
     const lines: string[] = [];
     const err = await Sigil.load(fakeModule({ crashOnInit: true }), {

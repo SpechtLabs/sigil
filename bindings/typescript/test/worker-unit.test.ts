@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { SigilError, SigilTimeoutError } from "../src/errors.js";
+import { SigilError, SigilStoppedError, SigilTimeoutError } from "../src/errors.js";
 import type { CallMessage, Reply, Request } from "../src/protocol.js";
 import { SigilWorker, type WorkerLike } from "../src/worker.js";
 
@@ -140,6 +140,27 @@ describe("SigilWorker", () => {
     expect(err).toBeInstanceOf(SigilTimeoutError);
     expect(performance.now() - start).toBeGreaterThanOrEqual(500);
     expect(workers[0]?.requests.at(-1)).toMatchObject({ method: "eval", args: [1, {}, { timeoutMs: 20 }] });
+  });
+
+  test("a worker whose instance stopped is replaced, and its policies compile again", async () => {
+    let handle = 0;
+    let stop = true;
+    const { sigil, workers } = harness(({ method }) => {
+      if (method === "compile") return { handle: ++handle, name: "p", diagnostics: [] };
+      if (method === "eval" && stop) {
+        stop = false;
+        throw new SigilStoppedError("the Sigil module stopped: it ran out of stack: Maximum call stack size exceeded.");
+      }
+      return { policy: "p", outcome: [], trace: [] };
+    });
+    const policy = await sigil.compile(files);
+    const err = await policy.eval({}).catch((e) => e);
+    expect(err).toBeInstanceOf(SigilStoppedError);
+    expect(err.message).toContain("ran out of stack");
+    expect(workers[0]?.terminated).toBe(true);
+    expect(await policy.eval({})).toEqual({ policy: "p", outcome: [], trace: [] });
+    expect(workers).toHaveLength(2);
+    expect(workers[1]?.requests.map((r) => r.method)).toEqual(["init", "compile", "eval"]);
   });
 
   test("a policy compiles again in the worker that replaced a timed-out one", async () => {

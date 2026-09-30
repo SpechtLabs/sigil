@@ -12,7 +12,7 @@
 // that request; the host answers in memory from sigil_alloc, which the module
 // frees once it has read it.
 
-import { SigilError } from "./errors.js";
+import { SigilError, SigilStoppedError } from "./errors.js";
 import type { JsonValue } from "./types.js";
 import { createWasi, WASI_MODULE, WasiExit } from "./wasi.js";
 
@@ -74,7 +74,7 @@ export class Runtime {
   readonly #decoder = new TextDecoder();
   #stderr = "";
   #busy = false;
-  #stopped: SigilError | undefined;
+  #stopped: SigilStoppedError | undefined;
 
   private constructor(exports: Exports) {
     this.#exports = exports;
@@ -128,7 +128,7 @@ export class Runtime {
   }
 
   /** The error every call throws once the module has stopped, or undefined while it runs. */
-  get stopped(): SigilError | undefined {
+  get stopped(): SigilStoppedError | undefined {
     return this.#stopped;
   }
 
@@ -137,17 +137,26 @@ export class Runtime {
     if (this.#busy) {
       throw new SigilError("the module is busy: a host function can't call back into the Sigil instance that runs it");
     }
+    // Encoding happens outside the guard: a request that isn't JSON (a
+    // BigInt, a cycle) is the caller's error, not the module stopping.
+    let text: string;
+    try {
+      text = JSON.stringify(request);
+    } catch (err) {
+      throw new SigilError(`the request can't be encoded as JSON: ${err instanceof Error ? err.message : String(err)}`, {
+        help: "pass plain JSON values: no BigInt, no cycles",
+        cause: err,
+      });
+    }
     this.#busy = true;
     try {
       return this.#guard(() => {
         const e = this.#exports;
-        const [ptr, len] = this.#write(JSON.stringify(request));
-        let packed: bigint;
-        try {
-          packed = e.sigil_call(ptr, len);
-        } finally {
-          e.sigil_free(ptr, len);
-        }
+        const [ptr, len] = this.#write(text);
+        // A call that throws stops the module, so the request isn't freed:
+        // calling into it again could only fail too, and hide why.
+        const packed = e.sigil_call(ptr, len);
+        e.sigil_free(ptr, len);
         return JSON.parse(this.#take(packed)) as Envelope;
       });
     } finally {
@@ -196,9 +205,15 @@ export class Runtime {
   }
 
   /**
-   * Runs fn against the module, and turns the module stopping (proc_exit, a
-   * trap) into a SigilError every later call repeats: Go's runtime can't
-   * resume after either.
+   * Runs fn against the module, and turns any exception that escapes it
+   * into a SigilStoppedError every later call repeats. Whatever unwound
+   * the module mid-call, whether proc_exit, a trap or a JavaScript
+   * exception such as a stack overflow's RangeError, left Go's runtime
+   * halfway through a function it can't resume: calling in again would
+   * run on corrupted state, leak the memory of every abandoned call, and
+   * trap later somewhere unrelated. The SigilErrors this package throws
+   * itself (a busy module, a failed allocation) don't unwind the module
+   * and pass through.
    */
   #guard<T>(fn: () => T): T {
     if (this.#stopped !== undefined) throw this.#stopped;
@@ -206,16 +221,21 @@ export class Runtime {
       return fn();
     } catch (err) {
       if (err instanceof SigilError) throw err;
-      if (err instanceof WasiExit || err instanceof WebAssembly.RuntimeError) {
-        const why = err instanceof WasiExit ? `exited with code ${err.code}` : `trapped: ${err.message}`;
-        const stderr = this.#stderr.trim();
-        this.#stopped = new SigilError(`the Sigil module ${why}${stderr === "" ? "" : `\n${stderr}`}`, {
-          help: "The instance can't be used again; load a new one with Sigil.load. This is a bug in Sigil: please report it with the output above.",
-          cause: err,
-        });
-        throw this.#stopped;
-      }
-      throw err;
+      const stderr = this.#stderr.trim();
+      this.#stopped = new SigilStoppedError(`the Sigil module stopped: ${stopReason(err)}${stderr === "" ? "" : `\n${stderr}`}`, {
+        help: "this instance can't be used again: load a new one with Sigil.load (the worker helper starts a new worker by itself). Unless the input or policy was extreme, such as nesting thousands deep, this is a bug in Sigil: please report it with the output above",
+        cause: err,
+      });
+      throw this.#stopped;
     }
   }
+}
+
+/** Why the module stopped, for the error's message. */
+function stopReason(err: unknown): string {
+  if (err instanceof WasiExit) return `it exited with code ${err.code}`;
+  if (err instanceof WebAssembly.RuntimeError) return `it trapped: ${err.message}`;
+  if (err instanceof RangeError) return `it ran out of stack: ${err.message}`;
+  if (err instanceof Error) return `${err.name}: ${err.message}`;
+  return String(err);
 }

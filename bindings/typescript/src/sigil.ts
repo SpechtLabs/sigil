@@ -1,6 +1,6 @@
 import { type Envelope, Runtime } from "./abi.js";
 import { markResult, type ResultShape } from "./decision.js";
-import { SigilError } from "./errors.js";
+import { SigilError, type SigilStoppedError } from "./errors.js";
 import type {
   CheckOptions,
   CompileOptions,
@@ -80,6 +80,18 @@ export class Sigil {
       },
     });
     return new Sigil(runtime);
+  }
+
+  /**
+   * The error every call throws once the instance has stopped, or
+   * undefined while it works. An instance stops when Go's runtime exits or
+   * panics, the module traps, or an exception such as a stack overflow
+   * unwinds it mid-call; the call that stopped it throws the same
+   * {@link SigilStoppedError}. A host that keeps an instance for long
+   * checks this (or catches the error) and loads a new one.
+   */
+  get stopped(): SigilStoppedError | undefined {
+    return this.#runtime.stopped;
   }
 
   /** The module's version and build information. */

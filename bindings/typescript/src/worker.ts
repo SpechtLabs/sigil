@@ -4,7 +4,7 @@
 // uses the synchronous Sigil class directly.
 
 import { markResult, type ResultShape } from "./decision.js";
-import { SigilError, SigilTimeoutError } from "./errors.js";
+import { SigilError, SigilStoppedError, SigilTimeoutError } from "./errors.js";
 import type { CallMessage, InitMessage, Reply, Request, WireError } from "./protocol.js";
 import type {
   CheckOptions,
@@ -20,7 +20,7 @@ import type {
   VersionInfo,
 } from "./types.js";
 
-export { SigilError, SigilTimeoutError } from "./errors.js";
+export { SigilError, SigilStoppedError, SigilTimeoutError } from "./errors.js";
 export type * from "./types.js";
 
 // The default deadline of a call, and the extra time an evaluation with its
@@ -74,8 +74,9 @@ export interface CallOptions {
 /**
  * The Sigil API in a worker. Every method returns a promise. A call that
  * runs past its deadline terminates the worker and rejects with a
- * {@link SigilTimeoutError}; the next call starts a fresh worker, and
- * policies compile again in it transparently.
+ * {@link SigilTimeoutError}, and a call that stops the module in it (see
+ * {@link SigilStoppedError}) does the same with that error; the next call
+ * starts a fresh worker, and policies compile again in it transparently.
  */
 export class SigilWorker {
   readonly #options: SigilWorkerOptions;
@@ -138,7 +139,9 @@ export class SigilWorker {
     try {
       return { value: await connection.send({ id: 0, method, args }, timeoutMs), generation: session.generation };
     } catch (err) {
-      if (err instanceof SigilTimeoutError && this.#session === session) this.terminate(err);
+      // A worker past its deadline, or whose instance stopped, can't take
+      // another call; the next one starts a fresh worker.
+      if ((err instanceof SigilTimeoutError || err instanceof SigilStoppedError) && this.#session === session) this.terminate(err);
       throw err;
     }
   }
@@ -320,7 +323,7 @@ class Connection {
 }
 
 function fromWire(e: WireError): SigilError {
-  const Ctor = e.name === "SigilTimeoutError" ? SigilTimeoutError : SigilError;
+  const Ctor = e.name === "SigilTimeoutError" ? SigilTimeoutError : e.name === "SigilStoppedError" ? SigilStoppedError : SigilError;
   return new Ctor(e.message, { help: e.help, diagnostics: e.diagnostics });
 }
 

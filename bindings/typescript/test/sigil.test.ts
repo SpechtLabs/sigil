@@ -6,7 +6,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { type EvalResult, type JsonValue, type SourceFile, Sigil, SigilError } from "../src/index.js";
+import { type Diagnostic, type EvalResult, type JsonValue, type SourceFile, Sigil, SigilError, SigilStoppedError } from "../src/index.js";
+import { Minimal } from "./kinds/coverage.js";
 import { buildCli, cli, DEPLOY_GATES, HAVE_WASM, json, ROOT, sigilFiles, WASM } from "./fixtures.js";
 
 const CHECK_TESTDATA = join(ROOT, "cmd", "sigil", "command", "check", "testdata");
@@ -411,4 +412,35 @@ describe.skipIf(!HAVE_WASM)("sigil.wasm memory", () => {
     // Allow the Go heap some slack, not growth per evaluation.
     expect(after - before).toBeLessThanOrEqual(4 * 1024 * 1024);
   }, 120_000);
+});
+
+// A policy nested 100k deep ran the module out of stack before the parser
+// limited nesting; with the limit it's a diagnostic. Either way the
+// instance must end up usable or clearly stopped, never half-alive.
+const DEEP = 100_000;
+const deepPolicy = (n: number) => `policy deep.nesting: Minimal@1\n\nwhen ${"(".repeat(n)}true${")".repeat(n)} {\n  ok(reason: yes)\n}\n`;
+
+describe.skipIf(!HAVE_WASM)("sigil.wasm on a deeply nested policy", () => {
+  test("either rejects it with a diagnostic or stops the instance for good", async () => {
+    const sigil = await Sigil.load(pathToFileURL(WASM), { output: () => {} });
+    const files = [Minimal.file(), { path: "deep.sigil", source: deepPolicy(DEEP) }];
+    let diagnostics: Diagnostic[] | undefined;
+    let err: unknown;
+    try {
+      diagnostics = sigil.check(files);
+    } catch (e) {
+      err = e;
+    }
+    if (err instanceof SigilStoppedError) {
+      expect(err.message).toStartWith("the Sigil module stopped: ");
+      expect(sigil.stopped).toBe(err);
+      expect(() => sigil.version()).toThrow(err);
+      expect(() => sigil.compile(files)).toThrow(err);
+    } else {
+      expect(err).toBeUndefined();
+      expect(diagnostics?.some((d) => d.severity === "error")).toBe(true);
+      expect(sigil.stopped).toBeUndefined();
+      expect(sigil.version().platform).toBe("wasip1/wasm");
+    }
+  });
 });

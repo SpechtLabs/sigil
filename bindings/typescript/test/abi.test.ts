@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { ABI_VERSION, Runtime } from "../src/abi.js";
-import { SigilError } from "../src/errors.js";
+import { SigilError, SigilStoppedError } from "../src/errors.js";
 import { fakeModule, type FakeOptions } from "./fake-module.js";
 
 async function instantiate(options: FakeOptions = {}, write?: (fd: 1 | 2, text: string) => void) {
@@ -105,7 +105,8 @@ describe("Runtime", () => {
     const written: string[] = [];
     const err = await instantiate({ crashOnInit: true }, (fd, text) => written.push(`${fd}:${text}`)).catch((e) => e);
     expect(err).toBeInstanceOf(SigilError);
-    expect(err.message).toBe("the Sigil module exited with code 2\npanic: boom");
+    expect(err).toBeInstanceOf(SigilStoppedError);
+    expect(err.message).toBe("the Sigil module stopped: it exited with code 2\npanic: boom");
     expect(err.help).toContain("Sigil.load");
     expect(written).toEqual(["2:panic: boom\n"]);
   });
@@ -120,9 +121,37 @@ describe("Runtime", () => {
       }
     })();
     expect(first).toBeInstanceOf(SigilError);
-    expect(first?.message).toStartWith("the Sigil module trapped: ");
+    expect(first).toBeInstanceOf(SigilStoppedError);
+    expect(first?.message).toStartWith("the Sigil module stopped: it trapped: ");
     expect(runtime.stopped).toBe(first);
     expect(() => runtime.call({ op: "version" })).toThrow(first as SigilError);
+  });
+
+  test("stops for good when a call runs out of stack", async () => {
+    // The RangeError unwinds the module mid-call, which Go's runtime can't
+    // recover from any more than from a trap.
+    const runtime = await instantiate({ recurseOnCall: true });
+    let first: unknown;
+    try {
+      runtime.call({ op: "version" });
+    } catch (e) {
+      first = e;
+    }
+    expect(first).toBeInstanceOf(SigilStoppedError);
+    const err = first as SigilStoppedError;
+    expect(err.message).toStartWith("the Sigil module stopped: it ran out of stack: ");
+    expect(err.cause).toBeInstanceOf(RangeError);
+    expect(err.help).toContain("load a new one with Sigil.load");
+    expect(runtime.stopped).toBe(err);
+    expect(() => runtime.call({ op: "version" })).toThrow(err);
+  });
+
+  test("a request that isn't JSON is the caller's error, not a stop", async () => {
+    const runtime = await instantiate();
+    expect(() => runtime.call({ input: { n: 1n } })).toThrow("the request can't be encoded as JSON");
+    expect(runtime.stopped).toBeUndefined();
+    runtime.hostCall = () => 1;
+    expect(runtime.call({ function: "f", args: [] })).toEqual({ result: 1 } as never);
   });
 
   test("rejects another ABI version", async () => {

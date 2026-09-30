@@ -4,7 +4,7 @@
 export { ABI_VERSION } from "./abi.js";
 export { Decision, decision, type Matched, Outcome, type PayloadOf, type PayloadSpec } from "./decision.js";
 export { type Duration, duration, ms, toMs } from "./duration.js";
-export { SigilError, SigilTimeoutError } from "./errors.js";
+export { SigilError, SigilStoppedError, SigilTimeoutError } from "./errors.js";
 export {
   type ArgsOf,
   defineKind,

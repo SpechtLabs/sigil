@@ -7,7 +7,8 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 import { Sigil } from "../src/index.js";
-import { SigilError, SigilTimeoutError, SigilWorker } from "../src/worker.js";
+import { SigilError, SigilStoppedError, SigilTimeoutError, SigilWorker } from "../src/worker.js";
+import { Minimal } from "./kinds/coverage.js";
 import { DEPLOY_GATES, HAVE_WASM, json, sigilFiles, WASM } from "./fixtures.js";
 
 const ENTRY = new URL("../src/worker-entry.ts", import.meta.url);
@@ -84,4 +85,20 @@ describe.skipIf(!HAVE_WASM)("SigilWorker with sigil.wasm", () => {
       sigil.terminate();
     }
   }, 20_000);
+});
+
+describe.skipIf(!HAVE_WASM)("SigilWorker on a deeply nested policy", () => {
+  test("rejects it with a diagnostic, or replaces the stopped worker", async () => {
+    const deep = `policy deep.nesting: Minimal@1\n\nwhen ${"(".repeat(100_000)}true${")".repeat(100_000)} {\n  ok(reason: yes)\n}\n`;
+    const sigil = new SigilWorker({ wasm: pathToFileURL(WASM), worker, timeoutMs: 20_000 });
+    try {
+      const err = await sigil.compile([Minimal.file(), { path: "deep.sigil", source: deep }]).catch((e) => e);
+      expect(err).toBeInstanceOf(SigilError);
+      if (!(err instanceof SigilStoppedError)) expect(err.diagnostics.length).toBeGreaterThan(0);
+      // Whichever it was, the next call works: on the same worker, or a new one.
+      expect((await sigil.version()).platform).toBe("wasip1/wasm");
+    } finally {
+      sigil.terminate();
+    }
+  }, 30_000);
 });
