@@ -140,11 +140,11 @@ A usable fallback has one cost: it looks like a real decision. For `DeployApprov
 After a conflict, that fallback says something false as well. `no_rule_matched` reports that no rule matched an evaluation where several rules fired and contradicted each other, so a log line or a dashboard that only sees the result points whoever reads it at the wrong problem. A `collect one` kind can therefore name the result of a conflict next to its default:
 
 ```sigil
-default deny(no_rule_matched)
-conflict deny(conflicting_rules)
+default deny(reason: no_rule_matched)
+conflict deny(reason: conflicting_rules)
 ```
 
-A conflict then comes back as `deny(conflicting_rules)`: still closed, and now honest about what happened. The error and the trace don't change, and the error is still what tells a host a conflict apart from a deny. Only conflicts get it: a runtime error, a failed assert or a done context still falls back to the default.
+A conflict then comes back as `deny(reason: conflicting_rules)`: still closed, and now honest about what happened. The error and the trace don't change, and the error is still what tells a host a conflict apart from a deny. Only conflicts get it: a runtime error, a failed assert or a done context still falls back to the default.
 
 A collecting kind can't name one. A conflict is a failed evaluation like any other, and a collecting kind returns an empty outcome from every one of them, because granting anything on a defect in the policy would fail open. The declaration is under [`conflict`](/reference/kind-files/#conflict).
 

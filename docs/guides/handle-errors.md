@@ -132,7 +132,7 @@ policy_assert_failures_total{phase="input", reason="negative_soak"}
 
 ## Name conflicts in the result
 
-Counting by the error only works where the error is. A log line, an audit record or a dashboard built from the result alone sees a conflict as `deny(no_rule_matched)`, and sends whoever reads it looking for the rule that should have matched, when several did. Give the kind a conflict outcome, so the result says what happened.
+Counting by the error only works where the error is. A log line, an audit record or a dashboard built from the result alone sees a conflict as `deny(reason: no_rule_matched)`, and sends whoever reads it looking for the rule that should have matched, when several did. Give the kind a conflict outcome, so the result says what happened.
 
 Add a reason to `deny` that no rule constructs, rank it with the other deny reasons, and pass it to `policy.WithConflict`:
 
@@ -148,6 +148,7 @@ var Deploy = policy.NewKind[Input]("DeployApproval",
 	// A new conflict outcome changes results, so accepts rises with the version.
 	policy.WithVersion(2),
 	policy.WithAccepts(2),
+	policy.WithEnum(TierCritical, TierStandard, TierInternal),
 	policy.WithDecisions(Deny, Review, Approve), // order = precedence
 	policy.WithReasonPrecedence(NotEligible, SoakTooShort, NoRuleMatched, ConflictingRules),
 	policy.WithReasonPrecedence(ReleaseManager, PaymentsSRE),
@@ -160,11 +161,11 @@ var Deploy = policy.NewKind[Input]("DeployApproval",
 The exported kind file ends with the two outcomes together:
 
 ```sigil
-default deny(no_rule_matched)
-conflict deny(conflicting_rules)
+default deny(reason: no_rule_matched)
+conflict deny(reason: conflicting_rules)
 ```
 
-A conflict now comes back as `deny(conflicting_rules)`, with the same `*policy.ConflictError` and the same trace, so a counter labeled from the result counts it as `deny/conflicting_rules`. Keep counting failures by the error all the same: a failed assert, a runtime error or a deadline still returns `deny(no_rule_matched)`.
+A conflict now comes back as `deny(reason: conflicting_rules)`, with the same `*policy.ConflictError` and the same trace, so a counter labeled from the result counts it as `deny/conflicting_rules`. Keep counting failures by the error all the same: a failed assert, a runtime error or a deadline still returns `deny(reason: no_rule_matched)`.
 
 - Declaring, changing or removing the conflict outcome changes results without breaking a compile, so raise `accepts` with it, as [Evolve a kind safely](/guides/evolve-a-kind/#watch-for-changes-that-compile-but-change-results) explains.
 - Only a `WithDecisions` kind takes it. A collecting kind always returns an empty outcome from a failed evaluation, and `NewKind` panics on a `WithCollect` kind with `WithConflict`.

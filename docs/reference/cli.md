@@ -376,6 +376,25 @@ trace: 2 candidates
       when compliance_member
 ```
 
+A kind that declares `conflict deny(reason: conflicting_rules)` and leaves two deny reasons unranked, with both firing:
+
+```text
+$ sigil eval --kind access_grant.sigil --input conflict.json --policy access.main access
+access.main: the candidates conflict, the host falls back to deny(reason: conflicting_rules), the kind's conflict outcome
+
+conflict: collect one: 2 candidates at the top rank
+    deny(reason: too_old)            access/main.sigil:14:3
+    deny(reason: banned)             access/main.sigil:18:3
+  = help: a conflict is a defect in the policy: rank the reasons with precedence, or keep the exclusive outcomes' conditions apart
+
+trace: 3 candidates
+    deny(reason: too_old)            access/main.sigil:14:3
+    deny(reason: banned)             access/main.sigil:18:3
+    allow(reason: team_member)       access/main.sigil:10:3
+      ttl = 1h
+      scopes = []
+```
+
 ### Records
 
 `-o json` and `-o yaml` print one record:

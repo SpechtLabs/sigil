@@ -120,7 +120,7 @@ The kind's `default` is a constructor with the same reason and payload rules, ex
 ## The conflict outcome
 
 ```sigil
-conflict deny(conflicting_rules)
+conflict deny(reason: conflicting_rules)
 ```
 
 A `collect one` kind may also declare the result of a [conflict](/reference/evaluation/#resolution). It's a constructor with the same rules as the default; the declaration is on [Kind files](/reference/kind-files/#conflict).

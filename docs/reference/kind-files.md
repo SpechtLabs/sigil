@@ -375,28 +375,31 @@ The result when no rule fires.
 
 ```sigil
 decision deny {
-  not_eligible
-  soak_too_short
-  no_rule_matched
-  conflicting_rules
+  reason: not_eligible | soak_too_short | no_rule_matched | conflicting_rules
 }
 
-default deny(no_rule_matched)
-conflict deny(conflicting_rules)
+default deny(reason: no_rule_matched)
+conflict deny(reason: conflicting_rules)
 ```
 
 The result when [resolution](/reference/evaluation/#resolution) ends in a conflict: two members of an `exclusive` set fired, or several candidates share the top rank. `Eval` still returns the `*ConflictError`, and the trace still lists every candidate; only the outcome that comes with the error changes. Without it, a conflict returns the default. Why a kind would name its own: [Every failure fails closed](/understanding/strictness/#every-failure-fails-closed).
 
 - It's optional, and declared at most once.
-- It's written like the default: a decision constructor with one of the decision's declared reasons, where every payload value is a constant and fields with a default may be left out.
+- It's written like the default: a decision constructor whose `reason:` names one of the decision's declared reasons, where every payload value is a constant and fields with a default may be left out.
 - Only conflicts return it. After a runtime error, a failed assert or a done context, the result still holds the default.
 - Give it a reason no rule constructs, so a result carrying it can only mean a conflict, and a decision that fails closed, since the host acts on it.
 - Only a `collect one` kind may declare one. A collecting kind returns an empty outcome on every failed evaluation, a conflict included, because granting anything on a defect in the policy would fail open.
-- `conflict` is a [keyword](/reference/lexical/#keywords), like `default`, so no input, param, let or reason can be called `conflict`. A field or payload field still can.
+- `conflict` is a [keyword](/reference/lexical/#keywords), like `default`, so no input, enum, enum value, param, let or reason can be called `conflict`. A field or payload field still can.
 - In Go, `policy.WithConflict(Deny.Reason("conflicting_rules"))`. Like `WithDefault`, it takes a reason handle and no payload, so every payload field of its decision needs a `default=` tag.
 
+A `conflict` line added to the [collecting kind](#collecting-kinds) above:
+
 ```text
-access_grant.sigil:14:1: kind AccessGrant collects all decisions and can't declare a conflict outcome
+access_grant.sigil:34:1: error: kind AccessGrant collects all decisions and can't declare a conflict outcome
+   |
+34 | conflict admin(reason: oncall)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: a collecting kind returns an empty outcome on a conflict, because granting anything on a defect in the policy would fail open; remove `conflict`
 ```
 
 ## Validity rules
