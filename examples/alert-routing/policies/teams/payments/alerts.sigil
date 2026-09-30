@@ -1,0 +1,13 @@
+policy payments.alerts: AlertRouting@1
+
+use platform.alerts.{in_production}
+use platform.paging
+use platform.routing
+
+paging(page_after: 5m)
+
+routing(muted: ["PaymentsSettlementBatchSlow"])
+
+when in_production and alert.severity == info and alert.labels["component"] == "ledger" {
+  notify(reason: routine, channel: "#payments-ledger")
+}

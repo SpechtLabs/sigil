@@ -1,0 +1,49 @@
+{
+  "version": "4",
+  "groupKey": "{}/{team=\"checkout\"}:{alertname=~\"^(?:.*)$\"}",
+  "truncatedAlerts": 0,
+  "status": "firing",
+  "receiver": "alertrouter",
+  "groupLabels": {"team": "checkout"},
+  "commonLabels": {"team": "checkout", "env": "production", "service": "checkout-api"},
+  "commonAnnotations": {},
+  "externalURL": "http://alertmanager:9093",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {"alertname": "CheckoutErrorRate", "severity": "critical", "team": "checkout", "env": "production", "service": "checkout-api"},
+      "annotations": {"summary": "5% of checkout requests fail"},
+      "startsAt": "2026-01-01T00:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=checkout_error_ratio+%3E+0.05",
+      "fingerprint": "3f6c2a9d81b04e57"
+    },
+    {
+      "status": "firing",
+      "labels": {"alertname": "CheckoutLatencyHigh", "severity": "warning", "team": "checkout", "env": "production", "service": "checkout-api"},
+      "annotations": {"summary": "checkout p99 latency above 800ms"},
+      "startsAt": "2026-01-01T00:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=checkout_latency_p99+%3E+0.8",
+      "fingerprint": "8b1e0d4c7a2f9e63"
+    },
+    {
+      "status": "firing",
+      "labels": {"alertname": "CheckoutPodRestarted", "severity": "info", "team": "checkout", "env": "production", "service": "checkout-api"},
+      "annotations": {"summary": "a checkout-api pod restarted"},
+      "startsAt": "2026-01-01T00:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=increase%28kube_pod_container_status_restarts_total%5B5m%5D%29+%3E+0",
+      "fingerprint": "c47a95e0213d8bf6"
+    },
+    {
+      "status": "resolved",
+      "labels": {"alertname": "CheckoutCartSyncStalled", "severity": "warning", "team": "checkout", "env": "production", "service": "checkout-api"},
+      "annotations": {"summary": "the cart sync worker stopped consuming"},
+      "startsAt": "2026-01-01T00:00:00Z",
+      "endsAt": "2026-01-01T00:20:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=cart_sync_lag_seconds+%3E+300",
+      "fingerprint": "e05d3b8f6a91c274"
+    }
+  ]
+}

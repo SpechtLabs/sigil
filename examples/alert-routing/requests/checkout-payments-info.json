@@ -1,0 +1,8 @@
+{
+  "alert": {
+    "name": "PaymentsRetryRate",
+    "severity": "info",
+    "labels": {"env": "production", "component": "payments"},
+    "firing_for": "20m"
+  }
+}

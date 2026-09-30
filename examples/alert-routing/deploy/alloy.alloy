@@ -1,0 +1,107 @@
+// Alloy collects all three signals for the local LGTM stack.
+otelcol.receiver.otlp "alertrouter" {
+	grpc {
+		endpoint = "0.0.0.0:4317"
+	}
+
+	http {
+		endpoint = "0.0.0.0:4318"
+	}
+
+	output {
+		traces = [otelcol.processor.batch.traces.input]
+	}
+}
+
+otelcol.processor.batch "traces" {
+	timeout = "1s"
+
+	output {
+		traces = [otelcol.exporter.otlp.tempo.input]
+	}
+}
+
+otelcol.exporter.otlp "tempo" {
+	client {
+		endpoint = "tempo:4317"
+
+		tls {
+			insecure = true
+		}
+	}
+}
+
+prometheus.scrape "alertrouter" {
+	targets         = [{__address__ = "alertrouter:8080", job = "alertrouter"}]
+	scrape_interval = "5s"
+	scrape_timeout  = "4s"
+	forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+prometheus.scrape "backends" {
+	targets = [
+		{__address__ = "alloy:12345", job = "alloy"},
+		{__address__ = "tempo:3200", job = "tempo"},
+		{__address__ = "loki:3100", job = "loki"},
+		{__address__ = "mimir:9009", job = "mimir"},
+		{__address__ = "pyroscope:4040", job = "pyroscope"},
+	]
+	scrape_interval = "5s"
+	scrape_timeout  = "4s"
+	forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+prometheus.remote_write "mimir" {
+	endpoint {
+		url = "http://mimir:9009/api/v1/push"
+	}
+}
+
+// Restrict discovery to this Compose project and its alertrouter service.
+// COMPOSE_PROJECT_NAME also keeps `docker compose -p ...` instances separate.
+discovery.docker "alertrouter" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "5s"
+
+	filter {
+		name   = "label"
+		values = [
+			"com.docker.compose.project=" + sys.env("COMPOSE_PROJECT_NAME"),
+			"com.docker.compose.service=alertrouter",
+		]
+	}
+}
+
+discovery.relabel "logs" {
+	targets = []
+
+	rule {
+		target_label = "service_name"
+		replacement  = "alertrouter"
+	}
+}
+
+loki.source.docker "alertrouter" {
+	host          = "unix:///var/run/docker.sock"
+	targets       = discovery.docker.alertrouter.targets
+	relabel_rules = discovery.relabel.logs.rules
+	forward_to    = [loki.process.alertrouter.receiver]
+}
+
+loki.process "alertrouter" {
+	stage.json {
+		expressions = {level = "level", team = "team", decision = "decision"}
+	}
+	// Only bounded fields become labels: a handful of teams and three
+	// decisions. The alert name, fingerprint and trace_id stay in the JSON body.
+	stage.labels {
+		values = {level = "", team = "", decision = ""}
+	}
+	forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}

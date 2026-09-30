@@ -1,0 +1,102 @@
+[
+  {
+    "name": "checkout-critical", "file": "checkout-critical.json", "kind": "route", "team": "checkout",
+    "description": "A critical production alert pages the on-call",
+    "expect": {"decision": "page", "reason": "critical_alert", "target": "checkout-primary"}
+  },
+  {
+    "name": "checkout-warning", "file": "checkout-warning.json", "kind": "route", "team": "checkout",
+    "description": "A fresh warning goes to the team channel",
+    "expect": {"decision": "notify", "reason": "routine", "channel": "#checkout-alerts"}
+  },
+  {
+    "name": "checkout-sustained", "file": "checkout-sustained.json", "kind": "route", "team": "checkout",
+    "description": "A warning firing past checkout's 10m pages",
+    "expect": {"decision": "page", "reason": "sustained", "target": "checkout-primary"}
+  },
+  {
+    "name": "checkout-muted", "file": "checkout-muted.json", "kind": "route", "team": "checkout",
+    "description": "A muted warning is dropped",
+    "expect": {"decision": "drop", "reason": "muted"}
+  },
+  {
+    "name": "checkout-muted-critical", "file": "checkout-muted-critical.json", "kind": "route", "team": "checkout",
+    "description": "Muting never silences a critical page",
+    "expect": {"decision": "page", "reason": "critical_alert", "target": "checkout-primary"}
+  },
+  {
+    "name": "checkout-staging", "file": "checkout-staging.json", "kind": "route", "team": "checkout",
+    "description": "A staging alert is dropped, even a critical one",
+    "expect": {"decision": "drop", "reason": "not_production"}
+  },
+  {
+    "name": "checkout-payments-info", "file": "checkout-payments-info.json", "kind": "route", "team": "checkout",
+    "description": "Payments info goes to checkout's payments channel",
+    "expect": {"decision": "notify", "reason": "routine", "channel": "#checkout-payments"}
+  },
+  {
+    "name": "checkout-unrouted", "file": "checkout-unrouted.json", "kind": "route", "team": "checkout",
+    "description": "An alert no rule routes falls back to #alerts",
+    "expect": {"decision": "notify", "reason": "unrouted", "channel": "#alerts"}
+  },
+  {
+    "name": "payments-critical", "file": "payments-critical.json", "kind": "route", "team": "payments",
+    "description": "A critical production alert pages payments' on-call",
+    "expect": {"decision": "page", "reason": "critical_alert", "target": "payments-primary"}
+  },
+  {
+    "name": "payments-sustained", "file": "payments-sustained.json", "kind": "route", "team": "payments",
+    "description": "A warning pages after payments' 5m",
+    "expect": {"decision": "page", "reason": "sustained", "target": "payments-primary"}
+  },
+  {
+    "name": "payments-ledger", "file": "payments-ledger.json", "kind": "route", "team": "payments",
+    "description": "Ledger info goes to #payments-ledger",
+    "expect": {"decision": "notify", "reason": "routine", "channel": "#payments-ledger"}
+  },
+  {
+    "name": "payments-muted", "file": "payments-muted.json", "kind": "route", "team": "payments",
+    "description": "A muted payments warning is dropped",
+    "expect": {"decision": "drop", "reason": "muted"}
+  },
+  {
+    "name": "unknown-team", "file": "unknown-team.json", "kind": "route", "team": "search", "status": 404,
+    "description": "A team the directory doesn't list is not found",
+    "expect": {}
+  },
+  {
+    "name": "invalid-severity", "file": "invalid-severity.json", "kind": "route", "team": "checkout", "status": 422,
+    "description": "A severity the kind doesn't declare is refused",
+    "expect": {}
+  },
+  {
+    "name": "webhook-checkout", "file": "webhook-checkout.json", "kind": "webhook",
+    "description": "A checkout batch: a page, a sustained page, a fallback and a resolved alert",
+    "expect": {
+      "received": 4,
+      "routed": 3,
+      "results": [
+        {"fingerprint": "3f6c2a9d81b04e57", "alertname": "CheckoutErrorRate", "status": "routed", "team": "checkout", "decision": "page", "reason": "critical_alert", "target": "checkout-primary"},
+        {"fingerprint": "8b1e0d4c7a2f9e63", "alertname": "CheckoutLatencyHigh", "status": "routed", "team": "checkout", "decision": "page", "reason": "sustained", "target": "checkout-primary"},
+        {"fingerprint": "c47a95e0213d8bf6", "alertname": "CheckoutPodRestarted", "status": "routed", "team": "checkout", "decision": "notify", "reason": "unrouted", "channel": "#alerts"},
+        {"fingerprint": "e05d3b8f6a91c274", "alertname": "CheckoutCartSyncStalled", "status": "resolved"}
+      ]
+    }
+  },
+  {
+    "name": "webhook-mixed", "file": "webhook-mixed.json", "kind": "webhook",
+    "description": "A mixed batch: routed, dropped, unowned, invalid and resolved alerts",
+    "expect": {
+      "received": 6,
+      "routed": 2,
+      "results": [
+        {"fingerprint": "1a7f4c2e9b6d3085", "alertname": "LedgerReplicationLag", "status": "routed", "team": "payments", "decision": "notify", "reason": "routine", "channel": "#payments-ledger"},
+        {"fingerprint": "5d02b8e7f4a1c936", "alertname": "PaymentsAuthorizationErrors", "status": "routed", "team": "payments", "decision": "drop", "reason": "not_production"},
+        {"fingerprint": "9e4c1f73a0b85d2e", "alertname": "SearchIndexStale", "status": "unowned", "decision": "notify", "reason": "unrouted", "channel": "#alerts"},
+        {"fingerprint": "b3806e5d2c9f147a", "alertname": "NodeDiskFilling", "status": "unowned", "decision": "notify", "reason": "unrouted", "channel": "#alerts"},
+        {"fingerprint": "f8a2d61c0e7b4935", "alertname": "PaymentsWebhookBacklog", "status": "invalid", "team": "payments", "decision": "notify", "reason": "unrouted", "channel": "#alerts"},
+        {"fingerprint": "07c9e4b2d5f31a68", "alertname": "PaymentsLatencyHigh", "status": "resolved"}
+      ]
+    }
+  }
+]

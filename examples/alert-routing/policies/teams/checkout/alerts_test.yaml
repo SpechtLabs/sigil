@@ -1,0 +1,116 @@
+policy: checkout.alerts
+# Every decision and reason checkout.alerts can reach has a case here.
+# checkout pages a warning after 10m instead of the platform's 30m, mutes the
+# canary's latency alert, and posts payments info to its own channel.
+cases:
+  # page critical_alert, from platform.paging.
+  - name: a critical production alert pages the on-call
+    input:
+      alert: {name: CheckoutErrorRate, severity: critical, labels: {env: production}, firing_for: 2m}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: page
+      reason: critical_alert
+      payload: {target: checkout-primary}
+
+  # notify routine from platform.routing, and page sustained from
+  # platform.paging with page_after: 10m.
+  - name: a fresh warning goes to the team channel
+    input:
+      alert: {name: CheckoutLatencyHigh, severity: warning, labels: {env: production}, firing_for: 4m}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: notify
+      reason: routine
+      payload: {channel: "#checkout-alerts"}
+  - name: a warning that keeps firing pages
+    input:
+      alert: {name: CheckoutLatencyHigh, severity: warning, labels: {env: production}, firing_for: 12m}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: page
+      reason: sustained
+      payload: {target: checkout-primary}
+  - name: a warning pages at exactly page_after
+    input:
+      alert: {name: CheckoutLatencyHigh, severity: warning, labels: {env: production}, firing_for: 10m}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: page
+      reason: sustained
+
+  # drop muted: muting silences the notification, never a page.
+  - name: a muted warning is dropped
+    input:
+      alert: {name: CheckoutCanaryLatency, severity: warning, labels: {env: production}, firing_for: 4m}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: drop
+      reason: muted
+  - name: muting never silences a critical page
+    input:
+      alert: {name: CheckoutCanaryLatency, severity: critical, labels: {env: production}, firing_for: 1m}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: page
+      reason: critical_alert
+  - name: muting never silences a sustained page either
+    input:
+      alert: {name: CheckoutCanaryLatency, severity: warning, labels: {env: production}, firing_for: 45m}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: page
+      reason: sustained
+
+  # drop not_production: nothing outside production pages or posts.
+  - name: staging alerts are dropped
+    input:
+      alert: {name: CheckoutErrorRate, severity: critical, labels: {env: staging}, firing_for: 2m}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: drop
+      reason: not_production
+  - name: an alert without an env label is dropped
+    input:
+      alert: {name: CheckoutErrorRate, severity: critical, labels: {}, firing_for: 2m}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: drop
+      reason: not_production
+
+  # notify routine to #checkout-payments, checkout's own rule. It only
+  # takes info alerts: for a warning, platform.routing already notifies
+  # the team channel with the same reason, and two channels would conflict.
+  - name: payments info goes to its own channel
+    input:
+      alert: {name: PaymentsRetryRate, severity: info, labels: {env: production, component: payments}}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: notify
+      reason: routine
+      payload: {channel: "#checkout-payments"}
+  - name: a payments warning goes to the team channel
+    input:
+      alert: {name: PaymentsRetryRate, severity: warning, labels: {env: production, component: payments}, firing_for: 1m}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: notify
+      reason: routine
+      payload: {channel: "#checkout-alerts"}
+  - name: payments info in staging is dropped
+    input:
+      alert: {name: PaymentsRetryRate, severity: info, labels: {env: staging, component: payments}}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: drop
+      reason: not_production
+
+  # notify unrouted: the kind's default when no rule fires.
+  - name: "anything else falls back to #alerts"
+    input:
+      alert: {name: CheckoutPodRestarted, severity: info, labels: {env: production}}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: notify
+      reason: unrouted
+      payload: {channel: "#alerts"}

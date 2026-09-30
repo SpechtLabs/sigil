@@ -1,7 +1,7 @@
-# examples/deploy-gates/Dockerfile builds from the repository root because the
-# example module replaces the library with ../../. Keep the build context to
-# what a Go build can use: docs/ alone carries a node_modules tree far larger
-# than the rest of the repository.
+# The examples' Dockerfiles (examples/*/Dockerfile) build from the repository
+# root because each example module replaces the library with ../../. Keep the
+# build context to what a Go build can use: docs/ alone carries a node_modules
+# tree far larger than the rest of the repository.
 .git/
 .claude/
 .github/

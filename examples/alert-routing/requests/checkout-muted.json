@@ -1,0 +1,8 @@
+{
+  "alert": {
+    "name": "CheckoutCanaryLatency",
+    "severity": "warning",
+    "labels": {"env": "production", "service": "checkout-canary"},
+    "firing_for": "4m"
+  }
+}

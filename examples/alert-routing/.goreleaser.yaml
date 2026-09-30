@@ -1,0 +1,84 @@
+# GoReleaser config for the alert-routing example: alertrouter, demo-cli and sigilc.
+# It only builds locally (`mise run snapshot` from examples/alert-routing/)
+# and is validated in CI; nothing publishes it. The sigil release runs the root
+# .goreleaser.yaml, which never reads this file, so the example can't leak
+# into a sigil release.
+version: 2
+
+project_name: alertrouter
+
+dist: dist
+
+builds:
+  - id: alertrouter
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    binary: alertrouter
+    main: ./cmd/alertrouter
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w
+      - -X=main.version={{ .Version }}
+
+  - id: demo-cli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    binary: demo-cli
+    main: ./cmd/demo-cli
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w
+      - -X=main.version={{ .Version }}
+
+  - id: sigilc
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    binary: sigilc
+    main: ./cmd/sigilc
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w
+      - -X=main.version={{ .Version }}
+
+archives:
+  - id: alertrouter
+    ids:
+      - alertrouter
+    name_template: "alertrouter_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+  - id: demo-cli
+    ids:
+      - demo-cli
+    name_template: "demo-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+  - id: sigilc
+    ids:
+      - sigilc
+    name_template: "sigilc_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  disable: true
+
+release:
+  disable: true

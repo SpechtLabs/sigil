@@ -1,0 +1,17 @@
+policy platform.routing: AlertRouting@1
+
+use platform.alerts.{in_production}
+
+param muted: list<string> = []
+
+when in_production and alert.severity == warning {
+  notify(reason: routine, channel: team.channel)
+}
+
+when not in_production {
+  drop(reason: not_production)
+}
+
+when alert.name in muted {
+  drop(reason: muted)
+}

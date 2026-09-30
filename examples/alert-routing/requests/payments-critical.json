@@ -1,0 +1,8 @@
+{
+  "alert": {
+    "name": "PaymentsAuthorizationErrors",
+    "severity": "critical",
+    "labels": {"env": "production", "service": "payments-gateway"},
+    "firing_for": "1m"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "alert": {
+    "name": "LedgerReplicationLag",
+    "severity": "info",
+    "labels": {"env": "production", "component": "ledger"},
+    "firing_for": "3m"
+  }
+}

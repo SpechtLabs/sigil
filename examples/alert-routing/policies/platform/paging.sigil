@@ -1,0 +1,13 @@
+policy platform.paging: AlertRouting@1
+
+use platform.alerts.{in_production}
+
+param page_after: duration = 30m, min: 5m, max: 1h
+
+when in_production and alert.severity == critical {
+  page(reason: critical_alert, target: team.oncall)
+}
+
+when in_production and alert.severity == warning and alert.firing_for >= page_after {
+  page(reason: sustained, target: team.oncall)
+}

@@ -1,0 +1,114 @@
+# Tasks for the alert-routing example module. Run these from
+# examples/alert-routing/, or use `mise -C examples/alert-routing run <task>`
+# from the repository root.
+# Tool versions and the lint-build task are inherited from ../../.mise.toml.
+
+[tasks.build]
+description = "Build alertrouter, demo-cli and sigilc into examples/alert-routing/bin/"
+run = "go build -o bin/ ./cmd/..."
+
+[tasks.demo]
+description = "Run the demo alert-routing CLI"
+run = "go run ./cmd/demo-cli/"
+
+[tasks.sigilc]
+description = "Run the example sigilc host binary with go run"
+run = "go run ./cmd/sigilc/"
+
+# The e2e suite sits behind the e2e build tag because it needs the compose
+# stack. `go test ./...` never compiles it, so it's vetted here on its own and
+# linted with the tag, or it would rot until someone next starts the stack.
+[tasks.test]
+description = "Run the example's tests with the race detector, including every policy test file, and vet the e2e suite"
+run = [
+  "go test -race ./...",
+  "go vet -tags e2e ./test/e2e/...",
+]
+
+[tasks.lint]
+description = "Lint the example module, e2e suite included, with the root golangci-lint config and the golint-sl plugin"
+depends = ["lint-build"]
+run = "../../custom-gcl run --config ../../.golangci.yaml --build-tags e2e ./..."
+
+# The check a policy repository runs in CI: every team root type-checks with
+# the platform's documents as the trusted source and invokes platform.paging,
+# as policies/sigil.yaml requires, and every test file passes under the sigilc
+# host binary.
+[tasks.policies]
+description = "Check the example alert-routing policies against the platform's paging policy and run their test files with sigilc"
+run = [
+  "go run ./cmd/sigilc check --config policies/sigil.yaml policies",
+  "go run ./cmd/sigilc test policies",
+]
+
+[tasks.generate]
+description = "Regenerate the example's kind file from the Go types"
+run = "go generate ./cmd/sigilc"
+
+[tasks.up]
+description = "Start alertrouter with Alloy and the Grafana LGTM stack, and wait until they're ready"
+run = "docker compose up --build --wait"
+
+[tasks.down]
+description = "Stop the example's compose stack and drop its volumes"
+run = "docker compose down -v"
+
+[tasks.e2e]
+description = "Start the compose stack and run the black-box e2e suite against it"
+depends = ["up"]
+env = { ALERTROUTER_URL = "http://localhost:8080", TEMPO_URL = "http://localhost:3200", LOKI_URL = "http://localhost:3100", MIMIR_URL = "http://localhost:9009", GRAFANA_URL = "http://localhost:3000", PYROSCOPE_URL = "http://localhost:4040" }
+# -count=1: the suite checks a running stack, not the code, so a cached pass
+# from an earlier run would say nothing about the stack that's up now.
+run = "go test -count=1 -tags e2e ./test/e2e/..."
+
+[tasks.release-check]
+description = "Validate the example's GoReleaser config"
+run = "goreleaser check --config .goreleaser.yaml"
+
+[tasks.snapshot]
+description = "Build local GoReleaser snapshots of alertrouter, demo-cli and sigilc into examples/alert-routing/dist/"
+run = "goreleaser build --snapshot --clean --config .goreleaser.yaml"
+
+[tasks.check]
+description = "Every gate CI runs on the example module"
+depends = ["lint", "test", "policies", "release-check"]
+
+# Every load-test task runs the same k6 suite (test/load/alertrouter.js);
+# TEST_MODE picks the executor shape, and test/load/lib/config.js lists the knobs
+# each mode reads. The variants below only preset TEST_MODE and the knobs
+# that mode needs to be meaningful.
+[tasks.loadtest]
+description = "Run the k6 suite against alertrouter in TEST_MODE (default load), send measurements to Mimir and save a JSON report"
+depends = ["up"]
+run = "bash test/load/run.sh"
+
+[tasks.loadtest-smoke]
+description = "Route every request case in requests/cases.json once, and reload once, checking each outcome"
+env = { TEST_MODE = "smoke" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-stress]
+description = "Ramp k6 from RATE to five times RATE and back over five minutes"
+env = { TEST_MODE = "stress", VUS = "50", MAX_VUS = "400" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-spike]
+description = "Hold RATE, jump to ten times RATE for a minute, and check alertrouter recovers"
+env = { TEST_MODE = "spike", VUS = "50", MAX_VUS = "600" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-soak]
+description = "Hold RATE for DURATION (default 1h) to surface leaks and slow drift"
+env = { TEST_MODE = "soak" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-breakpoint]
+description = "Ramp the arrival rate until a threshold fails and k6 aborts, to find alertrouter's capacity"
+env = { TEST_MODE = "breakpoint", VUS = "100", MAX_VUS = "1000" }
+run = [{ task = "loadtest" }]
+
+# Benchmarks of the compiled policies through the store, without HTTP or
+# telemetry: the cost of one evaluation per request shape.
+[tasks.bench]
+description = "Run the example's Go benchmarks: policy evaluation through the store, serial and parallel"
+run = "go test -run '^$' -bench . -benchmem ./..."

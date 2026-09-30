@@ -1,0 +1,67 @@
+{
+  "version": "4",
+  "groupKey": "{}:{env=~\"^(?:.*)$\"}",
+  "truncatedAlerts": 0,
+  "status": "firing",
+  "receiver": "alertrouter",
+  "groupLabels": {},
+  "commonLabels": {},
+  "commonAnnotations": {},
+  "externalURL": "http://alertmanager:9093",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {"alertname": "LedgerReplicationLag", "severity": "info", "team": "payments", "env": "production", "component": "ledger"},
+      "annotations": {"summary": "the ledger replica is 40s behind"},
+      "startsAt": "2026-01-01T00:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=ledger_replication_lag_seconds+%3E+30",
+      "fingerprint": "1a7f4c2e9b6d3085"
+    },
+    {
+      "status": "firing",
+      "labels": {"alertname": "PaymentsAuthorizationErrors", "severity": "critical", "team": "payments", "env": "staging", "service": "payments-gateway"},
+      "annotations": {"summary": "card authorizations fail in staging"},
+      "startsAt": "2026-01-01T00:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=payments_authorization_error_ratio+%3E+0.01",
+      "fingerprint": "5d02b8e7f4a1c936"
+    },
+    {
+      "status": "firing",
+      "labels": {"alertname": "SearchIndexStale", "severity": "warning", "team": "search", "env": "production"},
+      "annotations": {"summary": "the product index is two hours old"},
+      "startsAt": "2026-01-01T00:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=search_index_age_seconds+%3E+7200",
+      "fingerprint": "9e4c1f73a0b85d2e"
+    },
+    {
+      "status": "firing",
+      "labels": {"alertname": "NodeDiskFilling", "severity": "warning", "env": "production", "instance": "node-7"},
+      "annotations": {"summary": "node-7's root disk fills within 4h"},
+      "startsAt": "2026-01-01T00:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=predict_linear%28node_filesystem_avail_bytes%5B6h%5D%2C+4*3600%29+%3C+0",
+      "fingerprint": "b3806e5d2c9f147a"
+    },
+    {
+      "status": "firing",
+      "labels": {"alertname": "PaymentsWebhookBacklog", "severity": "urgent", "team": "payments", "env": "production"},
+      "annotations": {"summary": "the outbound webhook queue holds 10k events"},
+      "startsAt": "2026-01-01T00:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=payments_webhook_queue_depth+%3E+10000",
+      "fingerprint": "f8a2d61c0e7b4935"
+    },
+    {
+      "status": "resolved",
+      "labels": {"alertname": "PaymentsLatencyHigh", "severity": "warning", "team": "payments", "env": "production", "service": "payments-gateway"},
+      "annotations": {"summary": "payments p99 latency above 500ms"},
+      "startsAt": "2026-01-01T00:00:00Z",
+      "endsAt": "2026-01-01T00:12:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=payments_latency_p99+%3E+0.5",
+      "fingerprint": "07c9e4b2d5f31a68"
+    }
+  ]
+}
