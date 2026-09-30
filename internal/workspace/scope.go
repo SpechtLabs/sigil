@@ -1,4 +1,4 @@
-package project
+package workspace
 
 import (
 	"sort"
@@ -15,12 +15,12 @@ import (
 // documents, so an error in a document it doesn't use can't stop it.
 type Scope struct {
 	p        *Project
-	selected []string                  // the policies the scope is of; nil for every document
-	policies []string                  // the policies in scope, sorted
 	docs     map[string]bool           // the documents in scope by name; nil for every document
 	files    map[string]bool           // the files that hold them
 	bundles  map[*Group]*bundle.Bundle // what each group's policies compile in, built on first use
 	kinds    map[string][]ast.Span     // the kind documents of each file a diagnostic is in, by file
+	selected []string                  // the policies the scope is of; nil for every document
+	policies []string                  // the policies in scope, sorted
 }
 
 // ScopeOf returns the scope of the selected policies: they and every

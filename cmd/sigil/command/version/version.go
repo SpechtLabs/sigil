@@ -16,19 +16,13 @@ import (
 	"github.com/spechtlabs/sigil/cmd/internal/output"
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/internal/usage"
+	"github.com/spechtlabs/sigil/internal/buildinfo"
 )
 
-const unknown = "unknown"
+const unknown = buildinfo.Unknown
 
 // info is what the version command reports.
-type info struct {
-	Version    string `json:"version"`
-	Commit     string `json:"commit"`
-	CommitTime string `json:"commitTime"`
-	Dirty      bool   `json:"dirty"`
-	GoVersion  string `json:"goVersion"`
-	Platform   string `json:"platform"`
-}
+type info = buildinfo.Info
 
 // NewCommand returns the version command.
 func NewCommand(opts ...Option) *cobra.Command {
@@ -60,52 +54,9 @@ sigil version -o json`,
 }
 
 // newInfo combines the injected version with the VCS and toolchain details
-// the Go toolchain embeds in the binary. `go run` and `go test` do not embed
-// VCS details, so those fields fall back to "unknown".
+// the Go toolchain embeds in the binary, as [buildinfo.New] does.
 func newInfo(o options) info {
-	i := info{
-		Version:    o.version,
-		Commit:     unknown,
-		CommitTime: unknown,
-		GoVersion:  unknown,
-		Platform:   unknown,
-	}
-
-	bi := o.buildInfo
-	if bi == nil {
-		if i.Version == "" {
-			i.Version = unknown
-		}
-		return i
-	}
-
-	if i.Version == "" {
-		i.Version = bi.Main.Version
-	}
-	if bi.GoVersion != "" {
-		i.GoVersion = bi.GoVersion
-	}
-
-	var goos, goarch string
-	for _, s := range bi.Settings {
-		switch s.Key {
-		case "vcs.revision":
-			i.Commit = s.Value
-		case "vcs.time":
-			i.CommitTime = s.Value
-		case "vcs.modified":
-			i.Dirty = s.Value == "true"
-		case "GOOS":
-			goos = s.Value
-		case "GOARCH":
-			goarch = s.Value
-		}
-	}
-	if goos != "" && goarch != "" {
-		i.Platform = goos + "/" + goarch
-	}
-
-	return i
+	return buildinfo.New(o.version, o.buildInfo)
 }
 
 func run(w io.Writer, o options) error {

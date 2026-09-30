@@ -530,10 +530,11 @@ The `error` record:
 | Field | Holds |
 | --- | --- |
 | `kind` | `runtime`, `conflict` or `assertion` |
+| `phase` | For a failed assert, the phase it failed in: `input`, checked before any rule runs, or `outcome`, checked against the outcome the rules formed |
 | `message` | What failed |
 | `help` | What to do about it |
 | `candidates` | For a conflict, the conflicting candidates, as entries |
-| `asserts` | For a failed assert, one record per failing assert: `reason`, `position`, `outcome` (the candidates that formed the outcome it read, for an outcome assert), `cause` (the runtime error its condition raised) and `help` (when that error comes with advice of its own) |
+| `asserts` | For a failed assert, one record per failing assert: `reason`, `policy` (the policy or module it's in), `position`, `outcome` (the candidates that formed the outcome it read, for an outcome assert), `cause` (the runtime error its condition raised) and `help` (when that error comes with advice of its own) |
 
 Exits 1 when the bundle doesn't check, the root doesn't compile, the input doesn't decode, or the evaluation fails.
 

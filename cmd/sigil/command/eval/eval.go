@@ -378,7 +378,7 @@ func write(out io.Writer, r *report.Report, format output.Format) humane.Error {
 		err = enc.Encode(r)
 	default:
 		p := pretty.New(out)
-		return p.Print(r.Text(p.Theme()))
+		return p.Print(report.Text(r, p.Theme()))
 	}
 	if err != nil {
 		return humane.Wrap(err, "the result couldn't be written", "check where the output is going")

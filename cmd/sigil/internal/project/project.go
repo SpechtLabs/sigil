@@ -1,46 +1,42 @@
-// Package project loads what the policy commands work on: every document
-// the command line names, read and parsed once, and grouped by the kind
-// each one's header names.
+// Package project loads what the policy commands work on from the files
+// the command line names: every document, read and parsed once, and
+// grouped by the kind each one's header names.
 //
-// [Load] reads the paths, finds the kinds among the linked ones, the
-// --kind files and the inputs themselves, and returns a [Project] with one
-// [Group] per kind: the kind and a bundle of that kind's documents. A name
-// has one definition across the whole project, across kinds too. [Expand]
-// holds the path rules every command shares, and [Match] and [Root] pick
-// the policies a command works on, by name or by pattern.
+// [Load] reads the paths from disk and hands them to package workspace,
+// which finds the kinds among the linked ones, the --kind files and the
+// inputs themselves, and returns a [Project] with one [Group] per kind.
+// [Expand] holds the path rules every command shares, and [Match] and
+// [Root] pick the policies a command works on, by name or by pattern. The
+// types are workspace's, which the WebAssembly module loads from virtual
+// files instead.
 package project
 
 import (
-	"fmt"
 	"io"
-	"sort"
+	"os"
 
 	"github.com/sierrasoftworks/humane-errors-go"
 
-	"github.com/spechtlabs/sigil/internal/ast"
-	"github.com/spechtlabs/sigil/internal/bundle"
-	"github.com/spechtlabs/sigil/internal/diag"
-	"github.com/spechtlabs/sigil/internal/gokind"
-	"github.com/spechtlabs/sigil/internal/kind"
-	"github.com/spechtlabs/sigil/internal/token"
+	"github.com/spechtlabs/sigil/internal/workspace"
 )
 
-// Kind is the contract a command checks and evaluates against.
-type Kind struct {
-	Model   *kind.Kind      // the kind as the checker sees it
-	Binding *gokind.Binding // its Go types and host functions
-	// Host is set for a kind linked into a host binary, whose host
-	// functions are implemented. A kind loaded from a file has every
-	// function bound to one that fails when it's called.
-	Host bool
-}
+// stdinName names what a "-" path reads, in diagnostics.
+const stdinName = "<stdin>"
 
-// Linked is a kind a host linked into its own sigil binary, with
-// github.com/spechtlabs/sigil/pkg/cli.WithKind.
-type Linked struct {
-	Model   *kind.Kind      // the kind as the checker sees it
-	Binding *gokind.Binding // the host's Go types and host functions
-}
+type (
+	// Kind is the contract a command checks and evaluates against.
+	Kind = workspace.Kind
+	// Linked is a kind a host linked into its own sigil binary, with
+	// github.com/spechtlabs/sigil/pkg/cli.WithKind.
+	Linked = workspace.Linked
+	// Project is every document a command read, grouped by kind.
+	Project = workspace.Project
+	// Group is one kind's share of a project.
+	Group = workspace.Group
+	// Scope is what one command covers: every document, or some policies
+	// and every document they use.
+	Scope = workspace.Scope
+)
 
 // Sources are what a command reads: the paths it was given, the trusted
 // paths, and kind files from outside the paths.
@@ -51,249 +47,122 @@ type Sources struct {
 	Kinds   []string  // kind files the paths don't hold, such as --kind names
 }
 
-// Project is every document a command read, grouped by kind.
-type Project struct {
-	groups   map[string]*Group           // by kind name
-	owners   map[string]*Group           // by the name of a policy or module
-	names    map[string]*bundle.Document // every policy and module, by name, first definition only
-	docs     []*bundle.Document          // the same, in read order, for naming diagnostics
-	sources  map[string][]byte           // every file read, by name
-	kindDocs map[string][]ast.Node       // the kind documents of every file read, by file
-	errs     diag.ErrorList              // what loading found: parse and kind errors, unknown kinds, names defined twice
-	files    int                         // files read from the paths
-	checked  bool
+// reader reads each file once, however many ways it's named.
+type reader struct {
+	stdin io.Reader
+	read  map[string]workspace.File // by identity
 }
 
-// Group is one kind's share of a project: the kind, and a bundle of the
-// documents written against it, with the trusted ones behind
-// [bundle.Bundle.Trust].
-type Group struct {
-	Kind    *Kind
-	Bundle  *bundle.Bundle
-	trusted *bundle.Bundle
-}
-
-// Load reads the sources and groups their documents by kind. Kinds come
-// from, in this order: the kinds linked into the binary, the kind
-// documents in s.Kinds, the kind documents among the paths, and those
-// among the trusted paths. The same kind from two sources must be
-// identical, and the later of two that differ is the error. A kind
-// file's other documents are read only when the file is also among the
-// paths, and a file under a trusted path is read as trusted only.
-//
-// The paths are expanded by [Expand]'s rules, each directory contributing
-// the `.sigil` files below it.
+// Load reads the sources and groups their documents by kind, as
+// [workspace.Loader] does: the kind files in s.Kinds first, then the
+// paths, then the trusted paths. The paths are expanded by [Expand]'s
+// rules, each directory contributing the `.sigil` files below it, and a
+// file under a trusted path is read as trusted only.
 //
 // Parse errors, kind documents that don't check or don't agree, documents
 // naming a kind nobody provides and names defined twice are diagnostics,
 // for [Project.Errors]; only a path that can't be read, or a kind file that
 // doesn't match the kind linked into this binary, fails Load.
 func Load(s Sources, linked []Linked) (*Project, humane.Error) {
-	l := &loader{
-		p:      &Project{groups: map[string]*Group{}, owners: map[string]*Group{}, names: map[string]*bundle.Document{}, sources: map[string][]byte{}, kindDocs: map[string][]ast.Node{}},
-		kinds:  newKinds(linked),
-		stdin:  s.Stdin,
-		parsed: map[string]*file{},
-	}
+	l := workspace.NewLoader(linked)
+	r := &reader{stdin: s.Stdin, read: map[string]workspace.File{}}
 	for _, k := range s.Kinds {
-		if err := l.kindFile(k); err != nil {
+		f, err := r.kindFile(k)
+		if err != nil {
+			return nil, err
+		}
+		if err := l.Kind(f); err != nil {
 			return nil, err
 		}
 	}
-	trusted, err := Expand(s.Trusted, IsSigil)
+	regular, trusted, err := r.sources(s)
 	if err != nil {
 		return nil, err
 	}
-	regular, err := Expand(s.Paths, IsSigil)
+	return l.Load(regular, trusted), nil
+}
+
+// sources expands the paths and the trusted paths and reads their files,
+// the paths first. A file among both is read as trusted only.
+func (r *reader) sources(s Sources) (regular, trusted []workspace.File, err humane.Error) {
+	tnames, err := Expand(s.Trusted, IsSigil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	regular = without(regular, trusted)
-	// The paths are read before the trusted paths, so where a kind
-	// document of each disagrees, the trusted one is reported.
-	rfiles, err := l.readAll(regular)
+	rnames, err := Expand(s.Paths, IsSigil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	tfiles, err := l.readAll(trusted)
+	if regular, err = r.readAll(without(rnames, tnames)); err != nil {
+		return nil, nil, err
+	}
+	if trusted, err = r.readAll(tnames); err != nil {
+		return nil, nil, err
+	}
+	return regular, trusted, nil
+}
+
+// Match returns the policies matching any of the patterns, in the order
+// given, as [workspace.Match] does.
+func Match(policies, patterns []string) ([]string, humane.Error) {
+	return workspace.Match(policies, patterns)
+}
+
+// Root picks the one policy eval evaluates, as [workspace.Root] does.
+func Root(policies []string, name string) (string, humane.Error) {
+	return workspace.Root(policies, name)
+}
+
+// kindFile reads a kind file named outside the paths.
+func (r *reader) kindFile(name string) (workspace.File, humane.Error) {
+	name = clean(name)
+	if f, ok := r.read[identity(name)]; ok {
+		return f, nil
+	}
+	src, err := os.ReadFile(name) //nolint:gosec // the path comes from the command line, which is the point
 	if err != nil {
-		return nil, err
+		return workspace.File{}, humane.Wrap(err, "the kind file couldn't be read", "pass the exported kind file with --kind")
 	}
-	l.p.files = len(rfiles)
-	l.group(tfiles, true)
-	for _, g := range l.p.groups {
-		if len(g.trusted.Documents()) > 0 {
-			g.Bundle.Trust(g.trusted)
+	return r.keep(name, src), nil
+}
+
+// readAll reads the files, "-" from stdin, in order.
+func (r *reader) readAll(names []string) ([]workspace.File, humane.Error) {
+	out := make([]workspace.File, 0, len(names))
+	for _, name := range names {
+		f, err := r.file(name)
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, f)
 	}
-	l.group(rfiles, false)
-	l.indexKinds()
-	return l.p, nil
+	return out, nil
 }
 
-// Check checks every group's documents against its kind, in import
-// order. Checking twice is a no-op.
-func (p *Project) Check() {
-	if p.checked {
-		return
+// file reads one file, or returns the one already read under that name.
+func (r *reader) file(name string) (workspace.File, humane.Error) {
+	if name == "-" {
+		name = stdinName
 	}
-	p.checked = true
-	for _, g := range p.Groups() {
-		g.Bundle.Check()
+	if f, ok := r.read[identity(name)]; ok {
+		return f, nil
 	}
-}
-
-// Errors returns every diagnostic so far, sorted by file and position, or
-// nil: what loading found, and after [Project.Check] what checking each
-// group found.
-func (p *Project) Errors() diag.ErrorList {
-	all := append(diag.ErrorList{}, p.errs...)
-	for _, g := range p.Groups() {
-		all = append(all, g.Bundle.Errors()...)
-	}
-	if len(all) == 0 {
-		return nil
-	}
-	sortErrors(all)
-	return all
-}
-
-// Groups returns one group per kind that owns a document, sorted by the
-// kind's name.
-func (p *Project) Groups() []*Group {
-	out := make([]*Group, 0, len(p.groups))
-	for _, g := range p.groups {
-		out = append(out, g)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Kind.Model.Name < out[j].Kind.Model.Name })
-	return out
-}
-
-// Group returns the group owning the policy or module called name,
-// trusted or not, or nil.
-func (p *Project) Group(name string) *Group { return p.owners[name] }
-
-// Policies lists the policies of every group, trusted ones apart, sorted
-// by name.
-func (p *Project) Policies() []string {
-	var out []string
-	for _, g := range p.groups {
-		out = append(out, g.Bundle.Policies()...)
-	}
-	sort.Strings(out)
-	return out
-}
-
-// Names lists every policy and module the project read, trusted ones
-// included, sorted by name, such as for a did-you-mean over the names a
-// policy can be required by.
-func (p *Project) Names() []string {
-	out := make([]string, 0, len(p.names))
-	for name := range p.names {
-		out = append(out, name)
-	}
-	sort.Strings(out)
-	return out
-}
-
-// Files returns how many files were read from the paths, trusted paths
-// and kind files apart.
-func (p *Project) Files() int { return p.files }
-
-// Read returns how many files the project read: its paths, its trusted
-// paths and its kind files, each once however many ways it was named.
-// It's what check reports as checked, the same for one tree whether a
-// file is read as trusted or not.
-func (p *Project) Read() int { return len(p.sources) }
-
-// SourceOf returns a file's source, or nil for a file the project didn't
-// read.
-func (p *Project) SourceOf(file string) []byte { return p.sources[file] }
-
-// InKind reports whether e points into a kind document, such as a kind
-// file that doesn't check or still uses a syntax the language dropped.
-func (p *Project) InKind(e *diag.Error) bool {
-	if !e.Pos.IsValid() {
-		return false
-	}
-	for _, d := range p.kindDocs[e.File] {
-		if d.Pos().Offset <= e.Pos.Offset && e.Pos.Offset < d.End().Offset {
-			return true
+	var src []byte
+	var err error
+	if name == stdinName {
+		src, err = io.ReadAll(r.stdin)
+		if err != nil {
+			return workspace.File{}, humane.Wrap(err, "stdin couldn't be read", "pipe a policy bundle in, or name files instead of `-`")
 		}
+	} else if src, err = os.ReadFile(name); err != nil { //nolint:gosec // the path comes from the command line, which is the point
+		return workspace.File{}, humane.Wrap(err, name+" couldn't be read", "check the file's permissions")
 	}
-	return false
+	return r.keep(name, src), nil
 }
 
-// Resolve prepares diagnostics for rendering: it names the document each
-// one is in, when the stage that reported it didn't, and sorts them by
-// file and position. The list is a copy; errs is left alone.
-func (p *Project) Resolve(errs diag.ErrorList) diag.ErrorList {
-	out := make(diag.ErrorList, len(errs))
-	for i, e := range errs {
-		named := *e
-		if named.Doc == "" {
-			named.Doc = p.documentAt(e.File, e.Pos)
-		}
-		out[i] = &named
-	}
-	sortErrors(out)
-	return out
+// keep records a file read, by its identity, so it's never read again.
+func (r *reader) keep(name string, src []byte) workspace.File {
+	f := workspace.File{Name: name, ID: identity(name), Source: src}
+	r.read[f.ID] = f
+	return f
 }
-
-// Render renders every diagnostic with its source line, in the plain
-// form. The commands render Resolve's list themselves, styled for a
-// terminal, except where a diagnostic becomes a string field.
-func (p *Project) Render(errs diag.ErrorList) string {
-	return diag.RenderAll(p.Resolve(errs), p.SourceOf, diag.Plain)
-}
-
-// documentAt returns the name of the policy or module at pos in file, or
-// "".
-func (p *Project) documentAt(file string, pos token.Pos) string {
-	if !pos.IsValid() {
-		return ""
-	}
-	for _, d := range p.docs {
-		if d.File == file && d.Node.Pos().Offset <= pos.Offset && pos.Offset < d.Node.End().Offset {
-			return d.Name
-		}
-	}
-	return ""
-}
-
-// sortErrors sorts diagnostics by file and position.
-func sortErrors(errs diag.ErrorList) {
-	sort.SliceStable(errs, func(i, j int) bool {
-		if errs[i].File != errs[j].File {
-			return errs[i].File < errs[j].File
-		}
-		return errs[i].Pos.Offset < errs[j].Pos.Offset
-	})
-}
-
-// header returns a policy's or module's name and the kind its header
-// names, or false for a kind document or a header that didn't parse.
-func header(doc ast.Doc) (name string, k *ast.Ident, ok bool) {
-	switch d := doc.(type) {
-	case *ast.PolicyDoc:
-		if d.Name != nil && d.Kind != nil {
-			return d.Name.String(), d.Kind, true
-		}
-	case *ast.ModuleDoc:
-		if d.Name != nil && d.Kind != nil {
-			return d.Name.String(), d.Kind, true
-		}
-	}
-	return "", nil, false
-}
-
-// describe names a document's kind for a message.
-func describe(doc ast.Doc) string {
-	if _, ok := doc.(*ast.ModuleDoc); ok {
-		return "module"
-	}
-	return "policy"
-}
-
-// at formats a position with its file, for a hint.
-func at(file string, pos token.Pos) string { return fmt.Sprintf("%s:%s", file, pos) }

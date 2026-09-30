@@ -20,9 +20,8 @@ import (
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/config"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
-	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/diag"
-	"github.com/spechtlabs/sigil/internal/lint"
+	"github.com/spechtlabs/sigil/internal/workspace"
 )
 
 // NewCommand returns the check command, configured by opts. Without
@@ -144,66 +143,11 @@ func run(out io.Writer, o *options, configFile string, src project.Sources, patt
 	if err != nil {
 		return err
 	}
-	p.Check()
-	s := p.ScopeOf(nil)
-	if len(patterns) > 0 {
-		selected, err := project.Match(p.Policies(), patterns)
-		if err != nil {
-			return err
-		}
-		s = p.ScopeOf(selected)
+	errs, err := p.Diagnose(workspace.Checks{Lints: cfg.Lints, Patterns: patterns, Require: requirements(cfg, reqs), Strict: whole(cfg, src.Paths)})
+	if err != nil {
+		return err
 	}
-	errs := s.Keep(p.Errors())
-	var findings diag.ErrorList
-	if errs == nil {
-		// Lints read what the checker learned, so they run on a project
-		// that checks, even when a compile or a requirement then fails.
-		e, err := enforce(p, cfg, reqs, s.Selected(), whole(cfg, src.Paths))
-		if err != nil {
-			return err
-		}
-		errs = s.Keep(compileAll(p, s, e))
-		required := make([]string, len(reqs))
-		for i, r := range reqs {
-			required[i] = r.Policy
-		}
-		for _, g := range p.Groups() {
-			for _, f := range lint.Run(g.Bundle, lint.Options{Kind: g.Kind.Model, Levels: cfg.Lints, Required: required}) {
-				findings = append(findings, f.Error)
-			}
-		}
-		findings = s.Keep(findings)
-	}
-	return report(out, p, append(errs, findings...), *o.output)
-}
-
-// compileAll compiles the scope's policies, so errors only a compile
-// finds, such as an invocation argument out of its param's bounds, fail
-// the check, and checks each root against the policies it must invoke.
-func compileAll(p *project.Project, s *project.Scope, e *enforced) diag.ErrorList {
-	var errs diag.ErrorList
-	seen := map[string]bool{}
-	add := func(list diag.ErrorList) {
-		for _, e := range list {
-			key := fmt.Sprintf("%s:%d:%s", e.File, e.Pos.Offset, e.Msg)
-			if !seen[key] {
-				seen[key] = true
-				errs = append(errs, e)
-			}
-		}
-	}
-	for _, name := range s.Policies() {
-		_, list := s.Bundle(p.Group(name)).Compile(name, bundle.Options{Static: true})
-		add(list)
-	}
-	if errs != nil {
-		return errs
-	}
-	for _, root := range e.roots {
-		_, list := s.Bundle(p.Group(root)).Compile(root, bundle.Options{Static: true, Require: e.requires[root]})
-		add(list)
-	}
-	return errs
+	return report(out, p, errs, *o.output)
 }
 
 // report prints the diagnostics, then a summary, and fails when there's

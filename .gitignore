@@ -18,7 +18,8 @@ coverage.txt
 go.work
 /vendor/
 
-# goreleaser build output
+# goreleaser build output, and the WebAssembly module `mise run wasm-build`
+# writes to dist/wasm/sigil.wasm
 dist/
 
 # editor and IDE paraphernalia
