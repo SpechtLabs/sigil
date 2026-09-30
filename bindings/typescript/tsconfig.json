@@ -1,0 +1,22 @@
+{
+  // The editor and `bun run typecheck` config: sources and tests. The build
+  // (tsconfig.build.json) narrows it to src/ and emits.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "ESNext.Disposable", "DOM"],
+    "types": ["bun"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["src", "test", "scripts"]
+}

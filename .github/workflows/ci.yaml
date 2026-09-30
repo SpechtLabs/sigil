@@ -175,12 +175,13 @@ jobs:
       - name: Validate GoReleaser config
         run: mise run release-check
 
-  # The WebAssembly module. Its end-to-end tests are a Go module of their own,
-  # cmd/sigil-wasm/test, which the lint and test jobs above stop at, and its
-  # glue only builds for wasip1, so this job lints both and drives the module
-  # through its ABI.
+  # The WebAssembly module and the TypeScript package around it. The module's
+  # end-to-end tests are a Go module of their own, cmd/sigil-wasm/test, which
+  # the lint and test jobs above stop at, and its glue only builds for wasip1,
+  # so this job lints both, drives the module through its ABI, and runs the
+  # TypeScript package's tests against the module it built.
   wasm:
-    name: WebAssembly module
+    name: WebAssembly module and TypeScript package
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -189,7 +190,7 @@ jobs:
       - name: Set up mise
         uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5 # v5.0.0
         with:
-          install_args: go golangci-lint
+          install_args: go golangci-lint bun
 
       # Same key as the lint job: custom-gcl is built from the root config and
       # lints every module.
@@ -211,8 +212,16 @@ jobs:
           GOOS=wasip1 GOARCH=wasm ./custom-gcl run ./cmd/sigil-wasm/... ./internal/engine/...
           cd cmd/sigil-wasm/test && ../../../custom-gcl run --config ../../../.golangci.yaml ./...
 
+      # Builds dist/wasm/sigil.wasm, which the TypeScript tests load too.
       - name: Test the module through its ABI
         run: mise run wasm-test
+
+      - name: Test the TypeScript package
+        run: mise run ts-test
+
+      # tsc type-checks the package again as it emits dist/.
+      - name: Build the TypeScript package
+        run: mise run ts-build
 
   build:
     name: Build with GoReleaser

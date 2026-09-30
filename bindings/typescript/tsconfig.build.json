@@ -1,0 +1,12 @@
+{
+  // The package build: src/ only, with no runtime's ambient types, so a
+  // browser-only or Node-only API can't slip into the library unnoticed.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [],
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"]
+}
