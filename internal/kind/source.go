@@ -62,30 +62,8 @@ func (k *Kind) Source() string {
 		b.WriteString("\n" + d.Source())
 	}
 
-	var resolution strings.Builder
-	switch k.Collect {
-	case CollectOne:
-		resolution.WriteString("collect one\n")
-	case CollectAll:
-		resolution.WriteString("collect all\n")
-	}
-	if len(k.Precedence) > 0 {
-		resolution.WriteString("precedence " + strings.Join(k.Precedence, " > ") + "\n")
-	}
-	for _, d := range k.Decisions {
-		if len(d.Ranked) > 0 {
-			resolution.WriteString("precedence " + d.Name + ": " + strings.Join(d.Ranked, " > ") + "\n")
-		}
-	}
-	for _, set := range k.Exclusive {
-		names := make([]string, len(set))
-		for i, o := range set {
-			names[i] = o.String()
-		}
-		resolution.WriteString("exclusive " + strings.Join(names, ", ") + "\n")
-	}
-	if resolution.Len() > 0 {
-		b.WriteString("\n" + resolution.String())
+	if resolution := k.resolutionSource(); resolution != "" {
+		b.WriteString("\n" + resolution)
 	}
 	if k.Default != nil {
 		b.WriteString("\ndefault " + k.Default.Call(k.Decision(k.Default.Decision)) + "\n")
@@ -128,4 +106,33 @@ func (d *Default) Call(decl *Decision) string {
 		args = append(args, name+": "+constant.Format(d.Args[name]))
 	}
 	return d.Decision + "(" + strings.Join(args, ", ") + ")"
+}
+
+// resolutionSource renders the lines that say how candidates resolve:
+// `collect`, the decision `precedence`, each scoped `precedence` and each
+// `exclusive` set, one per line, or "" for a kind that declares none.
+func (k *Kind) resolutionSource() string {
+	var b strings.Builder
+	switch k.Collect {
+	case CollectOne:
+		b.WriteString("collect one\n")
+	case CollectAll:
+		b.WriteString("collect all\n")
+	}
+	if len(k.Precedence) > 0 {
+		b.WriteString("precedence " + strings.Join(k.Precedence, " > ") + "\n")
+	}
+	for _, d := range k.Decisions {
+		if len(d.Ranked) > 0 {
+			b.WriteString("precedence " + d.Name + ": " + strings.Join(d.Ranked, " > ") + "\n")
+		}
+	}
+	for _, set := range k.Exclusive {
+		names := make([]string, len(set))
+		for i, o := range set {
+			names[i] = o.String()
+		}
+		b.WriteString("exclusive " + strings.Join(names, ", ") + "\n")
+	}
+	return b.String()
 }
