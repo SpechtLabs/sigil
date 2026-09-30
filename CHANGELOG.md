@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.5.0](https://github.com/SpechtLabs/sigil/compare/v0.4.0...v0.5.0) (2026-09-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** read every path the same way, from . by default ([#84](https://github.com/SpechtLabs/sigil/issues/84))
+* add enum types and make the decision reason a labeled field ([#82](https://github.com/SpechtLabs/sigil/issues/82))
+* **policy:** let a collect one kind name the outcome of a conflict ([#78](https://github.com/SpechtLabs/sigil/issues/78))
+* **policy:** WithReasonPrecedence and WithDefault take reason handles from Decision.Reason instead of a decision and reason strings, and Decision.Reason panics on a reason the decision does not declare.
+
+### Features
+
+* add enum types and make the decision reason a labeled field ([#82](https://github.com/SpechtLabs/sigil/issues/82)) ([3f00ca4](https://github.com/SpechtLabs/sigil/commit/3f00ca48dc72ffa10a64c67bf2ccd08292bdfa7f))
+* **cli:** clean up help, fmt output, check --policy and eval input ([#85](https://github.com/SpechtLabs/sigil/issues/85)) ([89103d5](https://github.com/SpechtLabs/sigil/commit/89103d5cbfd3a5e185a1bcc234ac8c8b701ca4d3))
+* **cli:** find the configuration as sigil or .sigil in YAML, JSON or TOML, and publish its schema ([#89](https://github.com/SpechtLabs/sigil/issues/89)) ([c6e110d](https://github.com/SpechtLabs/sigil/commit/c6e110d9388d1628b0726d19c3919f0c9cca1f66))
+* **cli:** find the kind among the inputs ([#83](https://github.com/SpechtLabs/sigil/issues/83)) ([6ff3f27](https://github.com/SpechtLabs/sigil/commit/6ff3f27b09215cf448fc24dafefafc9d903ecdee))
+* **cli:** read every path the same way, from . by default ([#84](https://github.com/SpechtLabs/sigil/issues/84)) ([e1c1a47](https://github.com/SpechtLabs/sigil/commit/e1c1a472527a85cf445d423a3b21c830b22566b2))
+* **cli:** read kinds and requirements from sigil.yaml ([#86](https://github.com/SpechtLabs/sigil/issues/86)) ([8772b10](https://github.com/SpechtLabs/sigil/commit/8772b10aa215baed44bfe4f8038797b03346843b))
+* **cli:** stub host functions in eval and test ([#87](https://github.com/SpechtLabs/sigil/issues/87)) ([ab8592f](https://github.com/SpechtLabs/sigil/commit/ab8592fa5e7bf0111b278de0953c8f4eeb4ae7e6))
+* **policy:** let a collect one kind name the outcome of a conflict ([#78](https://github.com/SpechtLabs/sigil/issues/78)) ([776a2a2](https://github.com/SpechtLabs/sigil/commit/776a2a2dfdd1c7b36ed7dc42e785cd264e3c3c85))
+* **policy:** name reasons through typed handles in Go ([#65](https://github.com/SpechtLabs/sigil/issues/65)) ([957b308](https://github.com/SpechtLabs/sigil/commit/957b308f99880a2dd0698c5bd0c39d9b3b121a17))
+* **policy:** stop evaluations on context cancellation, recover host panics on request ([#73](https://github.com/SpechtLabs/sigil/issues/73)) ([0b0dac9](https://github.com/SpechtLabs/sigil/commit/0b0dac9d93b57f85b028481f8d6ea0beaaed3e27))
+
+
+### Bug Fixes
+
+* **check:** suggest the quoted string for a bare map key ([#63](https://github.com/SpechtLabs/sigil/issues/63)) ([07cf05f](https://github.com/SpechtLabs/sigil/commit/07cf05fd97e6d2c027da2b9f501d18d68643e9d4))
+* **examples:** answer a policy's failure with 500 and the caller's with 422 ([#69](https://github.com/SpechtLabs/sigil/issues/69)) ([12c4043](https://github.com/SpechtLabs/sigil/commit/12c4043d24126665771ffbf5e10859037a74f8b0))
+* **examples:** classify failures by assert phase, bound evaluation time, recover host panics ([#76](https://github.com/SpechtLabs/sigil/issues/76)) ([a85742a](https://github.com/SpechtLabs/sigil/commit/a85742af56789bb5bf7acd3c5ac488081ab8d6a8))
+* **examples:** report reload health per bundle and keep failures out of decisions_total ([#68](https://github.com/SpechtLabs/sigil/issues/68)) ([a8e42c6](https://github.com/SpechtLabs/sigil/commit/a8e42c6761258f36a565674f6d0d396d900a96a8))
+* **policy:** accept a param bound from Go when it declares only min or max ([#61](https://github.com/SpechtLabs/sigil/issues/61)) ([e6fecec](https://github.com/SpechtLabs/sigil/commit/e6fecece04a0299aaa84f53f529723bf1eaee4f0))
+
+
+### Performance Improvements
+
+* **eval:** fold candidates without comparing every pair deeply ([#67](https://github.com/SpechtLabs/sigil/issues/67)) ([31353bd](https://github.com/SpechtLabs/sigil/commit/31353bd0062ffdabc7c86c8ce550b1cd63e87e76))
+* **result:** don't box typed payloads for trace candidates ([#77](https://github.com/SpechtLabs/sigil/issues/77)) ([4580123](https://github.com/SpechtLabs/sigil/commit/4580123c6c46a7f48f29ed12c5b0ec6b4b45f1d8))
+
 ## [0.4.0](https://github.com/SpechtLabs/sigil/compare/v0.3.0...v0.4.0) (2026-09-29)
 
 
