@@ -1,0 +1,6 @@
+--- PASS: testdata/stubbed/main_test.yaml:9: the file's stub answers the vault
+--- PASS: testdata/stubbed/main_test.yaml:18: a case's own stub replaces the file's
+--- PASS: testdata/stubbed/main_test.yaml:27: a stub that fails is expected
+ok    testdata/stubbed/main_test.yaml  3 cases
+✓ 3 cases passed in 1 file
+--- ok ---

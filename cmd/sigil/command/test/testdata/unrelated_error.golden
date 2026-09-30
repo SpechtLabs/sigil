@@ -1,0 +1,16 @@
+--- PASS: testdata/access/main_test.yaml:3: admins get eight hours
+--- PASS: testdata/access/main_test.yaml:12: platform members get the default ttl
+--- PASS: testdata/access/main_test.yaml:19: old requests are denied
+--- PASS: testdata/access/main_test.yaml:26: nobody gets the default
+--- PASS: testdata/access/main_test.yaml:33: an unnamed user fails the assert
+ok    testdata/access/main_test.yaml  5 cases
+FAIL  testdata/unrelated/other_test.yaml
+      testdata/unrelated/other.sigil:3:11 (access.other): error: unknown field "nmae" on type User
+        |
+      3 | when user.nmae == "x" {
+        |           ^^^^
+        = help: did you mean "name"? User declares: name, teams, admin, expires
+✗ 1 of 2 test files couldn't run
+--- error ---
+1 of 2 test files couldn't run
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

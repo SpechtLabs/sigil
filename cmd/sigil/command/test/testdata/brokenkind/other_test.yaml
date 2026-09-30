@@ -1,0 +1,5 @@
+policy: other.main
+cases:
+  - name: never runs
+    input: {x: 1}
+    expect: {decision: allow, reason: "yes"}

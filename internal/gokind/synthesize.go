@@ -1,6 +1,7 @@
 package gokind
 
 import (
+	"errors"
 	"reflect"
 	"strconv"
 
@@ -11,13 +12,39 @@ import (
 // ErrUnbound is the error a synthesized host function returns: the
 // kind file carries the function's signature, but nothing implements it.
 type ErrUnbound struct {
+	StandIn
 	Name string // the host function's name
+}
+
+// StandIn marks the error of a function sigil binds in a host function's
+// place, such as an unbound function or a stub, whose Help says what to do
+// about the failure; [StandInHelp] reads it. An error type embeds it to
+// be one. The package is internal, so a host's own error types can't,
+// and their Help methods, if they have any, are never taken for advice.
+type StandIn struct{}
+
+// standIn is an error of a stand-in: an error with advice that embeds
+// [StandIn].
+type standIn interface {
+	error
+	Help() string
+	standIn()
 }
 
 // synth is one Synthesize run.
 type synth struct {
 	binding *Binding
 	kind    *kind.Kind
+}
+
+// StandInHelp returns the advice of err, or of an error it wraps, when
+// it's the error of one of sigil's stand-ins for a host function, and ""
+// otherwise.
+func StandInHelp(err error) string {
+	if s, ok := errors.AsType[standIn](err); ok {
+		return s.Help()
+	}
+	return ""
 }
 
 // Synthesize builds a binding for a kind that has no Go types behind it,
@@ -63,10 +90,22 @@ func Synthesize(k *kind.Kind) *Binding {
 }
 
 // Error implements the error interface. It says the function has no
-// implementation in this binary and how to build one that has.
+// implementation in this binary; [ErrUnbound.Help] says what to do.
 func (e *ErrUnbound) Error() string {
-	return "no implementation in this sigil binary; build a host binary with " + e.Name + " linked in (see sigil's pkg/cli)"
+	return "no implementation in this sigil binary"
 }
+
+// Help says how to evaluate a policy that reaches the call anyway: stub
+// the function where the evaluation is set up, in a test file's
+// `stubs:` or with sigil eval's --stub, or evaluate with a host binary
+// that links the real function in.
+func (e *ErrUnbound) Help() string {
+	return "this sigil binary has only " + e.Name + "'s signature from the kind file; stub it with `stubs:` in the test file or `--stub " + e.Name +
+		"=VALUE` on sigil eval, or evaluate with a host binary built with sigil's pkg/cli, which links the real function in"
+}
+
+// standIn marks StandIn's embedders as stand-ins.
+func (StandIn) standIn() {}
 
 // structType returns the Go type of a kind's struct type, building it on
 // first use, so a type used before its declaration still resolves.

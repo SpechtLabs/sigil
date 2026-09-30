@@ -46,6 +46,15 @@ func TestTest(t *testing.T) {
 		{name: "invalid_run", paths: []string{"testdata/access"}, run: "("},
 		{name: "kind_among_paths", paths: []string{"testdata/access.sigil", "testdata/access"}, noKind: true},
 		{name: "missing_path", paths: []string{"testdata/nope"}},
+		{name: "unrelated_error", paths: []string{"testdata/access", "testdata/unrelated"}, verbose: true},
+		{name: "kind_error", paths: []string{"testdata/access", "testdata/brokenkind"}},
+		{name: "stubs", paths: []string{policies, "testdata/stubbed"}, verbose: true},
+		{name: "stubs_enum", paths: []string{"testdata/enumstubs"}, verbose: true, noKind: true},
+		{name: "stubs_enum_invalid", paths: []string{"testdata/enumstubs/tiers.sigil", "testdata/enumstubs/main.sigil", "testdata/enumbad"}, noKind: true},
+		{name: "stubs_shape", paths: []string{policies, "testdata/badstubshape"}},
+		{name: "stubs_invalid", paths: []string{policies, "testdata/badstubs"}},
+		{name: "stubs_failing", paths: []string{policies, "testdata/stubfail"}},
+		{name: "stubs_failing_json", paths: []string{policies, "testdata/stubfail"}, format: output.JSON},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

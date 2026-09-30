@@ -107,14 +107,48 @@ ok    payments/production_test.yaml  3 cases
 ```text
 --- FAIL: payments/production_test.yaml:3: an owner's deploy goes to review
       want review(reason: service_owner)
-      got  a runtime error (deploy/common.sigil:4:19: host function split failed: no implementation in this sigil binary; build a host binary with split linked in (see sigil's pkg/cli))
+      got  a runtime error
+           deploy/common.sigil:4:19: host function split failed: no implementation in this sigil binary
+             = help: this sigil binary has only split's signature from the kind file; stub it with `stubs:` in the test file or `--stub split=VALUE` on sigil eval, or evaluate with a host binary built with sigil's pkg/cli, which links the real function in
 ```
 
-Run the tests with the host team's own build of the CLI, which links the real functions in. The transcripts on this page come from one. [Build a host binary](/guides/host-binary/) shows how the host team builds it, and [`sigil test`](/reference/cli/#sigil-test) lists every flag.
+### Stub host functions
+
+To run the cases with the stock binary, give `split` results in the test file. A stub under the file's `stubs:` answers the calls of every case:
+
+```yaml
+policy: payments.production
+stubs:
+  split:
+    calls:
+      - args: ["eu,us", ","]
+        returns: [eu, us]
+      - args: ["eu,us,ap", ","]
+        returns: [eu, us, ap]
+cases:
+  - name: an owner's deploy goes to review
+    ...
+```
+
+Each entry under `calls` answers the call one of the fixtures makes, with the regions label it holds. The first entry whose args equal the call's wins; a call no entry answers fails the case with a runtime error that names its args, so a new fixture can't quietly get a result nobody wrote down. A stub with `returns:` next to `calls:` answers every other call instead.
+
+A case that needs a different answer stubs the function again under its own `stubs:`, which replaces the file's stub for that case. With `error:` the call fails, and the case expects the runtime error with `expect: {error: ...}`, which passes when the error's message contains the text:
+
+```yaml
+  - name: a failing region lookup fails the evaluation
+    input_file: testdata/owner.json
+    stubs:
+      split:
+        error: region directory unavailable
+    expect:
+      error: region directory unavailable
+```
+
+A stub tests the policy's logic around the function, not the function itself. To run the real `split`, use the host team's own build of the CLI, which links the real functions in; the transcripts on this page come from one. [Build a host binary](/guides/host-binary/) shows how the host team builds it. Stubs apply there too and replace the real function, which is how a test pins one whose result changes from run to run. [Stubs](/reference/test-files/#stubs) has the format, and [`sigil test`](/reference/cli/#sigil-test) lists every flag.
 
 ## Run them from go test
 
-The host can run the same test files from `go test`, with its own Go types and its real host functions, so it needs no separate binary. Call `policytest.Run` with the kind, the directory that holds the policies and test files, and the load options the service passes to `Load`:
+The host can run the same test files from `go test`, with its own Go types and its real host functions, so it needs no separate binary. A test file's stubs replace the real functions there too. Call `policytest.Run` with the kind, the directory that holds the policies and test files, and the load options the service passes to `Load`:
 
 ```go
 func TestPolicies(t *testing.T) {

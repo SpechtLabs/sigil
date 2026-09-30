@@ -79,7 +79,7 @@ brew install --cask spechtlabs/tap/sigil
 
 Or, if you have Go, with `go install github.com/spechtlabs/sigil/cmd/sigil@latest`. The [releases](https://github.com/SpechtLabs/sigil/releases) also have signed archives for Linux and macOS.
 
-The stock binary knows each host function's signature from the kind file, but not its implementation. `check`, `fmt` and `explain` work on any policy. `eval` and `test` work until a rule calls a host function, such as the deploy kind's `split`, and then stop with a runtime error naming it. For those, use the host team's own build of the CLI, which links in the real functions through package `cli`; the [example service](/guides/example-service/) builds one as `sigilc`. [Host functions and host binaries](/reference/cli/#host-functions-and-host-binaries) has the details.
+The stock binary knows each host function's signature from the kind file, but not its implementation. `check`, `fmt` and `explain` work on any policy. `eval` and `test` work until a rule calls a host function, such as the deploy kind's `split`, and then stop with a runtime error naming it, unless a test file or `eval --stub` [stubs](/reference/test-files/#stubs) the function. For the real functions, use the host team's own build of the CLI, which links in the real functions through package `cli`; the [example service](/guides/example-service/) builds one as `sigilc`. [Host functions and host binaries](/reference/cli/#host-functions-and-host-binaries) has the details.
 
 Host engineers add the library to their module with `go get github.com/spechtlabs/sigil@latest` and import `github.com/spechtlabs/sigil/pkg/policy`.
 

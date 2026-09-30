@@ -1,0 +1,28 @@
+FAIL  testdata/access/main_test.yaml
+      testdata/brokenkind/other.sigil:3:10: error: unknown type `nope`
+        |
+      3 | input x: nope
+        |          ^^^^
+        = help: declare it with `type nope { ... }`, or use a built-in type
+      
+      testdata/brokenkind/other.sigil:9:1: error: kind Other collects one decision but has no precedence
+        |
+      9 | collect one
+        | ^^^^^^^^^^^
+        = help: `collect one` returns the highest-ranked decision; rank them with `precedence deny > review > approve`, highest first
+FAIL  testdata/brokenkind/other_test.yaml
+      testdata/brokenkind/other.sigil:3:10: error: unknown type `nope`
+        |
+      3 | input x: nope
+        |          ^^^^
+        = help: declare it with `type nope { ... }`, or use a built-in type
+      
+      testdata/brokenkind/other.sigil:9:1: error: kind Other collects one decision but has no precedence
+        |
+      9 | collect one
+        | ^^^^^^^^^^^
+        = help: `collect one` returns the highest-ranked decision; rank them with `precedence deny > review > approve`, highest first
+✗ 2 of 2 test files couldn't run
+--- error ---
+2 of 2 test files couldn't run
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

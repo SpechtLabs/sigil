@@ -13,9 +13,9 @@ The tools read the exported kind file (`deploy_approval.sigil` in the running ex
 | --- | --- | --- |
 | [`sigil fmt`](#sigil-fmt) | Rewrites files into the one canonical style, like `gofmt` | Nothing |
 | [`sigil check`](#sigil-check) | Parses, type-checks and compiles policies against their kinds, and lints them | Kind file |
-| [`sigil eval`](#sigil-eval) | Evaluates a policy against a JSON or YAML input and prints the result and trace | Kind file; a host binary for functions |
+| [`sigil eval`](#sigil-eval) | Evaluates a policy against a JSON or YAML input and prints the result and trace | Kind file; a host binary or stubs for functions |
 | [`sigil explain`](#sigil-explain) | Flattens a policy into its guarded decisions, with every invocation inlined | Kind file |
-| [`sigil test`](#sigil-test) | Runs test cases: an input plus the expected decision and reason, or the asserts that fail | Kind file; a host binary for functions |
+| [`sigil test`](#sigil-test) | Runs test cases: an input plus the expected decision and reason, the asserts that fail, or a runtime error | Kind file; a host binary or stubs for functions |
 | [`sigil export`](#sigil-export) | Writes the kind file of a kind linked into a host binary | A host binary; `sigil --help` lists it only there |
 | [`sigil version`](#sigil-version) | Shows the version and build information | Nothing |
 
@@ -127,8 +127,11 @@ A kind file carries each host function's signature but not its implementation.
 - It evaluates a policy until a rule reaches a host function call. A call in a branch that doesn't run doesn't get in the way. A call it reaches is a runtime error that names the function:
 
 ```text
-runtime error: deploy/common.sigil:5:3: host function split failed: no implementation in this sigil binary; build a host binary with split linked in (see sigil's pkg/cli)
+runtime error: deploy/common.sigil:5:3: host function split failed: no implementation in this sigil binary
+  = help: this sigil binary has only split's signature from the kind file; stub it with `stubs:` in the test file or `--stub split=VALUE` on sigil eval, or evaluate with a host binary built with sigil's pkg/cli, which links the real function in
 ```
+
+- A stub stands in for a host function in either binary: `eval` takes stubs with `--stub` and `--stubs`, and `test` from a test file's [`stubs:`](/reference/test-files/#stubs). A stub replaces a linked function too.
 
 A host binary is the whole command line with the host's kind linked in by [package `cli`](/reference/go-api/#package-cli):
 
@@ -365,10 +368,14 @@ sigil eval [PATH...] [--input FILE] [flags]
 | `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `-p`, `--policy` | the bundle's only policy | Name of the policy to evaluate; required when the bundle holds more than one |
 | `--config` | nearest `sigil.yaml` | Configuration file with the [kind files and trusted paths](/reference/sigil-yaml/) to load |
+| `--stubs` | none | YAML or JSON file of host function [stubs](/reference/test-files/#stubs), keyed by function name |
+| `--stub` | none | `NAME=VALUE`: the host function `NAME` returns `VALUE`, JSON or YAML, whatever its args. Repeatable |
 
 - Candidates read the way a policy writes them, `review(reason: service_owner)`, with the conditions that held after `when` and the payload beneath. The ones in the outcome are marked with `*`.
 - Diagnostics and trace entries name the document as well as the position, `policies.sigil:42:5 (payments.production)`. The name is left out when the file's path matches the name, as in `deploy/production.sigil:16:5`. This is the text form of [`policy.Position`](/reference/go-api/#positions).
-- A policy that reaches a host function call needs a [host binary](#host-functions-and-host-binaries).
+- A policy that reaches a host function call needs a [host binary](#host-functions-and-host-binaries) or a stub of the function. `--stub` flags apply after the `--stubs` file, in order, and a later stub of a function replaces an earlier one. A stub replaces a linked function too.
+- A stub that doesn't parse or doesn't fit the kind fails the command before anything is evaluated, with every problem listed, a file's at its line.
+- Only the problems of the policy, the documents it uses and the kind documents stop the evaluation: `payments.production` evaluates while another team's policy in the bundle is broken, which `sigil check` reports.
 
 ```text
 $ sigil eval --input owner-deploy.json --policy payments.production deploy_approval.sigil deploy/ payments/
@@ -383,6 +390,21 @@ trace: 2 candidates
       approvers = ["payments-leads"]
     approve(reason: payments_sre)  payments/production.sigil:18:3
       bake = 15m
+```
+
+The stock binary with `split` stubbed, in the examples' `policies/` directory:
+
+```text
+$ sigil eval --input teams/payments/testdata/owner.json --policy payments.production --stub 'split=[eu, us]'
+payments.production: review(reason: service_owner)
+  approvers = ["payments-leads", "security-leads"]
+
+trace: 1 candidate
+  * review(reason: service_owner)  teams/payments/production.sigil:10:3 → platform/deploy/production.sigil:16:5
+      when service.labels["compliance"] == "pci"
+       and cleared
+       and service.tier in [standard, internal] and owns_service
+      approvers = ["payments-leads", "security-leads"]
 ```
 
 ### Input documents
@@ -402,6 +424,7 @@ The input is a JSON or YAML object with one key per input the kind declares.
 | An [enum](/reference/types/#enums)           | A string naming one of its values, `"critical"`. Any other string is an error with a did-you-mean hint                                                                                       |
 | `null`                                       | Allowed for optionals, lists and maps                                                                                                                                                        |
 | A map key of a non-string type               | Written the way its values are: `"3"` for an `int` key                                                                                                                                       |
+| A `string` that looks like a date or a number | Quoted in YAML, `"2026-01-01"` or `"1.10"`. Unquoted, YAML reads it as a timestamp or a number, which isn't a string |
 
 ```text
 Error: bad.json: actor.nmae: unknown field "nmae" on type Actor
@@ -423,13 +446,14 @@ When the evaluation fails, with a runtime error, a conflict or a failing assert,
 
 - Most runtime errors get "fix the expression the runtime error points at, or the input it read".
 - A host function that isn't linked in gets the advice shown below.
+- A stub's `error` fails the call with its message, and a call no entry of a stub's `calls` matches fails with `no stubbed call matches split("eu", ",")`; each gets advice on the stub.
 - A failing outcome assert lists the candidates that formed the outcome it read, with their payloads.
 
 ```text
 payments.production: a runtime error stopped the evaluation, the host falls back to deny(reason: no_rule_matched), the kind's default
 
-runtime error: deploy/common.sigil:5:3: host function split failed: no implementation in this sigil binary; build a host binary with split linked in (see sigil's pkg/cli)
-  = help: this sigil binary has only split's signature from the kind file; evaluate with the host's own binary, built with sigil's pkg/cli, which links the real function in
+runtime error: deploy/common.sigil:5:3: host function split failed: no implementation in this sigil binary
+  = help: this sigil binary has only split's signature from the kind file; stub it with `stubs:` in the test file or `--stub split=VALUE` on sigil eval, or evaluate with a host binary built with sigil's pkg/cli, which links the real function in
 
 trace: no rule fired
 ```
@@ -595,7 +619,7 @@ payments.production: 7 rules from 3 policies and 1 module
 
 [The tour](/getting-started/tour/#what-the-team-policy-adds-up-to) walks through this output.
 
-Exits 1 when the bundle doesn't check, a policy doesn't compile, or `--policy` matches nothing.
+Exits 1 when a policy to explain, or a document it uses, doesn't check or doesn't compile, when a kind document doesn't check, or when `--policy` matches nothing. An error in a document none of them uses doesn't stop the explanation; `sigil check` reports it.
 
 ## `sigil test`
 
@@ -613,7 +637,9 @@ sigil test [PATH...] [flags]
 | `--config` | nearest `sigil.yaml` | Configuration file with the [kind files and trusted paths](/reference/sigil-yaml/) to load |
 
 - The `.sigil` files it finds form one bundle, and every test file found runs against it, with the kind of the policy it names.
-- A case that reaches a host function needs a [host binary](#host-functions-and-host-binaries); the stock binary fails it with the runtime error.
+- A test file couldn't run when its policy, a document the policy uses, or a kind document doesn't check; the diagnostics show under the file. An error in another document doesn't stop it.
+- A case that reaches a host function needs a [host binary](#host-functions-and-host-binaries) or a [stub](/reference/test-files/#stubs) of the function in its test file; the stock binary fails it with the runtime error.
+- A case whose evaluation fails with a runtime error prints `got  a runtime error`, with the error and its help on the lines below.
 
 The output follows `go test`. Here the second case expects the wrong reason:
 

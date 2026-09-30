@@ -2,6 +2,7 @@ package testsuite_test
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -24,6 +25,9 @@ type User {
 
 input user: User
 input age: duration
+
+fn owner(string) -> string
+fn teams(string) -> list<string>
 
 decision deny {
   reason: too_old | no_rule_matched
@@ -178,11 +182,11 @@ func TestValidate(t *testing.T) {
 		{name: "no expectation", kind: accessKind, cases: `
   - name: a
     input: {}
-    expect: {}`, errs: []string{"exactly one of decision, outcome and asserts"}},
+    expect: {}`, errs: []string{"exactly one of decision, outcome, asserts and error"}},
 		{name: "several forms", kind: accessKind, cases: `
   - name: a
     input: {}
-    expect: {decision: deny, reason: too_old, asserts: [x]}`, errs: []string{"exactly one of decision, outcome and asserts"}},
+    expect: {decision: deny, reason: too_old, asserts: [x]}`, errs: []string{"exactly one of decision, outcome, asserts and error"}},
 		{name: "outcome on collect one", kind: accessKind, cases: `
   - name: a
     input: {}
@@ -215,6 +219,22 @@ func TestValidate(t *testing.T) {
   - name: a
     input: {}
     expect: {asserts: []}`, errs: []string{"asserts is empty"}},
+		{name: "valid error", kind: rolesKind, cases: `
+  - name: a
+    input: {}
+    expect: {error: host function owner failed}`},
+		{name: "error and a decision", kind: accessKind, cases: `
+  - name: a
+    input: {}
+    expect: {error: failed, decision: deny, reason: too_old}`, errs: []string{"exactly one of decision, outcome, asserts and error"}},
+		{name: "error and a payload", kind: accessKind, cases: `
+  - name: a
+    input: {}
+    expect: {error: failed, payload: {ttl: 1h}}`, errs: []string{"exactly one of decision, outcome, asserts and error"}},
+		{name: "empty error", kind: accessKind, cases: `
+  - name: a
+    input: {}
+    expect: {error: ""}`, errs: []string{"error is empty"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -233,6 +253,69 @@ func TestValidate(t *testing.T) {
 				if !strings.HasPrefix(e.Error(), "main_test.yaml:") {
 					t.Errorf("error %d = %q, want the file and line", i, e.Error())
 				}
+			}
+		})
+	}
+}
+
+// TestValidateStubs checks the suite's stubs and each case's own against
+// the kind, each problem at its stub's line.
+func TestValidateStubs(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		errs []string // the errors, in order; none when valid
+	}{
+		{name: "valid", src: `policy: p
+stubs:
+  owner: {returns: ada}
+cases:
+  - name: a
+    input: {}
+    stubs:
+      teams:
+        calls:
+          - {args: [ada], returns: [platform]}
+    expect: {decision: deny, reason: too_old}
+`},
+		{name: "suite and case problems", src: `policy: p
+stubs:
+  ownr: {returns: ada}
+cases:
+  - name: a
+    input: {}
+    stubs:
+      teams: {returns: platform}
+    expect: {decision: deny, reason: too_old}
+  - name: b
+    input: {}
+    stubs:
+      owner:
+        calls:
+          - {args: [], returns: ada}
+    expect: {decision: deny, reason: too_old}
+`, errs: []string{
+			"main_test.yaml:3: the kind has no host function ownr to stub",
+			`main_test.yaml:8: case "a": stub teams: returns: expected a list<string>, found a string`,
+			`main_test.yaml:15: case "b": stub owner: call 1 passes 0 args, but owner takes 1`,
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, perr := testsuite.Parse("main_test.yaml", []byte(tt.src))
+			if perr != nil {
+				t.Fatalf("Parse: %v", perr)
+			}
+			errs := s.Validate(loadKind(t, accessKind))
+			got := make([]string, len(errs))
+			for i, e := range errs {
+				got[i] = e.Error()
+				if e.Help == "" {
+					t.Errorf("%s has no help", e)
+				}
+			}
+			if strings.Join(got, "\n") != strings.Join(tt.errs, "\n") {
+				t.Errorf("Validate() =\n  %s\nwant\n  %s", strings.Join(got, "\n  "), strings.Join(tt.errs, "\n  "))
 			}
 		})
 	}
@@ -321,4 +404,44 @@ func loadKind(t *testing.T, src string) *kind.Kind {
 		t.Fatalf("LoadKind: %v", errs)
 	}
 	return k
+}
+
+// TestParseStubErrors checks that Parse reports every stub of the wrong
+// shape, the file's and each case's, in line order.
+func TestParseStubErrors(t *testing.T) {
+	src := `policy: p
+stubs:
+  owner: {}
+cases:
+  - name: a
+    stubs:
+      owner: {returns: a, error: b}
+  - name: b
+    stubs:
+      teams:
+        retrns: x
+  - stubs:
+      owner: []
+`
+	_, err := testsuite.Parse("main_test.yaml", []byte(src))
+	errs, ok := err.(testsuite.Errors)
+	if !ok {
+		t.Fatalf("Parse() error = %#v, want testsuite.Errors", err)
+	}
+	want := []string{
+		"main_test.yaml:3: stub owner gives no result",
+		`main_test.yaml:7: case "a": stub owner gives both returns and error`,
+		`main_test.yaml:10: case "b": stub teams gives no result`,
+		`main_test.yaml:11: case "b": stub teams: unknown key "retrns"`,
+		"main_test.yaml:13: stub owner must be an object with returns, error, calls",
+	}
+	if got := strings.Split(errs.Error(), "\n"); !reflect.DeepEqual(got, want) {
+		t.Errorf("Parse() errors =\n  %s\nwant\n  %s", strings.Join(got, "\n  "), strings.Join(want, "\n  "))
+	}
+	if len(errs.Advice()) != 4 || errs.Cause() != nil {
+		t.Errorf("Advice() = %q, Cause() = %v; want each help once", errs.Advice(), errs.Cause())
+	}
+	if lines := strings.Split(errs.Display(), "\n"); len(lines) != 5 || !strings.HasSuffix(lines[0], "(give `returns:` for the result of every call, `error:` for a call that fails, or `calls:` to answer particular args)") {
+		t.Errorf("Display() = %q", errs.Display())
+	}
 }

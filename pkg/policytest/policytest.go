@@ -1,7 +1,8 @@
 // Package policytest runs the test files `sigil test` runs, from go test,
 // against a host's own kind: inputs decode into the host's Go types and
-// rules call its real host functions. Policies then ship with table
-// tests next to the code that consumes them.
+// rules call its real host functions, unless the test file stubs them.
+// Policies then ship with table tests next to the code that consumes
+// them.
 //
 //	//go:embed policies
 //	var policies embed.FS
@@ -47,6 +48,19 @@
 // can't expect a conflict; test one with [policy.Policy.Eval] and
 // [errors.As] on a [*policy.ConflictError].
 //
+// A test file's `stubs:` replace host functions for its cases, and a
+// case's own `stubs:` replace those, even though the kind links the real
+// ones, so a test can pin a function whose result changes from run to
+// run:
+//
+//	stubs:
+//	  owner: {returns: ada}
+//
+// A file's policy loads once with the file's stubs, and again for each
+// case with stubs of its own, with the same load options.
+// A stub's `error:` fails the evaluation with a runtime error, which a
+// case expects with `expect: {error: <text the message contains>}`.
+//
 // # Subtests
 //
 // Every test file in the [io/fs.FS] is a subtest named after its path, and
@@ -68,9 +82,38 @@ import (
 
 	"github.com/sierrasoftworks/humane-errors-go"
 
+	"github.com/spechtlabs/sigil/internal/gokind"
 	"github.com/spechtlabs/sigil/internal/testsuite"
 	"github.com/spechtlabs/sigil/pkg/policy"
 )
+
+// tester is what running test files needs of a test: a *testing.T, as
+// [testingT] adapts it, or a fake that records what failed.
+type tester interface {
+	Helper()
+	Context() context.Context
+	Error(args ...any)
+	Errorf(format string, args ...any)
+	Fatal(args ...any)
+	Fatalf(format string, args ...any)
+	FailNow()
+	Subtest(name string, f func(t tester)) bool
+}
+
+// testingT is a *testing.T as a [tester].
+type testingT struct{ *testing.T }
+
+// suiteRun is one test file's run: the kind, runner, source and
+// options its policy loads with, and the policy loaded with the file's
+// stubs.
+type suiteRun[In any] struct {
+	kind   *policy.Kind[In]
+	runner *testsuite.Runner
+	fsys   fs.FS
+	suite  *testsuite.Suite
+	policy *policy.Policy[In]
+	opts   []policy.LoadOption
+}
 
 // Run runs every `*_test.yaml` file in fsys, in every directory, against
 // the policies in fsys. Each file's policy is loaded with [policy.Kind.Load]
@@ -84,21 +127,7 @@ import (
 // files.
 func Run[In any](t *testing.T, k *policy.Kind[In], fsys fs.FS, opts ...policy.LoadOption) {
 	t.Helper()
-	if k == nil {
-		t.Fatal("policytest: Run needs a kind")
-	}
-	files, err := testFiles(fsys, ".")
-	if err != nil {
-		t.Fatalf("policytest: %v", err)
-	}
-	if len(files) == 0 {
-		t.Fatal("policytest: no test files; they're YAML files named *_test.yaml")
-	}
-	c := k.Contract()
-	runner := &testsuite.Runner{Kind: c.Model, Binding: c.Binding, FS: fsys}
-	for _, file := range files {
-		t.Run(file, func(t *testing.T) { runFile(t, k, runner, fsys, file, opts) })
-	}
+	run(testingT{t}, k, fsys, opts)
 }
 
 // Schema fails the test when the kind file at file, on disk, isn't k's
@@ -120,8 +149,28 @@ func Schema[In any](t testing.TB, k *policy.Kind[In], file string) {
 	}
 }
 
+// run is Run with its test behind [tester].
+func run[In any](t tester, k *policy.Kind[In], fsys fs.FS, opts []policy.LoadOption) {
+	t.Helper()
+	if k == nil {
+		t.Fatal("policytest: Run needs a kind")
+	}
+	files, err := testFiles(fsys, ".")
+	if err != nil {
+		t.Fatalf("policytest: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("policytest: no test files; they're YAML files named *_test.yaml")
+	}
+	c := k.Contract()
+	runner := &testsuite.Runner{Kind: c.Model, Binding: c.Binding, FS: fsys}
+	for _, file := range files {
+		t.Subtest(file, func(t tester) { runFile(t, k, runner, fsys, file, opts) })
+	}
+}
+
 // runFile runs one test file's cases, each as a subtest.
-func runFile[In any](t *testing.T, k *policy.Kind[In], runner *testsuite.Runner, fsys fs.FS, file string, opts []policy.LoadOption) {
+func runFile[In any](t tester, k *policy.Kind[In], runner *testsuite.Runner, fsys fs.FS, file string, opts []policy.LoadOption) {
 	t.Helper()
 	src, err := fs.ReadFile(fsys, file)
 	if err != nil {
@@ -137,28 +186,70 @@ func runFile[In any](t *testing.T, k *policy.Kind[In], runner *testsuite.Runner,
 		}
 		t.FailNow()
 	}
-	p, err := k.Load(fsys, s.Policy, opts...)
-	if err != nil {
-		t.Fatalf("policy %s doesn't load:\n%v", s.Policy, err)
+	base, berr := runner.Bind(s, nil)
+	if berr != nil {
+		t.Fatal(berr.Display())
 	}
-	eval := func(ctx context.Context, input reflect.Value) *testsuite.Outcome {
+	r := &suiteRun[In]{kind: k, runner: runner, fsys: fsys, suite: s, opts: opts}
+	r.policy = r.load(t, base)
+	for _, c := range s.Cases {
+		t.Subtest(c.Name, func(t tester) { r.runCase(t, c) })
+	}
+}
+
+// runCase runs one case: against the file's policy, or, when the case
+// has stubs of its own, the policy loaded again with them.
+func (r *suiteRun[In]) runCase(t tester, c *testsuite.Case) {
+	t.Helper()
+	p := r.policy
+	if len(c.Stubs) > 0 {
+		b, berr := r.runner.Bind(r.suite, c)
+		if berr != nil {
+			t.Fatal(berr.Display())
+		}
+		p = r.load(t, b)
+	}
+	res := r.runner.RunCase(t.Context(), r.suite, c, evaluator(t, p))
+	if res.Err != nil {
+		t.Fatal(res.Err.Display())
+	}
+	for _, f := range res.Failures {
+		t.Errorf("%s:%d: %s", r.suite.File, c.Line, f)
+	}
+}
+
+// load loads the file's policy with the host functions b holds: with
+// the host's kind itself when b is its own binding, or a Kind of the
+// same model over b when the test file stubs some of them. Everything
+// else about the load, the options included, is the host's.
+func (r *suiteRun[In]) load(t tester, b *gokind.Binding) *policy.Policy[In] {
+	t.Helper()
+	k := r.kind
+	if b != r.runner.Binding {
+		k = k.Contract().Rebind(b).(*policy.Kind[In]) //nolint:forcetypeassert // Rebind returns a Kind of the input type it was called on
+	}
+	p, err := k.Load(r.fsys, r.suite.Policy, r.opts...)
+	if err != nil {
+		t.Fatalf("policy %s doesn't load:\n%v", r.suite.Policy, err)
+	}
+	return p
+}
+
+// evaluator evaluates p for the runner, failing t on an input of the
+// wrong type, which the runner never decodes.
+func evaluator[In any](t tester, p *policy.Policy[In]) testsuite.Eval {
+	return func(ctx context.Context, input reflect.Value) *testsuite.Outcome {
 		in, ok := reflect.TypeAssert[In](input)
 		if !ok {
 			t.Fatalf("policytest: decoded %v, want the input type", input.Type())
 		}
 		return outcome(p.Eval(ctx, in))
 	}
-	for _, c := range s.Cases {
-		t.Run(c.Name, func(t *testing.T) {
-			r := runner.RunCase(t.Context(), s, c, eval)
-			if r.Err != nil {
-				t.Fatal(r.Err.Display())
-			}
-			for _, f := range r.Failures {
-				t.Errorf("%s:%d: %s", file, c.Line, f)
-			}
-		})
-	}
+}
+
+// Subtest runs f as a subtest of t called name.
+func (t testingT) Subtest(name string, f func(t tester)) bool {
+	return t.Run(name, func(sub *testing.T) { f(testingT{sub}) })
 }
 
 // outcome converts an evaluation into what the runner compares.
@@ -172,6 +263,10 @@ func outcome(res *policy.Result, err error) *testsuite.Outcome {
 	}
 	if ce, ok := errors.AsType[*policy.ConflictError](err); ok {
 		out.Err = "a conflict (" + ce.Message + ")"
+		return out
+	}
+	if re, ok := errors.AsType[*policy.RuntimeError](err); ok {
+		out.Err, out.Runtime, out.Detail, out.Help = "a runtime error", re.Message, re.Error(), re.Help
 		return out
 	}
 	if err != nil {

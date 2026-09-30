@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/charmbracelet/x/term"
 	"github.com/sierrasoftworks/humane-errors-go"
@@ -28,7 +29,9 @@ import (
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/report"
 	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/eval"
+	"github.com/spechtlabs/sigil/internal/gokind"
 	"github.com/spechtlabs/sigil/internal/result"
+	"github.com/spechtlabs/sigil/internal/stub"
 )
 
 // inputHelp describes the input, in advice on one eval can't use.
@@ -37,9 +40,11 @@ const inputHelp = "the input is a JSON or YAML object with one key per input the
 // request is what one run of eval was asked for on the command line.
 type request struct {
 	src    project.Sources
-	input  string // --input: a file, "-" for stdin, or empty to read stdin unless terminal is set
-	policy string // --policy: the root's name; empty for the bundle's only policy
-	config string // --config: the sigil.yaml whose kinds: to load; the nearest one when empty
+	input  string   // --input: a file, "-" for stdin, or empty to read stdin unless terminal is set
+	policy string   // --policy: the root's name; empty for the bundle's only policy
+	config string   // --config: the sigil.yaml whose kinds: to load; the nearest one when empty
+	stubs  string   // --stubs: a file of stubs; empty for none
+	stub   []string // --stub: NAME=VALUE stubs, applied after the file's in order
 	// terminal is set when stdin is a terminal, which eval never waits on
 	// for an input nobody asked it to read.
 	terminal bool
@@ -85,10 +90,14 @@ for stdin; without it, eval reads the input from stdin, unless stdin is a
 terminal or the bundle comes from stdin.
 
 The stock sigil binary knows the host functions' signatures but not their
-implementations, so a rule that calls one fails with a runtime error. A host
-builds its own sigil binary with its kind and functions linked in (see the
-pkg/cli package); that binary evaluates with the real functions and needs no
-kind file. eval exits non-zero when the evaluation fails: on a runtime error, a
+implementations, so a rule that calls one fails with a runtime error. --stub
+NAME=VALUE makes the host function NAME return VALUE, JSON or YAML, whatever
+its args; --stubs names a YAML or JSON file of stubs in a test file's stubs:
+format, which can answer particular args or fail the call. --stub applies after
+the file, and a later stub of a function replaces an earlier one. A host builds
+its own sigil binary with its kind and functions linked in (see the pkg/cli
+package); that binary evaluates with the real functions, unless a stub replaces
+one, and needs no kind file. eval exits non-zero when the evaluation fails: on a runtime error, a
 conflict or a failing assert.`,
 		Example: `# Evaluate the only policy in a file and print the decision with its trace
 sigil eval --kind deploy_approval.sigil --input release.json gate.sigil
@@ -99,22 +108,15 @@ sigil eval --input release.json --policy payments.production deploy_approval.sig
 # Pipe the input in, as JSON or YAML, and read the policies from the current directory
 yq '.release' request.yaml | sigil eval --policy payments.production
 
+# Stub the host function split, which the stock binary has only the signature of
+sigil eval --input release.json --policy payments.production --stub 'split=[eu, us]'
+
 # Read a self-contained bundle from stdin, for example a rendered ConfigMap key
 kustomize build . | yq '.data["policies.sigil"]' | sigil eval --input release.json --policy payments.production -`,
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: complete.SigilFiles,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			kindFiles, _ := cmd.Flags().GetStringSlice("kind")
-			input, _ := cmd.Flags().GetString("input")
-			name, _ := cmd.Flags().GetString("policy")
-			configFile, _ := cmd.Flags().GetString("config")
-			return run(cmd.Context(), cmd.OutOrStdout(), o, request{
-				src:      project.Sources{Paths: args, Kinds: kindFiles, Stdin: cmd.InOrStdin()},
-				input:    input,
-				policy:   name,
-				config:   configFile,
-				terminal: isTerminal(cmd.InOrStdin()),
-			})
+			return run(cmd.Context(), cmd.OutOrStdout(), o, newRequest(cmd, args))
 		},
 	}
 
@@ -128,6 +130,8 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringP("input", "i", "", `Input document (JSON or YAML) to evaluate the policy against, or "-" for stdin; stdin when omitted and it isn't a terminal`)
 	cmd.Flags().StringP("policy", "p", "", "Name of the policy to evaluate; required when the bundle holds more than one")
 	cmd.Flags().String("config", "", "Configuration file with kind files and trusted paths to load; the nearest "+config.FileName+" when omitted")
+	cmd.Flags().String("stubs", "", "YAML or JSON file of host function stubs, keyed by function name, as a test file's stubs:")
+	cmd.Flags().StringArray("stub", nil, "NAME=VALUE: host function NAME returns VALUE, JSON or YAML, whatever the args; applied after --stubs (repeatable)")
 	// -R read subdirectories before every command did; it stays so scripts
 	// that pass it keep working.
 	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories too; always on")
@@ -136,6 +140,7 @@ func addFlags(cmd *cobra.Command) {
 	_ = cmd.MarkFlagFilename("kind", "sigil")
 	_ = cmd.MarkFlagFilename("input", "json", "yaml", "yml")
 	_ = cmd.MarkFlagFilename("config", "yaml")
+	_ = cmd.MarkFlagFilename("stubs", "yaml", "yml", "json")
 	_ = cmd.RegisterFlagCompletionFunc("policy", complete.Policies)
 }
 
@@ -148,7 +153,7 @@ func run(ctx context.Context, out io.Writer, o *options, req request) humane.Err
 	if err != nil {
 		return err
 	}
-	k, prog, err := compile(o, req.policy, req.config, src)
+	k, prog, err := compile(o, req, src)
 	if err != nil {
 		return err
 	}
@@ -168,7 +173,7 @@ func run(ctx context.Context, out io.Writer, o *options, req request) humane.Err
 		return err
 	}
 	if r.Error != nil {
-		return pretty.Fail("the evaluation failed; the host would act on the fallback shown above", r.Error.Help)
+		return pretty.Fail("the evaluation failed; the host would act on the fallback shown above") // the report above already says what to do
 	}
 	return nil
 }
@@ -190,6 +195,26 @@ func inputFile(input string, bundleFromStdin, terminal bool) (string, humane.Err
 	return "-", nil
 }
 
+// newRequest reads what the command line asks for from its flags and
+// args.
+func newRequest(cmd *cobra.Command, args []string) request {
+	kindFiles, _ := cmd.Flags().GetStringSlice("kind")
+	input, _ := cmd.Flags().GetString("input")
+	name, _ := cmd.Flags().GetString("policy")
+	configFile, _ := cmd.Flags().GetString("config")
+	stubsFile, _ := cmd.Flags().GetString("stubs")
+	stubs, _ := cmd.Flags().GetStringArray("stub")
+	return request{
+		src:      project.Sources{Paths: args, Kinds: kindFiles, Stdin: cmd.InOrStdin()},
+		input:    input,
+		policy:   name,
+		config:   configFile,
+		stubs:    stubsFile,
+		stub:     stubs,
+		terminal: isTerminal(cmd.InOrStdin()),
+	}
+}
+
 // isTerminal reports whether r is a terminal.
 func isTerminal(r io.Reader) bool {
 	f, ok := r.(interface{ Fd() uintptr })
@@ -199,8 +224,8 @@ func isTerminal(r io.Reader) bool {
 // compile loads the project, with the kind files the configuration lists,
 // and compiles the root policy against its kind, which it returns with
 // the compiled policy.
-func compile(o *options, name, configFile string, src project.Sources) (*project.Kind, *eval.Policy, humane.Error) {
-	if err := config.Apply(configFile, ".", &src); err != nil {
+func compile(o *options, req request, src project.Sources) (*project.Kind, *eval.Policy, humane.Error) {
+	if err := config.Apply(req.config, ".", &src); err != nil {
 		return nil, nil, err
 	}
 	p, err := project.Load(src, o.kinds)
@@ -208,19 +233,91 @@ func compile(o *options, name, configFile string, src project.Sources) (*project
 		return nil, nil, err
 	}
 	p.Check()
-	if errs := p.Errors(); errs != nil {
-		return nil, nil, pretty.Diagnose(p.Resolve(errs), p.SourceOf, "the bundle doesn't check, so nothing was evaluated", "fix the errors above; sigil check reports every problem in a bundle at once")
+	root, err := project.Root(p.Policies(), req.policy)
+	if err != nil {
+		// Without a root there's no scope, and the policy asked for may be
+		// missing because its document or kind doesn't check.
+		if errs := p.Errors(); errs != nil {
+			return nil, nil, pretty.Diagnose(p.Resolve(errs), p.SourceOf, "the bundle doesn't check, so nothing was evaluated", "fix the errors above; sigil check reports every problem in a bundle at once")
+		}
+		return nil, nil, err
 	}
-	root, err := project.Root(p.Policies(), name)
+	// Only the root, what it uses and the kinds count: an error in a
+	// document the root doesn't use doesn't stop its evaluation.
+	s := p.ScopeOf([]string{root})
+	if errs := s.Keep(p.Errors()); errs != nil {
+		return nil, nil, pretty.Diagnose(errs, p.SourceOf, root+" doesn't check, so nothing was evaluated", "fix the errors above; sigil check reports every problem in a bundle at once")
+	}
+	g := p.Group(root)
+	binding, err := stubs(g.Kind, req.stubs, req.stub)
 	if err != nil {
 		return nil, nil, err
 	}
-	g := p.Group(root)
-	prog, errs := g.Bundle.Compile(root, bundle.Options{Binding: g.Kind.Binding})
+	prog, errs := s.Bundle(g).Compile(root, bundle.Options{Binding: binding})
 	if errs != nil {
 		return nil, nil, pretty.Diagnose(p.Resolve(errs), p.SourceOf, "the policy doesn't compile, so nothing was evaluated", "fix the errors above; sigil check reports every problem in a bundle at once")
 	}
 	return g.Kind, prog, nil
+}
+
+// stubs returns the binding the policy compiles with: the kind's, with
+// the host functions the stubs file and then each --stub replace. Every
+// stub that doesn't parse or fit the kind is reported at once: a file's
+// at its line, in line order, then the flags'.
+func stubs(k *project.Kind, file string, flags []string) (*gokind.Binding, humane.Error) {
+	var set stub.Set
+	var problems []string
+	add := func(where string, errs ...*stub.Error) {
+		for _, e := range errs {
+			loc := where
+			if e.Line > 0 {
+				loc = fmt.Sprintf("%s:%d", file, e.Line)
+			}
+			problems = append(problems, loc+": "+e.Msg+" ("+e.Help+")")
+		}
+	}
+	if file != "" {
+		data, err := os.ReadFile(file) //nolint:gosec // the path comes from the command line, which is the point
+		if err != nil {
+			return nil, humane.Wrap(err, "the stubs file "+file+" couldn't be read", "name a YAML or JSON file of stubs with --stubs")
+		}
+		var errs []*stub.Error
+		set, errs = stub.ParseDocument(data)
+		add(file, errs...)
+	}
+	for _, flag := range flags {
+		one, err := stub.ParseFlag(flag)
+		if err != nil {
+			add("--stub", err)
+			continue
+		}
+		set = set.Merge(one)
+	}
+	if problems == nil {
+		b, errs := set.Bind(k.Model, k.Binding)
+		if errs == nil {
+			return b, nil
+		}
+		add("--stub", fileFirst(errs)...)
+	}
+	return nil, humane.New(strings.Join(problems, "\n"), "a stub names a host function the kind declares and gives results of its type, as in a test file's stubs:")
+}
+
+// fileFirst orders Bind's problems for reading: a stubs file's first, in
+// line order, as Bind sorts them, and then the flags', which have no line.
+func fileFirst(errs []*stub.Error) []*stub.Error {
+	out := make([]*stub.Error, 0, len(errs))
+	for _, e := range errs {
+		if e.Line > 0 {
+			out = append(out, e)
+		}
+	}
+	for _, e := range errs {
+		if e.Line == 0 {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // readInput reads and parses the input document: as JSON, with its

@@ -21,6 +21,13 @@ var update = flag.Bool("update", false, "rewrite the golden files under testdata
 // and compares what eval prints, and the error it fails with, with the
 // golden files.
 func TestEval(t *testing.T) {
+	// broken is an Access policy access.main doesn't use, with a type
+	// error, and brokenKind a kind document that doesn't check: only the
+	// second stops access.main.
+	const (
+		broken     = "policy access.other: Access@1\n\nwhen user.nmae == \"x\" {\n  allow(reason: admin)\n}\n"
+		brokenKind = "kind Other version 1\n\ninput x: nope\n\ndecision allow {\n  reason: yes\n}\n\ncollect one\n\ndefault allow(reason: yes)\n"
+	)
 	const (
 		access  = "access"
 		grants  = "grants"
@@ -36,6 +43,8 @@ func TestEval(t *testing.T) {
 		policy   string
 		format   output.Format
 		paths    []string // instead of testdata/<kind>, with no --kind
+		stubs    string   // under testdata/stubs, for --stubs
+		stub     []string // --stub flags
 	}{
 		{name: "winner", kind: access, input: "admin.json"},
 		{name: "winner_json", kind: access, input: "admin.json", format: output.JSON},
@@ -74,6 +83,18 @@ func TestEval(t *testing.T) {
 		{name: "kind_among_paths", input: "admin.json", paths: []string{"testdata/access.sigil", "testdata/access"}},
 		{name: "two_kinds", input: "grants.json", policy: "grants", paths: []string{"testdata/access.sigil", "testdata/access", "testdata/grants.sigil", "testdata/grants"}},
 		{name: "stdin_bundle", input: "admin.json", paths: []string{"-"}, stdin: bundleOf(t, "testdata/access.sigil", "testdata/access/main.sigil")},
+		{name: "unrelated_error", input: "admin.json", policy: "access.main", paths: []string{"testdata/access.sigil", "testdata/access", "-"}, stdin: broken},
+		{name: "root_error", input: "admin.json", policy: "access.other", paths: []string{"testdata/access.sigil", "testdata/access", "-"}, stdin: broken},
+		{name: "kind_error", input: "admin.json", policy: "access.main", paths: []string{"testdata/access.sigil", "testdata/access", "-"}, stdin: brokenKind},
+		{name: "stub_flag", kind: access, input: "vault.json", stub: []string{"owner=ada"}},
+		{name: "stubs_file", kind: access, input: "vault.json", stubs: "owner.yaml"},
+		{name: "stub_flag_after_file", kind: access, input: "vault.json", stubs: "owner.yaml", stub: []string{"owner=ada", "owner=bob"}},
+		{name: "stub_error", kind: access, input: "vault.json", stubs: "down.yaml"},
+		{name: "stub_unmatched", kind: access, input: "vault.json", stubs: "only_calls.json"},
+		{name: "stubs_invalid", kind: access, input: "vault.json", stubs: "invalid.yaml", stub: []string{"owner"}},
+		{name: "stubs_unknown", kind: access, input: "vault.json", stubs: "unknown.yaml", stub: []string{"owner=[1]"}},
+		{name: "stubs_line_order", kind: access, input: "vault.json", stubs: "order.yaml"},
+		{name: "stubs_missing", kind: access, input: "vault.json", stubs: "nope.yaml"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -93,8 +114,12 @@ func TestEval(t *testing.T) {
 			if tt.paths != nil {
 				src.Paths, src.Kinds = tt.paths, nil
 			}
+			stubs := tt.stubs
+			if stubs != "" {
+				stubs = filepath.Join("testdata", "stubs", stubs)
+			}
 			var out bytes.Buffer
-			err := run(context.Background(), &out, &options{output: &format}, request{src: src, input: input, policy: tt.policy})
+			err := run(context.Background(), &out, &options{output: &format}, request{src: src, input: input, policy: tt.policy, stubs: stubs, stub: tt.stub})
 			golden(t, tt.name, render(out.String(), err))
 		})
 	}

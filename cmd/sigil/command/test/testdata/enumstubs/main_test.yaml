@@ -1,0 +1,24 @@
+policy: tiers.main
+stubs:
+  tier_of:
+    calls:
+      - args: [ledger]
+        returns: critical
+    returns: standard
+  owner_for:
+    calls:
+      - args: [standard]
+        returns: ada
+    returns: nobody
+cases:
+  - name: a critical service goes to review
+    input: {service: ledger}
+    expect: {decision: review, reason: critical_tier}
+  - name: the owner of a standard service gets it
+    input: {service: billing}
+    expect: {decision: allow, reason: owned}
+  - name: a case's stub returns another tier
+    input: {service: billing}
+    stubs:
+      tier_of: {returns: critical}
+    expect: {decision: review, reason: critical_tier}

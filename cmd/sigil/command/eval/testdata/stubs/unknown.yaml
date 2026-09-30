@@ -1,0 +1,6 @@
+ownr:
+  returns: ada
+owner:
+  calls:
+    - args: [vault, extra]
+      returns: ada

@@ -1,0 +1,6 @@
+--- PASS: testdata/enumstubs/main_test.yaml:14: a critical service goes to review
+--- PASS: testdata/enumstubs/main_test.yaml:17: the owner of a standard service gets it
+--- PASS: testdata/enumstubs/main_test.yaml:20: a case's stub returns another tier
+ok    testdata/enumstubs/main_test.yaml  3 cases
+✓ 3 cases passed in 1 file
+--- ok ---

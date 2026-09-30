@@ -1,0 +1,25 @@
+kind Tiers version 1
+
+enum Tier: critical | standard
+
+input service: string
+
+fn tier_of(string) -> Tier
+fn owner_for(Tier) -> string
+
+decision deny {
+  reason: no_rule_matched
+}
+
+decision review {
+  reason: critical_tier
+}
+
+decision allow {
+  reason: owned
+}
+
+collect one
+precedence deny > review > allow
+
+default deny(reason: no_rule_matched)

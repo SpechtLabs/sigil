@@ -1,0 +1,34 @@
+policy: access.main
+stubs:
+  owner:
+    calls:
+      - args: [vault]
+        returns: ada
+    returns: nobody
+cases:
+  - name: the file's stub answers the vault
+    input:
+      user: {name: ada}
+      resource: vault
+    expect:
+      decision: allow
+      reason: team_member
+      payload:
+        ttl: 15m
+  - name: a case's own stub replaces the file's
+    input:
+      user: {name: bob}
+      resource: vault
+    stubs:
+      owner: {returns: bob}
+    expect:
+      decision: allow
+      reason: team_member
+  - name: a stub that fails is expected
+    input:
+      user: {name: ada}
+      resource: vault
+    stubs:
+      owner: {error: directory unavailable}
+    expect:
+      error: "host function owner failed: directory unavailable"

@@ -1,0 +1,35 @@
+[
+  {
+    "file": "testdata/stubfail/main_test.yaml",
+    "policy": "access.main",
+    "cases": [
+      {
+        "name": "no call matches the vault",
+        "failures": [
+          "got a runtime error (testdata/access/main.sigil:21:30: host function owner failed: no stubbed call matches owner(\"vault\")), want allow(reason: team_member)"
+        ],
+        "line": 8,
+        "passed": false
+      },
+      {
+        "name": "a different runtime error",
+        "failures": [
+          "got a runtime error (testdata/access/main.sigil:21:30: host function owner failed: no stubbed call matches owner(\"vault\")), want a runtime error containing \"directory unavailable\""
+        ],
+        "line": 15,
+        "passed": false
+      },
+      {
+        "name": "a decision instead of an error",
+        "failures": [
+          "got allow(reason: admin), want a runtime error containing \"directory unavailable\""
+        ],
+        "line": 21,
+        "passed": false
+      }
+    ]
+  }
+]
+--- error ---
+3 of 3 test cases failed
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

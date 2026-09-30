@@ -1,0 +1,9 @@
+FAIL  testdata/badstubshape/main_test.yaml
+      testdata/badstubshape/main_test.yaml:3: stub owner gives no result
+        = help: give `returns:` for the result of every call, `error:` for a call that fails, or `calls:` to answer particular args
+      testdata/badstubshape/main_test.yaml:8: case "a": stub owner gives both returns and error
+        = help: a call either returns a value or fails; keep one
+✗ 1 of 1 test files couldn't run
+--- error ---
+1 of 1 test files couldn't run
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

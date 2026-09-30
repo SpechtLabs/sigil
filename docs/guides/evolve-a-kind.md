@@ -162,7 +162,7 @@ Changing a field's type follows the same pattern: add a field with the new type 
 
 ## Remember the other evaluators
 
-Adding a host function doesn't break existing policies, but anything that evaluates a policy calling it needs its implementation. The stock `sigil` binary knows only the signature from the kind file, so `sigil eval` and `sigil test` return a runtime error when they reach the call; a host binary built with [`pkg/cli`](/reference/cli/#host-functions-and-host-binaries) links the real function. Rebuild and ship those binaries before policies start using a new `fn`. Tools that only type-check, such as `sigil check`, work from the exported signature right away.
+Adding a host function doesn't break existing policies, but anything that evaluates a policy calling it needs its implementation. The stock `sigil` binary knows only the signature from the kind file, so `sigil eval` and `sigil test` return a runtime error when they reach the call; a host binary built with [`pkg/cli`](/reference/cli/#host-functions-and-host-binaries) links the real function. Rebuild and ship those binaries before policies start using a new `fn`; until they ship, test files and `sigil eval --stub` can [stub](/reference/test-files/#stubs) the new function. Tools that only type-check, such as `sigil check`, work from the exported signature right away.
 
 ## Migrate to the new decision syntax
 

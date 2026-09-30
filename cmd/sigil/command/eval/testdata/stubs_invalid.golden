@@ -1,0 +1,4 @@
+--- error ---
+testdata/stubs/invalid.yaml:1: stub owner gives both returns and error (a call either returns a value or fails; keep one)
+--stub: stub "owner" isn't NAME=VALUE (name the host function and the JSON or YAML value it returns for any args, like owner=ada or 'teams=[platform]')
+advice: a stub names a host function the kind declares and gives results of its type, as in a test file's stubs:

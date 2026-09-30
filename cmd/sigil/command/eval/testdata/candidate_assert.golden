@@ -12,4 +12,3 @@ trace: 1 candidate
       approvers = ["cedric", "alice"]
 --- error ---
 the evaluation failed; the host would act on the fallback shown above
-advice: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong

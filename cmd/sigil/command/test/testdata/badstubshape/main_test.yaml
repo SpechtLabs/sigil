@@ -1,0 +1,9 @@
+policy: access.main
+stubs:
+  owner: {}
+cases:
+  - name: a
+    input: {user: {name: ada}}
+    stubs:
+      owner: {returns: a, error: b}
+    expect: {decision: deny, reason: no_rule_matched}

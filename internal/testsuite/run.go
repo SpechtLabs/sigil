@@ -27,6 +27,11 @@ type Error struct {
 	Line int    // 0 when unknown
 }
 
+// Errors is several problems with a test file, sorted by line, such as
+// every stub [Parse] found of the wrong shape. It implements
+// [humane.Error].
+type Errors []*Error
+
 // Eval evaluates the suite's policy against one input, a value of the
 // binding's input struct, and reduces the result to an [Outcome]. The
 // caller of [Runner.RunCase] supplies it.
@@ -37,6 +42,9 @@ type Eval func(ctx context.Context, input reflect.Value) *Outcome
 // evaluation failed.
 type Outcome struct {
 	Err     string   // a conflict or runtime error, described; empty otherwise
+	Runtime string   // the runtime error's message, without its position, when the evaluation failed with one
+	Detail  string   // what the error said, with its position, which a report shows below Err; empty to keep Err on its own
+	Help    string   // what to do about the error, when the evaluator knows
 	Entries []Got    // the outcome; for a `collect one` kind, the one decision
 	Asserts []string // the reasons of the failing asserts, when asserts failed
 }
@@ -63,11 +71,15 @@ type Result struct {
 // Failure is one way an evaluation differs from what a case expects.
 // Text says so in one sentence; when the difference is between two
 // values, Got and Want hold them separately, for a report that lines
-// them up.
+// them up. When what the evaluation got is an error, Got names it, and
+// Detail and Help hold what it said and what to do about it, for a
+// report to show on lines of their own.
 type Failure struct {
-	Text string
-	Got  string
-	Want string
+	Text   string
+	Got    string
+	Want   string
+	Detail string
+	Help   string
 }
 
 // String implements [fmt.Stringer]. It returns Text.
@@ -108,6 +120,62 @@ func (r *Runner) RunCase(ctx context.Context, s *Suite, c *Case, eval Eval) *Res
 	}
 	res.Failures = r.compare(&c.Expect, eval(ctx, in))
 	return res
+}
+
+// Bind returns the binding a case of s evaluates with: the runner's, with
+// the suite's stubs and then the case's own replacing host functions, per
+// function. With a nil case it is the binding of every case that stubs
+// nothing of its own, which is the runner's own when the suite stubs
+// nothing either. Host functions are resolved when a policy compiles, so
+// the caller compiles the policy once with the suite's binding and again
+// for each case with stubs of its own. The suite should have passed
+// [Suite.Validate]; a stub that doesn't fit the binding is an error at
+// the stub's line.
+func (r *Runner) Bind(s *Suite, c *Case) (*gokind.Binding, *Error) {
+	set, name := s.Stubs, ""
+	if c != nil {
+		set, name = set.Merge(c.Stubs), c.Name
+	}
+	b, errs := set.Bind(r.Kind, r.Binding)
+	if errs == nil {
+		return b, nil
+	}
+	return nil, &Error{File: s.File, Line: errs[0].Line, Case: name, Msg: errs[0].Msg, Help: errs[0].Help}
+}
+
+// Display implements humane.Error. It returns each problem's Display,
+// one per line.
+func (e Errors) Display() string {
+	lines := make([]string, len(e))
+	for i, err := range e {
+		lines[i] = err.Display()
+	}
+	return strings.Join(lines, "\n")
+}
+
+// Advice implements humane.Error. It returns each problem's Help,
+// once, in order.
+func (e Errors) Advice() []string {
+	var out []string
+	for _, err := range e {
+		if err.Help != "" && !slices.Contains(out, err.Help) {
+			out = append(out, err.Help)
+		}
+	}
+	return out
+}
+
+// Cause implements humane.Error. It returns nil.
+func (e Errors) Cause() error { return nil } //nolint:humaneerror // humane.Error fixes the signature
+
+// Error implements the error interface. It returns each problem's
+// Error, one per line.
+func (e Errors) Error() string {
+	lines := make([]string, len(e))
+	for i, err := range e {
+		lines[i] = err.Error()
+	}
+	return strings.Join(lines, "\n")
 }
 
 // Display implements humane.Error. It returns the error's text followed
@@ -151,6 +219,8 @@ func (e *Error) Error() string {
 // compare checks an evaluation against the expectation.
 func (r *Runner) compare(e *Expect, out *Outcome) []Failure {
 	switch {
+	case e.Error != nil:
+		return compareError(*e.Error, out)
 	case e.Asserts != nil:
 		return r.compareAsserts(e.Asserts, out)
 	case failed(out):
@@ -158,7 +228,7 @@ func (r *Runner) compare(e *Expect, out *Outcome) []Failure {
 		if e.Outcome == nil {
 			want = call(e.Decision, e.Reason)
 		}
-		return []Failure{diff(describe(out), want)}
+		return []Failure{mismatch(out, want)}
 	case e.Outcome != nil:
 		return r.compareOutcome(*e.Outcome, out.Entries)
 	}
@@ -172,9 +242,18 @@ func (r *Runner) compare(e *Expect, out *Outcome) []Failure {
 	return r.comparePayload(e.Decision, e.Payload, got.Payload)
 }
 
+// compareError checks that the evaluation failed with a runtime error
+// whose message contains want.
+func compareError(want string, out *Outcome) []Failure {
+	if out.Runtime != "" && strings.Contains(out.Runtime, want) {
+		return nil
+	}
+	return []Failure{mismatch(out, fmt.Sprintf("a runtime error containing %q", want))}
+}
+
 func (r *Runner) compareAsserts(want []string, out *Outcome) []Failure {
 	if out.Asserts == nil {
-		return []Failure{diff(describe(out), "failing asserts "+strings.Join(want, ", "))}
+		return []Failure{mismatch(out, "failing asserts "+strings.Join(want, ", "))}
 	}
 	got := slices.Clone(out.Asserts)
 	sort.Strings(got)
@@ -286,6 +365,17 @@ func (r *Runner) entries(es []Entry) string {
 		parts[i] = r.entry(e)
 	}
 	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+// mismatch is a failure between what the evaluation produced, which may
+// be an error with a detail, and what the case wanted.
+func mismatch(out *Outcome, want string) Failure {
+	f := diff(describe(out), want)
+	if out.Detail != "" {
+		f.Text = "got " + f.Got + " (" + out.Detail + "), want " + want
+		f.Detail, f.Help = out.Detail, out.Help
+	}
+	return f
 }
 
 // failed reports whether the evaluation failed.

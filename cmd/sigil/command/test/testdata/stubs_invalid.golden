@@ -1,0 +1,11 @@
+FAIL  testdata/badstubs/main_test.yaml
+      testdata/badstubs/main_test.yaml:3: the kind has no host function ownr to stub
+        = help: did you mean "owner"? the kind declares: owner
+      testdata/badstubs/main_test.yaml:8: case "a stub of the wrong type": stub owner: returns: expected a string, found a list
+        = help: give the value the type the kind declares for it
+      testdata/badstubs/main_test.yaml:10: case "an error and a decision": case must expect exactly one of decision, outcome, asserts and error
+        = help: expect a decision with its reason, an outcome for a collect all kind, the asserts that fail, or the runtime error the evaluation fails with
+✗ 1 of 1 test files couldn't run
+--- error ---
+1 of 1 test files couldn't run
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

@@ -1,9 +1,10 @@
+FAIL  testdata/broken/main_test.yaml
+      testdata/broken/main.sigil:3:11 (access.broken): error: unknown field "nmae" on type User
+        |
+      3 | when user.nmae == "x" {
+        |           ^^^^
+        = help: did you mean "name"? User declares: name, teams, admin, expires
+✗ 1 of 1 test files couldn't run
 --- error ---
-testdata/broken/main.sigil:3:11 (access.broken): error: unknown field "nmae" on type User
-  |
-3 | when user.nmae == "x" {
-  |           ^^^^
-  = help: did you mean "name"? User declares: name, teams, admin, expires
-
-the bundle doesn't check, so no test ran
-advice: fix the errors above; sigil check reports every problem in a bundle at once
+1 of 1 test files couldn't run
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

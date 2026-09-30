@@ -1,0 +1,9 @@
+--- error ---
+<stdin>:3:11 (access.other): error: unknown field "nmae" on type User
+  |
+3 | when user.nmae == "x" {
+  |           ^^^^
+  = help: did you mean "name"? User declares: name, teams, admin, expires
+
+access.other doesn't check, so nothing was evaluated
+advice: fix the errors above; sigil check reports every problem in a bundle at once

@@ -1,0 +1,18 @@
+--- FAIL: testdata/stubfail/main_test.yaml:8: no call matches the vault
+      want allow(reason: team_member)
+      got  a runtime error
+           testdata/access/main.sigil:21:30: host function owner failed: no stubbed call matches owner("vault")
+             = help: add these args under the stub's calls, or give the stub a returns or error for every other call
+--- FAIL: testdata/stubfail/main_test.yaml:15: a different runtime error
+      want a runtime error containing "directory unavailable"
+      got  a runtime error
+           testdata/access/main.sigil:21:30: host function owner failed: no stubbed call matches owner("vault")
+             = help: add these args under the stub's calls, or give the stub a returns or error for every other call
+--- FAIL: testdata/stubfail/main_test.yaml:21: a decision instead of an error
+      want a runtime error containing "directory unavailable"
+      got  allow(reason: admin)
+FAIL  testdata/stubfail/main_test.yaml  3 of 3 cases failed
+✗ 3 of 3 test cases failed in 1 file
+--- error ---
+3 of 3 test cases failed
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

@@ -1,37 +1,36 @@
-package check
+package project
 
 import (
 	"sort"
 
-	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/internal/ast"
 	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/parser"
 )
 
-// scope is what one check covers: every document, or with --policy the
-// matching policies and every document they use, directly or through
-// others.
-type scope struct {
-	p        *project.Project
-	selected []string                          // the policies --policy matches; nil without it
-	policies []string                          // the policies to compile, sorted
-	docs     map[string]bool                   // the documents in scope by name; nil for every document
-	files    map[string]bool                   // the files that hold them
-	bundles  map[*project.Group]*bundle.Bundle // what each group's policies compile in, built on first use
-	kinds    map[string][]ast.Span             // the kind documents of each file a diagnostic is in, by file
+// Scope is what one command covers: every document, or some policies and
+// every document they use, directly or through others. A command reports
+// only the diagnostics in its scope and compiles in bundles of only its
+// documents, so an error in a document it doesn't use can't stop it.
+type Scope struct {
+	p        *Project
+	selected []string                  // the policies the scope is of; nil for every document
+	policies []string                  // the policies in scope, sorted
+	docs     map[string]bool           // the documents in scope by name; nil for every document
+	files    map[string]bool           // the files that hold them
+	bundles  map[*Group]*bundle.Bundle // what each group's policies compile in, built on first use
+	kinds    map[string][]ast.Span     // the kind documents of each file a diagnostic is in, by file
 }
 
-// everything is the scope of a check without --policy.
-func everything(p *project.Project) *scope {
-	return &scope{p: p, policies: p.Policies()}
-}
-
-// scopeOf is the scope of the selected policies: they and every document
-// they use, followed through each `use`, trusted ones included.
-func scopeOf(p *project.Project, selected []string) *scope {
-	s := &scope{p: p, selected: selected, docs: map[string]bool{}, files: map[string]bool{}, bundles: map[*project.Group]*bundle.Bundle{}}
+// ScopeOf returns the scope of the selected policies: they and every
+// document they use, followed through each `use`, trusted ones included.
+// With no selected policies, the scope is every document.
+func (p *Project) ScopeOf(selected []string) *Scope {
+	if selected == nil {
+		return &Scope{p: p, policies: p.Policies()}
+	}
+	s := &Scope{p: p, selected: selected, docs: map[string]bool{}, files: map[string]bool{}, bundles: map[*Group]*bundle.Bundle{}}
 	queue := append([]string{}, selected...)
 	for len(queue) > 0 {
 		name := queue[0]
@@ -60,13 +59,21 @@ func scopeOf(p *project.Project, selected []string) *scope {
 	return s
 }
 
-// keep returns the diagnostics in scope, each naming its document, or
+// Selected returns the policies the scope is of, or nil for a scope of
+// every document.
+func (s *Scope) Selected() []string { return s.selected }
+
+// Policies returns the policies in scope, sorted: the selected ones and
+// the policies they invoke.
+func (s *Scope) Policies() []string { return s.policies }
+
+// Keep returns the diagnostics in scope, each naming its document, or
 // nil when there are none. A diagnostic is in scope when its document
 // is, when it's in a kind document, since every policy is checked
 // against a kind and a kind file that doesn't check or doesn't match must
 // fail the run, and when it's outside every document, such as a parse
 // error, in a file that holds a document in scope.
-func (s *scope) keep(errs diag.ErrorList) diag.ErrorList {
+func (s *Scope) Keep(errs diag.ErrorList) diag.ErrorList {
 	if len(errs) == 0 {
 		return nil
 	}
@@ -83,12 +90,11 @@ func (s *scope) keep(errs diag.ErrorList) diag.ErrorList {
 	return out
 }
 
-// bundle returns the bundle g's policies compile in: g's own, or with
-// --policy one holding only g's documents in scope. A compile fails on
-// any error in its bundle, so without it an error outside the scope
-// would stop the policies in scope from compiling, and from being
-// checked against --require.
-func (s *scope) bundle(g *project.Group) *bundle.Bundle {
+// Bundle returns the bundle g's policies compile in: g's own for a scope
+// of every document, or else one holding only g's documents in scope. A
+// compile fails on any error in its bundle, so without it an error
+// outside the scope would stop the policies in scope from compiling.
+func (s *Scope) Bundle(g *Group) *bundle.Bundle {
 	if s.docs == nil {
 		return g.Bundle
 	}
@@ -120,28 +126,17 @@ func (s *scope) bundle(g *project.Group) *bundle.Bundle {
 }
 
 // index adds the documents to b, and returns b.
-func (s *scope) index(b *bundle.Bundle, docs []*bundle.Document) *bundle.Bundle {
+func (s *Scope) index(b *bundle.Bundle, docs []*bundle.Document) *bundle.Bundle {
 	for _, d := range docs {
 		b.Index(d.File, s.p.SourceOf(d.File), []ast.Doc{d.Node})
 	}
 	return b
 }
 
-// uses returns a policy's or module's imports.
-func uses(doc ast.Doc) []*ast.UseStmt {
-	switch d := doc.(type) {
-	case *ast.PolicyDoc:
-		return d.Uses
-	case *ast.ModuleDoc:
-		return d.Uses
-	}
-	return nil
-}
-
 // inKind reports whether a diagnostic is inside a kind document of its
 // file. The project doesn't record where its kind documents are, so the
 // file is parsed again, once, the first time one of its diagnostics asks.
-func (s *scope) inKind(e *diag.Error) bool {
+func (s *Scope) inKind(e *diag.Error) bool {
 	if e.File == "" || !e.Pos.IsValid() {
 		return false
 	}
@@ -164,4 +159,15 @@ func (s *scope) inKind(e *diag.Error) bool {
 		}
 	}
 	return false
+}
+
+// uses returns a policy's or module's imports.
+func uses(doc ast.Doc) []*ast.UseStmt {
+	switch d := doc.(type) {
+	case *ast.PolicyDoc:
+		return d.Uses
+	case *ast.ModuleDoc:
+		return d.Uses
+	}
+	return nil
 }
