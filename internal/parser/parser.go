@@ -30,6 +30,16 @@ import (
 	"github.com/spechtlabs/sigil/internal/token"
 )
 
+// MaxNesting is how deeply expressions, types and `when` blocks may nest,
+// counted together: parentheses, operands, list, map, index and call
+// arguments, list and map types, and rules inside rules each add a level.
+// Every pass after the parser, the checker, the formatter, the compiler
+// and the evaluator, recurses over the tree, and a stack is finite, most
+// of all in a WebAssembly host, so a document nested deeper is an error
+// at the level that goes past the limit rather than a crash. No policy
+// written by hand comes near it.
+const MaxNesting = 256
+
 // parser holds the state of one parse.
 type parser struct {
 	file string
@@ -41,10 +51,23 @@ type parser struct {
 	buf      []token.Token // tokens already read past tok, comments removed
 	errs     diag.ErrorList
 	tok      token.Token // the current token
+	// afterPos is where the operator in after starts.
+	afterPos token.Pos
 	// lastSync is the offset where sync last stopped, so a statement that
 	// fails at its first token isn't retried forever. See sync.
 	lastSync int
-	prev     token.Kind // the kind of the token before tok
+	// depth is how many levels of nesting the parser is inside; see
+	// MaxNesting.
+	depth int
+	// brackets is how many `(`, `[` and `{` the parser has moved past
+	// without their closing token, and exprStart what it was when the
+	// outermost expression being parsed started, so a construct nested too
+	// deep can be skipped to its end. exprDepth is how many expressions the
+	// parser is inside.
+	brackets  int
+	exprStart int
+	exprDepth int
+	prev      token.Kind // the kind of the token before tok
 	// after is the operator whose right operand is being parsed, or
 	// OpInvalid at the start of an expression. Prefix forms that bind looser
 	// than that operator use it to name the operator in their error.
@@ -52,8 +75,11 @@ type parser struct {
 	// inField is set while a decision field's default is parsed, where a
 	// keyword followed by `:` is the next field, not part of the default.
 	inField bool
-	// afterPos is where the operator in after starts.
-	afterPos token.Pos
+	// deep is set once a construct has gone past MaxNesting and been
+	// reported, until the parser is back within the limit, so the rest of
+	// the construct, such as the next of many nested `when` blocks, fails
+	// quietly rather than once per level.
+	deep bool
 }
 
 // bailout is the panic value that abandons a parse after an error, the way
@@ -79,6 +105,12 @@ func (p *parser) scan() token.Token {
 
 // next advances to the next token.
 func (p *parser) next() {
+	switch p.tok.Kind {
+	case token.LParen, token.LBracket, token.LBrace:
+		p.brackets++
+	case token.RParen, token.RBracket, token.RBrace:
+		p.brackets--
+	}
 	p.prev = p.tok.Kind
 	if len(p.buf) > 0 {
 		p.tok = p.buf[0]
@@ -222,4 +254,65 @@ func ParseExpr(file string, src []byte) (ast.Expr, diag.ErrorList) { //nolint:re
 		return nil, errs
 	}
 	return x, nil
+}
+
+// nest enters one level of nesting at the current token, which starts a
+// what. When that's one level too many, it reports the what, unless the
+// construct it's in has already been reported, skips the rest of the
+// construct with skip, which may be nil, and fails, so the statement
+// around it recovers after it rather than once per level. The caller
+// defers unnest first, so a bailout from anywhere below restores the
+// depth.
+func (p *parser) nest(what string, skip func()) {
+	p.depth++
+	if p.depth <= MaxNesting {
+		return
+	}
+	if !p.deep {
+		p.deep = true
+		p.report(p.tok.Pos, p.tok.End, fmt.Sprintf("%s nests more than %d levels deep", what, MaxNesting),
+			"give the inner part a name with `let`, or split the condition across rules; a document may nest at most "+fmt.Sprint(MaxNesting)+" levels")
+	}
+	if skip != nil {
+		skip()
+	}
+	p.bail()
+}
+
+// unnest leaves the level nest entered.
+func (p *parser) unnest() {
+	p.depth--
+	if p.depth < MaxNesting {
+		p.deep = false
+	}
+}
+
+// skipExpr skips to the end of the outermost expression being parsed:
+// past every bracket opened since it started.
+func (p *parser) skipExpr() {
+	for p.brackets > p.exprStart && p.tok.Kind != token.EOF && p.tok.Kind != token.Separator {
+		p.next()
+	}
+}
+
+// skipWhen skips a `when` statement from its keyword: its condition, and
+// its body up to the brace that closes it.
+func (p *parser) skipWhen() {
+	start := p.brackets
+	for p.tok.Kind != token.LBrace && p.tok.Kind != token.EOF && p.tok.Kind != token.Separator {
+		p.next()
+	}
+	if p.tok.Kind != token.LBrace {
+		return
+	}
+	p.next()
+	for p.brackets > start && p.tok.Kind != token.EOF && p.tok.Kind != token.Separator {
+		p.next()
+	}
+}
+
+// leaveExpr leaves an expression parseExpr entered.
+func (p *parser) leaveExpr() {
+	p.exprDepth--
+	p.unnest()
 }

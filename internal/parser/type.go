@@ -10,6 +10,8 @@ import (
 // position after a type keyword or `:` makes them types, and only a
 // following `<` makes them generic.
 func (p *parser) parseType() ast.Type {
+	defer p.unnest()
+	p.nest("this type", nil)
 	switch p.tok.Kind {
 	case token.Coalesce:
 		p.errorTok(p.tok, "optional types don't nest", "write `?T` with a single `?`")

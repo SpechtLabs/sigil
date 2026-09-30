@@ -186,6 +186,8 @@ func (p *parser) parseLet() *ast.LetStmt {
 // parseWhen parses `when cond { body }`. The condition ends at the `{`,
 // which can't continue an expression.
 func (p *parser) parseWhen() *ast.WhenStmt {
+	defer p.unnest()
+	p.nest("this `when`", p.skipWhen)
 	kw := p.tok
 	p.next()
 	s := &ast.WhenStmt{}
