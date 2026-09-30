@@ -118,6 +118,12 @@ timeline:
       `outcome.<decision>` gives asserts the candidates the host acts on, typed by their payload,
       so a required guardrail can check what every team's policy granted, not only which
       decisions fired. The open question on decision values and `outcome` is settled.
+  - date: 2026-09-30
+    title: WebAssembly module and TypeScript package
+    description: |
+      The engine builds as a WebAssembly module, and `@spechtlabs/sigil` runs it from TypeScript,
+      so a host outside Go evaluates policies with Go's semantics exactly. The package isn't
+      published yet.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -596,3 +602,12 @@ milestones:
         description: |
           Flags incompatible kind changes in CI, modeled on `buf breaking`, and checks the kind
           header: every change bumps `version`, and a breaking change raises `accepts`.
+      - title: Evaluators outside Go
+        state: DONE
+        requirement: SHOULD
+        description: |
+          `cmd/sigil-wasm` builds the engine as a WASI preview 1 module with a flat JSON ABI, and
+          `@spechtlabs/sigil` wraps it for TypeScript with a kind builder, typed decisions and a
+          Web Worker helper, so other languages run the Go engine instead of a port. Publishing
+          the package is an open question.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/wasm.md

@@ -149,7 +149,7 @@ The evaluator doesn't loop, recurse or call anything the kind doesn't declare, s
 
 ## What it isn't
 
-Sigil isn't a general-purpose language, and it isn't meant to replace OPA or Cedar for org-wide authorization. It's for decisions that live inside one application, where the data is already in Go structs. For now only a Go program can embed the evaluator. The exported kind file is plain text with a [published grammar](/reference/grammar/), so tooling in other languages can read it, but nothing outside Go runs policies yet.
+Sigil isn't a general-purpose language, and it isn't meant to replace OPA or Cedar for org-wide authorization. It's for decisions that live inside one application. Go programs embed it natively; programs in other languages run the same engine compiled to WebAssembly, as [Embed Sigil in TypeScript](/guides/embed-typescript/) shows.
 
 ## Install
 

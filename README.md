@@ -119,7 +119,9 @@ Nothing about the language is specific to alerts. The same constructs decide fea
 - **Composable from day one.** Typed `param`s, `use` imports and policy invocation replace text templating for per-team variants, and `sigil explain` flattens any composition back into the rules it adds up to.
 - **Parse once, evaluate many.** A compiled policy is immutable and safe for concurrent use.
 
-Out of scope: general computation, evaluators in languages other than Go (for now), and org-wide authorization in the style of OPA or Cedar. Sigil targets decisions embedded in a single application.
+Out of scope: general computation, reimplementations of the evaluator in other languages, and org-wide authorization in the style of OPA or Cedar. Sigil targets decisions embedded in a single application.
+
+**Other languages.** Hosts outside Go run the same engine compiled to WebAssembly, so a policy decides the same everywhere. [`bindings/typescript`](./bindings/typescript) wraps it for TypeScript and JavaScript; it isn't on npm yet. See [Embed Sigil in TypeScript](./docs/guides/embed-typescript.md) and [the WebAssembly module](./docs/reference/wasm.md).
 
 ## How evaluation works
 
@@ -189,6 +191,7 @@ The docs site is at [sigil.specht-labs.de](https://sigil.specht-labs.de/), built
 | --- | --- |
 | Write and test policies | [What Sigil is](./docs/getting-started/overview.md), [the tour](./docs/getting-started/tour.md) and the [step-by-step path](./docs/getting-started/define-the-input.md), then the [guides](./docs/guides/team-policies.md), [testing your policies](./docs/guides/test-policies.md) and the [language reference](./docs/reference/policy-files.md) |
 | Embed Sigil in a Go service | [Embedding Sigil in a Go service](./docs/guides/embed-go.md), the [Go API reference](./docs/reference/go-api.md), [the example service](./docs/guides/example-service.md), [policies in a ConfigMap](./docs/guides/configmaps.md) and [evolving a kind](./docs/guides/evolve-a-kind.md) |
+| Embed Sigil in TypeScript | [Embed Sigil in TypeScript](./docs/guides/embed-typescript.md) and the [WebAssembly module reference](./docs/reference/wasm.md) |
 | Decide whether Sigil fits | [What Sigil is](./docs/getting-started/overview.md), the [design goals](./docs/understanding/design-goals.md) and the other understanding pages, and [prior art](./docs/understanding/prior-art.md) |
 | Change Sigil itself | [Contributing](./docs/project/contributing.md), the [open questions](./docs/project/open-questions.md) and the [roadmap](./roadmap.yml) |
 

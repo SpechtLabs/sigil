@@ -101,7 +101,12 @@ A team can outrank a required policy's candidate by constructing the same decisi
 
 **Blocks:** nothing.
 
-A WASM build of the evaluator would let other languages evaluate policies, not just check them against an exported kind. It's out of scope until the Go library is stable. The design constraint it adds now is that nothing in the language semantics should depend on Go-specific behavior that a WASM host couldn't reproduce, and the `split` example above shows that host functions already carry Go semantics with them.
+Other languages run the Go engine compiled to WebAssembly: `cmd/sigil-wasm` builds the module, and `@spechtlabs/sigil` wraps it for TypeScript (see [WebAssembly module](/reference/wasm/) and [One engine for every host](/understanding/one-engine/)). Host functions still carry their host's semantics: a `split` written in JavaScript is JavaScript's, as the `split` example above is Go's. Still open:
+
+- **A Component Model wrapper.** A WIT interface over the same ops would give Rust, Python and .NET hosts typed bindings from their own tooling instead of JSON over linear memory. It waits for Go to target WASI preview 2; the ABI underneath doesn't change.
+- **A Rust crate.** The obvious second binding, on Wasmtime, which can meter fuel and so bound an evaluation's work, not only its time, including a host function that never returns.
+- **A binary encoding.** A request that doesn't start with `{` is reserved for one, such as CBOR. Natively, JSON is most of an evaluation's cost through the engine, but the WebAssembly runtime costs more; see [what JSON and WebAssembly cost](/understanding/one-engine/#what-json-and-webassembly-cost). It's worth adding once a host shows the JSON share matters.
+- **Publishing.** Releases attach the module as the archive `sigil_<version>_wasip1_wasm`, but the package isn't on npm. Publishing it needs a versioning story that ties the package, the module's ABI version and the Go release together.
 
 ## Conflicts in test files
 

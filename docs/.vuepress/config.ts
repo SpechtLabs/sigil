@@ -157,6 +157,15 @@ export default defineUserConfig({
             { text: "The example service", link: "example-service", icon: "mdi:rocket-launch-outline" },
           ],
         },
+        {
+          text: "Embedding in TypeScript",
+          icon: "mdi:language-typescript",
+          collapsed: false,
+          prefix: "/guides/",
+          items: [
+            { text: "Embed Sigil in TypeScript", link: "embed-typescript", icon: "mdi:language-typescript" },
+          ],
+        },
       ],
 
       // Understanding: why the language is shaped the way it is.
@@ -178,6 +187,7 @@ export default defineUserConfig({
             { text: "Halting by construction", link: "halting", icon: "mdi:timer-sand-complete" },
             { text: "Composition without templating", link: "composition", icon: "mdi:layers-triple" },
             { text: "Bundles and trust", link: "bundles", icon: "mdi:package-variant-closed" },
+            { text: "One engine for every host", link: "one-engine", icon: "mdi:cube-outline" },
           ],
         },
       ],
@@ -222,6 +232,13 @@ export default defineUserConfig({
             { text: "Go API", link: "go-api", icon: "mdi:language-go" },
             { text: "Performance", link: "performance", icon: "mdi:speedometer" },
           ],
+        },
+        {
+          text: "Other hosts",
+          icon: "mdi:cube-outline",
+          collapsed: false,
+          prefix: "/reference/",
+          items: [{ text: "WebAssembly module", link: "wasm", icon: "mdi:cube-outline" }],
         },
       ],
 

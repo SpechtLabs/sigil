@@ -151,9 +151,25 @@ Engine benchmarks leave out everything around an evaluation. The example service
 
 A decision request evaluates two policies, access then deploy. Those evaluations are a small part of it: under 10 KiB of the 46 KiB it allocates, and a few microseconds of its 0.28 ms of CPU. HTTP handling, JSON and the telemetry make up the rest. k6 rotated through its eight request cases; no request failed and no iteration was dropped. Latencies are k6's. Allocation and CPU per request are the process counters over a fixed 90-second window, divided by the decision requests (POSTs) in it, and resident memory is that window's mean.
 
+## Through WebAssembly
+
+The [WebAssembly module](/reference/wasm/) runs the same engine, with JSON in and out and the WebAssembly runtime in between. One evaluation of the example service's `access.main` with the `admin-platform` input, the result and trace included, on an Apple M5 Pro:
+
+| How | Time per evaluation |
+| --- | ---: |
+| The evaluator alone, natively, on an input decoded once | 1.17 µs |
+| The engine natively, JSON request in and JSON record out | 5.33 µs |
+| The module in Bun 1.4.2, through `@spechtlabs/sigil` | 26.7 µs |
+| The module in Node 24.18.0, through `@spechtlabs/sigil` | 35.7 µs |
+| The module in wazero 1.12.0, from Go | 117 µs |
+
+A request that does almost nothing, formatting an empty source, costs 0.61 µs natively and 14.9 µs through wazero: that's the ABI's round trip. Loading the module in Bun, compiling its 10.9 MB and starting the Go runtime, took 33 ms, and compiling `checkout.alerts` with a required policy 12 to 17 ms.
+
+These were measured on 30 September 2026, on the machine described [below](#how-these-numbers-were-measured). The native and wazero rows are `mise run wasm-bench`: Go 1.27.1, five samples each at the default benchmark time and `GOMAXPROCS`, medians. The Bun and Node rows evaluated the same compiled policy in a loop: 5,000 evaluations to warm up, then ten samples of 20,000, medians. Why the module costs what it does: [One engine for every host](/understanding/one-engine/#what-json-and-webassembly-cost).
+
 ## How these numbers were measured
 
-Every number on this page was measured on 29 September 2026 on an Apple M5 Pro with 18 CPU cores and 64 GB of memory, running macOS 26.6.2 and Go 1.27.1 for darwin/arm64:
+Every number on this page but those [through WebAssembly](#through-webassembly) was measured on 29 September 2026 on an Apple M5 Pro with 18 CPU cores and 64 GB of memory, running macOS 26.6.2 and Go 1.27.1 for darwin/arm64:
 
 - Each benchmark ran ten samples of 200 ms each with `GOMAXPROCS=2`, and the tables show the median sample. The parallel cases use `b.RunParallel` with two goroutines.
 - Compilation happens before the timer starts in every evaluation benchmark. Evaluation benchmarks include building the public result and its trace, because a host always gets them.
