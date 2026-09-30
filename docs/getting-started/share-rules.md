@@ -11,7 +11,7 @@ Sigil has two kinds of shared file for this:
 
 | File | Holds | Using it |
 | --- | --- | --- |
-| **Module** | `let`s marked `pub`, and imports | `use platform.alerts.{in_production}` brings in a name; it can't change a decision by itself |
+| **Module** | `let`s marked `pub`, and imports | `use platform.alerts.{pre_production}` brings in a name; it can't change a decision by itself |
 | **Policy with params** | Rules, plus `param`s for the values a team may choose | `routing(page_after: 10m)` adds all its rules, with the params bound |
 
 ## A module of shared helpers
@@ -21,7 +21,7 @@ A module is a library of named expressions. Create `platform/alerts.sigil`:
 ```sigil
 module platform.alerts: AlertRouting@1
 
-pub let in_production = alert.labels["env"] == "production"
+pub let pre_production = alert.labels["env"] in ["staging", "dev"]
 ```
 
 `pub` makes the `let` importable; without it, a `let` stays private to its file. A module holds only imports and `let`s, never rules, so importing from it never adds or removes a decision.
@@ -33,16 +33,16 @@ Move checkout's rules into `platform/routing.sigil`, and turn the two values tea
 ```sigil
 policy platform.routing: AlertRouting@1
 
-use platform.alerts.{in_production}
+use platform.alerts.{pre_production}
 
 param page_after: duration = 30m, min: 5m
 param muted: list<string> = []
 
-when in_production and alert.severity == critical {
+when not pre_production and alert.severity == critical {
   page(reason: critical_alert, target: team.oncall)
 }
 
-when in_production and alert.severity == warning {
+when not pre_production and alert.severity == warning {
   when alert.firing_for >= page_after {
     page(reason: sustained, target: team.oncall)
   }
@@ -50,7 +50,7 @@ when in_production and alert.severity == warning {
   notify(reason: routine, channel: team.channel)
 }
 
-when not in_production {
+when pre_production {
   drop(reason: not_production)
 }
 
@@ -59,7 +59,7 @@ when alert.name in muted {
 }
 ```
 
-- `use platform.alerts.{in_production}` imports one name. Every name a file uses is either defined in it or listed in a `use`, so you can always tell where it comes from.
+- `use platform.alerts.{pre_production}` imports one name. Every name a file uses is either defined in it or listed in a `use`, so you can always tell where it comes from.
 - `param page_after: duration = 30m, min: 5m` is typed, has a default, and has a lower bound: no team can page for sustained warnings after less than five minutes.
 - `param muted: list<string> = []` defaults to muting nothing.
 
@@ -94,7 +94,7 @@ checkout.alerts: page(reason: sustained)
 
 trace: 2 candidates
   * page(reason: sustained)  checkout/alerts.sigil:5:1 → platform/routing.sigil:14:5
-      when in_production and alert.severity == warning
+      when not pre_production and alert.severity == warning
        and alert.firing_for >= 10m
       target = "checkout-primary"
     notify(reason: routine)  checkout/alerts.sigil:5:1 → platform/routing.sigil:17:3
@@ -110,7 +110,7 @@ The payments team pages faster for the ledger than for everything else, and post
 ```sigil
 policy payments.alerts: AlertRouting@1
 
-use platform.alerts.{in_production}
+use platform.alerts.{pre_production}
 use platform.routing
 
 when alert.labels["component"] == "ledger" {
@@ -121,7 +121,7 @@ when alert.labels["component"] != "ledger" {
   routing()
 }
 
-when in_production and alert.severity == info and alert.labels["component"] == "ledger" {
+when not pre_production and alert.severity == info and alert.labels["component"] == "ledger" {
   notify(reason: routine, channel: "#payments-ledger")
 }
 ```
@@ -147,14 +147,14 @@ payments.alerts: page(reason: sustained)
 trace: 2 candidates
   * page(reason: sustained)  payments/alerts.sigil:7:3 → platform/routing.sigil:14:5
       when alert.labels["component"] == "ledger"
-       and in_production and alert.severity == warning
+       and not pre_production and alert.severity == warning
        and alert.firing_for >= 5m
       target = "payments-primary"
     notify(reason: routine)  payments/alerts.sigil:7:3 → platform/routing.sigil:17:3
       channel = "#payments-alerts"
 ```
 
-`routing()` takes every default; the parentheses are required. The team's own rule imports `in_production` from the module instead of spelling the label lookup out again.
+`routing()` takes every default; the parentheses are required. The team's own rule imports `pre_production` from the module instead of spelling the label lookup out again.
 
 ## A warning worth reading
 

@@ -14,15 +14,15 @@ Pages are the rules that must always apply: a critical production alert pages th
 ```sigil
 policy platform.paging: AlertRouting@1
 
-use platform.alerts.{in_production}
+use platform.alerts.{pre_production}
 
 param page_after: duration = 30m, min: 5m, max: 1h
 
-when in_production and alert.severity == critical {
+when not pre_production and alert.severity == critical {
   page(reason: critical_alert, target: team.oncall)
 }
 
-when in_production and alert.severity == warning and alert.firing_for >= page_after {
+when not pre_production and alert.severity == warning and alert.firing_for >= page_after {
   page(reason: sustained, target: team.oncall)
 }
 ```
@@ -34,15 +34,15 @@ What's left in `platform/routing.sigil` is the part teams may shape freely:
 ```sigil
 policy platform.routing: AlertRouting@1
 
-use platform.alerts.{in_production}
+use platform.alerts.{pre_production}
 
 param muted: list<string> = []
 
-when in_production and alert.severity == warning {
+when not pre_production and alert.severity == warning {
   notify(reason: routine, channel: team.channel)
 }
 
-when not in_production {
+when pre_production {
   drop(reason: not_production)
 }
 
@@ -89,14 +89,14 @@ And `payments/alerts.sigil`:
 ```sigil
 policy payments.alerts: AlertRouting@1
 
-use platform.alerts.{in_production}
+use platform.alerts.{pre_production}
 use platform.paging
 use platform.routing
 
 paging(page_after: 5m)
 routing()
 
-when in_production and alert.severity == info and alert.labels["component"] == "ledger" {
+when not pre_production and alert.severity == info and alert.labels["component"] == "ledger" {
   notify(reason: routine, channel: "#payments-ledger")
 }
 ```
@@ -194,14 +194,41 @@ CheckoutErrorRate      critical production  2m0s  → page checkout-primary (cri
 CheckoutLatencyHigh    warning  production 12m0s  → page checkout-primary (sustained)
 CheckoutLatencyHigh    warning  production 45m0s  → page checkout-primary (sustained)
 CheckoutErrorRate      critical staging     2m0s  → drop (not_production)
+CheckoutQueueStuck     critical -           3m0s  → page checkout-primary (critical_alert)
 CheckoutCanaryLatency  warning  production  5m0s  → drop (muted)
 ```
 
-The 12-minute warning pages now, because checkout's `page_after` is 10 minutes. And since `page` outranks every other decision, nothing a team adds can beat a page from `platform.paging`: a team can add candidates, never remove them.
+The 12-minute warning pages now, because checkout's `page_after` is 10 minutes. A page outranks every other decision, so nothing a team adds can beat a page from `platform.paging`.
+
+## What a guardrail can't stop
+
+A team can't remove the page, but it can make the evaluation fail. Add a second page to `checkout/alerts.sigil`, for the same reason and a different target:
+
+```sigil
+when alert.severity == critical {
+  page(reason: critical_alert, target: "nobody")
+}
+```
+
+`sigil check --require platform.paging` still passes. Save a critical production alert as `critical.json`, the way you saved `latency.json` in step 4, and evaluate it:
+
+```text
+$ sigil eval --policy checkout.alerts --input critical.json
+checkout.alerts: the candidates conflict, the host falls back to notify(reason: unrouted), the kind's default
+
+conflict: collect one: 2 candidates at the top rank
+    page(reason: critical_alert)  checkout/alerts.sigil:6:1 → platform/paging.sigil:8:3
+    page(reason: critical_alert)  checkout/alerts.sigil:10:3
+  = help: a conflict is a defect in the policy: rank the reasons with precedence, or keep the exclusive outcomes' conditions apart
+```
+
+Two pages with the same reason and different targets can't both win, so the evaluation fails and `Eval` returns an error along with the kind's default. In this kind the default is a post to `#alerts`, not a page. A failing `assert` or a timeout has the same effect. So a service that routes alerts has to handle a failed evaluation itself, for example by evaluating `platform.paging` on its own and using its page. [Handle failed evaluations](/guides/handle-errors/) covers the error, and [What the guarantee doesn't cover](/understanding/composition/#what-the-guarantee-doesn-t-cover) explains why composition can't prevent this.
+
+Remove the rule again before moving on.
 
 ## What you built
 
-A Go service that routes alerts through policies it checks against a typed contract; a kind file that lets anyone check, evaluate and test those policies with the CLI; a shared library that teams use with their own values; and guardrails that no team can switch off.
+A Go service that routes alerts through policies it checks against a typed contract; a kind file that lets anyone check, evaluate and test those policies with the CLI; a shared library that teams use with their own values; and guardrails that no team can leave out.
 
 The same router, grown into a service, is [`examples/alert-routing`](https://github.com/SpechtLabs/sigil/tree/main/examples/alert-routing). It runs the policies you wrote here in a TypeScript app on Sigil's WebAssembly build, with an HTTP API, an operator console, hot reload, metrics, traces, a Grafana dashboard and load tests. From here:
 

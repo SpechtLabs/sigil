@@ -172,6 +172,7 @@ var alerts = []alerting.Alert{
 	{Name: "CheckoutLatencyHigh", Severity: alerting.Warning, Labels: map[string]string{"env": "production"}, FiringFor: 12 * time.Minute},
 	{Name: "CheckoutLatencyHigh", Severity: alerting.Warning, Labels: map[string]string{"env": "production"}, FiringFor: 45 * time.Minute},
 	{Name: "CheckoutErrorRate", Severity: alerting.Critical, Labels: map[string]string{"env": "staging"}, FiringFor: 2 * time.Minute},
+	{Name: "CheckoutQueueStuck", Severity: alerting.Critical, FiringFor: 3 * time.Minute},
 	{Name: "CheckoutCanaryLatency", Severity: alerting.Warning, Labels: map[string]string{"env": "production"}, FiringFor: 5 * time.Minute},
 }
 
@@ -187,7 +188,12 @@ func main() {
 			log.Fatal(err)
 		}
 
-		fmt.Printf("%-22s %-8s %-10s %5s  → %s\n", a.Name, a.Severity, a.Labels["env"], a.FiringFor, route(res))
+		env := a.Labels["env"]
+		if env == "" {
+			env = "-"
+		}
+
+		fmt.Printf("%-22s %-8s %-10s %5s  → %s\n", a.Name, a.Severity, env, a.FiringFor, route(res))
 	}
 }
 
@@ -216,10 +222,11 @@ CheckoutErrorRate      critical production  2m0s  → page checkout-primary (cri
 CheckoutLatencyHigh    warning  production 12m0s  → post to #alerts (unrouted)
 CheckoutLatencyHigh    warning  production 45m0s  → post to #alerts (unrouted)
 CheckoutErrorRate      critical staging     2m0s  → page checkout-primary (critical_alert)
+CheckoutQueueStuck     critical -           3m0s  → page checkout-primary (critical_alert)
 CheckoutCanaryLatency  warning  production  5m0s  → post to #alerts (unrouted)
 ```
 
-The two critical alerts page the on-call. Everything else matches no rule, so the kind's default posts it to `#alerts`.
+The three critical alerts page the on-call, including `CheckoutQueueStuck`, which has no `env` label at all. Everything else matches no rule, so the kind's default posts it to `#alerts`.
 
 ## Break it on purpose
 

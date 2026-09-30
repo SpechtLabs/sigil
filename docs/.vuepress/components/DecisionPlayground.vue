@@ -82,18 +82,24 @@ interface Rule {
 
 const names = ['CheckoutErrorRate', 'CheckoutLatencyHigh', 'CheckoutCanaryLatency']
 const severities = ['critical', 'warning', 'info']
-const envs = ['production', 'staging']
+const envs = ['production', 'staging', '(no label)']
 
 const team = { oncall: 'checkout-primary', channel: '#checkout-alerts' }
 
 // The rules of checkout.alerts, with the line of each constructor.
 const rules: Rule[] = [
-  { line: 6, cond: 'in_production and alert.severity == critical', decision: 'page', reason: 'critical_alert', payload: `target = "${team.oncall}"`, holds: (a) => a.env === 'production' && a.severity === 'critical' },
-  { line: 11, cond: '… warning and alert.firing_for >= 30m', decision: 'page', reason: 'sustained', payload: `target = "${team.oncall}"`, holds: (a) => a.env === 'production' && a.severity === 'warning' && a.firingFor >= 30 },
-  { line: 14, cond: 'in_production and alert.severity == warning', decision: 'notify', reason: 'routine', payload: `channel = "${team.channel}"`, holds: (a) => a.env === 'production' && a.severity === 'warning' },
-  { line: 18, cond: 'not in_production', decision: 'drop', reason: 'not_production', holds: (a) => a.env !== 'production' },
+  { line: 6, cond: 'not pre_production and alert.severity == critical', decision: 'page', reason: 'critical_alert', payload: `target = "${team.oncall}"`, holds: (a) => !preProduction(a) && a.severity === 'critical' },
+  { line: 11, cond: '… warning and alert.firing_for >= 30m', decision: 'page', reason: 'sustained', payload: `target = "${team.oncall}"`, holds: (a) => !preProduction(a) && a.severity === 'warning' && a.firingFor >= 30 },
+  { line: 14, cond: 'not pre_production and alert.severity == warning', decision: 'notify', reason: 'routine', payload: `channel = "${team.channel}"`, holds: (a) => !preProduction(a) && a.severity === 'warning' },
+  { line: 18, cond: 'pre_production', decision: 'drop', reason: 'not_production', holds: (a) => preProduction(a) },
   { line: 22, cond: 'alert.name in ["CheckoutCanaryLatency"]', decision: 'drop', reason: 'muted', holds: (a) => a.name === 'CheckoutCanaryLatency' },
 ]
+
+// pre_production is the policy's let: env in ["staging", "dev"]. A missing
+// label reads as "", which isn't pre-production, so such an alert still pages.
+function preProduction(a: Alert): boolean {
+  return a.env === 'staging' || a.env === 'dev'
+}
 
 // precedence page > drop > notify, and each decision's reasons in order.
 const rank: Record<string, number> = {

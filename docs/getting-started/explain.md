@@ -14,20 +14,20 @@ $ sigil explain --policy checkout.alerts
 checkout.alerts: 5 rules from 2 policies
 
   page(reason: critical_alert)  checkout.alerts:5 → platform.routing:9
-    when in_production and alert.severity == critical
+    when not pre_production and alert.severity == critical
     with target = team.oncall
 
   page(reason: sustained)       checkout.alerts:5 → platform.routing:14
-    when in_production and alert.severity == warning
+    when not pre_production and alert.severity == warning
      and alert.firing_for >= 10m
     with target = team.oncall
 
   notify(reason: routine)       checkout.alerts:5 → platform.routing:17
-    when in_production and alert.severity == warning
+    when not pre_production and alert.severity == warning
     with channel = team.channel
 
   drop(reason: not_production)  checkout.alerts:5 → platform.routing:21
-    when not in_production
+    when pre_production
 
   drop(reason: muted)           checkout.alerts:5 → platform.routing:25
     when alert.name in ["CheckoutCanaryLatency"]
@@ -52,12 +52,12 @@ payments.alerts: 11 rules from 2 policies and 1 module
 
   page(reason: critical_alert)  payments.alerts:7 → platform.routing:9
     when alert.labels["component"] == "ledger"
-     and in_production and alert.severity == critical
+     and not pre_production and alert.severity == critical
     with target = team.oncall
 
   page(reason: sustained)       payments.alerts:7 → platform.routing:14
     when alert.labels["component"] == "ledger"
-     and in_production and alert.severity == warning
+     and not pre_production and alert.severity == warning
      and alert.firing_for >= 5m
     with target = team.oncall
 
@@ -68,7 +68,7 @@ payments.alerts: 11 rules from 2 policies and 1 module
      and alert.name in []
 
   notify(reason: routine)       payments.alerts:15
-    when in_production and alert.severity == info and alert.labels["component"] == "ledger"
+    when not pre_production and alert.severity == info and alert.labels["component"] == "ledger"
     with channel = "#payments-ledger"
 ```
 

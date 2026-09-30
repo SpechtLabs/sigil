@@ -122,13 +122,13 @@ An alert router asks a policy what to do with each alert: page the on-call, drop
    ```sigil
    policy checkout.alerts: AlertRouting@1
 
-   let in_production = alert.labels["env"] == "production"
+   let pre_production = alert.labels["env"] in ["staging", "dev"]
 
-   when in_production and alert.severity == critical {
+   when not pre_production and alert.severity == critical {
      page(reason: critical_alert, target: team.oncall)
    }
 
-   when in_production and alert.severity == warning {
+   when not pre_production and alert.severity == warning {
      when alert.firing_for >= 30m {
        page(reason: sustained, target: team.oncall)
      }
@@ -136,7 +136,7 @@ An alert router asks a policy what to do with each alert: page the on-call, drop
      notify(reason: routine, channel: team.channel)
    }
 
-   when not in_production {
+   when pre_production {
      drop(reason: not_production)
    }
    ```
@@ -163,7 +163,7 @@ checkout.alerts: page(reason: sustained)
 
 trace: 2 candidates
   * page(reason: sustained)  checkout/alerts.sigil:11:5
-      when in_production and alert.severity == warning
+      when not pre_production and alert.severity == warning
        and alert.firing_for >= 30m
       target = "checkout-primary"
     notify(reason: routine)  checkout/alerts.sigil:14:3

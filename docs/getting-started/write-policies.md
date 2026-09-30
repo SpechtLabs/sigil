@@ -5,7 +5,7 @@ createTime: 2026/09/30 12:00:00
 permalink: /getting-started/write-policies/
 ---
 
-In this step you grow `checkout.alerts` from one rule into the policy the [tour](/getting-started/tour/) reads, one rule at a time. After each change you run `go run ./cmd/route` from [step 1](/getting-started/define-the-input/) and watch the five sample alerts change route. Along the way you'll meet lets, nested rules, precedence and the compile errors that catch mistakes.
+In this step you grow `checkout.alerts` from one rule into the policy the [tour](/getting-started/tour/) reads, one rule at a time. After each change you run `go run ./cmd/route` from [step 1](/getting-started/define-the-input/) and watch the six sample alerts change route. Along the way you'll meet lets, nested rules, precedence and the compile errors that catch mistakes.
 
 You start from the one-rule policy:
 
@@ -39,6 +39,7 @@ CheckoutErrorRate      critical production  2m0s  → page checkout-primary (cri
 CheckoutLatencyHigh    warning  production 12m0s  → post to #checkout-alerts (routine)
 CheckoutLatencyHigh    warning  production 45m0s  → post to #checkout-alerts (routine)
 CheckoutErrorRate      critical staging     2m0s  → page checkout-primary (critical_alert)
+CheckoutQueueStuck     critical -           3m0s  → page checkout-primary (critical_alert)
 CheckoutCanaryLatency  warning  production  5m0s  → post to #checkout-alerts (routine)
 ```
 
@@ -80,6 +81,7 @@ CheckoutErrorRate      critical production  2m0s  → page checkout-primary (cri
 CheckoutLatencyHigh    warning  production 12m0s  → post to #checkout-alerts (routine)
 CheckoutLatencyHigh    warning  production 45m0s  → page checkout-primary (sustained)
 CheckoutErrorRate      critical staging     2m0s  → page checkout-primary (critical_alert)
+CheckoutQueueStuck     critical -           3m0s  → page checkout-primary (critical_alert)
 CheckoutCanaryLatency  warning  production  5m0s  → post to #checkout-alerts (routine)
 ```
 
@@ -90,7 +92,7 @@ The 45-minute warning now matches two rules: the nested one pages, and the outer
 Staging alerts shouldn't reach anyone. Add a rule that drops them:
 
 ```sigil
-when alert.labels["env"] != "production" { // [!code ++]
+when alert.labels["env"] == "staging" { // [!code ++]
   drop(reason: not_production) // [!code ++]
 } // [!code ++]
 ```
@@ -102,18 +104,18 @@ CheckoutErrorRate      critical staging     2m0s  → page checkout-primary (cri
 ...
 ```
 
-The staging alert still pages. The drop is a candidate, but so is the page, and a page outranks a drop. That's deliberate in this kind: no rule that drops an alert can ever silence a page. To keep staging quiet, the page rules themselves have to be about production. Name the condition once with a `let`, and use it everywhere:
+The staging alert still pages. The drop is a candidate, but so is the page, and a page outranks a drop. That's deliberate in this kind: no rule that drops an alert can ever silence a page. To keep staging quiet, the page rules have to leave staging out. Name the environments you drop once, with a `let`, and use the name everywhere:
 
 ```sigil
 policy checkout.alerts: AlertRouting@1
 
-let in_production = alert.labels["env"] == "production" // [!code ++]
+let pre_production = alert.labels["env"] in ["staging", "dev"] // [!code ++]
 
-when in_production and alert.severity == critical { // [!code highlight]
+when not pre_production and alert.severity == critical { // [!code highlight]
   page(reason: critical_alert, target: team.oncall)
 }
 
-when in_production and alert.severity == warning { // [!code highlight]
+when not pre_production and alert.severity == warning { // [!code highlight]
   when alert.firing_for >= 30m {
     page(reason: sustained, target: team.oncall)
   }
@@ -121,7 +123,7 @@ when in_production and alert.severity == warning { // [!code highlight]
   notify(reason: routine, channel: team.channel)
 }
 
-when not in_production { // [!code highlight]
+when pre_production { // [!code highlight]
   drop(reason: not_production)
 }
 ```
@@ -132,10 +134,13 @@ CheckoutErrorRate      critical production  2m0s  → page checkout-primary (cri
 CheckoutLatencyHigh    warning  production 12m0s  → post to #checkout-alerts (routine)
 CheckoutLatencyHigh    warning  production 45m0s  → page checkout-primary (sustained)
 CheckoutErrorRate      critical staging     2m0s  → drop (not_production)
+CheckoutQueueStuck     critical -           3m0s  → page checkout-primary (critical_alert)
 CheckoutCanaryLatency  warning  production  5m0s  → post to #checkout-alerts (routine)
 ```
 
-A `let` is evaluated against the same input as the rules. There's no `else`: "the other case" is `when not in_production`, which says the same thing without implying an order. Label keys go in brackets because they're map keys; a missing label reads as `""`, like a missing key in a Go map.
+`CheckoutQueueStuck` has no `env` label and still pages. A missing label reads as `""`, like a missing key in a Go map, and `""` isn't a pre-production environment. Had the rule been `when alert.labels["env"] != "production"`, the same alert would have been dropped: an alert with a missing or misspelled label would never reach anyone. Name what you drop, and everything you didn't think of still gets through.
+
+A `let` is evaluated against the same input as the rules. There's no `else`: "the other case" is `when not pre_production`, which says the same thing without implying an order.
 
 ## Mute a noisy alert
 
@@ -165,6 +170,7 @@ CheckoutErrorRate      critical production  2m0s  → page checkout-primary (cri
 CheckoutLatencyHigh    warning  production 12m0s  → post to #checkout-alerts (routine)
 CheckoutLatencyHigh    warning  production 45m0s  → page checkout-primary (sustained)
 CheckoutErrorRate      critical staging     2m0s  → drop (not_production)
+CheckoutQueueStuck     critical -           3m0s  → page checkout-primary (critical_alert)
 CheckoutCanaryLatency  warning  production  5m0s  → drop (muted)
 ```
 
@@ -175,13 +181,13 @@ The muted warning is dropped: a drop outranks a notification. Were the canary al
 ```sigil
 policy checkout.alerts: AlertRouting@1
 
-let in_production = alert.labels["env"] == "production"
+let pre_production = alert.labels["env"] in ["staging", "dev"]
 
-when in_production and alert.severity == critical {
+when not pre_production and alert.severity == critical {
   page(reason: critical_alert, target: team.oncall)
 }
 
-when in_production and alert.severity == warning {
+when not pre_production and alert.severity == warning {
   when alert.firing_for >= 30m {
     page(reason: sustained, target: team.oncall)
   }
@@ -189,7 +195,7 @@ when in_production and alert.severity == warning {
   notify(reason: routine, channel: team.channel)
 }
 
-when not in_production {
+when pre_production {
   drop(reason: not_production)
 }
 

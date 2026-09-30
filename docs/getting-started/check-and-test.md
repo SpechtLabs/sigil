@@ -47,7 +47,7 @@ checkout.alerts: page(reason: sustained)
 
 trace: 2 candidates
   * page(reason: sustained)  checkout/alerts.sigil:11:5
-      when in_production and alert.severity == warning
+      when not pre_production and alert.severity == warning
        and alert.firing_for >= 30m
       target = "checkout-primary"
     notify(reason: routine)  checkout/alerts.sigil:14:3

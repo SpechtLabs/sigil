@@ -70,13 +70,13 @@ The checkout team's policy, `checkout/alerts.sigil`:
 ```sigil
 policy checkout.alerts: AlertRouting@1
 
-let in_production = alert.labels["env"] == "production"
+let pre_production = alert.labels["env"] in ["staging", "dev"]
 
-when in_production and alert.severity == critical {
+when not pre_production and alert.severity == critical {
   page(reason: critical_alert, target: team.oncall)
 }
 
-when in_production and alert.severity == warning {
+when not pre_production and alert.severity == warning {
   when alert.firing_for >= 30m {
     page(reason: sustained, target: team.oncall)
   }
@@ -84,7 +84,7 @@ when in_production and alert.severity == warning {
   notify(reason: routine, channel: team.channel)
 }
 
-when not in_production {
+when pre_production {
   drop(reason: not_production)
 }
 
@@ -94,7 +94,7 @@ when alert.name in ["CheckoutCanaryLatency"] {
 ```
 
 - The header names the policy, `checkout.alerts`, and pins the kind and its version, `AlertRouting@1`.
-- `let` names an expression, so the rules can say `in_production` instead of repeating the label lookup. Label keys go in brackets because they're map keys.
+- `let` names an expression, so the rules can say `pre_production` instead of repeating the label lookup. Label keys go in brackets because they're map keys.
 - A `when` block is a rule. When its condition holds, every decision inside it becomes a **candidate**. A nested `when` only fires if its parent holds too: nesting means "and".
 - `page(reason: critical_alert, target: team.oncall)` is a decision constructor. Every argument is named, the reason is one the kind declares, and the payload fields are type-checked. It doesn't stop evaluation or return anything. It adds a candidate.
 - There's no `else` and no rule order. Every rule is evaluated, and the kind's precedence picks the winner, so moving a block never changes a decision.
@@ -114,7 +114,7 @@ checkout.alerts: notify(reason: routine)
 
 trace: 1 candidate
   * notify(reason: routine)  checkout/alerts.sigil:14:3
-      when in_production and alert.severity == warning
+      when not pre_production and alert.severity == warning
       channel = "#checkout-alerts"
 ```
 
@@ -126,7 +126,7 @@ checkout.alerts: page(reason: sustained)
 
 trace: 2 candidates
   * page(reason: sustained)  checkout/alerts.sigil:11:5
-      when in_production and alert.severity == warning
+      when not pre_production and alert.severity == warning
        and alert.firing_for >= 30m
       target = "checkout-primary"
     notify(reason: routine)  checkout/alerts.sigil:14:3
@@ -143,7 +143,7 @@ Policies are checked against the kind before they ever run. Misspell a severity 
 $ sigil check
 checkout/alerts.sigil:9:42: error: Severity has no value `warnign`
   |
-9 | when in_production and alert.severity == warnign {
+9 | when not pre_production and alert.severity == warnign {
   |                                          ^^^^^^^
   = help: did you mean `warning`? Severity declares: critical, warning, info
 
