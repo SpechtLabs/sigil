@@ -30,8 +30,23 @@ const (
 
 // base is the exported base revision.
 type base struct {
-	sha string
+	// known holds the benchmarks the base revision declares, by package
+	// directory; a package it doesn't have is missing.
+	known map[string]map[string]bool
+	sha   string
+	// dir holds the base revision with the checkout's workloads and
+	// fixtures on it.
 	dir string
+	// files are the workload files installed on it: those of the packages
+	// the base revision has.
+	files []string
+}
+
+// has reports whether the base revision has the package pkg, a directory
+// in the ./dir form.
+func (b base) has(pkg string) bool {
+	_, ok := b.known[filepath.Clean(pkg)]
+	return ok
 }
 
 // workloads selects the benchmarks filter matches in the packages patterns
@@ -72,20 +87,48 @@ func workloads(ctx context.Context, root string, patterns []string, filter strin
 }
 
 // prepareBase exports the baseline revision into tmp and installs the
-// checkout's workloads and fixtures on it.
+// checkout's workloads and fixtures on it. It first records which
+// benchmarks the base revision declares, so a benchmark the checkout adds,
+// which the base revision can't compile, is left out of it; see stripNew.
 func prepareBase(ctx context.Context, root, tmp, baseline, fixtures string, files []string) (base, humane.Error) {
 	sha, err := gotool.Output(ctx, root, nil, "git", "rev-parse", "--verify", baseline+"^{commit}")
 	if err != nil {
 		return base{}, err
 	}
 	b := base{sha: strings.TrimSpace(sha), dir: filepath.Join(tmp, sideBase)}
-	if err := snapshot(ctx, root, b.sha, b.dir); err != nil {
+	if err = snapshot(ctx, root, b.sha, b.dir); err != nil {
 		return base{}, err
 	}
-	if err := installWorkloads(root, b.dir, files, fixtures); err != nil {
+	dirs := make([]string, 0, len(files))
+	for _, rel := range files {
+		dirs = append(dirs, filepath.Dir(rel))
+	}
+	slices.Sort(dirs)
+	known, err := declared(ctx, b.dir, slices.Compact(dirs))
+	if err != nil {
+		return base{}, err
+	}
+	b.known = known
+	for _, rel := range files {
+		if b.has(filepath.Dir(rel)) {
+			b.files = append(b.files, rel)
+		}
+	}
+	if err := installWorkloads(root, b.dir, b.files, fixtures, known); err != nil {
 		return base{}, err
 	}
 	return b, nil
+}
+
+// withOwnFixtures exports the base revision again into dir, with the
+// checkout's workloads but its own fixtures. A package whose workloads the
+// checkout's fixtures can't build or run on the base revision, such as
+// fixtures written in syntax the base revision doesn't parse, runs there.
+func (b base) withOwnFixtures(ctx context.Context, root, dir string) humane.Error {
+	if err := snapshot(ctx, root, b.sha, dir); err != nil {
+		return err
+	}
+	return installWorkloads(root, dir, b.files, "", b.known)
 }
 
 // snapshot extracts the tree of commit sha into dir with git archive.
@@ -173,7 +216,12 @@ func extractFile(root *os.Root, h *tar.Header, r io.Reader) humane.Error {
 // the checkout's, so both revisions run identical workloads. Removed or
 // renamed benchmarks must not leave stale base-only workloads behind.
 // Benchmark setup stays with its revision; see installSetup.
-func installWorkloads(head, base string, files []string, fixtures string) humane.Error {
+//
+// known holds the benchmarks the base revision declares, by package
+// directory. A benchmark it doesn't list is new and left out; see
+// stripNew. With a nil known, every file is copied as it is. With no
+// fixtures, the base revision keeps its own.
+func installWorkloads(head, base string, files []string, fixtures string, known map[string]map[string]bool) humane.Error {
 	err := filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), benchSuffix) {
 			return err
@@ -185,7 +233,7 @@ func installWorkloads(head, base string, files []string, fixtures string) humane
 	}
 
 	for _, rel := range files {
-		if err := copyFile(filepath.Join(head, rel), filepath.Join(base, rel)); err != nil {
+		if err := installWorkload(head, base, rel, known); err != nil {
 			return err
 		}
 	}
@@ -193,12 +241,38 @@ func installWorkloads(head, base string, files []string, fixtures string) humane
 		return err
 	}
 
+	if fixtures == "" {
+		return nil
+	}
 	dst := filepath.Join(base, fixtures)
 	if err := os.RemoveAll(dst); err != nil {
 		return humane.Wrap(err, "can't remove the base revision's "+fixtures, "check that TMPDIR is writable")
 	}
 	if err := os.CopyFS(dst, os.DirFS(filepath.Join(head, fixtures))); err != nil {
 		return humane.Wrap(err, "can't copy "+fixtures+" onto the base revision", "check that "+fixtures+" exists")
+	}
+	return nil
+}
+
+// installWorkload copies one of the checkout's workload files onto the base
+// revision, without the benchmarks known says it doesn't declare.
+func installWorkload(head, base, rel string, known map[string]map[string]bool) humane.Error {
+	if known == nil {
+		return copyFile(filepath.Join(head, rel), filepath.Join(base, rel))
+	}
+	src, err := os.ReadFile(filepath.Join(head, rel)) //nolint:gosec // rel is a workload go list reported
+	if err != nil {
+		return humane.Wrap(err, "can't copy "+rel+" onto the base revision", "check that the file exists")
+	}
+	out, herr := stripNew(rel, src, known[filepath.Dir(rel)])
+	if herr != nil {
+		return herr
+	}
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(base, rel)), 0o750); err != nil {
+		return humane.Wrap(err, "can't copy "+rel+" onto the base revision", "check that TMPDIR is writable")
+	}
+	if err := os.WriteFile(filepath.Join(base, rel), out, 0o600); err != nil { //nolint:gosec // the destination is inside the temporary export
+		return humane.Wrap(err, "can't copy "+rel+" onto the base revision", "check that TMPDIR is writable")
 	}
 	return nil
 }

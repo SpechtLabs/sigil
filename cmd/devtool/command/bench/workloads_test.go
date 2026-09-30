@@ -106,7 +106,7 @@ func TestInstallWorkloads(t *testing.T) {
 		"unrelated/other_benchsetup_test.go": "setup of a package without workloads",
 	})
 
-	if err := installWorkloads(head, base, []string{"current_bench_test.go", "deep/current_bench_test.go"}, "internal/benchtest"); err != nil {
+	if err := installWorkloads(head, base, []string{"current_bench_test.go", "deep/current_bench_test.go"}, "internal/benchtest", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -149,7 +149,7 @@ func TestInstallWorkloadsErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmp := t.TempDir()
 			writeFiles(t, tmp, map[string]string{"base/library.go": "", "head/bad[/x_bench_test.go": ""})
-			err := installWorkloads(filepath.Join(tmp, "head"), filepath.Join(tmp, "base"), tt.files, "internal/benchtest")
+			err := installWorkloads(filepath.Join(tmp, "head"), filepath.Join(tmp, "base"), tt.files, "internal/benchtest", nil)
 			checkErr(t, err, tt.wantErr)
 		})
 	}

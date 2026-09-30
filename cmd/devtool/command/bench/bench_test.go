@@ -81,9 +81,12 @@ func TestRun(t *testing.T) {
 	_, benchstatErr := exec.LookPath("benchstat")
 
 	tests := []struct {
-		name      string
-		args      []string
-		env       map[string]string
+		name string
+		args []string
+		env  map[string]string
+		// base holds files committed on top of the module, so the base
+		// revision has them; edit then changes the checkout.
+		base      map[string]string
 		edit      map[string]string
 		fixtures  string
 		chdir     bool
@@ -129,13 +132,63 @@ func TestRun(t *testing.T) {
 			wantOut: []string{"  [1/1] head\n", "BenchmarkSum-2", "✓ [1/1] head"},
 		},
 		{
-			name:      "compare with the base revision",
-			args:      []string{"--time", "1x"},
+			name: "compare with the base revision",
+			args: []string{"--time", "100x"},
+			env:  map[string]string{"BENCH_BASELINE": "HEAD", "BENCH_COUNT": "10"},
+			// BenchmarkNew needs Double, which the base revision doesn't
+			// have, so the base only builds without it.
+			edit: map[string]string{
+				"a/double.go":       "package a\n\n// Double doubles n.\nfunc Double(n int) int { return 2 * n }\n",
+				"a/a_bench_test.go": benchFile("BenchmarkSum") + "\nfunc BenchmarkNew(b *testing.B) {\n\tfor b.Loop() {\n\t\t_ = Double(2)\n\t}\n}\n",
+			},
+			benchstat: true,
+			wantFiles: []string{"base.txt", "head.txt", comparedBase, comparedHead, "benchstat.txt", "benchstat.csv", "metadata.json", "summary.md"},
+			wantOut: []string{
+				"Base:     ", "(HEAD)", "✓ [ 2/10] head → base", "Runs:     10 samples of 100x each per revision",
+				"0 of 3 comparisons changed significantly", "1 new benchmark, not compared: a New",
+			},
+		},
+		{
+			name:      "a renamed benchmark has nothing to compare with",
+			args:      []string{"--time", "100x"},
 			env:       map[string]string{"BENCH_BASELINE": "HEAD", "BENCH_COUNT": "10"},
 			edit:      map[string]string{"a/a_bench_test.go": benchFile("BenchmarkRenamed")},
 			benchstat: true,
-			wantFiles: []string{"base.txt", "head.txt", "benchstat.txt", "benchstat.csv", "metadata.json", "summary.md"},
-			wantOut:   []string{"Base:     ", "(HEAD)", "✓ [ 2/10] head → base", "Runs:     10 samples of 1x each per revision"},
+			wantFiles: []string{"base.txt", "head.txt", "metadata.json", "summary.md"},
+			wantOut:   []string{"0 of 0 comparisons changed significantly", "1 new benchmark, not compared: a Renamed"},
+		},
+		{
+			name: "fixtures the base revision can't build",
+			args: []string{"--time", "100x"},
+			env:  map[string]string{"BENCH_BASELINE": "HEAD", "BENCH_COUNT": "10"},
+			base: map[string]string{
+				"internal/benchtest/fixture.go": "package benchtest\n\n// N is the workload's size.\nfunc N() int { return 3 }\n",
+				"a/a_bench_test.go":             fixtureBench("N"),
+			},
+			// The checkout's fixtures need package b, which the base
+			// revision doesn't have, so its build falls back to its own.
+			edit: map[string]string{
+				"b/b.go":                        "package b\n\n// Three is three.\nfunc Three() int { return 3 }\n",
+				"internal/benchtest/fixture.go": "package benchtest\n\nimport \"example.com/m/b\"\n\n// N is the workload's size.\nfunc N() int { return b.Three() }\n",
+			},
+			benchstat: true,
+			wantFiles: []string{"base.txt", "head.txt", "benchstat.txt", "metadata.json"},
+			wantOut:   []string{"! The base revision runs ./a with its own internal/benchtest", "No confirmed regressions above 10%"},
+		},
+		{
+			name: "workloads the base revision can't build with either fixtures",
+			args: []string{"--time", "100x"},
+			env:  map[string]string{"BENCH_BASELINE": "HEAD", "BENCH_COUNT": "10"},
+			base: map[string]string{
+				"internal/benchtest/fixture.go": "package benchtest\n\n// N is the workload's size.\nfunc N() int { return 3 }\n",
+				"a/a_bench_test.go":             fixtureBench("N"),
+			},
+			edit: map[string]string{
+				"b/b.go":                        "package b\n\n// Three is three.\nfunc Three() int { return 3 }\n",
+				"internal/benchtest/fixture.go": "package benchtest\n\nimport \"example.com/m/b\"\n\n// M is the workload's size.\nfunc M() int { return b.Three() }\n",
+				"a/a_bench_test.go":             fixtureBench("M"),
+			},
+			wantErr: "the base revision can't run the benchmarks of ./a",
 		},
 		{name: "package without benchmarks", args: []string{"./internal/benchtest"}, wantErr: "no benchmarks in ./internal/benchtest"},
 		{name: "invalid filter", args: []string{"--filter", "Sum("}, wantErr: "--filter Sum( isn't a valid regular expression"},
@@ -168,6 +221,11 @@ func TestRun(t *testing.T) {
 				t.Skip("benchstat isn't installed; the benchmark CI job runs this test")
 			}
 			root := testModule(t)
+			if tt.base != nil {
+				writeFiles(t, root, tt.base)
+				git(t, root, "add", ".")
+				git(t, root, "-c", "user.name=devtool", "-c", "user.email=devtool@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "base")
+			}
 			writeFiles(t, root, tt.edit)
 			output := filepath.Join(t.TempDir(), "results")
 
@@ -267,6 +325,25 @@ func testModule(t *testing.T) string {
 	return root
 }
 
+// benchFile returns a workload file with the benchmark name. Its loop does
+// enough work that one iteration, as --time 1x runs, never measures zero
+// nanoseconds, which go test would print without a time.
 func benchFile(name string) string {
-	return "package a\n\nimport \"testing\"\n\nfunc " + name + "(b *testing.B) {\n\tfor b.Loop() {\n\t\t_ = Sum(1, 2, 3)\n\t}\n}\n"
+	return "package a\n\nimport \"testing\"\n\nfunc " + name + "(b *testing.B) {\n\tfor b.Loop() {\n\t\tfor i := range 1000 {\n\t\t\t_ = Sum(i, 2, 3)\n\t\t}\n\t}\n}\n"
+}
+
+// fixtureBench returns a workload file whose benchmark reads its size from
+// the fixture function fn.
+func fixtureBench(fn string) string {
+	return "package a\n\nimport (\n\t\"testing\"\n\n\t\"example.com/m/internal/benchtest\"\n)\n\nfunc BenchmarkSum(b *testing.B) {\n\tfor b.Loop() {\n\t\t_ = Sum(benchtest." + fn + "())\n\t}\n}\n"
+}
+
+// git runs git in dir and fails the test when it fails.
+func git(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", args[0], err, out)
+	}
 }

@@ -7,9 +7,14 @@
 // which revision goes first. With --baseline, the base revision is
 // extracted with git archive and the checkout's *_bench_test.go files and
 // shared fixtures are copied onto it, so both revisions run identical
-// workloads. benchstat then compares the samples, and a significant
-// increase above 10% in time, bytes or allocations per operation fails the
-// run. `bench list` shows what `bench run` would measure.
+// workloads. A benchmark the base revision doesn't declare is new: it's
+// left out of the base, runs on the checkout only, and is reported as not
+// compared. When the checkout's fixtures don't build or run on the base
+// revision, as after a change to the language they're written in, that
+// package's base runs its own. benchstat then compares the benchmarks both
+// revisions measured, and a significant increase above 10% in time, bytes
+// or allocations per operation fails the run. `bench list` shows what
+// `bench run` would measure.
 package bench
 
 import (

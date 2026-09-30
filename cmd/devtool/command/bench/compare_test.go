@@ -92,8 +92,9 @@ func TestValidateSamples(t *testing.T) {
 	}{
 		{name: "matching", before: raw(100, 64, 2, 10, "Eval"), after: raw(110, 64, 2, 10, "Eval")},
 		{name: "both empty", wantErr: "no benchmark measurements"},
+		{name: "base measured nothing", after: raw(100, 64, 2, 10, "New")},
 		{name: "head empty", before: raw(100, 64, 2, 10, "Eval"), wantErr: "no benchmark measurements"},
-		{name: "renamed", before: raw(100, 64, 2, 10, "Eval"), after: raw(100, 64, 2, 10, "Renamed"), wantErr: "differ between base and head"},
+		{name: "different benchmarks on each side", before: raw(100, 64, 2, 10, "Eval"), after: raw(100, 64, 2, 10, "Renamed")},
 		{name: "missing sample", before: raw(100, 64, 2, 10, "Eval"), after: raw(100, 64, 2, 9, "Eval"), wantErr: "head: example/policy BenchmarkEval-2"},
 		{name: "extra sample", before: raw(100, 64, 2, 11, "Eval"), after: raw(100, 64, 2, 10, "Eval"), wantErr: "has 11 samples"},
 		{
@@ -118,9 +119,13 @@ func TestCompare(t *testing.T) {
 
 	tests := []struct {
 		name    string
+		base    string
 		head    string
 		wantErr string
 		wantOut string
+		// wantCompared says whether the comparison wrote the samples of
+		// the benchmarks both revisions measured apart from the raw ones.
+		wantCompared bool
 	}{
 		{name: "unchanged", head: raw(100, 64, 2, 10, "Eval"), wantOut: "No confirmed regressions above 10%\n  0 of 3 comparisons changed significantly\n  Results in "},
 		{name: "small slowdown", head: raw(105, 64, 2, 10, "Eval")},
@@ -129,16 +134,43 @@ func TestCompare(t *testing.T) {
 		{name: "more bytes", head: raw(100, 128, 2, 10, "Eval"), wantErr: "1 benchmark regression above 10%"},
 		{name: "more allocations", head: raw(100, 64, 3, 10, "Eval"), wantErr: "1 benchmark regression above 10%"},
 		{name: "mismatched samples", head: raw(100, 64, 2, 9, "Eval"), wantErr: "expected 10"},
+		{
+			name:         "a new benchmark isn't compared",
+			head:         raw(100, 64, 2, 10, "Eval") + raw(900, 900, 9, 10, "New"),
+			wantOut:      "0 of 3 comparisons changed significantly\n  1 new benchmark, not compared: policy New\n",
+			wantCompared: true,
+		},
+		{
+			name:         "a benchmark only the base measured isn't compared",
+			base:         raw(100, 64, 2, 10, "Eval") + raw(100, 64, 2, 10, "Old"),
+			head:         raw(100, 64, 2, 10, "Eval"),
+			wantOut:      "1 benchmark only on the base revision, not compared: policy Old",
+			wantCompared: true,
+		},
+		{
+			name:         "nothing in common",
+			head:         raw(100, 64, 2, 10, "New"),
+			wantOut:      "0 of 0 comparisons changed significantly\n  1 new benchmark, not compared: policy New\n  1 benchmark only on the base revision, not compared: policy Eval",
+			wantCompared: false,
+		},
+		{name: "a regression next to a new benchmark still fails", head: raw(120, 64, 2, 10, "Eval") + raw(100, 64, 2, 10, "New"), wantErr: "1 benchmark regression above 10%", wantCompared: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			writeFiles(t, dir, map[string]string{"base.txt": raw(100, 64, 2, 10, "Eval"), "head.txt": tt.head})
+			base := tt.base
+			if base == "" {
+				base = raw(100, 64, 2, 10, "Eval")
+			}
+			writeFiles(t, dir, map[string]string{"base.txt": base, "head.txt": tt.head})
 			var out bytes.Buffer
 			err := compare(t.Context(), pretty.New(&out), resultsDir(t, dir), benchstat, naming{module: "example", cpu: 2}, 10)
 			checkErr(t, err, tt.wantErr)
 			if !strings.Contains(out.String(), tt.wantOut) {
 				t.Errorf("output %q doesn't contain %q", out.String(), tt.wantOut)
+			}
+			if _, err := os.Stat(filepath.Join(dir, comparedHead)); (err == nil) != tt.wantCompared {
+				t.Errorf("%s exists: %v, want %v", comparedHead, err == nil, tt.wantCompared)
 			}
 			if tt.wantErr == "" || strings.Contains(tt.wantErr, "regressions") {
 				summary, err := os.ReadFile(filepath.Join(dir, "summary.md"))

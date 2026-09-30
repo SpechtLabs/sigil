@@ -160,7 +160,7 @@ func changeRows(th pretty.Theme, changes []change, n naming, markdown bool) [][]
 
 // summarize writes the Markdown summary of a comparison: the verdict, the
 // significant changes as a table, and benchstat's report.
-func summarize(changes []change, failures []string, report string, n naming) string {
+func summarize(changes []change, failures []string, report string, n naming, added, removed []string) string {
 	var b strings.Builder
 	b.WriteString("# Go benchmark comparison\n\n")
 	b.WriteString("Gate: increase above 10% and benchstat significance at alpha 0.01, for time, bytes or allocations per operation.\n\n")
@@ -173,7 +173,15 @@ func summarize(changes []change, failures []string, report string, n naming) str
 	if rows := changeRows(pretty.Theme{}, changes, n, true); len(rows) > 0 {
 		b.WriteString("\n## Significant changes\n\n" + ui.Markdown(changeColumns, rows))
 	}
-	b.WriteString("\n<details><summary>benchstat report</summary>\n\n```text\n" + report + "```\n\n</details>\n")
+	if lines := notCompared(added, removed); len(lines) > 0 {
+		b.WriteString("\n## Not compared\n\nA benchmark only one revision measured has nothing to compare with, so it can't fail the gate.\n\n")
+		for _, l := range lines {
+			b.WriteString("- " + l + "\n")
+		}
+	}
+	if report != "" {
+		b.WriteString("\n<details><summary>benchstat report</summary>\n\n```text\n" + report + "```\n\n</details>\n")
+	}
 	return b.String()
 }
 
