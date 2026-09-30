@@ -2,7 +2,7 @@ testdata/stale/deploy_approval.sigil:1:6: error: kind document DeployApproval di
   |
 1 | kind DeployApproval version 2
   |      ^^^^^^^^^^^^^^
-  = help: a kind has one definition, and the first source wins: the kind files named with --kind or in sigil.yaml, then the paths, then the trusted paths; regenerate this document from the host's Schema(), or remove it
+  = help: a kind has one definition, and the first source wins: the kind files named with --kind or in the configuration file, then the paths, then the trusted paths; regenerate this document from the host's Schema(), or remove it
 
 ✗ checked 2 files, 1 error
 --- error ---

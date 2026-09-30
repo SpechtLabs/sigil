@@ -49,9 +49,9 @@ func TestApply(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path := filepath.Join(dir, tt.name, config.FileName)
+			path := filepath.Join(dir, tt.name, "sigil.yaml")
 			if tt.src != "" {
-				path = filepath.Join(dir, config.FileName)
+				path = filepath.Join(dir, "sigil.yaml")
 				if err := os.WriteFile(path, []byte(tt.src), 0o644); err != nil {
 					t.Fatal(err)
 				}

@@ -21,8 +21,9 @@
 //   - path-matches-name: a document's name doesn't match its file's path.
 //     Off by default.
 //
-// A repository sets each lint's [Level] in sigil.yaml, which the CLI reads
-// into [Options.Levels].
+// A repository sets each lint's [Level] in its configuration file
+// (sigil.yaml, sigil.json or sigil.toml), which the CLI reads into
+// [Options.Levels].
 package lint
 
 import (
@@ -44,7 +45,8 @@ const (
 	Error              // reported as an error, which fails the check
 )
 
-// Lint names, as findings, `sigil check` output and sigil.yaml spell them.
+// Lint names, as findings, `sigil check` output and the configuration file
+// spell them.
 const (
 	UnusedImport        = "unused-import"
 	ShadowedKindName    = "shadowed-kind-name"
@@ -56,26 +58,27 @@ const (
 	PathMatchesName     = "path-matches-name"
 )
 
-// All lists every lint with its default level, in the order the CLI
-// reference documents them. Callers must not modify it.
+// All lists every lint with its default level and when it fires, in the
+// order the CLI reference documents them. Callers must not modify it.
 var All = []Lint{
-	{Name: UnusedImport, Default: Warn},
-	{Name: ShadowedKindName, Default: Warn},
-	{Name: UnusedLet, Default: Warn},
-	{Name: GatedAssert, Default: Warn},
-	{Name: GatedDeny, Default: Warn},
-	{Name: DuplicateInvocation, Default: Warn},
-	{Name: QualifiedImports, Default: Off},
-	{Name: PathMatchesName, Default: Off},
+	{Name: UnusedImport, Default: Warn, Summary: "A `use` binds a name nothing reads or invokes."},
+	{Name: ShadowedKindName, Default: Warn, Summary: "A document keeps a name the kind has since given to an input, host function, decision, enum or enum value."},
+	{Name: UnusedLet, Default: Warn, Summary: "A private let is never read."},
+	{Name: GatedAssert, Default: Warn, Summary: "A policy holding asserts, directly or through its own invocations, is invoked under `when` and isn't required."},
+	{Name: GatedDeny, Default: Warn, Summary: "A policy holding constructors of the decision a `collect one` kind ranks highest is invoked under `when` and isn't required."},
+	{Name: DuplicateInvocation, Default: Warn, Summary: "A policy is invoked twice with the same arguments, in any order."},
+	{Name: QualifiedImports, Default: Off, Summary: "A selective import is used."},
+	{Name: PathMatchesName, Default: Off, Summary: "A document's name doesn't match its file's path."},
 }
 
 // Level is how a lint is reported: not at all, as a warning, or as an
 // error that fails `sigil check`.
 type Level int
 
-// Lint is one lint and its default level.
+// Lint is one lint, its default level and when it fires.
 type Lint struct {
 	Name    string
+	Summary string // when it fires, in one sentence, for the configuration file's schema
 	Default Level
 }
 
@@ -92,7 +95,7 @@ type Finding struct {
 type Options struct {
 	Kind *kind.Kind // the kind the bundle was checked against; required
 	// Levels overrides the default level of the lints it names. An unknown
-	// name has no effect here; loading sigil.yaml rejects one.
+	// name has no effect here; loading the configuration file rejects one.
 	Levels map[string]Level
 	// Required names the policies the host requires, which may be gated
 	// without gated-assert or gated-deny firing: a host rejects a gated

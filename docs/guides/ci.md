@@ -47,7 +47,7 @@ lints:
 
 `gated-deny` as an error fails a team policy that invokes a policy holding denies under a `when`, which is almost always a mistake. Promote `path-matches-name` when CODEOWNERS protects the directories that hold the required policies, so each document's name matches the path CODEOWNERS sees ([a review aid, not a control](/understanding/bundles/#path-matches-name-is-a-review-aid)).
 
-`check` uses the first `sigil.yaml` it finds in the working directory or a parent. When the job runs from somewhere else, name the file with `--config`. [sigil.yaml](/reference/sigil-yaml/) has the format and [Lints](/reference/lints/#lints) the lints and their defaults.
+`check` uses the configuration file of the nearest directory at or above the working directory that has one. The file can be `sigil.toml` or `sigil.json` instead, or any of the three with a leading dot. When the job runs from somewhere else, name the file with `--config`. [Configuration file](/reference/config/) has the format and [Lints](/reference/lints/#lints) the lints and their defaults.
 
 ## Require the guardrails
 
@@ -87,7 +87,7 @@ A repository with policies of several kinds lists one entry per required policy;
 sigil check --require deploy.guardrails --trusted deploy/ --policy 'payments.*'
 ```
 
-When the service loads its policies from a ConfigMap that overlays add to, check the rendered ConfigMap as well. Extract its keys and pipe them to `check` with `-` as the path, which reads the documents from stdin; [Policies in a ConfigMap](/guides/configmaps/#check-in-ci-what-the-service-will-load) shows the pipeline. [sigil.yaml](/reference/sigil-yaml/) has every key, [`sigil check`](/reference/cli/#sigil-check) every flag, and [Trusted sources](/reference/bundles/#trusted-sources) the rules `trusted` follows.
+When the service loads its policies from a ConfigMap that overlays add to, check the rendered ConfigMap as well. Extract its keys and pipe them to `check` with `-` as the path, which reads the documents from stdin; [Policies in a ConfigMap](/guides/configmaps/#check-in-ci-what-the-service-will-load) shows the pipeline. [Configuration file](/reference/config/) has every key, [`sigil check`](/reference/cli/#sigil-check) every flag, and [Trusted sources](/reference/bundles/#trusted-sources) the rules `trusted` follows.
 
 To review what a ConfigMap change does, run `sigil explain` on the same input without `--policy`. It explains every policy in the bundle, one after another, and its output can go into the pull request.
 

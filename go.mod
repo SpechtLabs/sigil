@@ -11,6 +11,7 @@ require (
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/charmbracelet/x/term v0.2.2
+	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/sierrasoftworks/humane-errors-go v0.0.0-20260709190713-8d6350c8d11d
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10

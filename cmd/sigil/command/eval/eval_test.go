@@ -258,7 +258,7 @@ func TestConfigKinds(t *testing.T) {
 		{name: "named", config: "kinds: vendor/access.sigil\n", flag: "../sigil.yaml"},
 		{name: "no kind", config: "lints: {}\n", wantErr: "no kind Access was found"},
 		{name: "missing kind file", config: "kinds: [vendor/nope.sigil]\n", wantErr: "../sigil.yaml: the kind file ../vendor/nope.sigil can't be read"},
-		{name: "invalid", config: "kinds: [vendor/access.sigil\n", wantErr: "isn't valid YAML"},
+		{name: "invalid", config: "kinds: [vendor/access.sigil\n", wantErr: "invalid YAML"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

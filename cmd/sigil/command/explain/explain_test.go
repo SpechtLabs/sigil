@@ -123,30 +123,39 @@ func TestCount(t *testing.T) {
 }
 
 // TestConfigKinds checks that explain loads the kind files the nearest
-// sigil.yaml, or the one --config names, lists under kinds:.
+// configuration file, or the one --config names, lists under kinds:, in
+// each format.
 func TestConfigKinds(t *testing.T) {
 	tests := []struct {
 		name    string
-		config  string // sigil.yaml, one level above the policies
+		file    string // the configuration file's name; sigil.yaml when empty
+		config  string // its source, one level above the policies
 		flag    string // --config, relative to the policies
 		wantErr string
 	}{
 		{name: "nearest", config: "kinds: [vendor/deploy_approval.sigil]\n"},
 		{name: "named", config: "kinds: vendor/deploy_approval.sigil\n", flag: "../sigil.yaml"},
 		{name: "missing kind file", config: "kinds: [vendor/nope.sigil]\n", wantErr: "the kind file ../vendor/nope.sigil can't be read"},
-		{name: "invalid", config: "kinds: [vendor/deploy_approval.sigil\n", wantErr: "isn't valid YAML"},
+		{name: "invalid", config: "kinds: [vendor/deploy_approval.sigil\n", wantErr: "invalid YAML"},
+		{name: "nearest hidden TOML", file: ".sigil.toml", config: "kinds = [\"vendor/deploy_approval.sigil\"]\n"},
+		{name: "named JSON", file: "sigil.json", config: `{"kinds": "vendor/deploy_approval.sigil"}`, flag: "../sigil.json"},
+		{name: "invalid TOML", file: "sigil.toml", config: "kinds = [\n", wantErr: "../sigil.toml:1:10: invalid TOML: array is incomplete"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			files := map[string]string{"sigil.yaml": tt.config, "vendor/deploy_approval.sigil": "deploy_approval.sigil"}
+			name := tt.file
+			if name == "" {
+				name = "sigil.yaml"
+			}
+			files := map[string]string{name: tt.config, "vendor/deploy_approval.sigil": "deploy_approval.sigil"}
 			for _, f := range []string{"common", "guardrails", "production"} {
 				files["policies/deploy/"+f+".sigil"] = "deploy/" + f + ".sigil"
 			}
 			files["policies/payments/production.sigil"] = "payments/production.sigil"
 			for to, from := range files {
 				src := []byte(tt.config)
-				if to != "sigil.yaml" {
+				if to != name {
 					var err error
 					if src, err = os.ReadFile(filepath.Join("testdata", filepath.FromSlash(from))); err != nil {
 						t.Fatal(err)

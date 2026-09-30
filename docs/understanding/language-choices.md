@@ -111,7 +111,7 @@ The reason in a constructor has no qualified form. `approve(reason: release_mana
 
 An import nothing uses, or a private `let` nothing reads, is a lint warning, not a compile error, so commenting out a rule while debugging doesn't break the build just because the import it used is suddenly unused. The warning still shows up in `sigil check`, and a repository that wants it enforced can raise it to an error.
 
-That configuration is strict in turn. `sigil.yaml` rejects a lint name, level or key it doesn't know, so a typo can't leave a lint at its default without anyone noticing. The lints and their defaults are in [Lints](/reference/lints/).
+That configuration is strict in turn. The configuration file rejects a lint name, level or key it doesn't know, so a typo can't leave a lint at its default without anyone noticing. The lints and their defaults are in [Lints](/reference/lints/).
 
 ## Why the operators refuse to guess
 

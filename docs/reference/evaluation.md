@@ -154,7 +154,7 @@ Why: [Composition without templating](/understanding/composition/).
 
 ## Required policies
 
-The host names the policies every root policy must invoke unconditionally, with `policy.Require` when it loads a policy (see [Load options](/reference/go-api/#load-options)); `sigil check` runs the same check for the policies `--require` or the `require` key of [`sigil.yaml`](/reference/sigil-yaml/) names.
+The host names the policies every root policy must invoke unconditionally, with `policy.Require` when it loads a policy (see [Load options](/reference/go-api/#load-options)); `sigil check` runs the same check for the policies `--require` or the `require` key of [the configuration file](/reference/config/) names.
 
 - Each required policy must be reachable from the root through top-level invocations only, with no `when` anywhere on the path. Otherwise the load fails, with an error at the gated call, or at the root's header when the call is missing.
 - The requirement is transitive. A shared baseline policy that invokes `deploy.guardrails` at its top level satisfies it for every policy that invokes the baseline at its top level, at any depth.

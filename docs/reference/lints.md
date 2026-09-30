@@ -5,7 +5,7 @@ createTime: 2026/09/29 12:00:00
 permalink: /reference/lints/
 ---
 
-The lints [`sigil check`](/reference/cli/#sigil-check) reports, their default levels, and how [`sigil.yaml`](/reference/sigil-yaml/) sets them.
+The lints [`sigil check`](/reference/cli/#sigil-check) reports, their default levels, and how [the configuration file](/reference/config/) sets them.
 
 ## Lints
 
@@ -56,11 +56,11 @@ Default `warn`. Fires when a `let` that isn't `pub` is never read. Only private 
 
 ### `gated-assert`
 
-Default `warn`. Fires when a policy that contains asserts, directly or through the policies it invokes, is invoked inside `when` and isn't required, by `require:` in [`sigil.yaml`](/reference/sigil-yaml/) or by `--require`. Its asserts only run while the gate holds.
+Default `warn`. Fires when a policy that contains asserts, directly or through the policies it invokes, is invoked inside `when` and isn't required, by `require:` in [the configuration file](/reference/config/) or by `--require`. Its asserts only run while the gate holds.
 
 ### `gated-deny`
 
-Default `warn`. Fires when a policy that contains denies, directly or through the policies it invokes, is invoked inside `when` and isn't required, by `require:` in [`sigil.yaml`](/reference/sigil-yaml/) or by `--require`. Its denies only fire while the gate holds. A deny is a constructor of the decision a `collect one` kind ranks highest; a `collect all` kind has none.
+Default `warn`. Fires when a policy that contains denies, directly or through the policies it invokes, is invoked inside `when` and isn't required, by `require:` in [the configuration file](/reference/config/) or by `--require`. Its denies only fire while the gate holds. A deny is a constructor of the decision a `collect one` kind ranks highest; a `collect all` kind has none.
 
 ### `duplicate-invocation`
 
@@ -74,9 +74,9 @@ Default `off`. Fires when a selective import is used. It's for teams that want G
 
 Default `off`. Fires when a file holds a document whose name doesn't match the file's path; see [File names](/reference/bundles/#file-names). Repositories that protect required policies with CODEOWNERS should promote it to `error`. Why it isn't a security control: [Bundles and trust](/understanding/bundles/).
 
-## `sigil.yaml`
+## Setting levels
 
-The `lints` key of [`sigil.yaml`](/reference/sigil-yaml/) sets each lint to `off`, `warn` or `error`. Lints it doesn't name keep their defaults, and an unknown lint or level is an error.
+The `lints` key of [the configuration file](/reference/config/) sets each lint to `off`, `warn` or `error`. Lints it doesn't name keep their defaults, and an unknown lint or level is an error.
 
 ```yaml
 # sigil.yaml

@@ -13,7 +13,7 @@ import (
 
 func TestParse(t *testing.T) {
 	// The file sits in repo/policies, so relative paths resolve there.
-	file := filepath.Join("repo", "policies", config.FileName)
+	file := filepath.Join("repo", "policies", "sigil.yaml")
 	dir := filepath.Dir(file)
 	abs := filepath.Join(string(filepath.Separator), "opt", "kinds", "deploy.sigil")
 	tests := []struct {
@@ -31,6 +31,8 @@ func TestParse(t *testing.T) {
 		{name: "empty file", src: "", want: &config.Config{}},
 		{name: "only a comment", src: "# nothing configured yet\n", want: &config.Config{}},
 		{name: "an empty map", src: "{}\n", want: &config.Config{}},
+		{name: "$schema is ignored", src: "# yaml-language-server: $schema=https://sigil.specht-labs.de/schema/config.json\n$schema: https://sigil.specht-labs.de/schema/config.json\n", want: &config.Config{}},
+		{name: "a misspelled $schema", src: "schema: x\n", err: `unknown key "schema"`, advice: `did you mean "$schema"?`},
 		{name: "a null document", src: "~\n", want: &config.Config{}},
 		{name: "empty sections", src: "kinds:\nrequire:\nlints:\n", want: &config.Config{}},
 		{
@@ -76,8 +78,10 @@ func TestParse(t *testing.T) {
 		{name: "a key set twice", src: "kinds: [a.sigil]\nkinds: [b.sigil]\n", err: "sigil.yaml:2:1: kinds is set twice", advice: "first set at line 1"},
 		{name: "a key that isn't a name", src: "[kinds]: a.sigil\n", err: "sigil.yaml:1:1: a key isn't a name"},
 		{name: "not a map", src: "- kinds\n", err: "sigil.yaml:1:1: the configuration isn't a map"},
-		{name: "not YAML", src: "kinds: [a\n", err: "isn't valid YAML"},
-		{name: "several documents", src: "lints: {}\n---\nkinds: []\n", err: "holds more than one YAML document"},
+		{name: "not YAML", src: "kinds: [a\n", err: "invalid YAML"},
+		{name: "not YAML, without a line", src: "a: b: c\n", err: file + " isn't valid YAML", advice: "fix the YAML syntax"},
+		{name: "not YAML, with a line", src: "kinds: [a\n", err: file + ":1: invalid YAML: did not find expected"},
+		{name: "several documents", src: "lints: {}\n---\nkinds: []\n", err: file + ":2:1: a second YAML document starts here"},
 		{name: "a kind that isn't a string", src: "kinds:\n  - {file: a.sigil}\n", err: "sigil.yaml:2:5: kinds[0] isn't a string", advice: "a kind file, relative to sigil.yaml"},
 		{name: "an empty kind", src: "kinds:\n  - \"\"\n", err: "kinds[0] is empty"},
 		{name: "a null kind", src: "kinds:\n  - ~\n", err: "kinds[0] is empty"},
@@ -86,7 +90,7 @@ func TestParse(t *testing.T) {
 		{name: "a require entry without a policy", src: "require:\n  - trusted: [platform]\n", err: "sigil.yaml:2:5: require[0] names no policy", advice: "add `policy:`"},
 		{name: "an empty policy", src: "require:\n  - policy:\n", err: "require[0].policy is empty"},
 		{name: "a policy that isn't a name", src: "require:\n  - policy: [a, b]\n", err: "sigil.yaml:2:13: require[0].policy isn't a name"},
-		{name: "a policy pattern", src: "require:\n  - policy: deploy.*\n", err: `sigil.yaml:2:13: require[0].policy "deploy.*" is a pattern`, advice: "roots: takes the patterns"},
+		{name: "a policy pattern", src: "require:\n  - policy: deploy.*\n", err: `sigil.yaml:2:13: require[0].policy "deploy.*" is a pattern`, advice: "`roots:` takes the patterns"},
 		{name: "an unknown require key", src: "require:\n  - policy: deploy.guardrails\n    root: [payments.*]\n", err: `sigil.yaml:3:5: unknown key "root" in require[0]`, advice: "did you mean \"roots\"?; a require entry holds `policy:`, `trusted:` and `roots:`"},
 		{name: "a require key set twice", src: "require:\n  - policy: a\n    policy: b\n", err: "policy is set twice in require[0]"},
 		{name: "a policy required twice", src: "require:\n  - policy: deploy.guardrails\n  - policy: deploy.guardrails\n", err: "sigil.yaml:3:13: deploy.guardrails is required twice", advice: "first required at line 2"},
@@ -124,7 +128,7 @@ func TestParse(t *testing.T) {
 // TestRequirements checks that --require replaces the file's
 // requirements for the run, and --trusted or --policy alone doesn't.
 func TestRequirements(t *testing.T) {
-	c := &config.Config{File: config.FileName, Require: []config.Require{{Policy: "deploy.guardrails", Pos: config.Pos{Line: 2, Column: 13}}}}
+	c := &config.Config{File: "sigil.yaml", Require: []config.Require{{Policy: "deploy.guardrails", Pos: config.Pos{Line: 2, Column: 13}}}}
 	tests := []struct {
 		name                     string
 		policies, trusted, roots []string
@@ -162,48 +166,85 @@ func TestAt(t *testing.T) {
 	if got := c.At(config.Pos{}); got != "policies/sigil.yaml" {
 		t.Errorf("At(zero) = %q", got)
 	}
+	if got := c.Base(); got != "sigil.yaml" {
+		t.Errorf("Base() = %q", got)
+	}
+	if got := (&config.Config{}).Base(); got != "the configuration file" {
+		t.Errorf("Base() of the defaults = %q", got)
+	}
 }
 
-// TestLoad finds the nearest sigil.yaml at or above a directory.
+// TestLoad finds the configuration file of the nearest directory at or
+// above a directory, under any of its six names, or reads the one --config
+// names in the format of its extension.
 func TestLoad(t *testing.T) {
-	root := t.TempDir()
-	repo := filepath.Join(root, "repo")
-	nested := filepath.Join(repo, "teams", "payments")
-	inner := filepath.Join(repo, "teams", "platform")
-	for _, d := range []string{nested, inner} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
+	// Each format sets a different lint, so the test sees which file was
+	// read.
+	sources := map[string]string{
+		".yaml": "lints:\n  gated-deny: error\n",
+		".yml":  "lints:\n  gated-deny: error\n",
+		".json": `{"lints": {"unused-let": "off"}}`,
+		".toml": "[lints]\npath-matches-name = \"warn\"\n",
 	}
-	write(t, filepath.Join(repo, config.FileName), "lints:\n  gated-deny: error\n")
-	write(t, filepath.Join(inner, config.FileName), "lints:\n  unused-let: off\n")
-	explicit := filepath.Join(root, "other.yaml")
-	write(t, explicit, "lints:\n  path-matches-name: warn\n")
-	// A directory named sigil.yaml isn't a configuration.
-	if err := os.MkdirAll(filepath.Join(nested, config.FileName), 0o755); err != nil {
-		t.Fatal(err)
+	levels := map[string]map[string]lint.Level{
+		".yaml": {lint.GatedDeny: lint.Error},
+		".yml":  {lint.GatedDeny: lint.Error},
+		".json": {lint.UnusedLet: lint.Off},
+		".toml": {lint.PathMatchesName: lint.Warn},
 	}
-
 	tests := []struct {
-		name string
-		path string
-		dir  string
-		file string // where the configuration came from; empty for the defaults
-		want map[string]lint.Level
-		err  string
+		name  string
+		files []string // below the tree's root; each holds its format's source
+		dirs  []string // directories below the root, besides the files' own
+		path  string   // --config, below the root
+		dir   string   // where discovery starts, below the root
+		file  string   // the file read, below the root; empty for the defaults
+		err   string
 	}{
-		{name: "in the directory", dir: repo, file: filepath.Join(repo, config.FileName), want: map[string]lint.Level{lint.GatedDeny: lint.Error}},
-		{name: "in a parent", dir: nested, file: filepath.Join(repo, config.FileName), want: map[string]lint.Level{lint.GatedDeny: lint.Error}},
-		{name: "the nearest wins", dir: inner, file: filepath.Join(inner, config.FileName), want: map[string]lint.Level{lint.UnusedLet: lint.Off}},
-		{name: "explicit path", path: explicit, dir: nested, file: explicit, want: map[string]lint.Level{lint.PathMatchesName: lint.Warn}},
-		{name: "none found", dir: root},
-		{name: "explicit path missing", path: filepath.Join(root, "nope.yaml"), dir: repo, err: "couldn't be read"},
+		{name: "sigil.yaml", files: []string{"sigil.yaml"}, file: "sigil.yaml"},
+		{name: "sigil.json", files: []string{"sigil.json"}, file: "sigil.json"},
+		{name: "sigil.toml", files: []string{"sigil.toml"}, file: "sigil.toml"},
+		{name: ".sigil.yaml", files: []string{".sigil.yaml"}, file: ".sigil.yaml"},
+		{name: ".sigil.json", files: []string{".sigil.json"}, file: ".sigil.json"},
+		{name: ".sigil.toml", files: []string{".sigil.toml"}, file: ".sigil.toml"},
+		{name: "in a parent", files: []string{"sigil.toml"}, dirs: []string{"teams/payments"}, dir: "teams/payments", file: "sigil.toml"},
+		{name: "the nearest wins", files: []string{"sigil.yaml", "teams/.sigil.json"}, dirs: []string{"teams/payments"}, dir: "teams/payments", file: "teams/.sigil.json"},
+		{name: "the nearest wins over two further up", files: []string{"sigil.yaml", "sigil.toml", "teams/sigil.json"}, dir: "teams", file: "teams/sigil.json"},
+		{name: "a directory isn't a configuration", files: []string{"sigil.toml"}, dirs: []string{"teams/sigil.yaml"}, dir: "teams", file: "sigil.toml"},
+		{name: "none", dirs: []string{"teams"}, dir: "teams"},
+		{name: "two in one directory", files: []string{"sigil.yaml", ".sigil.toml"}, err: "sigil.yaml and .sigil.toml in ROOT are both configuration files"},
+		{name: "three in one directory", files: []string{"sigil.json", "sigil.toml", ".sigil.yaml"}, err: "sigil.json, sigil.toml and .sigil.yaml in ROOT are all configuration files"},
+		{name: "--config yaml", files: []string{"sigil.toml", "conf/other.yaml"}, path: "conf/other.yaml", file: "conf/other.yaml"},
+		{name: "--config yml", files: []string{"conf/other.yml"}, path: "conf/other.yml", file: "conf/other.yml"},
+		{name: "--config json", files: []string{"conf/other.json"}, path: "conf/other.json", file: "conf/other.json"},
+		{name: "--config toml", files: []string{"conf/other.toml"}, path: "conf/other.toml", file: "conf/other.toml"},
+		{name: "--config skips discovery", files: []string{"sigil.yaml", "sigil.json", "conf/other.toml"}, path: "conf/other.toml", file: "conf/other.toml"},
+		{name: "--config with another extension", files: []string{"sigil.yaml"}, path: "sigil.conf", err: "sigil.conf isn't a .yaml, .yml, .json or .toml file"},
+		{name: "--config without an extension", path: "sigil", err: "sigil isn't a .yaml, .yml, .json or .toml file"},
+		{name: "--config missing", path: "nope.toml", err: "couldn't be read"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, err := config.Load(tt.path, tt.dir)
+			root := t.TempDir()
+			for _, d := range tt.dirs {
+				if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, f := range tt.files {
+				p := filepath.Join(root, f)
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				write(t, p, sources[filepath.Ext(f)])
+			}
+			path := ""
+			if tt.path != "" {
+				path = filepath.Join(root, tt.path)
+			}
+			c, err := config.Load(path, filepath.Join(root, tt.dir))
 			if tt.err != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.err) {
+				if err == nil || !strings.Contains(err.Error(), strings.ReplaceAll(tt.err, "ROOT", root)) {
 					t.Fatalf("Load() error = %v, want %q", err, tt.err)
 				}
 				return
@@ -211,10 +252,53 @@ func TestLoad(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Load() error = %v", err)
 			}
-			if c.File != tt.file || len(c.Lints) != len(tt.want) || (tt.want != nil && !reflect.DeepEqual(c.Lints, tt.want)) {
-				t.Errorf("Load() = %+v, want file %q with %v", c, tt.file, tt.want)
+			want := &config.Config{}
+			if tt.file != "" {
+				want = &config.Config{File: filepath.Join(root, tt.file), Lints: levels[filepath.Ext(tt.file)]}
+			}
+			if !reflect.DeepEqual(c, want) {
+				t.Errorf("Load() = %+v, want %+v", c, want)
 			}
 		})
+	}
+}
+
+// TestParseUnknownFormat rejects a file whose extension names no format.
+func TestParseUnknownFormat(t *testing.T) {
+	if _, err := config.Parse("sigil.ini", nil); err == nil || !strings.Contains(err.Error(), "sigil.ini isn't a .yaml, .yml, .json or .toml file") {
+		t.Fatalf("Parse() error = %v", err)
+	}
+}
+
+// TestLoadTwoHere names the working directory, rather than ".", when it
+// holds two configuration files, and names them relative to it.
+func TestLoadTwoHere(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	write(t, "sigil.toml", "")
+	write(t, ".sigil.json", "{}")
+	_, err := config.Load("", ".")
+	if want := "sigil.toml and .sigil.json in the working directory are both configuration files"; err == nil || err.Error() != want {
+		t.Fatalf("Load() error = %v, want %q", err, want)
+	}
+	if advice := strings.Join(err.Advice(), "; "); !strings.Contains(advice, "keep one of them") {
+		t.Errorf("advice = %q", advice)
+	}
+}
+
+// TestLoadUnreadable fails when a directory on the way up can't be
+// searched, rather than skipping a configuration file it may hold.
+func TestLoadUnreadable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can search any directory")
+	}
+	dir := filepath.Join(t.TempDir(), "locked")
+	if err := os.Mkdir(dir, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	if _, err := config.Load("", dir); err == nil || !strings.Contains(err.Error(), "sigil.yaml can't be read") {
+		t.Fatalf("Load() error = %v, want the first name that can't be read", err)
 	}
 }
 
@@ -229,7 +313,7 @@ func TestLoadResolvesPaths(t *testing.T) {
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	write(t, filepath.Join(repo, config.FileName), "kinds: [kinds/deploy.sigil]\nrequire:\n  - policy: deploy.guardrails\n    trusted: [platform/deploy]\n")
+	write(t, filepath.Join(repo, "sigil.yaml"), "kinds: [kinds/deploy.sigil]\nrequire:\n  - policy: deploy.guardrails\n    trusted: [platform/deploy]\n")
 	up := filepath.Join("..", "..")
 	tests := []struct {
 		name, cwd, dir string
@@ -246,7 +330,7 @@ func TestLoadResolvesPaths(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if want := filepath.Join(tt.base, config.FileName); c.File != want {
+			if want := filepath.Join(tt.base, "sigil.yaml"); c.File != want {
 				t.Errorf("File = %q, want %q", c.File, want)
 			}
 			if want := []string{filepath.Join(tt.base, "kinds", "deploy.sigil")}; !reflect.DeepEqual(c.Kinds, want) {
