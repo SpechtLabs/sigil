@@ -6,10 +6,16 @@
 // answers it can't vouch for), replaces it, and gives up for boot to exit
 // only when no replacement loads. The Go service had one engine; this is the
 // lead's review, item 1.
+//
+// The specs stop engines through test seams (a pool whose compile fails the
+// way a stopped module does, an instance marked stopped), not through a
+// document that happens to exhaust the parser's stack: the parser is about
+// to refuse deep nesting with a diagnostic. One spec keeps a real deeply
+// nested document and accepts either outcome.
 import { afterAll, afterEach, describe, expect, spyOn, test } from "bun:test";
-import { Policy, SigilStoppedError } from "@spechtlabs/sigil";
+import { Policy, type Sigil } from "@spechtlabs/sigil";
 import { loadSigil } from "@/lib/sigil";
-import { testWasm } from "@/lib/testing";
+import { stoppedError, stopSigil, testWasm } from "@/lib/testing";
 import { expectStatus, PATH_READYZ } from "../fixture/client";
 import {
   alertLabels,
@@ -35,13 +41,8 @@ import { CHECKOUT_RULES, closeEnvs, type Env, failingRule, newEnv, releaseTeleme
 const METRIC_ENGINE_RESTARTS = "alertrouter_engine_restarts_total";
 const METRIC_ENGINE_UP = "alertrouter_engine_up";
 
-/**
- * A condition nested two hundred thousand parentheses deep: the Go parser in the
- * module recurses once per level and runs out of stack, which kills the
- * WebAssembly instance compiling it.
- */
-const DEEP = `${"(".repeat(200_000)}alert.name${")".repeat(200_000)}`;
-const crashingRule = `${CHECKOUT_RULES}\n\nwhen ${DEEP} == "x" {\n  drop(reason: muted)\n}\n`;
+/** How a load rejected because the engine compiling it stopped explains itself. */
+const ENGINE_STOPPED = "the bundle made the evaluation engine fail (the Sigil module stopped";
 
 afterEach(closeEnvs);
 afterAll(releaseTelemetry);
@@ -76,60 +77,93 @@ function gatedLoader(mode: "hold" | "fail") {
 
 /**
  * Makes the platform engine's next evaluation fail the way it does when its
- * module stops, say because Go code ran out of stack: team policies run in
- * workers, so only the in-process platform engine calls this Policy.
+ * module stops: team policies run in workers, so only the in-process
+ * platform engine calls this Policy.
  */
 function breakPlatformOnce() {
   return spyOn(Policy.prototype, "eval").mockImplementationOnce(() => {
-    throw new SigilStoppedError("the Sigil module stopped: Maximum call stack size exceeded");
+    throw stoppedError();
   });
+}
+
+/** Makes the pool's next compile fail the way it does when the worker compiling stops. */
+function stopNextCompile(e: Env) {
+  return spyOn(e.service.pool, "compile").mockImplementationOnce(() => Promise.reject(stoppedError()));
 }
 
 async function expectReady(e: Env, status: number): Promise<void> {
   expectStatus(await e.client.get(PATH_READYZ), status);
 }
 
-describe("A team bundle that crashes the engine compiling it", () => {
-  test("is rejected, and the last good bundle keeps routing every team in fresh workers", async () => {
+/** Expects both teams' critical alerts to page their on-call, answered 200. */
+async function expectBothTeamsRoute(e: Env): Promise<void> {
+  for (const [team, oncall] of [
+    [TEAM_CHECKOUT, CHECKOUT_ONCALL],
+    [TEAM_PAYMENTS, PAYMENTS_ONCALL],
+  ] as const) {
+    const a = await e.client.route(team, critical(team));
+    expectStatus(a, 200);
+    expect([a.out.decision, a.out.target]).toEqual([DECISION_PAGE, oncall]);
+  }
+}
+
+describe("A team bundle that stops the engine compiling it", () => {
+  test("is rejected, and the last good bundle keeps routing every team", async () => {
+    const e = await newEnv();
+    const good = await e.served();
+    const spy = stopNextCompile(e);
+    try {
+      const rejected = await e.client.reload();
+      expectStatus(rejected, 500);
+      const err = (JSON.parse(rejected.body) as ErrorResponse).error;
+      expect(err?.message).toContain("failed to compile, so the previous bundle keeps serving");
+      expect(messages(err).join("\n")).toContain(ENGINE_STOPPED);
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await e.served()).fingerprint).toBe(good.fingerprint);
+
+    // The platform engine never saw the bundle, so readiness holds.
+    await expectReady(e, 200);
+    await expectBothTeamsRoute(e);
+    // And the next reload loads.
+    await e.reloadOK();
+  });
+
+  test("fails startup, so the pod never becomes ready", async () => {
+    const e = await newEnv({ unloaded: true });
+    const spy = stopNextCompile(e);
+    try {
+      const err = await e.initialLoad().then(
+        () => undefined,
+        (err: unknown) => err,
+      );
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toContain("there is no earlier bundle to fall back to");
+    } finally {
+      spy.mockRestore();
+    }
+    await expectReady(e, 503);
+  });
+
+  // The one spec with a real document that once stopped the engine: a
+  // condition nested two hundred thousand parentheses deep. Whether the
+  // module runs out of stack on it or the parser refuses it with a
+  // diagnostic, the bundle is rejected and the last good one keeps routing.
+  test("with real deep nesting, is rejected either way, and the last good bundle keeps routing", async () => {
     const e = await newEnv({ copyTeams: true });
     const good = await e.served();
-    e.editCheckout(CHECKOUT_RULES, crashingRule);
+    const deep = `${"(".repeat(200_000)}alert.name${")".repeat(200_000)}`;
+    e.editCheckout(CHECKOUT_RULES, `${CHECKOUT_RULES}\n\nwhen ${deep} == "x" {\n  drop(reason: muted)\n}\n`);
 
     const rejected = await e.client.reload();
     expectStatus(rejected, 500);
-    expect(messages((JSON.parse(rejected.body) as ErrorResponse).error).join("\n")).toContain(
-      "the bundle made the evaluation engine fail",
+    expect(messages((JSON.parse(rejected.body) as ErrorResponse).error).join("\n")).toMatch(
+      /the bundle made the evaluation engine fail|checkout\/alerts\.sigil:/,
     );
-    expect((await e.families()).value(METRIC_ENGINE_RESTARTS, { engine: "worker" })).toBeGreaterThanOrEqual(1);
     expect((await e.served()).fingerprint).toBe(good.fingerprint);
-
-    // The platform engine never saw the file, so readiness holds.
     await expectReady(e, 200);
-    for (const [team, oncall] of [
-      [TEAM_CHECKOUT, CHECKOUT_ONCALL],
-      [TEAM_PAYMENTS, PAYMENTS_ONCALL],
-    ] as const) {
-      const a = await e.client.route(team, critical(team));
-      expectStatus(a, 200);
-      expect([a.out.decision, a.out.target]).toEqual([DECISION_PAGE, oncall]);
-    }
-
-    // Once the file is fixed, the next reload loads it.
-    e.editCheckout(crashingRule, CHECKOUT_RULES);
-    await e.reloadOK();
-  }, 30_000);
-
-  test("fails startup, so the pod never becomes ready", async () => {
-    const e = await newEnv({ copyTeams: true, unloaded: true });
-    e.editCheckout(CHECKOUT_RULES, crashingRule);
-
-    const err = await e.initialLoad().then(
-      () => undefined,
-      (err: unknown) => err,
-    );
-    expect(err).toBeInstanceOf(Error);
-    expect((err as Error).message).toContain("there is no earlier bundle to fall back to");
-    await expectReady(e, 503);
+    await expectBothTeamsRoute(e);
   }, 30_000);
 });
 
@@ -137,14 +171,19 @@ describe("A team bundle that crashes the engine compiling it", () => {
 // left no trace to read platform.paging's pages from (it failed, or never
 // ran), and for the readiness probe's canary. Its failures show there.
 describe("The platform engine", () => {
-  test("that the readiness probe finds broken is replaced, and /readyz recovers", async () => {
-    const e = await newEnv();
-    const spy = breakPlatformOnce();
-    try {
-      await expectReady(e, 503);
-    } finally {
-      spy.mockRestore();
-    }
+  test("whose instance stopped is found by the readiness probe and replaced, and /readyz recovers", async () => {
+    let instance: Sigil | undefined;
+    const e = await newEnv({
+      loadPlatformSigil: async () => {
+        instance = await loadSigil(() => {}, await testWasm());
+        return instance;
+      },
+    });
+    if (instance === undefined) throw new Error("the platform engine didn't load an instance");
+    // The module stops silently, as it does after a trap; nothing has
+    // called into it since, so only the probe can find out.
+    stopSigil(instance);
+    await expectReady(e, 503);
 
     await e.service.platform.recovered();
     await expectReady(e, 200);
