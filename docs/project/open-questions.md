@@ -91,6 +91,12 @@ One problem remains, because composition is a union: any rule the invoked policy
 
 A host could layer a required policy itself, with something like `policy.Base("deploy.guardrails", params)`, so team files never mention it. [`policy.From`](/reference/bundles/#trusted-sources) already gives the host a trusted source for required policies; a base would add the invocation too. That suits platforms where teams shouldn't see or bind the guardrails' params, and it sidesteps pinned params entirely. It's deferred rather than rejected, because the team file then no longer shows the whole picture, and `sigil explain` would need the host's configuration to print it. When is it worth adding?
 
+## Reasons reserved for required policies
+
+**Blocks:** nothing.
+
+A team can outrank a required policy's candidate by constructing the same decision with a higher-ranked reason, and when the payload carries the action, such as a page's target, that changes what happens without a conflict; see [What the guarantee doesn't cover](/understanding/composition/#what-the-guarantee-doesn-t-cover). The kind could mark reasons that only required, trusted policies may construct, so a team's `page(reason: critical_alert, ...)` becomes a compile error rather than a quiet redirect. It would put trust into the kind file, which today only describes types, and a reserved reason would need a way for the host to say which policies count as trusted when the kind is exported. Is that worth it, or is comparing with the required policy's own evaluation in the host the better answer?
+
 ## Non-Go evaluators
 
 **Blocks:** nothing.
