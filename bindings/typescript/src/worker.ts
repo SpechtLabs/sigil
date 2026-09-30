@@ -277,14 +277,16 @@ class Connection {
       addEventListener?: (type: string, l: (ev: { data?: Reply }) => void) => void;
       on?: (type: string, l: (v: unknown) => void) => void;
     };
-    if (typeof w.addEventListener === "function") {
-      w.addEventListener("message", (ev) => onMessage(ev.data as Reply));
-      w.addEventListener("error", (ev) => onError(ev));
-      w.addEventListener("messageerror", (ev) => onError(ev));
-    } else if (typeof w.on === "function") {
+    // A worker_threads Worker is an event emitter; Bun's also has an
+    // addEventListener that never hears its messages, so `on` comes first.
+    if (typeof w.on === "function") {
       w.on("message", (data) => onMessage(data as Reply));
       w.on("error", onError);
       w.on("exit", (code) => this.close(new SigilError(`the Sigil worker exited with code ${String(code)}`)));
+    } else if (typeof w.addEventListener === "function") {
+      w.addEventListener("message", (ev) => onMessage(ev.data as Reply));
+      w.addEventListener("error", (ev) => onError(ev));
+      w.addEventListener("messageerror", (ev) => onError(ev));
     }
   }
 

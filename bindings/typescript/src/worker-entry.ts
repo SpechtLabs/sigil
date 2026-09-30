@@ -101,23 +101,36 @@ function toWire(err: unknown): WireError {
   return { name: "Error", message: err instanceof Error ? err.message : String(err), diagnostics: [] };
 }
 
-/** The channel to the client: the worker global scope, or Node's parentPort. */
+/**
+ * The channel to the client. Node's parentPort comes first where there is
+ * one: a worker_threads worker on Bun also has the web scope's
+ * postMessage, but messages from the parent arrive only on parentPort.
+ * Browsers have no node:worker_threads, so the import fails there and the
+ * worker global scope is the channel.
+ */
 async function connect(): Promise<Port> {
+  type ParentPort = { postMessage(msg: unknown): void; on(type: "message", listener: (data: Request) => void): void };
+  let parentPort: ParentPort | null = null;
+  try {
+    const specifier = "node:worker_threads";
+    ({ parentPort } = (await import(/* @vite-ignore */ specifier)) as { parentPort: ParentPort | null });
+  } catch {
+    // Not a server-side runtime.
+  }
+  if (parentPort !== null) {
+    const port = parentPort;
+    return { post: (reply) => port.postMessage(reply), listen: (handler) => port.on("message", handler) };
+  }
   const scope = globalThis as unknown as {
     postMessage?: (msg: unknown) => void;
     addEventListener?: (type: "message", listener: (ev: { data: Request }) => void) => void;
   };
-  if (typeof scope.postMessage === "function" && typeof scope.addEventListener === "function") {
-    const { postMessage, addEventListener } = scope as Required<typeof scope>;
-    return {
-      post: (reply) => postMessage.call(globalThis, reply),
-      listen: (handler) => addEventListener.call(globalThis, "message", (ev) => handler(ev.data)),
-    };
+  if (typeof scope.postMessage !== "function" || typeof scope.addEventListener !== "function") {
+    throw new Error("worker-entry runs only inside a worker");
   }
-  const specifier = "node:worker_threads";
-  const { parentPort } = (await import(/* @vite-ignore */ specifier)) as {
-    parentPort: { postMessage(msg: unknown): void; on(type: "message", listener: (data: Request) => void): void } | null;
+  const { postMessage, addEventListener } = scope as Required<typeof scope>;
+  return {
+    post: (reply) => postMessage.call(globalThis, reply),
+    listen: (handler) => addEventListener.call(globalThis, "message", (ev) => handler(ev.data)),
   };
-  if (parentPort === null) throw new Error("worker-entry runs only inside a worker");
-  return { post: (reply) => parentPort.postMessage(reply), listen: (handler) => parentPort.on("message", handler) };
 }

@@ -160,7 +160,8 @@ const result = await policy.eval(input, { timeoutMs: 500 });
 
 - Functions can't be sent to a worker, so host functions live in their own ES module. The worker imports it, and `compile` names the exports it uses.
 - `eval`'s `timeoutMs` goes to the module first, which stops the evaluation with a `canceled` error. The worker is terminated only if that hasn't happened within half a second more. Every other call is bounded by the helper's `timeoutMs`, which defaults to 10 seconds.
-- By default the helper starts `worker-entry.js` from next to itself with `new Worker(new URL("./worker-entry.js", import.meta.url), { type: "module" })`, which Vite and other bundlers recognize. Pass `worker: () => new Worker(...)` to start it another way.
+- By default the helper starts `worker-entry.js` from next to itself with `new Worker(new URL("./worker-entry.js", import.meta.url), { type: "module" })`, which Vite and other bundlers recognize. Pass `worker: () => new Worker(...)` to start it another way. A `node:worker_threads` Worker works too, on Node and Bun: `worker: () => new Worker(fileURLToPath(import.meta.resolve("@spechtlabs/sigil/worker-entry")))`.
+- `wasm` may be a compiled `WebAssembly.Module`. Workers share it instead of each compiling the 11 MB binary, which matters for a pool of workers.
 
 ## Inside
 

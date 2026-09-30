@@ -8,7 +8,9 @@ import { pathToFileURL } from "node:url";
 
 import { Sigil } from "../src/index.js";
 import { SigilError, SigilStoppedError, SigilTimeoutError, SigilWorker } from "../src/worker.js";
+import type { InputOf } from "../src/index.js";
 import { Minimal } from "./kinds/coverage.js";
+import { Approve, DeployApproval } from "./kinds/examples.js";
 import { DEPLOY_GATES, HAVE_WASM, json, sigilFiles, WASM } from "./fixtures.js";
 
 const ENTRY = new URL("../src/worker-entry.ts", import.meta.url);
@@ -101,4 +103,21 @@ describe.skipIf(!HAVE_WASM)("SigilWorker on a deeply nested policy", () => {
       sigil.terminate();
     }
   }, 30_000);
+});
+
+describe.skipIf(!HAVE_WASM)("SigilWorker on worker_threads", () => {
+  // A worker_threads Worker on Bun has the web scope's postMessage too, but
+  // hears its parent only on parentPort; the helper must use the Node side.
+  test("runs with a node:worker_threads Worker and a shared compiled module", async () => {
+    const { Worker: ThreadWorker } = await import("node:worker_threads");
+    const module = await WebAssembly.compile(readFileSync(WASM));
+    const sigil = new SigilWorker({ wasm: module, worker: () => new ThreadWorker(ENTRY) });
+    try {
+      expect((await sigil.version()).platform).toBe("wasip1/wasm");
+      const policy = await DeployApproval.compile(sigil, sigilFiles(DEPLOY_GATES), { policy: "payments.production", stubs: { split: { returns: ["eu", "us"] } } });
+      expect(Approve.match(await policy.eval(json(DEPLOY_GATES, "teams/payments/testdata/sre.json") as InputOf<typeof DeployApproval>))).toEqual({ bake: "15m" });
+    } finally {
+      sigil.terminate();
+    }
+  });
 });
