@@ -1,0 +1,13 @@
+# Loads every dashboard JSON mounted at /var/lib/grafana/dashboards. Edits made
+# in the UI can't be saved back, so the file in the repository stays the source.
+apiVersion: 1
+
+providers:
+  - name: alertrouter
+    folder: Sigil examples
+    folderUid: sigil-examples
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

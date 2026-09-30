@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://sigil.specht-labs.de/schema/config.json
+
+# What `sigilc check` enforces. It looks for sigil.yaml in the working
+# directory and its parents, and CI runs from examples/alert-routing/, so
+# pass --config policies/sigil.yaml. Paths are relative to this file.
+
+# The kind file, so that a command on one directory, such as
+# `sigil check teams/payments` from here, finds the kind its policies name. A
+# kind file that is also among the paths is read once.
+kinds: [alert_routing.sigil]
+
+require:
+  # The Require alertrouter makes when it loads a team's policy: every team
+  # root pages for critical production alerts, read from the platform's own
+  # documents rather than from anything a team wrote, and no `when` can
+  # switch that off.
+  - policy: platform.paging
+    trusted: [platform]
+    roots: ["*.alerts"]
+lints:
+  # page is the decision AlertRouting ranks highest, so a policy holding page
+  # rules only pages while the gate around its invocation holds. The page
+  # rules live in platform.paging, which the require above already keeps
+  # ungated. The lint catches any other policy with page rules invoked under
+  # `when`, which is almost always a mistake worth failing the pull request
+  # for.
+  gated-deny: error
+  # A policy repository maps teams/<team>/ to each team in CODEOWNERS, which
+  # only protects a policy if it lives in the file its name says. The lint
+  # matches on the path's suffix, so teams/payments/alerts.sigil satisfies
+  # payments.alerts.
+  path-matches-name: error

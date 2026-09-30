@@ -1,0 +1,118 @@
+policy: payments.alerts
+# Every decision and reason payments.alerts can reach has a case here.
+# payments pages a warning after 5m, the platform's minimum, mutes the
+# settlement batch's slowness alert, and posts ledger info to its own channel.
+cases:
+  # page critical_alert, from platform.paging.
+  - name: a critical production alert pages the on-call
+    input:
+      alert: {name: PaymentsAuthorizationErrors, severity: critical, labels: {env: production}, firing_for: 1m}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: page
+      reason: critical_alert
+      payload: {target: payments-primary}
+
+  # notify routine from platform.routing, and page sustained from
+  # platform.paging with page_after: 5m.
+  - name: a fresh warning goes to the team channel
+    input:
+      alert: {name: PaymentsLatencyHigh, severity: warning, labels: {env: production}, firing_for: 4m59s}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: notify
+      reason: routine
+      payload: {channel: "#payments-alerts"}
+  - name: a warning pages at exactly page_after
+    input:
+      alert: {name: PaymentsLatencyHigh, severity: warning, labels: {env: production}, firing_for: 5m}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: page
+      reason: sustained
+      payload: {target: payments-primary}
+
+  # drop muted: muting silences the notification, never a page.
+  - name: a muted warning is dropped
+    input:
+      alert: {name: PaymentsSettlementBatchSlow, severity: warning, labels: {env: production}, firing_for: 2m}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: drop
+      reason: muted
+  - name: muting never silences a critical page
+    input:
+      alert: {name: PaymentsSettlementBatchSlow, severity: critical, labels: {env: production}, firing_for: 2m}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: page
+      reason: critical_alert
+  - name: a muted info alert is dropped
+    input:
+      alert: {name: PaymentsSettlementBatchSlow, severity: info, labels: {env: production}}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: drop
+      reason: muted
+
+  # drop not_production: nothing in staging or dev pages or posts. Only a
+  # known pre-production env drops; a missing or misspelled env label still
+  # pages, so a mislabelled production alert fails loud instead of silent.
+  - name: staging alerts are dropped
+    input:
+      alert: {name: PaymentsAuthorizationErrors, severity: critical, labels: {env: staging}, firing_for: 1m}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: drop
+      reason: not_production
+  - name: a critical alert without an env label pages
+    input:
+      alert: {name: PaymentsAuthorizationErrors, severity: critical, labels: {}, firing_for: 1m}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: page
+      reason: critical_alert
+      payload: {target: payments-primary}
+  - name: a critical alert with an env the platform doesn't know pages
+    input:
+      alert: {name: PaymentsAuthorizationErrors, severity: critical, labels: {env: prod}, firing_for: 1m}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: page
+      reason: critical_alert
+      payload: {target: payments-primary}
+
+  # notify routine to #payments-ledger, payments' own rule, for info only.
+  - name: ledger info goes to its own channel
+    input:
+      alert: {name: LedgerReplicationLag, severity: info, labels: {env: production, component: ledger}, firing_for: 3m}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: notify
+      reason: routine
+      payload: {channel: "#payments-ledger"}
+  - name: a ledger warning goes to the team channel
+    input:
+      alert: {name: LedgerReplicationLag, severity: warning, labels: {env: production, component: ledger}, firing_for: 3m}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: notify
+      reason: routine
+      payload: {channel: "#payments-alerts"}
+  - name: a sustained ledger warning pages
+    input:
+      alert: {name: LedgerReplicationLag, severity: warning, labels: {env: production, component: ledger}, firing_for: 20m}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: page
+      reason: sustained
+
+  # notify unrouted: the kind's default when no rule fires.
+  - name: "other info falls back to #alerts"
+    input:
+      alert: {name: PaymentsPodRestarted, severity: info, labels: {env: production}}
+      team: {name: payments, oncall: payments-primary, channel: "#payments-alerts"}
+    expect:
+      decision: notify
+      reason: unrouted
+      payload: {channel: "#alerts"}

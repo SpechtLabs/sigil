@@ -1,0 +1,8 @@
+{
+  "alert": {
+    "name": "SearchIndexStale",
+    "severity": "warning",
+    "labels": {"env": "production"},
+    "firing_for": "2h"
+  }
+}

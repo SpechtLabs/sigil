@@ -108,7 +108,10 @@ paging(page_after: 5m)   // required by the host, bounded by the platform
 routing()
 ```
 
-Nothing about the language is specific to alerts. The same constructs decide feature rollouts, discounts, deploy approvals or the roles someone holds. [`examples/deploy-gates/`](./examples/deploy-gates) is a complete service that shows it: deploygate, a deploy approval service with two kinds, where one decides whether a deploy goes ahead and a collecting kind grants the roles each deploy is checked with.
+Nothing about the language is specific to alerts. The same constructs decide feature rollouts, discounts, deploy approvals or the roles someone holds. Two complete services show it:
+
+- [`examples/alert-routing/`](./examples/alert-routing) is the router above, grown into a TypeScript service on Sigil's WebAssembly build: a Next.js app that takes Alertmanager webhooks, with an operator console, hot reload, metrics, traces, a Grafana dashboard and a k6 load test suite. `mise run -C examples/alert-routing up` starts it.
+- [`examples/deploy-gates/`](./examples/deploy-gates) is deploygate, a deploy approval service with two kinds: one decides whether a deploy goes ahead, and a collecting kind grants the roles each deploy is checked with.
 
 ## Design goals
 

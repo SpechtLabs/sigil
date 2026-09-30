@@ -1,0 +1,8 @@
+{
+  "alert": {
+    "name": "PaymentsSettlementBatchSlow",
+    "severity": "warning",
+    "labels": {"env": "production", "component": "settlement"},
+    "firing_for": "2m"
+  }
+}

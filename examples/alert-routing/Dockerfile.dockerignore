@@ -1,0 +1,25 @@
+# The build context of examples/alert-routing/Dockerfile, which BuildKit reads
+# instead of the root .dockerignore. The context is the repository root, and
+# the image needs only the Go sources of sigil.wasm, the TypeScript package
+# and the example, so everything else is left out, local builds and installs
+# above all: node_modules and .next are hundreds of megabytes and would
+# shadow what the image builds itself.
+*
+!go.mod
+!go.sum
+!cmd/sigil-wasm/
+!internal/
+!bindings/typescript/
+!examples/alert-routing/
+
+**/node_modules/
+**/dist/
+**/.next/
+**/*.tsbuildinfo
+**/*_test.go
+**/testdata/
+examples/alert-routing/public/sigil/
+examples/alert-routing/.cache/
+examples/alert-routing/results/
+examples/alert-routing/test-results/
+examples/alert-routing/playwright-report/

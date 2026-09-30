@@ -1,0 +1,195 @@
+# alertrouter and a local Grafana LGTM stack. Alloy sends traces to Tempo,
+# metrics to Mimir, and the service's Docker logs to Loki. Pyroscope receives
+# its Node profiles: wall-clock time with CPU time, and the heap. All backends
+# run as one process with filesystem storage in named volumes. The optional k6
+# service generates measured load.
+#
+# Run from examples/alert-routing/: docker compose up --build --wait
+# Grafana: http://localhost:3000/d/alertrouter
+# API: 8080, Alloy: 12345 and OTLP 4317/4318, Tempo: 3200, Loki: 3100,
+# Mimir: 9009, Pyroscope: 4040.
+#
+# These are deploygate's host ports too (examples/deploy-gates): the two
+# stacks run one at a time, so stop one with `docker compose down -v` before
+# starting the other.
+#
+# ./policies/teams is mounted read-only as the team bundle. Edit a team's
+# policy on the host and alertrouter picks it up within
+# ALERTROUTER_RELOAD_INTERVAL, or at once with
+# `curl -X POST localhost:8080/api/v1/policies/reload`. The team directory
+# (who is on call, which channel) and the platform's policies are the ones
+# built into the image.
+
+name: alertrouter
+
+services:
+  alertrouter:
+    build:
+      # The repository root: the image builds sigil.wasm from the Go sources
+      # and @spechtlabs/sigil from bindings/typescript, so both must be in the
+      # context.
+      context: ../..
+      dockerfile: examples/alert-routing/Dockerfile
+      args:
+        VERSION: compose
+    image: alertrouter:compose
+    ports:
+      - "8080:8080"
+    environment:
+      ALERTROUTER_POLICIES: /etc/alertrouter/policies
+      # Short, so a policy edit on the host shows up while you watch.
+      ALERTROUTER_RELOAD_INTERVAL: 5s
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_SERVICE_NAME: alertrouter
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
+    volumes:
+      - ./policies/teams:/etc/alertrouter/policies:ro
+    # The image has no shell or HTTP client, so Node probes the server's own
+    # /readyz. It turns healthy once every team's policy has loaded, which is
+    # what `up --wait` and the e2e suite wait for.
+    healthcheck:
+      test: ["CMD", "/nodejs/bin/node", "healthcheck.mjs"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    depends_on:
+      alloy:
+        condition: service_started
+    restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:v1.20.0
+    command: [run, /etc/alloy/config.alloy, --storage.path=/var/lib/alloy/data, --server.http.listen-addr=0.0.0.0:12345]
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "12345:12345"
+    environment:
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-alertrouter}
+    volumes:
+      - ./deploy/alloy.alloy:/etc/alloy/config.alloy:ro
+      # Alloy reads this project's alertrouter logs through the Docker API.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    depends_on:
+      tempo:
+        condition: service_started
+      loki:
+        condition: service_started
+      mimir:
+        condition: service_started
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:3.0.3
+    command: [-config.file=/etc/tempo.yaml]
+    ports:
+      - "3200:3200"
+    volumes:
+      - ./deploy/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.7.8
+    command: [-config.file=/etc/loki.yaml]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./deploy/loki.yaml:/etc/loki.yaml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+
+  mimir:
+    image: grafana/mimir:3.2.1
+    command: [-config.file=/etc/mimir.yaml]
+    ports:
+      - "9009:9009"
+    volumes:
+      - ./deploy/mimir.yaml:/etc/mimir.yaml:ro
+      - mimir-data:/data
+    restart: unless-stopped
+
+  pyroscope:
+    image: grafana/pyroscope:2.3.1
+    command: [-config.file=/etc/pyroscope.yaml]
+    ports:
+      - "4040:4040"
+    volumes:
+      - ./deploy/pyroscope.yaml:/etc/pyroscope.yaml:ro
+      - pyroscope-data:/data
+      - pyroscope-metastore:/data-metastore
+      - pyroscope-compactor:/data-compactor
+    restart: unless-stopped
+
+  # Runs only when requested with `mise run loadtest` or `docker compose run`.
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: [loadtest]
+    environment:
+      BASE_URL: http://alertrouter:8080
+      K6_PROMETHEUS_RW_SERVER_URL: http://mimir:9009/api/v1/push
+      K6_PROMETHEUS_RW_TREND_STATS: p(95),p(99),avg,max
+      K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+    volumes:
+      - ./test/load:/scripts:ro
+      # The request cases and their expected outcomes, the same files the
+      # TypeScript tests read.
+      - ./requests:/requests:ro
+      - ./results:/results
+    depends_on:
+      alertrouter:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
+    command: [run, --out, experimental-prometheus-rw, /scripts/alertrouter.js]
+
+  grafana:
+    image: grafana/grafana:13.2.2
+    ports:
+      - "3000:3000"
+    environment:
+      # A local demo: anyone who reaches port 3000 is an admin, and there is
+      # no login screen in the way.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/alertrouter.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      # The backend images have no HTTP client. This probe waits for the
+      # whole pipeline, so `up --wait` also guarantees backend readiness.
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q -O /dev/null http://127.0.0.1:3000/api/health &&
+          wget -q -O /dev/null http://alloy:12345/-/ready &&
+          wget -q -O /dev/null http://tempo:3200/ready &&
+          wget -q -O /dev/null http://loki:3100/ready &&
+          wget -q -O /dev/null http://mimir:9009/ready &&
+          wget -q -O /dev/null http://pyroscope:4040/ready
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    depends_on:
+      alloy:
+        condition: service_started
+      pyroscope:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  alloy-data:
+  tempo-data:
+  loki-data:
+  mimir-data:
+  pyroscope-data:
+  pyroscope-metastore:
+  pyroscope-compactor:

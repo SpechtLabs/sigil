@@ -1,0 +1,10 @@
+# The team directory alertrouter ships with. An alert's team label picks the
+# entry, and the policy <name>.alerts decides with it. --teams-file (or
+# ALERTROUTER_TEAMS_FILE) replaces this file.
+teams:
+  - name: checkout
+    oncall: checkout-primary
+    channel: "#checkout-alerts"
+  - name: payments
+    oncall: payments-primary
+    channel: "#payments-alerts"

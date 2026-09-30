@@ -528,6 +528,7 @@ CheckoutErrorRate: page checkout-primary
 
 ## Next steps
 
+- [`examples/alert-routing`](https://github.com/SpechtLabs/sigil/tree/main/examples/alert-routing): the same router as a complete Next.js service, with an HTTP API, hot reload, a paging fallback for failed evaluations, an operator console that previews decisions in the browser, telemetry and load tests.
 - [WebAssembly module](/reference/wasm/): every export of the package, and the ABI for hosts in other languages.
 - [Per-team policies](/guides/team-policies/) and [Test your policies](/guides/test-policies/): the policy side, which doesn't change with the host's language.
 - [Check policies in CI](/guides/ci/): check the team's policies against the exported kind file before your program ever loads them.

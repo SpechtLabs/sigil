@@ -1,0 +1,13 @@
+policy checkout.alerts: AlertRouting@1
+
+use platform.alerts.{pre_production}
+use platform.paging
+use platform.routing
+
+paging(page_after: 10m)
+
+routing(muted: ["CheckoutCanaryLatency"])
+
+when not pre_production and alert.severity == info and alert.labels["component"] == "payments" {
+  notify(reason: routine, channel: "#checkout-payments")
+}

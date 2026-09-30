@@ -1,0 +1,8 @@
+{
+  "alert": {
+    "name": "CheckoutErrorRate",
+    "severity": "critical",
+    "labels": {"service": "checkout-api"},
+    "firing_for": "2m"
+  }
+}
