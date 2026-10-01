@@ -388,7 +388,7 @@ jobs:
 
   # examples/deploy-gates is a Go module of its own, so the lint and test jobs
   # above stop at its go.mod; this runs the same gates inside it. It doesn't
-  # start a compose stack or build snapshots, which need Docker and minutes.
+  # start a compose stack or build snapshots; the images job builds its image.
   deploy-gates:
     name: Example (deploy-gates)
     if: ${{ !inputs.skip-examples }}
@@ -531,20 +531,27 @@ jobs:
       - name: Check
         run: mise run check
 
-  # The e2e suite needs the compose stack, so CI builds featuregate's image as
-  # compose builds it, from the repository root, and no further. The image
-  # builds sigil.wasm and featuregate itself, so this runs alongside the
-  # feature-flags job rather than after it.
-  feature-flags-image:
-    name: Example (feature-flags image)
+  # Each example's compose stack builds its service's image from the
+  # repository root, so CI builds every image the same way and runs nothing
+  # in it. The images build sigil.wasm and the service themselves, so these
+  # run alongside the example jobs rather than after them.
+  images:
+    name: Docker image (${{ matrix.example }})
     if: ${{ !inputs.skip-examples }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - alert-routing
+          - deploy-gates
+          - feature-flags
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build the image
-        run: docker build -f examples/feature-flags/Dockerfile .
+        run: docker build -f examples/${{ matrix.example }}/Dockerfile .
 
   build:
     name: Build with GoReleaser
