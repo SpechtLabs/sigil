@@ -64,6 +64,7 @@ func TestSize(t *testing.T) {
 // equals, byte for byte, the engine's natively, and says what it should.
 func TestOps(t *testing.T) {
 	access := files(t, evalData+"/access.sigil", evalData+"/access")
+	testSources, suites, data := testFiles(t, testData+"/access.sigil", testData+"/access")
 	tests := []struct {
 		name string
 		reqs []map[string]any // sent in order to one instance; the last one's response is checked
@@ -82,6 +83,8 @@ func TestOps(t *testing.T) {
 		{name: "explain files", reqs: []map[string]any{{"op": "explain", "files": files(t, gates)}}, want: []string{`"policy":"access.main"`, `"policy":"payments.production"`}},
 		{name: "format", reqs: []map[string]any{{"op": "format", "source": "policy   a.b:K@1"}}, want: []string{`{"ok":true,"source":"policy a.b: K@1\n","formatted":false}`}},
 		{name: "format that fails", reqs: []map[string]any{{"op": "format", "source": "when {", "path": "x.sigil"}}, want: []string{`"message":"x.sigil has syntax errors"`, `"diagnostics":[{"severity":"error","file":"x.sigil"`}},
+		{name: "test", reqs: []map[string]any{{"op": "test", "files": testSources, "test_files": suites, "data_files": data}}, want: []string{`{"ok":true,"results":[{"file":"../../../cmd/sigil/command/test/testdata/access/main_test.yaml","policy":"access.main","cases":[{"name":`, `"passed":true}]}]}`}},
+		{name: "test that fails", reqs: []map[string]any{{"op": "test", "files": testSources, "test_files": suites, "run": "("}}, want: []string{`"ok":false`, `run isn't a valid regular expression`}},
 		{name: "release", reqs: []map[string]any{{"op": "compile", "files": access}, {"op": "release", "handle": 1}}, want: []string{`{"ok":true}`}},
 		{name: "eval after release", reqs: []map[string]any{{"op": "compile", "files": access}, {"op": "release", "handle": 1}, {"op": "eval", "handle": 1, "input": map[string]any{}}}, want: []string{`"message":"no compiled policy has handle 1"`}},
 		{name: "unknown op", reqs: []map[string]any{{"op": "run"}}, want: []string{`unknown op \"run\"`}},

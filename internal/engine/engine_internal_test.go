@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"errors"
+	"io/fs"
 	"math"
 	"strings"
 	"testing"
@@ -42,5 +44,26 @@ func TestJoinAdvice(t *testing.T) {
 		if got := joinAdvice(tt.advice); got != tt.want {
 			t.Errorf("joinAdvice(%q) = %q, want %q", tt.advice, got, tt.want)
 		}
+	}
+}
+
+// TestDataFS checks that a data file reads as a read-only regular file
+// of its source, named by its base name, and that a path the request
+// didn't give doesn't exist.
+func TestDataFS(t *testing.T) {
+	d := dataFS{"shared/owner.json": []byte(`{"user": {}}`)}
+	src, err := fs.ReadFile(d, "shared/owner.json")
+	if err != nil || string(src) != `{"user": {}}` {
+		t.Fatalf("ReadFile() = %q, %v", src, err)
+	}
+	info, err := fs.Stat(d, "shared/owner.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name() != "owner.json" || info.Size() != 12 || info.Mode() != 0o444 || !info.ModTime().IsZero() || info.IsDir() || info.Sys() != nil {
+		t.Errorf("Stat() = %q, %d, %v, %v, %v, %v", info.Name(), info.Size(), info.Mode(), info.ModTime(), info.IsDir(), info.Sys())
+	}
+	if _, err := d.Open("shared/nope.json"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Open() of a missing file = %v, want fs.ErrNotExist", err)
 	}
 }

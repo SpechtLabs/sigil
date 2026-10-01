@@ -42,6 +42,7 @@ func TestTest(t *testing.T) {
 		{name: "bad_yaml", paths: []string{policies, "testdata/badyaml"}},
 		{name: "no_policy", paths: []string{policies, "testdata/nopolicy"}},
 		{name: "broken_bundle", paths: []string{"testdata/broken"}},
+		{name: "broken_bundle_json", paths: []string{"testdata/broken"}, format: output.JSON},
 		{name: "no_test_files", paths: []string{policies}},
 		{name: "invalid_run", paths: []string{"testdata/access"}, run: "("},
 		{name: "kind_among_paths", paths: []string{"testdata/access.sigil", "testdata/access"}, noKind: true},
@@ -191,5 +192,37 @@ func TestConfigKinds(t *testing.T) {
 				t.Errorf("output = %q, want main_test.yaml run", out.String())
 			}
 		})
+	}
+}
+
+// TestUnreadableTestFile checks that a test file that can't be read is a
+// result that says so, beside the others, rather than stopping the run.
+func TestUnreadableTestFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file without read permission")
+	}
+	dir := t.TempDir()
+	for name, from := range map[string]string{"main.sigil": "testdata/access/main.sigil", "secret_test.yaml": "testdata/access/main_test.yaml"} {
+		src, err := os.ReadFile(from)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), src, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	secret := filepath.Join(dir, "secret_test.yaml")
+	if err := os.Chmod(secret, 0); err != nil {
+		t.Fatal(err)
+	}
+	format := output.JSON
+	var out bytes.Buffer
+	err := runTests(context.Background(), &out, &options{output: &format}, "", project.Sources{Paths: []string{dir}, Kinds: []string{"testdata/access.sigil"}}, "", false)
+	if err == nil || err.Error() != "1 of 1 test files couldn't run" {
+		t.Errorf("runTests() = %v, want 1 of 1 test files couldn't run", err)
+	}
+	want := `"error": "` + filepath.ToSlash(secret) + ` couldn't be read: open ` + filepath.ToSlash(secret) + `: permission denied",`
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("output = %s, want it to contain %s", out.String(), want)
 	}
 }

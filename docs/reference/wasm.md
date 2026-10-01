@@ -134,6 +134,7 @@ A request with a field no op knows, `timeoutMs` for `timeout_ms`:
 | `eval` | `handle`, `input`, `timeout_ms?` | The eval record | `sigil eval -o json` |
 | `explain` | `handle`, or `files`, `trusted_files?`, `policy?` | `explanations` | `sigil explain -o json` |
 | `format` | `source`, `path?` | `source`, `formatted` | `sigil fmt` |
+| `test` | `files?`, `trusted_files?`, `test_files`, `data_files?`, `run?` | `results` | `sigil test -o json` |
 | `release` | `handle` | nothing | |
 
 ### Files
@@ -231,6 +232,35 @@ Returns `version`, `commit`, `commitTime`, `dirty`, `goVersion` and `platform`, 
 
 - Returns `source`, in `sigil fmt`'s canonical style, and `formatted`, `true` when the source already was.
 - A source that doesn't parse fails the op, with the syntax errors as diagnostics.
+
+### `test`
+
+| Field | Type | Holds |
+| --- | --- | --- |
+| `files` | list of files | The kind and the policies. A test file whose policy they don't define is a record with an `error`, as in `sigil test` |
+| `trusted_files` | list of files | The host's documents, read as `explain` reads them: the files below a configuration file's `trusted` paths |
+| `test_files` | list of files | Required. The [test files](/reference/test-files/) to run, each named `*_test.yaml` or `*_test.yml` |
+| `data_files` | list of files | The files a case's `input_file` names. Their paths are what it names, relative to the test file's, as on disk |
+| `run` | string | A regular expression matched against case names, as `sigil test --run` takes. Every case runs without it |
+
+- Returns `results`, the records `sigil test -o json` prints for the same files: one per test file, in the order of their paths.
+- A test file that can't run is a record with an `error`, and a failing case is one with `passed: false`. Both have `ok: true`.
+- Host functions come from the test files' `stubs:`. A call to one no stub answers fails the way it does in the stock `sigil` binary.
+- A path given twice with two sources, in any of the four lists, fails the request, as does a path among both `files` and `trusted_files`.
+
+```json
+{ "op": "test", "id": 4, "files": [...], "test_files": [{ "path": "teams/checkout/alerts_test.yaml", "source": "..." }], "run": "keeps firing" }
+```
+
+```json
+{ "id": 4, "ok": true, "results": [{ "file": "teams/checkout/alerts_test.yaml", "policy": "checkout.alerts", "cases": [{ "name": "a warning that keeps firing pages", "line": 26, "passed": true }] }] }
+```
+
+A test file whose name doesn't end in `_test.yaml` or `_test.yml`:
+
+```json
+{ "id": 4, "ok": false, "error": { "message": "the test file teams/checkout/alerts.yaml isn't named like one", "help": "a test file's name ends in _test.yaml or _test.yml; send other files a case reads as data_files" } }
+```
 
 ### `release`
 

@@ -20,11 +20,20 @@ import (
 // given twice once; a path given twice with two sources is an error,
 // since they can't both be the file, and so is a path among both the
 // files and the trusted files, so a file can't claim to be trusted by
-// taking a trusted file's path.
+// taking a trusted file's path. A request without files is an error:
+// there's nothing to check, compile or explain.
 func load(files []File, trustedPaths []string, trustedFiles []File) (*workspace.Project, humane.Error) {
 	if len(files) == 0 {
 		return nil, humane.New("the request holds no files", `send the kind and the policies as "files": [{"path": "...", "source": "..."}]`)
 	}
+	return project(files, trustedPaths, trustedFiles)
+}
+
+// project builds the project of the files and the trusted files, as load
+// does, of none too: the test op, like sigil test, runs its test files
+// against whatever the files define, and a test file whose policy isn't
+// among them is a result that says so.
+func project(files []File, trustedPaths []string, trustedFiles []File) (*workspace.Project, humane.Error) {
 	r := reading{seen: map[string]read{}}
 	for i, f := range files {
 		if err := r.add(f, "file", i, below(path.Clean(f.Path), trustedPaths)); err != nil {

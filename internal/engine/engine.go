@@ -1,9 +1,9 @@
 // Package engine is the stock sigil CLI's engine without a filesystem or
 // a terminal: it takes JSON requests, runs them over virtual files, and
-// answers with the records `sigil check`, `sigil eval`, `sigil explain`
-// and `sigil fmt` print as JSON. cmd/sigil-wasm exports it from a
-// WebAssembly module; this package holds everything but that glue, so
-// it's tested natively.
+// answers with the records `sigil check`, `sigil eval`, `sigil explain`,
+// `sigil fmt` and `sigil test` print as JSON. cmd/sigil-wasm exports it
+// from a WebAssembly module; this package holds everything but that
+// glue, so it's tested natively.
 //
 // # Requests and responses
 //
@@ -27,6 +27,7 @@
 //	eval     {handle, input, timeout_ms?} → the `sigil eval -o json` record
 //	explain  {handle} or {files, trusted_files?, policy?} → {explanations}
 //	format   {source, path?} → {source, formatted}
+//	test     {files?, trusted_files?, test_files, data_files?, run?} → {results}
 //	release  {handle} → {}
 //
 // Files are virtual: a path, used in positions as the CLI prints it for
@@ -56,6 +57,21 @@
 // by a runtime error, a conflict, a failing assert or the deadline, is
 // still ok: its record says why, as the CLI's does. So is a check that
 // finds errors: they're its diagnostics.
+//
+// # Test files
+//
+// test runs test files as `sigil test -o json` does, and answers with the
+// records it prints, as results. files and trusted_files are read as
+// explain reads them, and may be left out: a test file whose policy
+// they don't define is a result that says so, as in sigil test.
+// test_files are the test files, each named *_test.yaml or *_test.yml,
+// and data_files the files a case's input_file names, by their paths,
+// so relative to the test file as on disk. run, a regular expression,
+// picks the cases by name. A test file that can't run, or a case that
+// fails, is a result; only a request the command line couldn't have
+// given fails the op. The op takes no functions: a test file stubs the
+// host functions its cases call, and a call to one it doesn't stub fails
+// the way it does in the stock sigil binary.
 //
 // # Host functions
 //
@@ -120,8 +136,11 @@ type request struct {
 	Op        string            `json:"op"`
 	Policy    string            `json:"policy"`
 	Path      string            `json:"path"`
+	Run       string            `json:"run"`
 	Files     []File            `json:"files"`
 	Trusted   []File            `json:"trusted_files"` // read as trusted, as policy.From reads its source
+	TestFiles []File            `json:"test_files"`
+	DataFiles []File            `json:"data_files"` // what a test case's input_file reads
 	Policies  []string          `json:"policies"`
 	Require   []Requirement     `json:"require"`
 	Functions []string          `json:"functions"`
@@ -225,10 +244,12 @@ func (e *Engine) Call(req []byte) (resp []byte) {
 		out, err = e.explain(env, &r)
 	case "format":
 		out, err = e.format(env, &r)
+	case "test":
+		out, err = e.test(env, &r)
 	case "release":
 		out, err = e.release(env, &r)
 	default:
-		err = humane.New("unknown op "+strconv.Quote(r.Op), "the ops are version, check, compile, eval, explain, format and release")
+		err = humane.New("unknown op "+strconv.Quote(r.Op), "the ops are version, check, compile, eval, explain, format, test and release")
 	}
 	if err != nil {
 		return encode(fail(r.ID, err))

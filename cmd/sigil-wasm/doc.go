@@ -21,8 +21,9 @@
 //	sigil_free(ptr i32, size i32)        releases memory from sigil_alloc, or a response
 //	sigil_call(ptr i32, len i32) -> i64  handles one request; returns (respPtr << 32) | respLen
 //
-// A request is a JSON object, and so is its response; package
-// internal/engine documents the ops. One call goes:
+// A request is a JSON object, and so is its response. The ops are
+// version, check, compile, eval, explain, format, test and release;
+// package internal/engine documents them. One call goes:
 //
 //  1. The host allocates len bytes with sigil_alloc and writes the request there.
 //  2. The host calls sigil_call with that address and len.

@@ -1,0 +1,11 @@
+[
+  {
+    "file": "testdata/broken/main_test.yaml",
+    "policy": "access.broken",
+    "error": "testdata/broken/main.sigil:3:11 (access.broken): error: unknown field \"nmae\" on type User\n  |\n3 | when user.nmae == \"x\" {\n  |           ^^^^\n  = help: did you mean \"name\"? User declares: name, teams, admin, expires",
+    "cases": []
+  }
+]
+--- error ---
+1 of 1 test files couldn't run
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run
