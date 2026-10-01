@@ -41,7 +41,7 @@ func TestNewFreeze(t *testing.T) {
 		{name: "a fixed freeze", cfg: config.Config{FreezeEnvironments: []string{"production", "staging"}}, wantName: "static production,staging", wantEnvs: []string{"production", "staging"}},
 		{name: "a flag service", cfg: ofrep(flags.URL), wantName: "ofrep " + flags.URL + " flag change-freeze", wantOFREP: true, wantEnvs: []string{"production"}},
 		{name: "a flag service that isn't up yet", cfg: ofrep(down.URL), wantName: "ofrep " + down.URL + " flag change-freeze", wantOFREP: true, wantEnvs: []string{}, wantUnknown: true},
-		{name: "flag service settings that can't work", cfg: ofrep("featuregate:8080"), wantName: "ofrep featuregate:8080 flag change-freeze", wantErr: "isn't an absolute http or https URL"},
+		{name: "flag service settings that can't work", cfg: ofrep("flagd:8016"), wantName: "ofrep flagd:8016 flag change-freeze", wantErr: "isn't an absolute http or https URL"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

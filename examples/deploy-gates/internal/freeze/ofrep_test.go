@@ -32,12 +32,12 @@ func TestNewOFREP(t *testing.T) {
 		opts    []freeze.Option
 		wantErr string
 	}{
-		{name: "defaults", url: "http://featuregate:8080"},
+		{name: "defaults", url: "http://flagd:8016"},
 		{name: "https with a trailing slash", url: "https://flags.example.com/"},
 		{name: "not a URL", url: "http://[::1", wantErr: "isn't a URL"},
-		{name: "no scheme", url: "featuregate:8080", wantErr: "isn't an absolute http or https URL"},
+		{name: "no scheme", url: "flagd:8016", wantErr: "isn't an absolute http or https URL"},
 		{name: "no host", url: "http://", wantErr: "isn't an absolute http or https URL"},
-		{name: "another scheme", url: "ftp://featuregate", wantErr: "isn't an absolute http or https URL"},
+		{name: "another scheme", url: "ftp://flagd", wantErr: "isn't an absolute http or https URL"},
 		{name: "empty flag", url: "http://f", opts: []freeze.Option{freeze.WithFlag("")}, wantErr: "flag key is empty"},
 		{name: "no refresh interval", url: "http://f", opts: []freeze.Option{freeze.WithRefreshInterval(0)}, wantErr: "refresh interval 0s isn't positive"},
 		{

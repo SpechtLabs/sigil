@@ -87,11 +87,11 @@ func TestServeConfig(t *testing.T) {
 		{
 			name: "a freeze from a flag service, by flags",
 			args: []string{
-				"--freeze-ofrep-url", "http://featuregate:8080", "--freeze-flag", "ops-freeze", "--freeze-context", "region=eu-1",
+				"--freeze-ofrep-url", "http://flagd:8016", "--freeze-flag", "ops-freeze", "--freeze-context", "region=eu-1",
 				"--freeze-context", "tier=gold,region=eu-2", "--freeze-refresh-interval", "5s", "--freeze-max-staleness", "30s",
 			},
 			edit: func(c *config.Config) {
-				c.FreezeOFREPURL, c.FreezeFlag = "http://featuregate:8080", "ops-freeze"
+				c.FreezeOFREPURL, c.FreezeFlag = "http://flagd:8016", "ops-freeze"
 				c.FreezeContext = map[string]string{"region": "eu-2", "tier": "gold"}
 				c.FreezeRefreshInterval, c.FreezeMaxStaleness = 5*time.Second, 30*time.Second
 			},
@@ -119,17 +119,17 @@ func TestServeConfig(t *testing.T) {
 		},
 		{
 			name:    "a freeze set twice",
-			args:    []string{"--freeze-environments", "production", "--freeze-ofrep-url", "http://featuregate:8080"},
+			args:    []string{"--freeze-environments", "production", "--freeze-ofrep-url", "http://flagd:8016"},
 			wantErr: "the change freeze is set twice",
 		},
 		{
 			name:    "a flag service URL that isn't one",
-			args:    []string{"--freeze-ofrep-url", "featuregate:8080"},
+			args:    []string{"--freeze-ofrep-url", "flagd:8016"},
 			wantErr: "isn't an absolute http or https URL",
 		},
 		{
 			name:    "a staleness shorter than the refresh",
-			args:    []string{"--freeze-ofrep-url", "http://featuregate:8080", "--freeze-max-staleness", "10s"},
+			args:    []string{"--freeze-ofrep-url", "http://flagd:8016", "--freeze-max-staleness", "10s"},
 			wantErr: "isn't longer than its refresh interval",
 		},
 		{name: "a freeze context attribute without a key", args: []string{"--freeze-context", "=eu-1"}, wantErr: "the freeze context attribute =eu-1 has no key"},
