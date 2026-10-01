@@ -44,8 +44,11 @@ run = [
 ]
 
 [tasks.generate]
-description = "Regenerate the examples' kind files from the Go types"
-run = "go generate ./cmd/sigilc"
+description = "Regenerate the examples' kind files and the Go-built deploy.freeze module from the Go code"
+run = [
+  "go generate ./cmd/sigilc",
+  "go test ./internal/deploy -run TestVocabularyIsCurrent -count=1 -update",
+]
 
 [tasks.up]
 description = "Start deploygate with Alloy and the Grafana LGTM stack, and wait until they're ready"
