@@ -17,6 +17,11 @@ permissions:
   id-token: write
   pull-requests: write
 
+env:
+  # mise itself, pinned; ci.yaml explains why.
+  # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
+  MISE_VERSION: 2026.9.18
+
 # Never cancel a release half-way: that can leave a tag published with no
 # artifacts. Pushes key on the SHA so each commit gets its own run; repairs key
 # on the tag so two repairs of the same tag cannot race.
@@ -30,6 +35,7 @@ jobs:
     uses: ./.github/workflows/ci.yaml
     with:
       skip-fuzz-and-bench: true
+      skip-examples: true
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
@@ -101,6 +107,7 @@ jobs:
       - name: Set up mise
         uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
         with:
+          version: ${{ env.MISE_VERSION }}
           install_args: go goreleaser
 
       - name: Install Cosign
@@ -144,6 +151,7 @@ jobs:
       - name: Set up mise
         uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
         with:
+          version: ${{ env.MISE_VERSION }}
           install_args: go bun node
 
       # Builds dist/wasm/sigil.wasm from the tag, then the package with the
@@ -208,6 +216,7 @@ jobs:
       - name: Set up mise
         uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
         with:
+          version: ${{ env.MISE_VERSION }}
           install_args: go rust
 
       # A repair of a tag from before the crate, or a rerun that finds its
