@@ -38,15 +38,17 @@ func TestParse(t *testing.T) {
 		{
 			name: "everything",
 			src: "kinds:\n  - ../vendor/deploy_approval.sigil\n  - " + filepath.ToSlash(abs) + "\n" +
+				"trusted: platform/vocabulary\n" +
 				"require:\n" +
 				"  - policy: deploy.guardrails\n    trusted: [platform/deploy]\n    roots: [\"payments.*\", \"checkout.*\"]\n" +
 				"  - policy: access.guardrails\n" +
 				"lints:\n  gated-deny: error\n",
 			want: &config.Config{
-				Kinds: []string{filepath.Join("repo", "vendor", "deploy_approval.sigil"), abs},
+				Kinds:   []string{filepath.Join("repo", "vendor", "deploy_approval.sigil"), abs},
+				Trusted: []string{filepath.Join(dir, "platform", "vocabulary")},
 				Require: []config.Require{
-					{Policy: "deploy.guardrails", Trusted: []string{filepath.Join(dir, "platform", "deploy")}, Roots: []string{"payments.*", "checkout.*"}, Pos: config.Pos{Line: 5, Column: 13}},
-					{Policy: "access.guardrails", Pos: config.Pos{Line: 8, Column: 13}},
+					{Policy: "deploy.guardrails", Trusted: []string{filepath.Join(dir, "platform", "deploy")}, Roots: []string{"payments.*", "checkout.*"}, Pos: config.Pos{Line: 6, Column: 13}},
+					{Policy: "access.guardrails", Pos: config.Pos{Line: 9, Column: 13}},
 				},
 				Lints: map[string]lint.Level{lint.GatedDeny: lint.Error},
 			},
@@ -73,7 +75,7 @@ func TestParse(t *testing.T) {
 		{name: "a level that isn't a string", src: "lints:\n  gated-deny: [error]\n", err: `lint gated-deny has unknown level ""`, advice: "off, warn or error"},
 		{name: "a lint set twice", src: "lints:\n  gated-deny: error\n  gated-deny: warn\n", err: "lint gated-deny is set twice"},
 		{name: "lints isn't a map", src: "lints: [gated-deny]\n", err: "sigil.yaml:1:8: lints isn't a map", advice: "`gated-deny: error`"},
-		{name: "unknown top-level key", src: "lint:\n  gated-deny: error\n", err: `sigil.yaml:1:1: unknown key "lint"`, advice: "did you mean \"lints\"?; sigil.yaml holds `kinds:`, `require:` and `lints:`"},
+		{name: "unknown top-level key", src: "lint:\n  gated-deny: error\n", err: `sigil.yaml:1:1: unknown key "lint"`, advice: "did you mean \"lints\"?; sigil.yaml holds `kinds:`, `trusted:`, `require:` and `lints:`"},
 		{name: "unknown top-level key without a near name", src: "owners: [ada]\n", err: `unknown key "owners"`, advice: "sigil.yaml holds `kinds:`"},
 		{name: "a key set twice", src: "kinds: [a.sigil]\nkinds: [b.sigil]\n", err: "sigil.yaml:2:1: kinds is set twice", advice: "first set at line 1"},
 		{name: "a key that isn't a name", src: "[kinds]: a.sigil\n", err: "sigil.yaml:1:1: a key isn't a name"},
@@ -95,6 +97,8 @@ func TestParse(t *testing.T) {
 		{name: "a require key set twice", src: "require:\n  - policy: a\n    policy: b\n", err: "policy is set twice in require[0]"},
 		{name: "a policy required twice", src: "require:\n  - policy: deploy.guardrails\n  - policy: deploy.guardrails\n", err: "sigil.yaml:3:13: deploy.guardrails is required twice", advice: "first required at line 2"},
 		{name: "an empty root", src: "require:\n  - policy: a\n    roots: [\"\"]\n", err: "require[0].roots[0] is empty", advice: "a policy name or pattern"},
+		{name: "a top-level trusted path that isn't a string", src: "trusted: [[platform]]\n", err: "sigil.yaml:1:11: trusted[0] isn't a string", advice: "a file or directory, relative to sigil.yaml"},
+		{name: "an empty top-level trusted path", src: "trusted: \"\"\n", err: "sigil.yaml:1:10: trusted is empty"},
 		{name: "a trusted path that isn't a string", src: "require:\n  - policy: a\n    trusted: [[platform]]\n", err: "require[0].trusted[0] isn't a string", advice: "a file or directory, relative to sigil.yaml"},
 		{name: "a require entry's error comes after its own policy", src: "require:\n  - policy: a\n    trusted: [\"\"]\n", err: "sigil.yaml:3:15: require[0].trusted[0] is empty"},
 	}

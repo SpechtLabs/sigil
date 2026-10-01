@@ -12,11 +12,11 @@ import (
 
 // Apply reads the configuration as [Load] does and adds to src what eval,
 // explain and test read besides their paths: the kind files of kinds:,
-// after the ones --kind names, and the trusted: paths of require: as
-// trusted sources. A trusted file that's also among the paths stays one
-// of the paths, so a run over the whole repository reads what it read
-// before, and a run over one team's directory still finds the required
-// policies its policies use, and everything those use.
+// after the ones --kind names, and the trusted: paths, top-level and of
+// require:, as trusted sources. A trusted file that's also among the
+// paths stays one of the paths, so a run over the whole repository reads
+// what it read before, and a run over one team's directory still finds
+// the trusted documents its policies use, and everything those use.
 func Apply(path, dir string, src *project.Sources) humane.Error {
 	c, err := Load(path, dir)
 	if err != nil {
@@ -27,7 +27,7 @@ func Apply(path, dir string, src *project.Sources) humane.Error {
 		return err
 	}
 	src.Kinds = append(src.Kinds, kinds...)
-	trusted, err := c.Trusted(nil, c.Require)
+	trusted, err := c.TrustedPaths(nil, c.Require)
 	if err != nil {
 		return err
 	}
@@ -48,12 +48,22 @@ func (c *Config) KindFiles() ([]string, humane.Error) {
 	return c.Kinds, nil
 }
 
-// Trusted returns the paths to read as trusted: have, then the trusted:
-// paths of reqs that have doesn't hold, each once. A path an entry of
-// the file names must exist, and one that doesn't is an error at the
-// entry, where the path to fix is.
-func (c *Config) Trusted(have []string, reqs []Require) ([]string, humane.Error) {
+// TrustedPaths returns the paths to read as trusted: have, then the
+// file's trusted: paths, then the trusted: paths of reqs, each once. A
+// path the file names must exist; one that doesn't is an error at the
+// require: entry that names it, or at the file for the top-level
+// trusted:, where the path to fix is.
+func (c *Config) TrustedPaths(have []string, reqs []Require) ([]string, humane.Error) {
 	out := slices.Clone(have)
+	for _, path := range c.Trusted {
+		if slices.Contains(out, path) {
+			continue
+		}
+		if _, err := os.Stat(path); err != nil {
+			return nil, humane.Wrap(err, c.File+": the trusted path "+path+" can't be read", "trusted lists files and directories relative to "+c.Base())
+		}
+		out = append(out, path)
+	}
 	for _, r := range reqs {
 		for _, path := range r.Trusted {
 			if slices.Contains(out, path) {

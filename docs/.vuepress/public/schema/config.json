@@ -168,6 +168,27 @@
         },
         "additionalProperties": false
       }
+    },
+    "trusted": {
+      "description": "Files and directories read as trusted, as --trusted reads them: their documents resolve first, and no other document may take a name they define.",
+      "anyOf": [
+        {
+          "description": "A file or directory, relative to the configuration file.",
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "items": {
+            "description": "A file or directory, relative to the configuration file.",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "additionalProperties": false

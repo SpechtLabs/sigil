@@ -68,7 +68,7 @@ func TestParseFormats(t *testing.T) {
 			json:    `{"lint": {}}`,
 			toml:    "[lint]\ngated-deny = \"error\"\n",
 			jsonErr: `:1:2: unknown key "lint"`, tomlErr: `:1:2: unknown key "lint"`,
-			advice: []string{"did you mean \"lints\"?; sigil.json holds `\"kinds\"`, `\"require\"` and `\"lints\"`", "did you mean \"lints\"?; sigil.toml holds `kinds`, `require` and `lints`"},
+			advice: []string{"did you mean \"lints\"?; sigil.json holds `\"kinds\"`, `\"trusted\"`, `\"require\"` and `\"lints\"`", "did you mean \"lints\"?; sigil.toml holds `kinds`, `trusted`, `require` and `lints`"},
 		},
 		{
 			name:    "a key set twice",
@@ -237,8 +237,9 @@ func TestParseFormats(t *testing.T) {
 	// The configuration of TestParse's "everything", in JSON and TOML.
 	want := func(ext string, deploy, access config.Pos) *config.Config {
 		return &config.Config{
-			File:  file(ext),
-			Kinds: []string{filepath.Join("repo", "vendor", "deploy_approval.sigil")},
+			File:    file(ext),
+			Kinds:   []string{filepath.Join("repo", "vendor", "deploy_approval.sigil")},
+			Trusted: []string{filepath.Join(dir, "platform", "vocabulary")},
 			Require: []config.Require{
 				{Policy: "deploy.guardrails", Trusted: []string{filepath.Join(dir, "platform", "deploy")}, Roots: []string{"payments.*", "checkout.*"}, Pos: deploy},
 				{Policy: "access.guardrails", Pos: access},
@@ -254,6 +255,7 @@ func TestParseFormats(t *testing.T) {
 			name: "everything", ext: ".json",
 			src: `{
   "kinds": ["../vendor/deploy_approval.sigil"],
+  "trusted": "platform/vocabulary",
   "require": [
     {"policy": "deploy.guardrails", "trusted": ["platform\/deploy"], "roots": ["payments.*", "checkout.*"]},
     {"policy": "access.guardrails"}
@@ -261,11 +263,12 @@ func TestParseFormats(t *testing.T) {
   "lints": {"gated-deny": "error", "unused-let": "off"}
 }
 `,
-			want: want(".json", config.Pos{Line: 4, Column: 16}, config.Pos{Line: 5, Column: 16}),
+			want: want(".json", config.Pos{Line: 5, Column: 16}, config.Pos{Line: 6, Column: 16}),
 		},
 		{
 			name: "everything", ext: ".toml",
 			src: `kinds = ["../vendor/deploy_approval.sigil"]
+trusted = ["platform/vocabulary"]
 
 [[require]]
 policy = "deploy.guardrails"
@@ -279,11 +282,12 @@ policy = "access.guardrails"
 gated-deny = "error"
 unused-let = 'off'
 `,
-			want: want(".toml", config.Pos{Line: 4, Column: 10}, config.Pos{Line: 9, Column: 10}),
+			want: want(".toml", config.Pos{Line: 5, Column: 10}, config.Pos{Line: 10, Column: 10}),
 		},
 		{
 			name: "dotted keys and inline tables", ext: ".toml",
 			src: `kinds = "../vendor/deploy_approval.sigil"
+trusted = "platform/vocabulary"
 lints.gated-deny = "error"
 lints."unused-let" = "off"
 require = [
@@ -291,7 +295,7 @@ require = [
   {policy = "access.guardrails"},
 ]
 `,
-			want: want(".toml", config.Pos{Line: 5, Column: 13}, config.Pos{Line: 6, Column: 13}),
+			want: want(".toml", config.Pos{Line: 6, Column: 13}, config.Pos{Line: 7, Column: 13}),
 		},
 		{name: "empty", ext: ".json", src: " \n", want: &config.Config{File: file(".json"), Lints: map[string]lint.Level{}}},
 		{name: "null", ext: ".json", src: "null", want: &config.Config{File: file(".json"), Lints: map[string]lint.Level{}}},
