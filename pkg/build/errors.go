@@ -8,12 +8,13 @@ import (
 )
 
 // Site is a builder call in Go code: the file and line it's on, and the
-// builder function called, such as "build.Field". Errors and the
+// builder function or method called, named the way Go names it:
+// "build.Field", "Expr.Eq" or "(*Block).When". Errors and the
 // diagnostics of [Check] point there, since that's where to fix a
 // document built in Go.
 type Site struct {
 	File string // the Go file, as the runtime reports it
-	Call string // the builder function
+	Call string // the builder function or method
 	Line int
 }
 

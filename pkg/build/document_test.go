@@ -84,6 +84,11 @@ func TestStatements(t *testing.T) {
 			p.Decide(Grant.Reason("oncall"), build.Arg("level", build.Lit(LevelRead)), build.Arg("ttl", build.Lit(time.Hour+2*time.Minute+3*time.Second+4*time.Millisecond)), build.Arg("note", build.Lit(strings.Repeat("b", 68))))
 			return 0
 		}},
+		{name: "comment with carriage returns", want: "// a\n// pub let injected = true\n// b\nparam n: int", build: func(p *build.PolicyDoc[Request], in *Request) int {
+			p.Comment("a\rpub let injected = true\r\nb")
+			build.Param[int](p, "n")
+			return 0
+		}},
 		{name: "comments", want: "// one\n//\n// two\nparam n: int\n\n// last", build: func(p *build.PolicyDoc[Request], in *Request) int {
 			p.Comment("one\n\ntwo  ")
 			build.Param[int](p, "n")
@@ -313,6 +318,55 @@ func TestDocuments(t *testing.T) {
 			want: `build.Policy: document name a.when: "when" is a keyword`,
 			err:  true,
 		},
+		{
+			name: "path in a directory Load skips",
+			doc: func() build.Doc {
+				return build.Module("a", Access, nil, build.WithPath(".platform/deploy/freeze.sigil"))
+			},
+			path: "a.sigil",
+			want: `".platform/deploy/freeze.sigil" has an element that starts with ` + "`.`" + `, which policy.Kind.Load skips`,
+			err:  true,
+		},
+		{
+			name: "file Load skips",
+			doc:  func() build.Doc { return build.Module("a", Access, nil, build.WithPath("deploy/..data.sigil")) },
+			path: "a.sigil",
+			want: "which policy.Kind.Load skips",
+			err:  true,
+		},
+		{
+			name: "header with carriage returns",
+			doc:  func() build.Doc { return build.Module("a", Access, nil, build.WithHeader("x\rpub let y = true\r\nz")) },
+			path: "a.sigil",
+			want: "// x\n// pub let y = true\n// z\n\nmodule a: Access@2\n",
+		},
+		{
+			name: "older pin",
+			doc:  func() build.Doc { return build.Module("a", Access, nil, build.WithHeader(""), build.WithPin(1)) },
+			path: "a.sigil",
+			want: "module a: Access@1\n",
+		},
+		{
+			name: "pin above the current version",
+			doc:  func() build.Doc { return build.Module("a", Access, nil, build.WithPin(3)) },
+			path: "a.sigil",
+			want: "build.WithPin: kind Access accepts pins from version 1 to 2, not 3",
+			err:  true,
+		},
+		{
+			name: "pin below the oldest accepted version",
+			doc:  func() build.Doc { return build.Module("a", Access, nil, build.WithPin(0)) },
+			path: "a.sigil",
+			want: "accepts pins from version 1 to 2, not 0",
+			err:  true,
+		},
+		{
+			name: "pin without a kind",
+			doc:  func() build.Doc { return build.Module[Request]("a", nil, nil, build.WithPin(1)) },
+			path: "a.sigil",
+			want: "build.Module: the kind is nil",
+			err:  true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -354,4 +408,102 @@ func TestErrorOrder(t *testing.T) {
 	if want := "document_test.go:"; !strings.HasPrefix(errs.Error(), want) || strings.Count(errs.Error(), "\n") != 1 {
 		t.Errorf("Errors.Error() = %q, want two lines starting with %q", errs.Error(), want)
 	}
+}
+
+// TestCallNames checks that an error names the builder call the way Go
+// names it: a function by its package, a method by its receiver.
+func TestCallNames(t *testing.T) {
+	var zero build.Expr[bool]
+	tests := []struct {
+		build func(p *build.PolicyDoc[Request], in *Request)
+		call  string
+	}{
+		{call: "build.Field", build: func(p *build.PolicyDoc[Request], in *Request) { build.Let(p, "x", build.Field(&in.Note)) }},
+		{call: "Expr.Matches", build: func(p *build.PolicyDoc[Request], in *Request) {
+			build.Let(p, "x", build.Field(&in.Actor.Name).Matches("("))
+		}},
+		{call: "(*PolicyDoc).When", build: func(p *build.PolicyDoc[Request], in *Request) { p.When(zero, nil) }},
+		{call: "(*PolicyDoc).Assert", build: func(p *build.PolicyDoc[Request], in *Request) { p.Assert("a", zero) }},
+		{call: "(*PolicyDoc).Decide", build: func(p *build.PolicyDoc[Request], in *Request) { p.Decide(policy.Outcome{}) }},
+		{call: "(*PolicyDoc).Invoke", build: func(p *build.PolicyDoc[Request], in *Request) { p.Invoke(nil) }},
+		{call: "(*Block).When", build: func(p *build.PolicyDoc[Request], in *Request) {
+			p.When(build.Lit(true), func(b *build.Block) { b.When(zero, nil) })
+		}},
+		{call: "(*Block).Assert", build: func(p *build.PolicyDoc[Request], in *Request) {
+			p.When(build.Lit(true), func(b *build.Block) { b.Assert("a", zero) })
+		}},
+		{call: "(*Block).Decide", build: func(p *build.PolicyDoc[Request], in *Request) {
+			p.When(build.Lit(true), func(b *build.Block) { b.Decide(policy.Outcome{}) })
+		}},
+		{call: "(*Block).Invoke", build: func(p *build.PolicyDoc[Request], in *Request) {
+			p.When(build.Lit(true), func(b *build.Block) { b.Invoke(nil) })
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.call, func(t *testing.T) {
+			_, err := build.Policy("test.p", Access, tt.build).Source()
+			errs, ok := err.(build.Errors)
+			if !ok || len(errs) != 1 {
+				t.Fatalf("got %v, want one error", err)
+			}
+			if errs[0].Call != tt.call {
+				t.Errorf("Call = %q, want %q", errs[0].Call, tt.call)
+			}
+		})
+	}
+}
+
+func TestAs(t *testing.T) {
+	platform := build.Policy("platform.guardrails", Access, func(p *build.PolicyDoc[Request], in *Request) {
+		build.Pub(p, "fine", build.Lit(true))
+	})
+	payments := build.Extern("payments.guardrails")
+	common := build.Module("access.vocab", Access, func(m *build.ModuleDoc[Request], in *Request) {
+		build.Pub(m, "fine", build.Lit(true))
+	})
+	runPolicies(t, []policyCase{
+		{name: "two policies named alike", want: strings.Join([]string{
+			"use payments.guardrails as payments_guardrails",
+			"use platform.guardrails",
+			"",
+			"guardrails()",
+			"",
+			"payments_guardrails(min: 1)",
+			"",
+			"when guardrails.fine and payments_guardrails.fine {}",
+		}, "\n"), build: func(p *build.PolicyDoc[Request], in *Request) int {
+			pay := build.As(payments, "payments_guardrails")
+			p.Invoke(platform)
+			p.Invoke(pay, build.Arg("min", build.Lit(1)))
+			p.When(build.And(build.Ref[bool](platform, "fine"), build.Ref[bool](pay, "fine")), nil)
+			return 0
+		}},
+		{name: "module under another name", want: "use access.vocab as v\n\nlet x = v.fine", build: func(p *build.PolicyDoc[Request], in *Request) int {
+			build.Let(p, "x", build.Ref[bool](build.As(common, "v"), "fine"))
+			return 0
+		}},
+		{name: "an alias of an alias", want: "use access.vocab as w\n\nlet x = w.fine", build: func(p *build.PolicyDoc[Request], in *Request) int {
+			build.Let(p, "x", build.Ref[bool](build.As(build.As(common, "v"), "w"), "fine"))
+			return 0
+		}},
+
+		{name: "imported under two names", err: "access.vocab is imported as vocab here and as v at document_test.go", build: func(p *build.PolicyDoc[Request], in *Request) int {
+			build.Let(p, "x", build.Ref[bool](build.As(common, "v"), "fine"))
+			return line(build.Let(p, "y", build.Ref[bool](common, "fine")))
+		}},
+		{name: "alias that isn't a name", err: `alias "a.b" isn't an identifier`, build: func(p *build.PolicyDoc[Request], in *Request) int {
+			return line(build.Let(p, "x", build.Ref[bool](build.As(common, "a.b"), "fine")))
+		}},
+		{name: "alias of nothing", err: "the document is nil", build: func(p *build.PolicyDoc[Request], in *Request) int {
+			return line(build.Let(p, "x", build.Ref[bool](build.As(nil, "v"), "fine")))
+		}},
+		{name: "alias of a misnamed document", err: `document name a b`, build: func(p *build.PolicyDoc[Request], in *Request) int {
+			p.Invoke(build.As(build.Extern("a b"), "v"))
+			return 0
+		}},
+		{name: "alias that collides", err: "importing fine from access.vocab collides with the let or param fine", build: func(p *build.PolicyDoc[Request], in *Request) int {
+			build.Let(p, "fine", build.Lit(true))
+			return line(build.Let(p, "x", build.Ref[bool](build.As(common, "fine"), "fine")))
+		}},
+	})
 }

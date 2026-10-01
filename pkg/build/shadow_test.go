@@ -1,10 +1,37 @@
 package build_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/spechtlabs/sigil/pkg/build"
+	"github.com/spechtlabs/sigil/pkg/policy"
+)
+
+// The Flagged kind has fields that take no memory, so two of them share
+// an address and a type.
+type (
+	Empty struct{}
+
+	Flags struct {
+		Beta  Empty `policy:"beta"`
+		Alpha Empty `policy:"alpha"`
+		N     int   `policy:"n"`
+	}
+
+	FlagInput struct {
+		F Flags `policy:"f"`
+	}
+)
+
+var (
+	block   = policy.NewDecision[policy.None]("block", "no", "nothing")
+	Flagged = policy.NewKind[FlagInput]("Flagged",
+		policy.WithVersion(1),
+		policy.WithDecisions(block),
+		policy.WithDefault(block.Reason("nothing")),
+	)
 )
 
 func TestField(t *testing.T) {
@@ -125,6 +152,9 @@ func TestField(t *testing.T) {
 		{name: "Opt without an optional", err: "actor.name reaches through no optional struct; read it with build.Field", build: func(m *build.ModuleDoc[Request], in *Request) int {
 			return line(build.Let(m, "x", build.Opt(&in.Actor.Name)))
 		}},
+		{name: "Opt of a pointer field", err: "change?.approver is optional itself, and optionals don't nest; read it with build.OptPtr", build: func(m *build.ModuleDoc[Request], in *Request) int {
+			return line(build.Let(m, "x", build.Present(build.Opt(&in.Change.Approver))))
+		}},
 		{name: "OptPtr without an optional", err: "change reaches through no optional struct", build: func(m *build.ModuleDoc[Request], in *Request) int {
 			return line(build.Let(m, "x", build.OptPtr(&in.Change)))
 		}},
@@ -154,4 +184,50 @@ func TestField(t *testing.T) {
 			return line(build.Let(m, "x", build.All[string]("r", build.Field(&in.Actor.Roles), nil)))
 		}},
 	})
+}
+
+func TestZeroSizeFields(t *testing.T) {
+	tests := []struct {
+		build func(m *build.ModuleDoc[FlagInput], in *FlagInput) int
+		name  string
+		want  string
+		err   string
+	}{
+		{name: "field after them", want: "let x = f.n", build: func(m *build.ModuleDoc[FlagInput], in *FlagInput) int {
+			build.Let(m, "x", build.Field(&in.F.N))
+			return 0
+		}},
+		{name: "Field", err: "fields f.beta and f.alpha take no memory and share one address", build: func(m *build.ModuleDoc[FlagInput], in *FlagInput) int {
+			return line(build.Let(m, "x", build.Field(&in.F.Alpha)))
+		}},
+		{name: "Sel", err: "fields beta and alpha take no memory and share one address", build: func(m *build.ModuleDoc[FlagInput], in *FlagInput) int {
+			return line(build.Let(m, "x", build.Sel(build.Field(&in.F), func(f *Flags) *Empty { return &f.Beta })))
+		}},
+		{name: "variable", err: "fields v.beta and v.alpha take no memory and share one address", build: func(m *build.ModuleDoc[FlagInput], in *FlagInput) int {
+			var at int
+			build.Let(m, "x", build.Any("v", build.Lit[[]Flags](nil), func(v *Flags) build.Expr[bool] {
+				x := build.Field(&v.Alpha)
+				at = line() - 1
+				return x.Eq(x)
+			}))
+			return at
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var line int
+			m := build.Module("test.m", Flagged, func(m *build.ModuleDoc[FlagInput], in *FlagInput) { line = tt.build(m, in) }, build.WithHeader(""))
+			src, err := m.Source()
+			if tt.err != "" {
+				wantError(t, err, line, tt.err)
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.TrimPrefix(string(src), "module test.m: Flagged@1\n\n"); got != tt.want+"\n" {
+				t.Errorf("got\n%s\nwant\n%s", got, tt.want)
+			}
+		})
+	}
 }

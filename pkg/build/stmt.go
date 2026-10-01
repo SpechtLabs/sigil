@@ -11,6 +11,9 @@ import (
 	"github.com/spechtlabs/sigil/pkg/policy"
 )
 
+// newlines turns every line ending into `\n`.
+var newlines = strings.NewReplacer("\r\n", "\n", "\r", "\n")
+
 // stmt is a statement of a document built in Go.
 type stmt interface {
 	// render prints the statement on the current line, which is at
@@ -159,7 +162,7 @@ func (s *callStmt) render(r *renderer, indent int) {
 }
 
 func (s *commentStmt) render(r *renderer, indent int) {
-	for i, line := range strings.Split(s.text, "\n") {
+	for i, line := range lines(s.text) {
 		if i > 0 {
 			r.newline(indent)
 		}
@@ -341,4 +344,11 @@ func isNil(v any) bool {
 	}
 	rv := reflect.ValueOf(v)
 	return rv.Kind() == reflect.Pointer && rv.IsNil()
+}
+
+// lines splits the text of a comment into its lines, at every line
+// ending the lexer ends a comment at: `\r\n`, `\r` and `\n`. Text after a
+// lone `\r` would otherwise become code.
+func lines(text string) []string {
+	return strings.Split(newlines.Replace(text), "\n")
 }

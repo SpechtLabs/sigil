@@ -64,7 +64,7 @@ type hiding struct {
 // FS renders the documents into an in-memory file system, each at its
 // [Doc.Path], for [policy.Kind.Load], [policy.From] and [policy.Trusted].
 // The error is [Errors] when a document doesn't render, or two documents
-// share a name or a path.
+// share a name or a path, or paths that differ only in case.
 func FS(docs ...Doc) (fs.FS, error) {
 	files, err := renderAll(callSite("build.FS"), docs)
 	if err != nil {
@@ -79,7 +79,9 @@ func FS(docs ...Doc) (fs.FS, error) {
 
 // Write renders the documents and writes each to its [Doc.Path] under
 // dir, creating directories as needed. Nothing is written when a document
-// doesn't render.
+// doesn't render. Write never removes a file: a document that was renamed
+// or dropped leaves its old file behind, which [Diff] doesn't see and
+// whoever regenerates has to delete.
 func Write(dir string, docs ...Doc) error {
 	files, err := renderAll(callSite("build.Write"), docs)
 	if err != nil {
@@ -102,6 +104,8 @@ func Write(dir string, docs ...Doc) error {
 // the rendered bytes, and otherwise a [*DriftError] that names each stale
 // and missing file. A test calls it to catch a rendered file nobody
 // regenerated after the Go code changed.
+// A file whose only difference is CRLF line endings is stale too, and the
+// error says so instead of showing a diff of every line.
 func Diff(fsys fs.FS, docs ...Doc) error {
 	files, err := renderAll(callSite("build.Diff"), docs)
 	if err != nil {
@@ -117,7 +121,11 @@ func Diff(fsys fs.FS, docs ...Doc) error {
 			return fmt.Errorf("build: reading %s: %w", f.doc.path, err)
 		case !bytes.Equal(got, f.src):
 			drift.Stale = append(drift.Stale, f.doc.path)
-			drift.diffs = append(drift.diffs, udiff.Unified(f.doc.path+" (on disk)", f.doc.path+" (rendered)", string(got), string(f.src)))
+			diff := "only the line endings differ: CRLF on disk, LF rendered; a checkout that converts them, like git's core.autocrlf, does that, so add `*.sigil text eol=lf` to .gitattributes"
+			if !bytes.Equal(bytes.ReplaceAll(got, []byte("\r\n"), []byte("\n")), f.src) {
+				diff = udiff.Unified(f.doc.path+" (on disk)", f.doc.path+" (rendered)", string(got), string(f.src))
+			}
+			drift.diffs = append(drift.diffs, diff)
 		}
 	}
 	if len(drift.Stale) == 0 && len(drift.Missing) == 0 {
@@ -206,7 +214,7 @@ func (h hiding) Open(name string) (fs.File, error) {
 // ReadDir lists a directory without the hidden files.
 func (h hiding) ReadDir(name string) ([]fs.DirEntry, error) {
 	entries, err := fs.ReadDir(h.fsys, name)
-	out := entries[:0]
+	out := make([]fs.DirEntry, 0, len(entries)) // the base may hand out its own slice
 	for _, e := range entries {
 		if !h.hide[path.Join(name, e.Name())] {
 			out = append(out, e)
@@ -220,7 +228,7 @@ func (h hiding) ReadDir(name string) ([]fs.DirEntry, error) {
 func renderAll(s Site, docs []Doc) ([]rendered, error) {
 	var errs Errors
 	var out []rendered
-	paths, names := map[string]string{}, map[string]bool{}
+	paths, folded, names := map[string]string{}, map[string]string{}, map[string]bool{}
 	for i, d := range docs {
 		if isNil(d) {
 			errs = append(errs, s.errorf("document %d is nil", i+1))
@@ -229,13 +237,16 @@ func renderAll(s Site, docs []Doc) ([]rendered, error) {
 		doc := d.document()
 		src, spans, e := doc.render()
 		errs = append(errs, e...)
+		lower := strings.ToLower(doc.path)
 		if prev, ok := paths[doc.path]; ok {
 			errs = append(errs, doc.site.errorf("%s and %s both render to %s; give one another path with build.WithPath", prev, doc.name, doc.path))
+		} else if other, ok := folded[lower]; ok {
+			errs = append(errs, doc.site.errorf("%s and %s render to paths that differ only in case; a file system that ignores case, like macOS's, keeps one of them, so give one another path with build.WithPath", other, doc.path))
 		}
 		if names[doc.name] {
 			errs = append(errs, doc.site.errorf("two documents are named %s; a name has one definition in a bundle", doc.name))
 		}
-		paths[doc.path], names[doc.name] = doc.name, true
+		paths[doc.path], folded[lower], names[doc.name] = doc.name, doc.path, true
 		out = append(out, rendered{doc: doc, src: src, spans: spans})
 	}
 	if errs != nil {

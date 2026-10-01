@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/contract"
 	"github.com/spechtlabs/sigil/pkg/policy"
 )
@@ -33,15 +34,17 @@ type Doc interface {
 }
 
 // Importable is a document another one can read pub lets from with
-// [Ref]: a [Doc], or an [*ExternDoc] for one written by hand.
+// [Ref]: a [Doc], an [*ExternDoc] for one written by hand, or an [*Alias]
+// of either.
 type Importable interface {
 	// Name returns the name in the document's header, like deploy.freeze.
 	Name() string
 	built() *document // nil for a document written by hand
+	fault() *Error    // what went wrong naming it, for Extern and As
 }
 
 // Invocable is a policy another one can invoke with [Block.Invoke]: a
-// [*PolicyDoc], or an [*ExternDoc] for one written by hand.
+// [*PolicyDoc], an [*ExternDoc] for one written by hand, or an [*Alias].
 type Invocable interface {
 	Importable
 	invocable()
@@ -69,7 +72,7 @@ type ParamScope interface {
 	params() *body
 }
 
-// DocOption configures [Module] and [Policy]: [WithPath] and
+// DocOption configures [Module] and [Policy]: [WithPath], [WithPin] and
 // [WithHeader].
 type DocOption interface {
 	apply(d *document)
@@ -101,6 +104,13 @@ type ExternDoc struct {
 	name string
 }
 
+// Alias is a document imported under another name. Build one with [As].
+type Alias struct {
+	target Importable
+	err    *Error
+	name   string
+}
+
 // Argument is a named argument of a decision or an invocation, built with
 // [Arg].
 type Argument struct {
@@ -128,6 +138,7 @@ type document struct {
 	header   string
 	errs     Errors
 	site     Site
+	pin      int // the kind version the header pins; 0 for the current one
 	module   bool
 }
 
@@ -148,9 +159,15 @@ type pathOption struct {
 // headerOption is WithHeader.
 type headerOption string
 
+// pinOption is WithPin.
+type pinOption struct {
+	s Site
+	n int
+}
+
 // Module builds the module called name, against kind k: body declares
 // its lets, reading the input through in. The header pins k's current
-// version.
+// version, unless [WithPin] pins another.
 //
 //	freeze := build.Module("deploy.freeze", deploy.Kind, func(m *build.ModuleDoc[deploy.Input], in *deploy.Input) {
 //		build.Pub(m, "is_frozen", build.Or(
@@ -172,7 +189,7 @@ func Module[In any](name string, k *policy.Kind[In], body func(m *ModuleDoc[In],
 
 // Policy builds the policy called name, against kind k: body declares its
 // params, lets and rules, reading the input through in. The header pins
-// k's current version.
+// k's current version, unless [WithPin] pins another.
 func Policy[In any](name string, k *policy.Kind[In], body func(p *PolicyDoc[In], in *In), opts ...DocOption) *PolicyDoc[In] {
 	d, in := newDocument(callSite("build.Policy"), name, k, false, opts)
 	p := &PolicyDoc[In]{d: d}
@@ -184,7 +201,8 @@ func Policy[In any](name string, k *policy.Kind[In], body func(p *PolicyDoc[In],
 
 // WithPath sets the path of the rendered file, relative to a policy
 // directory, such as "platform/deploy/freeze.sigil". It must be a valid
-// [io/fs] path ending in `.sigil`.
+// [io/fs] path ending in `.sigil`, and a path [policy.Kind.Load] reads:
+// no element of it may start with `.`, since Load skips those.
 func WithPath(path string) DocOption {
 	return pathOption{path: path, s: callSite("build.WithPath")}
 }
@@ -200,6 +218,16 @@ func WithHeader(text string) DocOption {
 	return headerOption(text)
 }
 
+// WithPin pins the kind version n in the header instead of the current
+// one, for a document that must still load in hosts on an older version
+// while a kind change rolls out; see
+// https://sigil.specht-labs.de/guides/evolve-a-kind/. n must be a version
+// the kind accepts: from its oldest accepted version, which WithAccepts
+// sets, up to the current one.
+func WithPin(n int) DocOption {
+	return pinOption{n: n, s: callSite("build.WithPin")}
+}
+
 // Extern names a module or policy written by hand, for [Ref] and
 // [Block.Invoke].
 func Extern(name string) *ExternDoc {
@@ -209,6 +237,25 @@ func Extern(name string) *ExternDoc {
 		e.err = s.errorf("%s", msg)
 	}
 	return e
+}
+
+// As imports target under the name alias, for a document that reads or
+// invokes two documents whose names end alike, such as
+// platform.guardrails and payments.guardrails. An aliased document is
+// always imported whole: an invocation renders `use payments.guardrails
+// as payments_guardrails` and `payments_guardrails(…)`, and a [Ref]
+// reads `payments_guardrails.is_hotfix`. A document imports another under
+// one name; reading it both with and without the alias is an error.
+func As(target Importable, alias string) *Alias {
+	s := callSite("build.As")
+	a := &Alias{target: target, name: alias}
+	switch msg := identError(alias); {
+	case isNil(target):
+		a.err = s.errorf("the document is nil")
+	case msg != "":
+		a.err = s.errorf("alias %s", msg)
+	}
+	return a
 }
 
 // Let declares `let name = x` in s and returns the let, to read wherever
@@ -340,36 +387,36 @@ func (p *PolicyDoc[In]) Comment(text string) {
 // When adds the rule `when cond { … }` at the top level; see
 // [Block.When].
 func (p *PolicyDoc[In]) When(cond Expr[bool], body func(b *Block)) {
-	p.d.top.when(callSite("When"), cond.n, body)
+	p.d.top.when(callSite("(*PolicyDoc).When"), cond.n, body)
 }
 
 // Assert adds `assert("reason", cond)` at the top level; see
 // [Block.Assert].
 func (p *PolicyDoc[In]) Assert(reason string, cond Expr[bool]) {
-	p.d.top.assert(callSite("Assert"), reason, cond.n)
+	p.d.top.assert(callSite("(*PolicyDoc).Assert"), reason, cond.n)
 }
 
 // Decide constructs a decision at the top level; see [Block.Decide].
 func (p *PolicyDoc[In]) Decide(o policy.Outcome, args ...Argument) {
-	p.d.top.decide(callSite("Decide"), o, args)
+	p.d.top.decide(callSite("(*PolicyDoc).Decide"), o, args)
 }
 
 // Invoke invokes a policy at the top level, so it applies
 // unconditionally; see [Block.Invoke].
 func (p *PolicyDoc[In]) Invoke(target Invocable, args ...Argument) {
-	p.d.top.invoke(callSite("Invoke"), target, args)
+	p.d.top.invoke(callSite("(*PolicyDoc).Invoke"), target, args)
 }
 
 // When adds the nested rule `when cond { … }`: body builds its body,
 // which applies when cond and every enclosing condition hold.
 func (b *Block) When(cond Expr[bool], body func(b *Block)) {
-	b.b.when(callSite("When"), cond.n, body)
+	b.b.when(callSite("(*Block).When"), cond.n, body)
 }
 
 // Assert adds `assert("reason", cond)`: cond must hold whenever the
 // assert is reached, or the evaluation fails.
 func (b *Block) Assert(reason string, cond Expr[bool]) {
-	b.b.assert(callSite("Assert"), reason, cond.n)
+	b.b.assert(callSite("(*Block).Assert"), reason, cond.n)
 }
 
 // Decide constructs a decision: the decision and reason of o, which a
@@ -381,14 +428,14 @@ func (b *Block) Assert(reason string, cond Expr[bool]) {
 // render `deny(reason: change_freeze)` and `review(reason: service_owner,
 // approvers: approvers)`.
 func (b *Block) Decide(o policy.Outcome, args ...Argument) {
-	b.b.decide(callSite("Decide"), o, args)
+	b.b.decide(callSite("(*Block).Decide"), o, args)
 }
 
 // Invoke invokes a policy with its params bound by name, as
 // `guardrails(min_soak: 4h)`, and generates the `use` that imports it.
 // Arguments are constants and the invoking policy's own params.
 func (b *Block) Invoke(target Invocable, args ...Argument) {
-	b.b.invoke(callSite("Invoke"), target, args)
+	b.b.invoke(callSite("(*Block).Invoke"), target, args)
 }
 
 // Comment puts a comment line before the next statement of the body; see
@@ -400,7 +447,11 @@ func (b *Block) Comment(text string) {
 // Name returns the document's name, as given to [Extern].
 func (e *ExternDoc) Name() string { return e.name }
 
+// Name returns the name of the aliased document, the one in its header.
+func (a *Alias) Name() string { return a.target.Name() }
+
 func (m *ModuleDoc[In]) built() *document    { return m.d }
+func (m *ModuleDoc[In]) fault() *Error       { return nil }
 func (m *ModuleDoc[In]) document() *document { return m.d }
 func (m *ModuleDoc[In]) scope() *body        { return m.topLevel() }
 
@@ -412,6 +463,7 @@ func (m *ModuleDoc[In]) topLevel() *body {
 }
 
 func (p *PolicyDoc[In]) built() *document    { return p.d }
+func (p *PolicyDoc[In]) fault() *Error       { return nil }
 func (p *PolicyDoc[In]) document() *document { return p.d }
 func (p *PolicyDoc[In]) invocable()          {}
 func (p *PolicyDoc[In]) scope() *body        { return p.topLevel() }
@@ -432,17 +484,44 @@ func (b *Block) scope() *body {
 }
 
 func (e *ExternDoc) built() *document { return nil }
+func (e *ExternDoc) fault() *Error    { return e.err }
 func (e *ExternDoc) invocable()       {}
 
+func (a *Alias) built() *document { return a.target.built() }
+func (a *Alias) invocable()       {}
+
+func (a *Alias) fault() *Error {
+	if a.err != nil {
+		return a.err
+	}
+	return a.target.fault()
+}
+
 func (o pathOption) apply(d *document) {
-	if !fs.ValidPath(o.path) || filepath.Ext(o.path) != ".sigil" {
+	switch {
+	case !fs.ValidPath(o.path) || filepath.Ext(o.path) != ".sigil":
 		d.errs = append(d.errs, o.s.errorf("%q isn't a path for a policy file: write a slash-separated relative path ending in .sigil", o.path))
+		return
+	case !bundle.Loads(o.path):
+		d.errs = append(d.errs, o.s.errorf("%q has an element that starts with `.`, which policy.Kind.Load skips, so the document would be silently left out; rename it", o.path))
 		return
 	}
 	d.path = o.path
 }
 
 func (o headerOption) apply(d *document) { d.header = string(o) }
+
+func (o pinOption) apply(d *document) {
+	if d.contract == nil {
+		return
+	}
+	k := d.contract.Model
+	if o.n < k.Oldest() || o.n > k.Version {
+		d.errs = append(d.errs, o.s.errorf("kind %s accepts pins from version %d to %d, not %d", k.Name, k.Oldest(), k.Version, o.n))
+		return
+	}
+	d.pin = o.n
+}
 
 // newDocument starts a document built by the call at s, and returns it
 // with the shadow input its body reads.
