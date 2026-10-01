@@ -3,19 +3,27 @@ package wasmtest
 import (
 	"bytes"
 	"encoding/json"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/spechtlabs/sigil/cmd/sigil/command"
 	"github.com/spechtlabs/sigil/internal/engine"
+	"github.com/spechtlabs/sigil/internal/testsuite"
 )
 
-// The CLI's check testdata, and the deploy-gates example's configuration.
+// The CLI's check and test testdata, and the examples' policies and
+// configurations.
 const (
 	checkData   = root + "/cmd/sigil/command/check/testdata"
+	testData    = root + "/cmd/sigil/command/test/testdata"
 	gatesConfig = gates + "/sigil.yaml"
+	alerts      = root + "/examples/alert-routing/policies"
+	flags       = root + "/examples/feature-flags/policies"
 )
 
 // TestCLIParity checks that the module answers with the records the sigil
@@ -107,6 +115,67 @@ func TestFormatParity(t *testing.T) {
 	}
 }
 
+// TestTestParity checks that the test op answers with the records
+// `sigil test -o json` prints for the same files: the CLI's golden fixtures,
+// passing, failing, and test files that can't run, and the examples'
+// test files, with their input files and, as their configurations make
+// them, trusted files.
+func TestTestParity(t *testing.T) {
+	kind := testData + "/access.sigil"
+	policy := testData + "/access/main.sigil"
+	tests := []struct {
+		name    string
+		args    []string // the CLI's, after sigil test
+		paths   []string // the module's files, test files and data files, from these paths
+		trusted []string // directories among the paths whose .sigil files are the module's trusted files
+		run     string
+	}{
+		{name: "no files", args: []string{testData + "/access/main_test.yaml"}, paths: []string{testData + "/access/main_test.yaml"}},
+		{name: "pass", args: []string{"--kind", kind, testData + "/access"}, paths: []string{kind, testData + "/access"}},
+		{name: "failures", args: []string{"--kind", kind, policy, testData + "/failing"}, paths: []string{kind, policy, testData + "/failing"}},
+		{name: "run", args: []string{"--kind", kind, "--run", "^wrong", policy, testData + "/failing"}, paths: []string{kind, policy, testData + "/failing"}, run: "^wrong"},
+		{name: "invalid", args: []string{"--kind", kind, policy, testData + "/invalid"}, paths: []string{kind, policy, testData + "/invalid"}},
+		{name: "bad yaml", args: []string{"--kind", kind, policy, testData + "/badyaml"}, paths: []string{kind, policy, testData + "/badyaml"}},
+		{name: "no policy", args: []string{"--kind", kind, policy, testData + "/nopolicy"}, paths: []string{kind, policy, testData + "/nopolicy"}},
+		{name: "broken bundle", args: []string{"--kind", kind, testData + "/broken"}, paths: []string{kind, testData + "/broken"}},
+		{name: "unrelated error", args: []string{"--kind", kind, testData + "/access", testData + "/unrelated"}, paths: []string{kind, testData + "/access", testData + "/unrelated"}},
+		{name: "kind error", args: []string{"--kind", kind, testData + "/access", testData + "/brokenkind"}, paths: []string{kind, testData + "/access", testData + "/brokenkind"}},
+		{name: "stubs", args: []string{"--kind", kind, policy, testData + "/stubbed"}, paths: []string{kind, policy, testData + "/stubbed"}},
+		{name: "stubs of an enum", args: []string{testData + "/enumstubs"}, paths: []string{testData + "/enumstubs"}},
+		{name: "stubs of an enum that don't fit", args: []string{testData + "/enumstubs/tiers.sigil", testData + "/enumstubs/main.sigil", testData + "/enumbad"}, paths: []string{testData + "/enumstubs/tiers.sigil", testData + "/enumstubs/main.sigil", testData + "/enumbad"}},
+		{name: "stubs of the wrong shape", args: []string{"--kind", kind, policy, testData + "/badstubshape"}, paths: []string{kind, policy, testData + "/badstubshape"}},
+		{name: "stubs that don't fit", args: []string{"--kind", kind, policy, testData + "/badstubs"}, paths: []string{kind, policy, testData + "/badstubs"}},
+		{name: "stubs that fail", args: []string{"--kind", kind, policy, testData + "/stubfail"}, paths: []string{kind, policy, testData + "/stubfail"}},
+		{name: "deploy-gates", args: []string{"--config", gatesConfig, gates}, paths: []string{gates}},
+		{name: "deploy-gates, platform trusted", args: []string{"--config", gatesConfig, gates}, paths: []string{gates}, trusted: []string{gates + "/platform/deploy", gates + "/platform/access"}},
+		{name: "alert-routing, platform trusted", args: []string{"--config", alerts + "/sigil.yaml", alerts}, paths: []string{alerts}, trusted: []string{alerts + "/platform"}},
+		{name: "alert-routing", args: []string{"--config", alerts + "/sigil.yaml", alerts}, paths: []string{alerts}},
+		{name: "feature-flags", args: []string{"--config", flags + "/sigil.yaml", flags}, paths: []string{flags}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			want := cli(t, append([]string{"test"}, tt.args...)...)
+			sources, tests, data := testFiles(t, tt.paths...)
+			var trusted []map[string]string
+			for _, dir := range tt.trusted {
+				trusted = append(trusted, files(t, dir)...)
+			}
+			sources = slices.DeleteFunc(sources, func(f map[string]string) bool {
+				return slices.ContainsFunc(trusted, func(tf map[string]string) bool { return tf["path"] == f["path"] })
+			})
+			req := map[string]any{"op": "test", "files": sources, "trusted_files": trusted, "test_files": tests, "data_files": data}
+			if tt.run != "" {
+				req["run"] = tt.run
+			}
+			got := newInstance(t, nil).Request(req)
+			if got["ok"] != true {
+				t.Fatalf("test = %v", got)
+			}
+			same(t, got["results"], want)
+		})
+	}
+}
+
 // newNative returns the engine, running natively.
 func newNative() *engine.Engine { return engine.New() }
 
@@ -155,4 +224,47 @@ func same(t *testing.T, got, want any) { //nolint:emptyinterface // any JSON val
 		w, _ := json.MarshalIndent(want, "", "  ")
 		t.Errorf("the module answered\n%s\nwhere the CLI printed\n%s", g, w)
 	}
+}
+
+// testFiles returns the test op's files for the paths, as `sigil test`
+// reads them: the .sigil files, in the CLI's order; the test files, a
+// file named by its path being one by its name; and every other file
+// below a directory, which a case's input_file may name.
+func testFiles(t *testing.T, paths ...string) (sources, tests, data []map[string]string) {
+	t.Helper()
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !info.IsDir() {
+			if testsuite.IsTestFile(p) {
+				tests = append(tests, file(t, p))
+			} else {
+				sources = append(sources, file(t, p))
+			}
+			continue
+		}
+		sources = append(sources, files(t, p)...)
+		err = filepath.WalkDir(p, func(name string, d fs.DirEntry, err error) error {
+			switch {
+			case err != nil:
+				return err
+			case name != p && strings.HasPrefix(d.Name(), "."):
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+			case d.IsDir() || strings.HasSuffix(name, ".sigil"):
+			case testsuite.IsTestFile(name):
+				tests = append(tests, file(t, name))
+			default:
+				data = append(data, file(t, name))
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return sources, tests, data
 }
