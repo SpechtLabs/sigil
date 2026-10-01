@@ -249,6 +249,13 @@ func TestTrusted(t *testing.T) {
 			err: "the trusted source passed to Trusted couldn't be read",
 		},
 		{
+			name: "a trusted source whose only file doesn't parse reports the parse error",
+			opts: func(fs.FS) []policy.LoadOption {
+				return []policy.LoadOption{policy.Trusted(policy.MapFS(map[string]string{"broken.sigil": "modul deploy.broken: DeployApproval@1\n"}))}
+			},
+			err: "broken.sigil:1:1: error: expected",
+		},
+		{
 			name: "an empty From source fails the load",
 			opts: func(fs.FS) []policy.LoadOption {
 				return []policy.LoadOption{policy.Require("deploy.guardrails", policy.From(policy.MapFS(nil)))}

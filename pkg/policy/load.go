@@ -108,11 +108,13 @@ func (k *Kind[In]) trust(b *bundle.Bundle, o *loadOptions) error {
 		if trusted == nil {
 			trusted = bundle.New(k.kind)
 		}
-		before := trusted.Read()
+		before, failed := trusted.Read(), len(trusted.Errors())
 		if err := trusted.Load(src.fsys); err != nil {
 			return humane.Wrap(err, "the trusted source "+src.named+" couldn't be read", "check the directory passed to fs.Sub, or the //go:embed pattern")
 		}
-		if trusted.Read() == before {
+		// A source whose files don't parse holds nothing either, but its
+		// parse errors are the cause, and the compile reports them.
+		if trusted.Read() == before && len(trusted.Errors()) == failed {
 			return humane.New("the trusted source "+src.named+" holds no policies or modules",
 				"a trusted source is read like the bundle: every .sigil file in every directory, skipping names that start with `.`; check the directory passed to fs.Sub, or the //go:embed pattern")
 		}
