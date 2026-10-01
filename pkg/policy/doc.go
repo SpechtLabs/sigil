@@ -109,7 +109,9 @@
 // A [LoadOption] adjusts the compile. [Params] binds the root policy's
 // params from Go. [Require] makes the root invoke another policy
 // unconditionally, so a team can't switch the platform's guardrails off,
-// and [From] pins where that policy comes from.
+// and [From] pins where that policy comes from. [Trusted] adds a trusted
+// source without requiring a policy from it, so a team can import the
+// platform's vocabulary modules but not redefine them.
 //
 // A failed compile returns a [*CompileError] with every problem found,
 // each with a [Position] and a fix hint.

@@ -68,20 +68,25 @@ func (k *Kind[In]) Compile(src, name string, opts ...LoadOption) (*Policy[In], e
 	return k.compile(b, name, o)
 }
 
-// trust loads the sources From named into a trusted bundle. Several
-// requirements may share a source; each source is read once.
+// trust loads the sources Trusted and From named into a trusted bundle,
+// Trusted's first. Several options may share a source; each source is
+// read once.
 func (k *Kind[In]) trust(b *bundle.Bundle, o *loadOptions) error {
+	sources := slices.Clone(o.trusted)
+	for _, r := range o.requires {
+		sources = append(sources, r.from)
+	}
 	var trusted *bundle.Bundle
 	var seen []fs.FS
-	for _, r := range o.requires {
-		if r.from == nil || slices.ContainsFunc(seen, func(prev fs.FS) bool { return sameSource(prev, r.from) }) {
+	for _, src := range sources {
+		if src == nil || slices.ContainsFunc(seen, func(prev fs.FS) bool { return sameSource(prev, src) }) {
 			continue
 		}
-		seen = append(seen, r.from)
+		seen = append(seen, src)
 		if trusted == nil {
 			trusted = bundle.New(k.kind)
 		}
-		if err := trusted.Load(r.from); err != nil {
+		if err := trusted.Load(src); err != nil {
 			return err
 		}
 	}
