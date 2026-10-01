@@ -117,6 +117,30 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  # sigil compile writes a copy of the sigil binary with the policies in it.
+  # On macOS the kernel checks every page of a binary it runs against the
+  # hashes in its code signature, and kills one that doesn't match, so
+  # compile re-hashes the pages it writes. The unit test job runs these same
+  # tests on Linux, where nothing checks a signature; here the binaries that
+  # stamp patches and that compile writes, and the copies of them that the
+  # end-to-end tests move, really run.
+  macos:
+    name: Compiled binaries on macOS
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          install_args: go
+
+      # The end-to-end tests in cmd/sigil build sigil and the deploy-gates
+      # example's sigilc, compile with both, and run what they wrote.
+      - name: Run the stamp, payload, compile and end-to-end tests
+        run: go test ./internal/stamp/ ./internal/payload/ ./cmd/sigil/command/compile/ ./cmd/sigil/
+
   # Each directory under examples/ is a Go module of its own, so the lint and
   # test jobs above stop at its go.mod. This job runs the same gates inside
   # each one, one matrix entry per example. It doesn't start a compose stack
