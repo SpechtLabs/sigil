@@ -255,3 +255,4 @@ The fields of `Result`, `Trace` and `Candidate` are in [Result](/reference/go-ap
 - [Policies in a ConfigMap](/guides/configmaps/): ship team policies to the service and reload them without an outage.
 - [Build a host binary](/guides/host-binary/): give the `sigil` CLI your host functions and export the kind file.
 - [Test your policies](/guides/test-policies/): run policy test cases from `go test`.
+- [Build policies in Go](/guides/build-policies-in-go/): write the platform's vocabulary modules in Go, next to the kind, and serve them as a trusted source.
