@@ -124,7 +124,7 @@ Nothing about the language is specific to alerts. The same constructs decide fea
 
 Out of scope: general computation, reimplementations of the evaluator in other languages, and org-wide authorization in the style of OPA or Cedar. Sigil targets decisions embedded in a single application.
 
-**Other languages.** Hosts outside Go run the same engine compiled to WebAssembly, so a policy decides the same everywhere. [`bindings/typescript`](./bindings/typescript) wraps it for TypeScript and JavaScript and is published to npm as [`@spechtlabs/sigil`](https://www.npmjs.com/package/@spechtlabs/sigil). See [Embed Sigil in TypeScript](./docs/guides/embed-typescript.md) and [the WebAssembly module](./docs/reference/wasm.md).
+**Other languages.** Hosts outside Go run the same engine compiled to WebAssembly, so a policy decides the same everywhere. [`bindings/typescript`](./bindings/typescript) wraps it for TypeScript and JavaScript and is published to npm as [`@spechtlabs/sigil`](https://www.npmjs.com/package/@spechtlabs/sigil). [`bindings/rust`](./bindings/rust) wraps it for Rust on wasmtime, with hard deadlines from epoch interruption and a pool of instances, and is published to crates.io as [`spechtlabs-sigil`](https://crates.io/crates/spechtlabs-sigil). See [Embed Sigil in TypeScript](./docs/guides/embed-typescript.md), [Embed Sigil in Rust](./docs/guides/embed-rust.md) and [the WebAssembly module](./docs/reference/wasm.md).
 
 ## How evaluation works
 
@@ -195,6 +195,7 @@ The docs site is at [sigil.specht-labs.de](https://sigil.specht-labs.de/), built
 | Write and test policies | [What Sigil is](./docs/getting-started/overview.md), [the tour](./docs/getting-started/tour.md) and the [step-by-step path](./docs/getting-started/define-the-input.md), then the [guides](./docs/guides/team-policies.md), [testing your policies](./docs/guides/test-policies.md) and the [language reference](./docs/reference/policy-files.md) |
 | Embed Sigil in a Go service | [Embedding Sigil in a Go service](./docs/guides/embed-go.md), the [Go API reference](./docs/reference/go-api.md), [the example service](./docs/guides/example-service.md), [policies in a ConfigMap](./docs/guides/configmaps.md) and [evolving a kind](./docs/guides/evolve-a-kind.md) |
 | Embed Sigil in TypeScript | [Embed Sigil in TypeScript](./docs/guides/embed-typescript.md) and the [WebAssembly module reference](./docs/reference/wasm.md) |
+| Embed Sigil in Rust | [Embed Sigil in Rust](./docs/guides/embed-rust.md) and the [WebAssembly module reference](./docs/reference/wasm.md) |
 | Decide whether Sigil fits | [What Sigil is](./docs/getting-started/overview.md), the [design goals](./docs/understanding/design-goals.md) and the other understanding pages, and [prior art](./docs/understanding/prior-art.md) |
 | Change Sigil itself | [Contributing](./docs/project/contributing.md), the [open questions](./docs/project/open-questions.md) and the [roadmap](./roadmap.yml) |
 

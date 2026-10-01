@@ -1,0 +1,4 @@
+/target
+# The release copies sigil.wasm here for the published package (mise run
+# rust-package); the repository build reads dist/wasm/ instead.
+/module/

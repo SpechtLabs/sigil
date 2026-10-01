@@ -8,6 +8,10 @@
 # Keep in lockstep with the toolchain directive in go.mod; Renovate bumps both
 # together. The go directive (minimum language version) is bumped by hand.
 go = "1.27.1"
+# bindings/rust and examples/feature-flags. CI installs the minimal profile, so
+# the components the lint tasks need are listed. Keep in lockstep with the rust
+# images in examples/feature-flags/Dockerfile.
+rust = { version = "1.98.1", components = "rustfmt,clippy" }
 "go:golang.org/x/perf/cmd/benchstat" = "v0.0.0-20260908200009-22c9c6c9d4da"
 "go:golang.org/x/tools/gopls" = "0.23.0"
 "go:github.com/go-delve/delve/cmd/dlv" = "1.27.2"
@@ -286,3 +290,39 @@ description = "Type-check the TypeScript package and test it against the WebAsse
 depends = ["wasm-build", "ts-install"]
 dir = "bindings/typescript"
 run = ["bun run typecheck", "bun test"]
+
+# bindings/rust: the Rust crate for the WebAssembly module. Its build embeds
+# the module wasm-build writes, and its tests build the sigil CLI and run the
+# Go kind generator, so go must be on PATH too.
+[tasks.rust-build]
+description = "Build the Rust crate, with the WebAssembly module bundled in"
+depends = ["wasm-build"]
+dir = "bindings/rust"
+run = "cargo build --locked"
+
+[tasks.rust-test]
+description = "Test the Rust crate against the WebAssembly module and the sigil CLI"
+depends = ["wasm-build"]
+dir = "bindings/rust"
+run = ["cargo test --locked", "cargo doc --no-deps --locked"]
+env = { RUSTDOCFLAGS = "-D warnings" }
+
+[tasks.rust-lint]
+description = "Check the Rust crate's formatting and run clippy with warnings as errors"
+depends = ["wasm-build"]
+dir = "bindings/rust"
+run = ["cargo fmt --check", "cargo clippy --all-targets --locked -- -D warnings"]
+
+# What the release publishes to crates.io: the package with sigil.wasm copied
+# into module/, so the crate installs without Go. cargo package then builds
+# the crate from that package alone. module/ is gitignored, so cargo counts
+# the copy as uncommitted, hence --allow-dirty.
+[tasks.rust-package]
+description = "Package the Rust crate with the WebAssembly module inside, and build it from the package"
+depends = ["wasm-build"]
+dir = "bindings/rust"
+run = [
+  "mkdir -p module",
+  "cp ../../dist/wasm/sigil.wasm module/sigil.wasm",
+  "cargo package --locked --allow-dirty",
+]

@@ -166,6 +166,13 @@ export default defineUserConfig({
             { text: "Embed Sigil in TypeScript", link: "embed-typescript", icon: "mdi:language-typescript" },
           ],
         },
+        {
+          text: "Embedding in Rust",
+          icon: "simple-icons:rust",
+          collapsed: false,
+          prefix: "/guides/",
+          items: [{ text: "Embed Sigil in Rust", link: "embed-rust", icon: "simple-icons:rust" }],
+        },
       ],
 
       // Understanding: why the language is shaped the way it is.

@@ -13,6 +13,16 @@
           "type": "json",
           "path": "bindings/typescript/package.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "toml",
+          "path": "bindings/rust/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "bindings/rust/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='spechtlabs-sigil')].version"
         }
       ]
     }
