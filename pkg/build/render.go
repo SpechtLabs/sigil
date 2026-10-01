@@ -162,10 +162,7 @@ func (d *document) render() ([]byte, []span, Errors) {
 // first Ref or Invoke of its path, and each statement to its own. A
 // statement's span comes before those of the statements nested in it.
 func (d *document) spans(out []byte, useSites []Site) []span {
-	f, _ := parser.ParseFile(d.path, out)
-	if f == nil || len(f.Docs) == 0 {
-		return nil
-	}
+	f, _ := parser.ParseFile(d.path, out) // the formatter's output parses, with the header first
 	doc := f.Docs[0]
 	spans := []span{{site: d.site, from: doc.Pos().Line, to: doc.Pos().Line}}
 	var uses []*ast.UseStmt
@@ -237,7 +234,7 @@ func (u *imports) render(d *document) (lines []string, sites []Site, errs Errors
 			return
 		}
 		if decl, ok := d.names[name]; ok {
-			errs = append(errs, s.errorf("importing %s from %s collides with the let or param %s declared at %s; rename the let or param", name, path, name, decl))
+			errs = append(errs, s.errorf("importing %s from %s collides with the let or param %s declared at %s; rename the let or param", name, path, name, decl.at()))
 			return
 		}
 		bound[name] = path

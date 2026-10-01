@@ -158,6 +158,9 @@ func scalar(c any) (ast.Expr, string) {
 // seconds and milliseconds, the largest first, each at most once. Days
 // aren't used, so a day reads `24h`, as in Go.
 func duration(d time.Duration) string {
+	if d == 0 {
+		return "0s"
+	}
 	var b strings.Builder
 	for _, u := range []struct {
 		name string

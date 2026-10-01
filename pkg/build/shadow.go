@@ -345,11 +345,8 @@ func untagged(v reflect.Value, p uintptr, t reflect.Type) (string, bool) {
 // reaches reports whether the field at address p of type t is below v,
 // tagged or not.
 func reaches(v reflect.Value, p uintptr, t reflect.Type) bool {
-	switch {
-	case v.Kind() == reflect.Pointer && !v.IsNil():
+	if v.Kind() == reflect.Pointer && !v.IsNil() {
 		v = v.Elem()
-	case v.Kind() != reflect.Struct:
-		return false
 	}
 	if v.Kind() != reflect.Struct {
 		return false
