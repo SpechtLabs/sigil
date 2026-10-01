@@ -33,18 +33,19 @@ pub fn alert_routing() -> PathBuf {
 /// Every `.sigil` file below `dir`, paths relative to it and `/`-separated, in a stable order.
 pub fn sigil_files(dir: &Path) -> Vec<SourceFile> {
     let mut files = Vec::new();
-    walk(dir, dir, &mut files);
+    walk(dir, dir, &|p| p.extension().is_some_and(|e| e == "sigil"), &mut files);
     files
 }
 
-fn walk(base: &Path, dir: &Path, out: &mut Vec<SourceFile>) {
+/// Every file below `dir` that `keep` accepts, paths relative to `base` and `/`-separated, in a stable order.
+fn walk(base: &Path, dir: &Path, keep: &dyn Fn(&Path) -> bool, out: &mut Vec<SourceFile>) {
     let mut entries: Vec<_> = fs::read_dir(dir).unwrap_or_else(|e| panic!("reading {}: {e}", dir.display())).map(|e| e.unwrap()).collect();
     entries.sort_by_key(|e| e.file_name());
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
-            walk(base, &path, out);
-        } else if path.extension().is_some_and(|e| e == "sigil") {
+            walk(base, &path, keep, out);
+        } else if keep(&path) {
             let rel = path
                 .strip_prefix(base)
                 .unwrap()
@@ -177,4 +178,72 @@ pub fn minimal_kind_file() -> SourceFile {
         "minimal.sigil",
         "kind Minimal version 1\n\ninput who: string\n\nfn upper(string) -> string\n\ndecision ok {\n  reason: yes\n}\n\ncollect one\n\ndefault ok(reason: yes)\n",
     )
+}
+
+/// `cmd/sigil/command/test/testdata`: the CLI's test fixtures.
+pub fn test_testdata() -> PathBuf {
+    root().join("cmd/sigil/command/test/testdata")
+}
+
+/// The files `sigil test` reads below a directory, as virtual files with paths
+/// relative to it.
+#[derive(Debug, Clone, Default)]
+pub struct TestWorkspace {
+    /// The `.sigil` files.
+    pub files: Vec<SourceFile>,
+    /// The `.sigil` files read as trusted, apart from the others.
+    pub trusted: Vec<SourceFile>,
+    /// The test files, named `*_test.yaml` or `*_test.yml`.
+    pub tests: Vec<SourceFile>,
+    /// The files below a `testdata` directory, which a case's `input_file` names.
+    pub data: Vec<SourceFile>,
+}
+
+impl TestWorkspace {
+    /// Every `.sigil` file, test file and testdata file below `dir`, in a stable order.
+    pub fn read(dir: &Path) -> Self {
+        let mut ws = Self::default();
+        let mut all = Vec::new();
+        walk(dir, dir, &|_| true, &mut all);
+        for f in all {
+            if f.path.ends_with(".sigil") {
+                ws.files.push(f);
+            } else if f.path.ends_with("_test.yaml") || f.path.ends_with("_test.yml") {
+                ws.tests.push(f);
+            } else if f.path.split('/').any(|p| p == "testdata") {
+                ws.data.push(f);
+            }
+        }
+        ws
+    }
+
+    /// The workspace with the `.sigil` files below `dirs` trusted.
+    pub fn trust(mut self, dirs: &[&str]) -> Self {
+        let below = |f: &SourceFile| dirs.iter().any(|d| f.path.starts_with(&format!("{d}/")));
+        let (trusted, files) = self.files.into_iter().partition(below);
+        self.files = files;
+        self.trusted = trusted;
+        self
+    }
+
+    /// The files whose paths are one of `prefixes` or below one.
+    pub fn pick(&self, prefixes: &[&str]) -> Self {
+        let keep = |files: &[SourceFile]| -> Vec<SourceFile> {
+            files.iter().filter(|f| prefixes.iter().any(|p| f.path == *p || f.path.starts_with(&format!("{p}/")))).cloned().collect()
+        };
+        Self { files: keep(&self.files), trusted: keep(&self.trusted), tests: keep(&self.tests), data: keep(&self.data) }
+    }
+
+    /// Runs `sigil test -o json` over the workspace, laid out in a fresh
+    /// directory, on its `.sigil` files, trusted or not, and test files.
+    pub fn cli(&self, run: Option<&str>) -> Value {
+        let mut args = vec!["test"];
+        if let Some(run) = run {
+            args.extend(["--run", run]);
+        }
+        args.extend(self.tests.iter().map(|f| f.path.as_str()));
+        let extra: Vec<(&str, &str)> = self.tests.iter().chain(&self.data).map(|f| (f.path.as_str(), f.source.as_str())).collect();
+        let files: Vec<SourceFile> = self.files.iter().chain(&self.trusted).cloned().collect();
+        cli(&files, &args, &extra)
+    }
 }
