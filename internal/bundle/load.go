@@ -15,21 +15,20 @@ import (
 // a mounted ConfigMap, each a link into `..data`, load once.
 //
 // Files are added in sorted path order, named by their path in fsys. A
-// bundle may load several sources, as a trusted bundle does, but a path
-// one of them holds can't be in another: a diagnostic names a file by
-// its path alone. The error reports such a path, or an entry that can't
-// be read; parse errors stay in the bundle, as [Bundle.Add] leaves them.
+// bundle may load several sources, as a trusted bundle does, and two of
+// them may hold a file of the same path: each document keeps its own
+// source. A document that's a copy of one an earlier source defines,
+// byte for byte, is left out rather than defined twice. The error
+// reports only an entry that can't be read; parse errors stay in the
+// bundle, as [Bundle.Add] leaves them.
 func (b *Bundle) Load(fsys fs.FS) humane.Error {
 	files, err := walkFS(fsys, ".")
 	if err != nil {
 		return err
 	}
 	sort.Strings(files)
+	b.loaded++
 	for _, f := range files {
-		if _, dup := b.Sources[f]; dup {
-			return humane.New("policy file "+f+" is in two of the sources read into one bundle",
-				"a diagnostic names a file by its path, so two trusted sources can't hold the same one; rename or move one of the two files")
-		}
 		src, err := fs.ReadFile(fsys, f)
 		if err != nil {
 			return humane.Wrap(err, "policy file "+f+" couldn't be read", "check the file's permissions")

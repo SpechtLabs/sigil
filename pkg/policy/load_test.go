@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/spechtlabs/sigil/pkg/policy"
@@ -165,12 +166,26 @@ func TestTrusted(t *testing.T) {
 			reason: "soak_too_short", reads: 1,
 		},
 		{
-			name: "Trusted twice, and a nil source, read the source once",
+			name: "Trusted twice reads the source once",
 			opts: func(p fs.FS) []policy.LoadOption {
-				return []policy.LoadOption{policy.Trusted(nil), policy.Trusted(p), policy.Trusted(p)}
+				return []policy.LoadOption{policy.Trusted(p), policy.Trusted(p)}
 			},
 			input:  Input{Release: Release{Soak: 2 * time.Hour, Hotfix: true}},
 			reason: "release_manager", reads: 1,
+		},
+		{
+			name: "a nil trusted source fails the load",
+			opts: func(p fs.FS) []policy.LoadOption {
+				return []policy.LoadOption{policy.Trusted(p), policy.Trusted(nil)}
+			},
+			err: "the trusted source of Trusted option 2 of 2 is nil", reads: 1,
+		},
+		{
+			name: "a nil From source fails the load",
+			opts: func(fs.FS) []policy.LoadOption {
+				return []policy.LoadOption{policy.Require("deploy.guardrails", policy.From(nil))}
+			},
+			err: "the trusted source From names for deploy.guardrails is nil",
 		},
 		{
 			name: "a team module can't redefine trusted vocabulary",
@@ -193,19 +208,59 @@ func TestTrusted(t *testing.T) {
 			err:      `unknown field "sok" on type Release`, reads: 1,
 		},
 		{
-			name: "two trusted sources can't hold the same file",
+			name: "two trusted sources may hold a file of the same path",
 			opts: func(p fs.FS) []policy.LoadOption {
-				other := policy.MapFS(map[string]string{"deploy/vocabulary.sigil": "module deploy.other: DeployApproval@1\n"})
+				other := policy.MapFS(map[string]string{"deploy/vocabulary.sigil": "module deploy.other: DeployApproval@1\n\npub let none = false\n"})
 				return []policy.LoadOption{policy.Trusted(p), policy.Trusted(other)}
 			},
-			err: "policy file deploy/vocabulary.sigil is in two of the sources read into one bundle", reads: 1,
+			input:  Input{Release: Release{Soak: 2 * time.Hour, Hotfix: true}},
+			reason: "release_manager", reads: 1,
+		},
+		{
+			name: "a trusted source with no .sigil files fails the load",
+			opts: func(fs.FS) []policy.LoadOption {
+				return []policy.LoadOption{policy.Trusted(policy.MapFS(map[string]string{"README.md": "vocabulary"}))}
+			},
+			err: "the trusted source passed to Trusted holds no policies or modules",
+		},
+		{
+			name: "a trusted source whose files are all skipped fails the load",
+			opts: func(fs.FS) []policy.LoadOption {
+				return []policy.LoadOption{policy.Trusted(policy.MapFS(map[string]string{".platform/vocabulary.sigil": "module deploy.v: DeployApproval@1\n"}))}
+			},
+			err: "the trusted source passed to Trusted holds no policies or modules",
+		},
+		{
+			name: "a trusted source with only a kind document fails the load",
+			opts: func(p fs.FS) []policy.LoadOption {
+				return []policy.LoadOption{policy.Trusted(p), policy.Trusted(policy.MapFS(map[string]string{"kind.sigil": Deploy.Schema()}))}
+			},
+			err: "the trusted source of Trusted option 2 of 2 holds no policies or modules", reads: 1,
+		},
+		{
+			name: "fs.Sub of a directory that isn't there fails the load",
+			opts: func(fs.FS) []policy.LoadOption {
+				sub, err := fs.Sub(policy.MapFS(platformFiles), "nowhere")
+				if err != nil {
+					t.Fatal(err)
+				}
+				return []policy.LoadOption{policy.Trusted(sub)}
+			},
+			err: "the trusted source passed to Trusted couldn't be read",
+		},
+		{
+			name: "an empty From source fails the load",
+			opts: func(fs.FS) []policy.LoadOption {
+				return []policy.LoadOption{policy.Require("deploy.guardrails", policy.From(policy.MapFS(nil)))}
+			},
+			err: "the trusted source From names for deploy.guardrails holds no policies or modules",
 		},
 		{
 			name: "an unreadable trusted source fails the load",
 			opts: func(fs.FS) []policy.LoadOption {
 				return []policy.LoadOption{policy.Trusted(os.DirFS(filepath.Join(t.TempDir(), "missing")))}
 			},
-			err: "directory . of the policy bundle couldn't be read",
+			err: "the trusted source passed to Trusted couldn't be read",
 		},
 		{
 			name:    "an unreadable trusted source fails a compile",
@@ -213,7 +268,7 @@ func TestTrusted(t *testing.T) {
 			opts: func(fs.FS) []policy.LoadOption {
 				return []policy.LoadOption{policy.Trusted(os.DirFS(filepath.Join(t.TempDir(), "missing")))}
 			},
-			err: "directory . of the policy bundle couldn't be read",
+			err: "the trusted source passed to Trusted couldn't be read",
 		},
 	}
 	for _, tt := range tests {
@@ -262,4 +317,67 @@ type countingFS struct {
 func (c *countingFS) ReadFile(name string) ([]byte, error) {
 	c.reads[name]++
 	return fs.ReadFile(c.FS, name)
+}
+
+// TestTrustedInsideTheBundle loads a repository that holds the platform's
+// directory and the teams', with the platform's passed as a trusted
+// source the ways a host can: a subtree of the same fs.FS for Trusted and
+// From, each its own fs.Sub value, and the whole repository as the
+// bundle, which then holds a copy of every trusted document.
+func TestTrustedInsideTheBundle(t *testing.T) {
+	repo := fstest.MapFS{"teams/payments.sigil": &fstest.MapFile{Data: []byte(teamPolicy)}}
+	for name, src := range platformFiles {
+		repo["platform/"+name] = &fstest.MapFile{Data: []byte(src)}
+	}
+	sub := func(dir string) fs.FS {
+		s, err := fs.Sub(repo, dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	tests := []struct {
+		name   string
+		bundle fs.FS
+		opts   []policy.LoadOption
+		err    string
+	}{
+		{
+			name:   "Trusted and From each take their own fs.Sub of the platform",
+			bundle: sub("teams"),
+			opts:   []policy.LoadOption{policy.Trusted(sub("platform")), policy.Require("deploy.guardrails", policy.From(sub("platform")))},
+		},
+		{
+			name:   "the bundle is the whole repository",
+			bundle: repo,
+			opts:   []policy.LoadOption{policy.Trusted(sub("platform")), policy.Require("deploy.guardrails")},
+		},
+		{
+			name: "the bundle's copy of a trusted document differs",
+			bundle: fstest.MapFS{
+				"teams/payments.sigil":             repo["teams/payments.sigil"],
+				"platform/deploy/vocabulary.sigil": &fstest.MapFile{Data: []byte("module deploy.vocabulary: DeployApproval@1\n\npub let is_hotfix = true\n")},
+			},
+			opts: []policy.LoadOption{policy.Trusted(sub("platform"))},
+			err:  "module deploy.vocabulary is defined twice",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := Deploy.Load(tt.bundle, "payments.production", tt.opts...)
+			if tt.err != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.err) {
+					t.Fatalf("Load() error = %v, want %q", err, tt.err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			res, err := p.Eval(context.Background(), Input{Release: Release{Hotfix: true}})
+			if err != nil || res.Reason != "soak_too_short" {
+				t.Errorf("Eval = %+v, %v; want the trusted guardrails' soak_too_short", res, err)
+			}
+		})
+	}
 }

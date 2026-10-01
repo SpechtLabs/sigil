@@ -1,0 +1,9 @@
+// The team's ConfigMap, keyed policies.sigil like the platform's. The
+// error in the platform's file quotes the platform's line, not this one.
+policy payments.production: DeployApproval@1
+
+use deploy.vocabulary.{is_hotfix}
+
+when is_hotfix {
+  approve(reason: release_manager)
+}
