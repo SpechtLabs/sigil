@@ -238,17 +238,21 @@ func Call[R any](name string, args ...Value) Expr[R] {
 	return Expr[R]{call(callSite("build.Call"), name, args)}
 }
 
-// Func1 returns a typed caller of the one-argument host function name:
+// Func1 returns a typed caller of the one-argument host function name.
+// Declare it once and call it like the host function:
 //
-//	split := build.Func2[string, string, []string]("split")
-//	split(build.Get(labels, build.Lit("regions")), build.Lit(","))
+//	lower := build.Func1[string, string]("lower")
+//	lower(build.Field(&in.Service.Name)) // lower(service.name)
 func Func1[A, R any](name string) func(Expr[A]) Expr[R] {
 	return func(a Expr[A]) Expr[R] {
 		return Expr[R]{call(callSite("build.Func1"), name, []Value{a})}
 	}
 }
 
-// Func2 returns a typed caller of the two-argument host function name.
+// Func2 returns a typed caller of the two-argument host function name:
+//
+//	split := build.Func2[string, string, []string]("split")
+//	split(build.Get(labels, build.Lit("regions")), build.Lit(",")) // split(service.labels["regions"], ",")
 func Func2[A, B, R any](name string) func(Expr[A], Expr[B]) Expr[R] {
 	return func(a Expr[A], b Expr[B]) Expr[R] {
 		return Expr[R]{call(callSite("build.Func2"), name, []Value{a, b})}
