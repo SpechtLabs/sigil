@@ -1,0 +1,17 @@
+policy platform.guardrails: FeatureRollout@1
+
+use platform.residency.{ready_regions}
+
+// Data residency: outside the ready regions nothing is enabled. Both
+// disables outrank every enable (disable > enable), so no flag policy can
+// switch either off, whatever it decides.
+when user.region not in ready_regions {
+  disable(reason: region_not_ready)
+}
+
+// The kill switch is operator config the host turns into the `killed` input.
+// kill_switch is the top-ranked reason of disable, so it is also what a
+// killed flag reports when the user's region is not ready either.
+when killed {
+  disable(reason: kill_switch)
+}

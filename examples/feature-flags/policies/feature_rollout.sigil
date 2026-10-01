@@ -1,0 +1,32 @@
+kind FeatureRollout version 1
+
+enum Plan: free | pro | enterprise
+
+type User {
+  id: string
+  plan: Plan
+  region: string
+  beta: bool
+  attributes: map<string, string>
+}
+
+input flag: string
+input user: User
+input bucket: int
+input killed: bool
+
+decision disable {
+  reason: kill_switch | region_not_ready | not_rolled_out
+}
+
+decision enable {
+  reason: enterprise | beta_tester | targeted | rollout
+  variant: string = "on"
+}
+
+collect one
+precedence disable > enable
+precedence disable: kill_switch > region_not_ready > not_rolled_out
+precedence enable: enterprise > beta_tester > targeted > rollout
+
+default disable(reason: not_rolled_out)

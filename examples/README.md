@@ -4,3 +4,4 @@ Each directory is a complete service built on Sigil, against the checkout it liv
 
 - [`deploy-gates/`](./deploy-gates): deploygate, a Go service that decides production deploys and grants access, with an observability stack.
 - [`alert-routing/`](./alert-routing): alertrouter, a TypeScript service on Sigil's WebAssembly build that routes Alertmanager alerts, with an operator console, an observability stack and a k6 load test suite.
+- [`feature-flags/`](./feature-flags): featuregate, a Rust service on Sigil's WebAssembly build that serves feature flags over OpenFeature's remote evaluation protocol (OFREP), with a guardrail policy every flag must invoke, an observability stack and a k6 load test suite.

@@ -1,0 +1,26 @@
+policy flags.search_v2: FeatureRollout@1
+
+use platform.guardrails
+
+guardrails()
+
+param percent: int = 10, min: 0, max: 100
+
+// Variants: "semantic" is the full rewrite, "hybrid" blends it with the old
+// index. The reason decides which a user gets, so two rules never conflict
+// over the variant.
+when user.plan == enterprise {
+  enable(reason: enterprise, variant: "semantic")
+}
+
+when user.beta {
+  enable(reason: beta_tester, variant: "semantic")
+}
+
+when user.plan == pro {
+  enable(reason: targeted, variant: "hybrid")
+}
+
+when bucket < percent {
+  enable(reason: rollout, variant: "hybrid")
+}

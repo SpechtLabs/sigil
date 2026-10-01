@@ -1,0 +1,8 @@
+# The value type of each flag; a flag not listed here is a boolean. A string
+# flag's `off` is the value and variant a user it is off for (or whose
+# evaluation failed) gets, so an OpenFeature client asking for a string always
+# gets a string.
+flags:
+  search-v2:
+    type: string
+    off: control

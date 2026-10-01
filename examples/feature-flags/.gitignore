@@ -1,0 +1,10 @@
+# Cargo build output.
+target/
+# Generated load-test reports and dashboard snapshots.
+results/
+# The load test drops a broken document into the mounted flag policies and
+# removes it again; never commit what a killed run leaves behind.
+policies/flags/loadtest-broken.sigil
+# src/bin/ holds the demo binary's source, not build output, so it undoes the
+# root .gitignore's bin/ for Go binaries.
+!src/bin/

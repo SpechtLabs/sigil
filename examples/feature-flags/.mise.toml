@@ -1,0 +1,178 @@
+# Tasks for the feature-flags example, featuregate: the Rust OpenFeature (OFREP)
+# service on Sigil's WebAssembly engine. Run these from examples/feature-flags/,
+# or use `mise run -C examples/feature-flags <task>` from the repository root;
+# every task runs in this directory, wherever it's called from.
+# Tool versions (go, rust) are inherited from ../../.mise.toml.
+#
+# Try it:
+#
+#   mise run up      # featuregate, Alloy and the Grafana LGTM stack in Docker; prints the URLs
+#   mise run demo    # evaluates the sample flags, so the dashboard fills up
+#   mise run down    # stops the stack and drops its data
+#
+# or without Docker: `mise run dev` serves featuregate on localhost:8080 with
+# the sample flags, and `mise run demo` works against it the same way.
+#
+# The image builds sigil.wasm itself, so `up` needs nothing on the host but
+# Docker. The tasks that run the example on the host (dev, build, test and the
+# rest) build it first, with `wasm`.
+
+[tools]
+# The load-test suite's runner, for `k6 inspect` on the host; the suite itself
+# runs in the compose stack's k6 container. Keep in lockstep with the k6 image
+# in docker-compose.yaml.
+k6 = "2.3.0"
+
+# Where `up` points: the API and the Grafana dashboard, at the ports
+# docker-compose.yaml publishes.
+[vars]
+api = "http://localhost:8080"
+dashboard = "http://localhost:3000/d/featuregate"
+
+# The spechtlabs-sigil crate embeds sigil.wasm when it builds (its build.rs
+# reads dist/wasm/sigil.wasm), so every task that compiles Rust builds it
+# first. The root's wasm-build skips an up-to-date sigil.wasm.
+[tasks.wasm]
+description = "Build sigil.wasm, the engine the spechtlabs-sigil crate embeds"
+dir = "{{config_root}}"
+run = "mise -C ../.. run wasm-build"
+
+[tasks.build]
+description = "Build the featuregate and demo binaries in release mode"
+depends = ["wasm"]
+dir = "{{config_root}}"
+run = "cargo build --locked --release"
+
+# FEATUREGATE_POLICIES points at the sample flags in policies/flags, so a
+# policy edit there reloads within the interval, and nothing is exported: the
+# OTEL_* and PYROSCOPE_* settings are off.
+[tasks.dev]
+description = "Run featuregate on localhost:8080 with the sample flags, reloading policy edits, without Docker or telemetry"
+depends = ["wasm"]
+dir = "{{config_root}}"
+env = { FEATUREGATE_ADDR = "127.0.0.1:8080", FEATUREGATE_POLICIES = "{{config_root}}/policies/flags", FEATUREGATE_RELOAD_INTERVAL = "2s", FEATUREGATE_LOG_FORMAT = "console", OTEL_EXPORTER_OTLP_ENDPOINT = "", PYROSCOPE_SERVER_ADDRESS = "" }
+run = "cargo run --locked --bin featuregate -- serve"
+
+# The e2e suite is part of `cargo test --features e2e` only: it needs the
+# compose stack, so `mise run e2e` starts it.
+[tasks.test]
+description = "Run the unit, integration, policy and dashboard tests"
+depends = ["wasm"]
+dir = "{{config_root}}"
+run = "cargo test --locked"
+
+[tasks.lint]
+description = "Check the formatting with rustfmt and lint with clippy, warnings as errors"
+depends = ["wasm"]
+dir = "{{config_root}}"
+run = [
+  "cargo fmt --check",
+  "cargo clippy --locked --all-targets -- -D warnings",
+]
+
+[tasks.fmt]
+description = "Format the example with rustfmt"
+dir = "{{config_root}}"
+run = "cargo fmt"
+
+# The check a policy repository runs in CI, with the stock sigil CLI: every
+# flag root type-checks with the platform's documents as the trusted source
+# and invokes platform.guardrails, as policies/sigil.yaml requires, and every
+# test file passes. The Rust tests run the same gates through the binding, so
+# the two engines can't drift apart.
+[tasks.policies]
+description = "Check the flag policies against the platform guardrails and run their test files with the sigil CLI"
+dir = "{{config_root}}"
+run = [
+  "go run ../../cmd/sigil check --config policies/sigil.yaml policies",
+  "go run ../../cmd/sigil test policies",
+]
+
+[tasks.generate]
+description = "Export policies/feature_rollout.sigil from the Rust kind definition"
+depends = ["wasm"]
+dir = "{{config_root}}"
+run = "cargo run --locked --bin featuregate -- export-kind > policies/feature_rollout.sigil"
+
+[tasks.check]
+description = "Every gate CI runs on the example: lint, tests, policies, the k6 scripts, and the build"
+depends = ["lint", "test", "policies", "loadtest-inspect", "build"]
+
+[tasks.up]
+description = "Build the image and start featuregate with Alloy and the Grafana LGTM stack, wait until they're ready, and print the URLs"
+dir = "{{config_root}}"
+run = """
+docker compose up --build --wait
+cat <<'EOF'
+
+featuregate is up.
+  Dashboard: {{vars.dashboard}}
+  OFREP:     {{vars.api}}/ofrep/v1/evaluate/flags (health {{vars.api}}/readyz, metrics {{vars.api}}/metrics)
+
+Evaluate the sample flags with `mise run demo`; stop it with `mise run down`.
+EOF
+"""
+
+[tasks.down]
+description = "Stop the example's compose stack and drop its volumes"
+dir = "{{config_root}}"
+run = "docker compose down -v"
+
+[tasks.demo]
+description = "Evaluate the sample flags for a few users against a running featuregate (FEATUREGATE_URL, default localhost:8080)"
+depends = ["wasm"]
+dir = "{{config_root}}"
+run = "cargo run --locked --bin demo"
+
+[tasks.e2e]
+description = "Start the compose stack and run the black-box e2e suite against it"
+depends = ["up"]
+dir = "{{config_root}}"
+env = { FEATUREGATE_E2E = "1", FEATUREGATE_URL = "http://localhost:8080", TEMPO_URL = "http://localhost:3200", LOKI_URL = "http://localhost:3100", MIMIR_URL = "http://localhost:9009", GRAFANA_URL = "http://localhost:3000", PYROSCOPE_URL = "http://localhost:4040" }
+run = "cargo test --locked --features e2e --test e2e"
+
+# Parses the k6 scripts and their options without running them, so a syntax
+# error or a bad threshold shows up in `check`, not minutes into a load test.
+# -e REQUESTS_DIR points the suite at the example's own requests/, where
+# the container mounts it at /requests.
+[tasks.loadtest-inspect]
+description = "Parse the k6 suite and print its resolved options, without running it"
+dir = "{{config_root}}"
+run = "k6 inspect -e REQUESTS_DIR={{config_root}}/requests test/load/featuregate.js > /dev/null"
+
+# Every load-test task runs the same k6 suite (test/load/featuregate.js);
+# TEST_MODE picks the executor shape, and test/load/lib/config.js lists the
+# knobs each mode reads. The variants below only preset TEST_MODE and the
+# knobs that mode needs to be meaningful. Outside smoke, test/load/run.sh also
+# alternates the mounted flag directory between good and broken while k6
+# reloads it (BAD_BUNDLE_EVERY).
+[tasks.loadtest]
+description = "Run the k6 suite against featuregate in TEST_MODE (default load), send measurements to Mimir and save a JSON report"
+depends = ["up"]
+dir = "{{config_root}}"
+run = "bash test/load/run.sh"
+
+[tasks.loadtest-smoke]
+description = "Evaluate every request case in requests/cases.json once, and reload once, checking each outcome"
+env = { TEST_MODE = "smoke" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-stress]
+description = "Ramp k6 from RATE to five times RATE and back over five minutes"
+env = { TEST_MODE = "stress", VUS = "50", MAX_VUS = "400" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-spike]
+description = "Hold RATE, jump to ten times RATE for a minute, and check featuregate recovers"
+env = { TEST_MODE = "spike", VUS = "50", MAX_VUS = "600" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-soak]
+description = "Hold RATE for DURATION (default 1h) to surface leaks and slow drift"
+env = { TEST_MODE = "soak" }
+run = [{ task = "loadtest" }]
+
+[tasks.loadtest-breakpoint]
+description = "Ramp the arrival rate until a threshold fails and k6 aborts, to find featuregate's capacity"
+env = { TEST_MODE = "breakpoint", VUS = "100", MAX_VUS = "1000" }
+run = [{ task = "loadtest" }]

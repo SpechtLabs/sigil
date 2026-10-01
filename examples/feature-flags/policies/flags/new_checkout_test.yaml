@@ -1,0 +1,68 @@
+policy: flags.new_checkout
+# Every decision and reason new_checkout can reach has a case here. The
+# policy's percent defaults to 25, so bucket 24 is in and 25 is out.
+cases:
+  - name: an enterprise user gets it
+    input:
+      flag: new-checkout
+      user: {id: u1, plan: enterprise, region: eu-1, beta: false, attributes: {}}
+      bucket: 90
+      killed: false
+    expect: {decision: enable, reason: enterprise, payload: {variant: "on"}}
+  - name: a beta tester gets it
+    input:
+      flag: new-checkout
+      user: {id: u2, plan: free, region: us-1, beta: true, attributes: {}}
+      bucket: 90
+      killed: false
+    expect: {decision: enable, reason: beta_tester}
+  - name: the checkout pilot cohort is targeted
+    input:
+      flag: new-checkout
+      user: {id: u3, plan: free, region: us-1, beta: false, attributes: {cohort: checkout-pilot}}
+      bucket: 90
+      killed: false
+    expect: {decision: enable, reason: targeted}
+  - name: the last bucket inside the rollout
+    input:
+      flag: new-checkout
+      user: {id: u4, plan: free, region: us-1, beta: false, attributes: {}}
+      bucket: 24
+      killed: false
+    expect: {decision: enable, reason: rollout}
+  - name: the first bucket outside the rollout
+    input:
+      flag: new-checkout
+      user: {id: u5, plan: free, region: us-1, beta: false, attributes: {}}
+      bucket: 25
+      killed: false
+    expect: {decision: disable, reason: not_rolled_out}
+  - name: enterprise outranks the rollout
+    input:
+      flag: new-checkout
+      user: {id: u6, plan: enterprise, region: us-1, beta: true, attributes: {}}
+      bucket: 3
+      killed: false
+    expect: {decision: enable, reason: enterprise}
+  # platform.guardrails: disable outranks every enable.
+  - name: an enterprise user in an unready region is disabled
+    input:
+      flag: new-checkout
+      user: {id: u7, plan: enterprise, region: ap-1, beta: true, attributes: {}}
+      bucket: 3
+      killed: false
+    expect: {decision: disable, reason: region_not_ready}
+  - name: the kill switch beats everything
+    input:
+      flag: new-checkout
+      user: {id: u8, plan: enterprise, region: eu-1, beta: true, attributes: {}}
+      bucket: 3
+      killed: true
+    expect: {decision: disable, reason: kill_switch}
+  - name: the kill switch is what a killed flag reports in an unready region
+    input:
+      flag: new-checkout
+      user: {id: u9, plan: free, region: ap-1, beta: false, attributes: {}}
+      bucket: 3
+      killed: true
+    expect: {decision: disable, reason: kill_switch}

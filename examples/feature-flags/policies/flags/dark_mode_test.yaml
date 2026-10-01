@@ -1,0 +1,24 @@
+policy: flags.dark_mode
+# dark_mode is on for everyone in a ready region: percent defaults to 100.
+cases:
+  - name: everyone in a ready region gets it
+    input:
+      flag: dark-mode
+      user: {id: u1, plan: free, region: eu-2, beta: false, attributes: {}}
+      bucket: 99
+      killed: false
+    expect: {decision: enable, reason: rollout}
+  - name: an unready region does not
+    input:
+      flag: dark-mode
+      user: {id: u2, plan: free, region: ap-1, beta: false, attributes: {}}
+      bucket: 0
+      killed: false
+    expect: {decision: disable, reason: region_not_ready}
+  - name: the kill switch turns it off
+    input:
+      flag: dark-mode
+      user: {id: u3, plan: free, region: eu-1, beta: false, attributes: {}}
+      bucket: 0
+      killed: true
+    expect: {decision: disable, reason: kill_switch}

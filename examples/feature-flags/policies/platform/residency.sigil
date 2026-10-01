@@ -1,0 +1,5 @@
+module platform.residency: FeatureRollout@1
+
+// Regions a flag may be on in. Product teams can import this list but not
+// widen it: it is a constant, not a param.
+pub let ready_regions = ["eu-1", "eu-2", "us-1", "us-2"]

@@ -1,0 +1,14 @@
+policy flags.beta_api: FeatureRollout@1
+
+use platform.guardrails
+
+guardrails()
+
+// Beta testers and named partners only; there is no percentage rollout.
+when user.beta {
+  enable(reason: beta_tester)
+}
+
+when user.attributes["partner"] in ["acme", "globex"] {
+  enable(reason: targeted)
+}

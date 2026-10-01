@@ -1,0 +1,38 @@
+policy: flags.beta_api
+# beta_api has no percentage rollout.
+cases:
+  - name: a beta tester gets it
+    input:
+      flag: beta-api
+      user: {id: u1, plan: free, region: us-2, beta: true, attributes: {}}
+      bucket: 99
+      killed: false
+    expect: {decision: enable, reason: beta_tester}
+  - name: a named partner is targeted
+    input:
+      flag: beta-api
+      user: {id: u2, plan: pro, region: us-2, beta: false, attributes: {partner: acme}}
+      bucket: 99
+      killed: false
+    expect: {decision: enable, reason: targeted}
+  - name: everyone else is not rolled out
+    input:
+      flag: beta-api
+      user: {id: u3, plan: enterprise, region: us-2, beta: false, attributes: {partner: initech}}
+      bucket: 0
+      killed: false
+    expect: {decision: disable, reason: not_rolled_out}
+  - name: a beta tester in an unready region is disabled
+    input:
+      flag: beta-api
+      user: {id: u4, plan: free, region: ap-1, beta: true, attributes: {}}
+      bucket: 0
+      killed: false
+    expect: {decision: disable, reason: region_not_ready}
+  - name: the kill switch turns it off
+    input:
+      flag: beta-api
+      user: {id: u5, plan: free, region: us-2, beta: true, attributes: {}}
+      bucket: 0
+      killed: true
+    expect: {decision: disable, reason: kill_switch}

@@ -1,0 +1,136 @@
+[
+  {
+    "name": "new-checkout-enterprise", "flag": "new-checkout",
+    "description": "An enterprise customer gets the new checkout, by targeting",
+    "context": {"targetingKey": "user-1", "plan": "enterprise", "region": "eu-1"},
+    "expect": {"status": 200, "value": true, "reason": "TARGETING_MATCH", "variant": "on", "sigilReason": "enterprise"}
+  },
+  {
+    "name": "new-checkout-beta-tester", "flag": "new-checkout",
+    "description": "A beta tester gets it, whatever their bucket",
+    "context": {"targetingKey": "user-1", "plan": "free", "region": "us-1", "beta": true},
+    "expect": {"status": 200, "value": true, "reason": "TARGETING_MATCH", "variant": "on", "sigilReason": "beta_tester"}
+  },
+  {
+    "name": "new-checkout-pilot-cohort", "flag": "new-checkout",
+    "description": "The checkout pilot cohort is targeted by an attribute",
+    "context": {"targetingKey": "user-1", "plan": "free", "region": "us-1", "cohort": "checkout-pilot"},
+    "expect": {"status": 200, "value": true, "reason": "TARGETING_MATCH", "variant": "on", "sigilReason": "targeted"}
+  },
+  {
+    "name": "new-checkout-rollout-in", "flag": "new-checkout",
+    "description": "user-6 hashes to bucket 19, inside the 25% rollout",
+    "context": {"targetingKey": "user-6", "plan": "free", "region": "us-1"},
+    "expect": {"status": 200, "value": true, "reason": "SPLIT", "variant": "on", "sigilReason": "rollout"}
+  },
+  {
+    "name": "new-checkout-last-bucket-in", "flag": "new-checkout",
+    "description": "user-10 hashes to bucket 24, the last one inside the rollout",
+    "context": {"targetingKey": "user-10", "plan": "free", "region": "us-1"},
+    "expect": {"status": 200, "value": true, "reason": "SPLIT", "variant": "on", "sigilReason": "rollout"}
+  },
+  {
+    "name": "new-checkout-first-bucket-out", "flag": "new-checkout",
+    "description": "user-5 hashes to bucket 25, the first one outside the rollout",
+    "context": {"targetingKey": "user-5", "plan": "free", "region": "us-1"},
+    "expect": {"status": 200, "value": false, "reason": "DEFAULT", "variant": "off", "sigilReason": "not_rolled_out"}
+  },
+  {
+    "name": "new-checkout-region-not-ready", "flag": "new-checkout",
+    "description": "Data residency: an enterprise customer in a region that isn't ready is off, however the flag targets them",
+    "context": {"targetingKey": "user-1", "plan": "enterprise", "region": "ap-1", "beta": true},
+    "expect": {"status": 200, "value": false, "reason": "TARGETING_MATCH", "variant": "off", "sigilReason": "region_not_ready"}
+  },
+  {
+    "name": "new-checkout-no-region", "flag": "new-checkout",
+    "description": "A context without a region is in no ready region, so the flag is off",
+    "context": {"targetingKey": "user-1", "plan": "enterprise"},
+    "expect": {"status": 200, "value": false, "reason": "TARGETING_MATCH", "variant": "off", "sigilReason": "region_not_ready"}
+  },
+  {
+    "name": "dark-mode-everyone", "flag": "dark-mode",
+    "description": "dark-mode is on for every user in a ready region",
+    "context": {"targetingKey": "user-1", "plan": "free", "region": "eu-2"},
+    "expect": {"status": 200, "value": true, "reason": "SPLIT", "variant": "on", "sigilReason": "rollout"}
+  },
+  {
+    "name": "search-v2-enterprise", "flag": "search-v2",
+    "description": "Enterprise gets the semantic variant; the value is the variant",
+    "context": {"targetingKey": "user-1", "plan": "enterprise", "region": "eu-1"},
+    "expect": {"status": 200, "value": "semantic", "reason": "TARGETING_MATCH", "variant": "semantic", "sigilReason": "enterprise"}
+  },
+  {
+    "name": "search-v2-pro", "flag": "search-v2",
+    "description": "Pro gets the hybrid variant",
+    "context": {"targetingKey": "user-3", "plan": "pro", "region": "us-1"},
+    "expect": {"status": 200, "value": "hybrid", "reason": "TARGETING_MATCH", "variant": "hybrid", "sigilReason": "targeted"}
+  },
+  {
+    "name": "search-v2-rollout-in", "flag": "search-v2",
+    "description": "user-1 hashes to bucket 3, inside the 10% rollout, which serves the hybrid variant",
+    "context": {"targetingKey": "user-1", "plan": "free", "region": "us-1"},
+    "expect": {"status": 200, "value": "hybrid", "reason": "SPLIT", "variant": "hybrid", "sigilReason": "rollout"}
+  },
+  {
+    "name": "search-v2-rollout-out", "flag": "search-v2",
+    "description": "user-3 hashes to bucket 27, outside it: search-v2 is a string flag, so off is its declared off value, control",
+    "context": {"targetingKey": "user-3", "plan": "free", "region": "us-1"},
+    "expect": {"status": 200, "value": "control", "reason": "DEFAULT", "variant": "control", "sigilReason": "not_rolled_out"}
+  },
+  {
+    "name": "beta-api-partner", "flag": "beta-api",
+    "description": "A named partner is targeted by attribute",
+    "context": {"targetingKey": "user-1", "plan": "pro", "region": "us-2", "partner": "acme"},
+    "expect": {"status": 200, "value": true, "reason": "TARGETING_MATCH", "variant": "on", "sigilReason": "targeted"}
+  },
+  {
+    "name": "beta-api-everyone-else", "flag": "beta-api",
+    "description": "beta-api has no percentage rollout: everyone else is off",
+    "context": {"targetingKey": "user-1", "plan": "enterprise", "region": "us-2"},
+    "expect": {"status": 200, "value": false, "reason": "DEFAULT", "variant": "off", "sigilReason": "not_rolled_out"}
+  },
+  {
+    "name": "unknown-flag", "flag": "no-such-flag",
+    "description": "A flag no policy serves is FLAG_NOT_FOUND",
+    "context": {"targetingKey": "user-1"},
+    "expect": {"status": 404, "errorCode": "FLAG_NOT_FOUND"}
+  },
+  {
+    "name": "missing-targeting-key", "flag": "dark-mode",
+    "description": "A context without a targetingKey can't be bucketed",
+    "context": {"plan": "free", "region": "eu-1"},
+    "expect": {"status": 400, "errorCode": "TARGETING_KEY_MISSING"}
+  },
+  {
+    "name": "invalid-plan", "flag": "dark-mode",
+    "description": "A plan the kind doesn't know is INVALID_CONTEXT",
+    "context": {"targetingKey": "user-1", "plan": "platinum", "region": "eu-1"},
+    "expect": {"status": 400, "errorCode": "INVALID_CONTEXT"}
+  },
+  {
+    "name": "malformed-body", "flag": "dark-mode",
+    "description": "A body that isn't JSON is PARSE_ERROR",
+    "rawBody": "{\"context\": ",
+    "expect": {"status": 400, "errorCode": "PARSE_ERROR"}
+  },
+  {
+    "name": "bulk-pro-eu", "flag": null,
+    "description": "The bulk endpoint evaluates every flag for one context",
+    "context": {"targetingKey": "user-1", "plan": "pro", "region": "eu-1"},
+    "expect": {
+      "status": 200,
+      "flags": {
+        "beta-api": {"value": false, "reason": "DEFAULT", "variant": "off"},
+        "dark-mode": {"value": true, "reason": "SPLIT", "variant": "on"},
+        "new-checkout": {"value": false, "reason": "DEFAULT", "variant": "off"},
+        "search-v2": {"value": "hybrid", "reason": "TARGETING_MATCH", "variant": "hybrid"}
+      }
+    }
+  },
+  {
+    "name": "bulk-missing-targeting-key", "flag": null,
+    "description": "A bulk context without a targetingKey is refused as a whole",
+    "context": {"plan": "pro"},
+    "expect": {"status": 400, "errorCode": "TARGETING_KEY_MISSING"}
+  }
+]

@@ -1,0 +1,12 @@
+# Single-node Pyroscope with local storage.
+target: all
+server:
+  http_listen_port: 4040
+storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/blocks
+pyroscopedb:
+  data_path: /data/pyroscopedb
+analytics:
+  reporting_enabled: false

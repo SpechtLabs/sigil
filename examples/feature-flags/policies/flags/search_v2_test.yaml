@@ -1,0 +1,52 @@
+policy: flags.search_v2
+# search_v2 has two variants. percent defaults to 10.
+cases:
+  - name: enterprise gets the semantic variant
+    input:
+      flag: search-v2
+      user: {id: u1, plan: enterprise, region: eu-1, beta: false, attributes: {}}
+      bucket: 50
+      killed: false
+    expect: {decision: enable, reason: enterprise, payload: {variant: semantic}}
+  - name: a beta tester gets the semantic variant
+    input:
+      flag: search-v2
+      user: {id: u2, plan: free, region: eu-1, beta: true, attributes: {}}
+      bucket: 50
+      killed: false
+    expect: {decision: enable, reason: beta_tester, payload: {variant: semantic}}
+  - name: pro gets the hybrid variant
+    input:
+      flag: search-v2
+      user: {id: u3, plan: pro, region: eu-1, beta: false, attributes: {}}
+      bucket: 50
+      killed: false
+    expect: {decision: enable, reason: targeted, payload: {variant: hybrid}}
+  - name: the rollout gets the hybrid variant
+    input:
+      flag: search-v2
+      user: {id: u4, plan: free, region: eu-1, beta: false, attributes: {}}
+      bucket: 9
+      killed: false
+    expect: {decision: enable, reason: rollout, payload: {variant: hybrid}}
+  - name: outside the rollout it is off
+    input:
+      flag: search-v2
+      user: {id: u5, plan: free, region: eu-1, beta: false, attributes: {}}
+      bucket: 10
+      killed: false
+    expect: {decision: disable, reason: not_rolled_out}
+  - name: an unready region is off for enterprise too
+    input:
+      flag: search-v2
+      user: {id: u6, plan: enterprise, region: ap-1, beta: false, attributes: {}}
+      bucket: 50
+      killed: false
+    expect: {decision: disable, reason: region_not_ready}
+  - name: the kill switch turns it off
+    input:
+      flag: search-v2
+      user: {id: u7, plan: enterprise, region: eu-1, beta: false, attributes: {}}
+      bucket: 1
+      killed: true
+    expect: {decision: disable, reason: kill_switch}
