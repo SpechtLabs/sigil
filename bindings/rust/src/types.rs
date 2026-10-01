@@ -324,6 +324,38 @@ pub struct Explanation {
     pub rules: Vec<ExplainEntry>,
 }
 
+/// One test file's run, as `sigil test -o json` prints it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TestResult {
+    /// The test file's path.
+    pub file: String,
+    /// The policy the file tests; empty when the file couldn't be read as a
+    /// test file.
+    pub policy: String,
+    /// Why none of the file's cases ran: it isn't a valid test file, or its
+    /// policy doesn't compile. `cases` is empty then.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// The cases [`TestOptions::run`] selects, in file order.
+    #[serde(default)]
+    pub cases: Vec<TestCaseResult>,
+}
+
+/// One test case's run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TestCaseResult {
+    pub name: String,
+    /// Why the case couldn't run: its input can't be read or doesn't fit the kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// How the evaluation differs from what the case expects.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failures: Vec<String>,
+    /// The case's line in its test file, from 1.
+    pub line: u32,
+    pub passed: bool,
+}
+
 /// Options of [`crate::Sigil::check`].
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct CheckOptions {
@@ -418,6 +450,21 @@ pub struct ExplainOptions {
 pub struct FormatOptions {
     /// The file's path, for the diagnostics of a source that doesn't parse.
     pub path: Option<String>,
+}
+
+/// Options of [`crate::Sigil::test`].
+#[derive(Debug, Clone, Default)]
+pub struct TestOptions {
+    /// The files a case's `input_file` names. A path is relative to the test
+    /// file's, as on disk: `testdata/owner.json` from
+    /// `checkout/alerts_test.yaml` is `checkout/testdata/owner.json`.
+    pub data: Vec<SourceFile>,
+    /// Runs only the cases whose names this Go regular expression matches,
+    /// like `sigil test --run`.
+    pub run: Option<String>,
+    /// Documents read as trusted, as for [`CompileOptions::trusted_files`]:
+    /// the files below a configuration file's `trusted` paths, for the CLI.
+    pub trusted_files: Vec<SourceFile>,
 }
 
 fn is_false(b: &bool) -> bool {

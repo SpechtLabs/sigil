@@ -75,12 +75,13 @@ println!("{:?} {:?} {:?}", result.decision, result.reason, result.payload);
 | `sigil.compile(&files, CompileOptions)` | `Policy`, or an `Error::Sigil` with diagnostics | |
 | `sigil.explain(&files, &ExplainOptions)` | `Vec<Explanation>` | `sigil explain -o json` |
 | `sigil.format(source, &FormatOptions)` | the canonical source | `sigil fmt` |
+| `sigil.test(&files, &tests, &TestOptions)` | `Vec<TestResult>`, one per test file | `sigil test -o json` |
 | `policy.eval(&input)`, `eval_with(&input, &EvalOptions)` | `EvalResult` | `sigil eval -o json` |
 | `policy.explain()` | `Explanation` | |
 | `policy.release()` | frees the handle; dropping a `Policy` does it too | |
 | `sigil.stopped()` | `Option<StoppedError>` | |
 
-The record types (`Diagnostic`, `EvalResult`, `EvalEntry`, `EvalFailure`, `FailedAssert`, `Explanation`, `ExplainEntry`, `VersionInfo`) implement `Serialize` and `Deserialize` and match the CLI's JSON field for field. A field the CLI leaves out when it's empty is an `Option` or an empty `Vec`.
+The record types (`Diagnostic`, `EvalResult`, `EvalEntry`, `EvalFailure`, `FailedAssert`, `Explanation`, `ExplainEntry`, `TestResult`, `TestCaseResult`, `VersionInfo`) implement `Serialize` and `Deserialize` and match the CLI's JSON field for field. A field the CLI leaves out when it's empty is an `Option` or an empty `Vec`.
 
 A `Policy` holds its instance alive, so it may outlive the `Sigil` it came from, and is `Send + Sync`. A `Sigil` runs one call at a time: concurrent calls wait for each other. A host function that calls back into the instance that runs it gets an error, not a deadlock.
 
@@ -91,6 +92,7 @@ A `Policy` holds its instance alive, so it may outlive the `Sigil` it came from,
 | `policies`, `require`, `lints`, `trusted_files` | `CheckOptions` | the `check` op's fields of those names |
 | `policy`, `require`, `trusted_files`, `stubs`, `functions` | `CompileOptions` | the `compile` op's fields; `functions` holds the implementations |
 | `policy`, `trusted_files` | `ExplainOptions` | the `explain` op's fields |
+| `data`, `run`, `trusted_files` | `TestOptions` | the `test` op's `data_files`, `run` and `trusted_files`; `data` holds the files a case's `input_file` names, by their paths relative to the test file's |
 | `timeout`, `grace`, `fuel` | `EvalOptions` | see [Deadlines](#deadlines-and-cost-bounds) |
 | `grace`, `op_deadline`, `max_memory` | `Limits` | per instance, `Sigil::with_limits` |
 | `fuel` | `ModuleConfig` | meters fuel, `Module::from_bytes_with` |
@@ -115,7 +117,7 @@ A host function runs synchronously, on the thread that called `eval`. Epoch inte
 | `Error::OutOfFuel` | a call killed for using its fuel | dead |
 | `Error::NoPolicy(name)`, `Error::Busy(Duration)` | a `Pool` without that policy, or saturated past its `acquire_timeout` | works |
 
-`error.is_stopped()` tells a dead instance apart. A failed evaluation is not an error: its `EvalResult::error` says why (`FailureKind::Runtime`, `Conflict`, `Assertion` or `Canceled`), and its outcome is the kind's fallback, as with the CLI.
+`error.is_stopped()` tells a dead instance apart. A failed evaluation is not an error: its `EvalResult::error` says why (`FailureKind::Runtime`, `Conflict`, `Assertion` or `Canceled`), and its outcome is the kind's fallback, as with the CLI. Nor is a test file that can't run or a case that fails: `test` returns a `TestResult` with `error` set, or a `TestCaseResult` with `passed: false`.
 
 An instance that stops is dead for good, because Go can't resume after a trap: every later call returns the same `StoppedError`, whose message quotes the first and last lines of the module's standard error (Go's `fatal error: ...` and where it happened). Build a new `Sigil`, or use a `Pool`, which does it for you.
 

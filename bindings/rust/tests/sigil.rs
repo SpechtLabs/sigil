@@ -495,6 +495,105 @@ mod format {
     }
 }
 
+mod test_files {
+    use super::*;
+    use common::{TestWorkspace, alert_routing, test_testdata};
+    use rstest::rstest;
+    use sigil::{TestOptions, TestResult};
+
+    /// The CLI's test fixtures: the access kind and policy, and a directory of
+    /// test files per situation.
+    fn fixtures(prefixes: &[&str]) -> TestWorkspace {
+        TestWorkspace::read(&test_testdata()).pick(prefixes)
+    }
+
+    fn run(ws: &TestWorkspace, filter: Option<&str>) -> Vec<TestResult> {
+        let options = TestOptions { data: ws.data.clone(), run: filter.map(String::from), trusted_files: ws.trusted.clone() };
+        sigil().test(&ws.files, &ws.tests, &options).unwrap()
+    }
+
+    #[rstest]
+    #[case::the_deploy_gates_example_with_a_host_function_no_stub_answers(TestWorkspace::read(&deploy_gates()), None)]
+    #[case::the_alert_routing_example(TestWorkspace::read(&alert_routing()), None)]
+    #[case::the_alert_routing_example_with_the_platforms_policies_trusted(TestWorkspace::read(&alert_routing()).trust(&["platform"]), None)]
+    #[case::no_files(TestWorkspace { files: vec![], ..fixtures(&["access"]) }, None)]
+    #[case::passing_cases(fixtures(&["access.sigil", "access"]), None)]
+    #[case::failing_cases(fixtures(&["access.sigil", "access/main.sigil", "failing"]), None)]
+    #[case::the_cases_run_selects(fixtures(&["access.sigil", "access/main.sigil", "failing"]), Some("^wrong"))]
+    #[case::no_case_run_selects(fixtures(&["access.sigil", "access/main.sigil", "failing"]), Some("nothing"))]
+    #[case::an_invalid_test_file(fixtures(&["access.sigil", "access/main.sigil", "invalid"]), None)]
+    #[case::a_test_file_that_isnt_yaml(fixtures(&["access.sigil", "access/main.sigil", "badyaml"]), None)]
+    #[case::a_policy_the_files_dont_define(fixtures(&["access.sigil", "access/main.sigil", "nopolicy"]), None)]
+    #[case::a_policy_that_doesnt_compile(fixtures(&["access.sigil", "broken"]), None)]
+    #[case::file_and_case_stubs(fixtures(&["access.sigil", "access/main.sigil", "stubbed"]), None)]
+    #[case::stubs_that_fail(fixtures(&["access.sigil", "access/main.sigil", "stubfail"]), None)]
+    #[case::stubs_that_dont_fit(fixtures(&["access.sigil", "access/main.sigil", "badstubs"]), None)]
+    fn results_equal_the_clis(#[case] ws: TestWorkspace, #[case] filter: Option<&str>) {
+        let results = run(&ws, filter);
+        assert_eq!(results.len(), ws.tests.len());
+        assert_eq!(as_json(&results), ws.cli(filter));
+    }
+
+    #[test]
+    fn an_input_file_the_request_doesnt_hold_fails_its_case_like_a_missing_file_for_the_cli() {
+        let ws = TestWorkspace { data: vec![], ..fixtures(&["access.sigil", "access"]) };
+        let results = run(&ws, None);
+        let missing = results[0].cases.iter().find(|c| c.error.is_some()).expect("a case with an input_file");
+        assert!(!missing.passed);
+        assert!(missing.error.as_deref().unwrap().contains("couldn't be read (input_file is relative to the test file)"), "{missing:?}");
+        assert_eq!(as_json(&results), ws.cli(None));
+    }
+
+    #[test]
+    fn reports_passing_failing_and_broken_test_files_apart() {
+        let results = run(&fixtures(&["access.sigil", "access", "failing", "broken"]), None);
+        let files: Vec<_> = results.iter().map(|r| r.file.as_str()).collect();
+        assert_eq!(files, ["access/main_test.yaml", "broken/main_test.yaml", "failing/main_test.yaml"]);
+        let [pass, broken, failing] = &results[..] else { unreachable!() };
+        assert!(pass.cases.iter().all(|c| c.passed), "{pass:?}");
+        assert!(broken.error.is_some() && broken.cases.is_empty(), "{broken:?}");
+        assert!(failing.error.is_none());
+        assert!(failing.cases.iter().any(|c| !c.passed && !c.failures.is_empty()), "{failing:?}");
+    }
+
+    #[test]
+    fn results_survive_a_json_round_trip() {
+        let results = run(&fixtures(&["access.sigil", "access", "failing", "broken"]), None);
+        let back: Vec<TestResult> = serde_json::from_value(as_json(&results)).unwrap();
+        assert_eq!(back, results);
+    }
+
+    #[rstest]
+    #[case::no_test_files(vec![], TestOptions::default(), "the request holds no test files")]
+    #[case::a_test_file_not_named_like_one(
+        vec![SourceFile::new("access/main.yaml", "policy: access.main\ncases: []\n")],
+        TestOptions::default(),
+        "the test file access/main.yaml isn't named like one"
+    )]
+    #[case::a_test_file_without_a_path(vec![SourceFile::new("", "policy: access.main\ncases: []\n")], TestOptions::default(), "test file 1 has no path")]
+    #[case::a_run_that_isnt_a_regular_expression(
+        vec![SourceFile::new("access/main_test.yaml", "policy: access.main\ncases: []\n")],
+        TestOptions { run: Some("(".into()), ..Default::default() },
+        "run isn't a valid regular expression"
+    )]
+    #[case::a_path_given_twice_with_two_sources(
+        vec![SourceFile::new("access/main_test.yaml", "policy: access.main\ncases: []\n")],
+        TestOptions { data: vec![SourceFile::new("access/main_test.yaml", "{}")], ..Default::default() },
+        "access/main_test.yaml is given twice, with two sources"
+    )]
+    #[case::a_path_among_the_files_and_the_trusted_files(
+        vec![SourceFile::new("access/main_test.yaml", "policy: access.main\ncases: []\n")],
+        TestOptions { trusted_files: fixtures(&["access/main.sigil"]).files, ..Default::default() },
+        "access/main.sigil is among both the files and the trusted files"
+    )]
+    fn a_request_the_cli_couldnt_get_is_an_error(#[case] tests: Vec<SourceFile>, #[case] options: TestOptions, #[case] message: &str) {
+        let files = fixtures(&["access.sigil", "access/main.sigil"]).files;
+        let sigil::Error::Sigil(err) = err_of(sigil().test(&files, &tests, &options)) else { panic!("not a SigilError") };
+        assert!(err.message.contains(message), "{err:?}");
+        assert!(err.help.is_some(), "{err:?}");
+    }
+}
+
 mod release {
     use super::*;
 

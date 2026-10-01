@@ -14,7 +14,7 @@ use crate::module::{Limits, Module};
 use crate::runtime::{CallLimits, Runtime};
 use crate::types::{
     CheckOptions, CompileOptions, Diagnostic, EvalOptions, EvalResult, ExplainOptions, Explanation, FormatOptions, HostFunction,
-    SourceFile, VersionInfo,
+    SourceFile, TestOptions, TestResult, VersionInfo,
 };
 
 /// One instance of the Sigil engine: a wasmtime `Store` with the module in it.
@@ -88,6 +88,12 @@ struct ExplainBody {
 #[derive(Deserialize)]
 struct FormatBody {
     source: String,
+}
+
+#[derive(Deserialize)]
+struct TestBody {
+    #[serde(default)]
+    results: Vec<TestResult>,
 }
 
 impl Sigil {
@@ -208,6 +214,31 @@ impl Sigil {
             path: &'a Option<String>,
         }
         Ok(self.op::<FormatBody>("format", Request { source, path: &options.path })?.source)
+    }
+
+    /// Runs test files against the files like `sigil test`: one result per
+    /// test file, in the order of their paths. A test file whose policy the
+    /// files don't define is a result that says so. Host functions come from
+    /// the test files' `stubs:`. A test file that can't run is a result with
+    /// `error`, and a failing case one with `passed: false`; it fails only for
+    /// a request the CLI's command line couldn't have given, such as no test
+    /// files, a test file not named `*_test.yaml` or `*_test.yml`, or a `run`
+    /// that isn't a regular expression.
+    pub fn test(&self, files: &[SourceFile], tests: &[SourceFile], options: &TestOptions) -> Result<Vec<TestResult>, Error> {
+        #[derive(Serialize)]
+        struct Request<'a> {
+            files: &'a [SourceFile],
+            #[serde(skip_serializing_if = "Vec::is_empty")]
+            trusted_files: &'a Vec<SourceFile>,
+            test_files: &'a [SourceFile],
+            #[serde(skip_serializing_if = "Vec::is_empty")]
+            data_files: &'a Vec<SourceFile>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            run: &'a Option<String>,
+        }
+        let request =
+            Request { files, trusted_files: &options.trusted_files, test_files: tests, data_files: &options.data, run: &options.run };
+        Ok(self.op::<TestBody>("test", request)?.results)
     }
 
     /// Bytes of linear memory the instance holds, for watching it over time.

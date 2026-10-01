@@ -659,5 +659,5 @@ next alert: notify routine
 
 - [`examples/feature-flags`](https://github.com/SpechtLabs/sigil/tree/main/examples/feature-flags): a feature-flag service in Rust on this crate, with OpenFeature's remote evaluation protocol, a guardrail policy required of every flag, hot reload, telemetry and load tests.
 - [WebAssembly module](/reference/wasm/): every item of the crate, and the ABI for hosts in other languages.
-- [Per-team policies](/guides/team-policies/) and [Test your policies](/guides/test-policies/): the policy side, which doesn't change with the host's language.
+- [Per-team policies](/guides/team-policies/) and [Test your policies](/guides/test-policies/): the policy side, which doesn't change with the host's language. `sigil.test(&files, &tests, &TestOptions::default())` runs the same test files in your program and returns the records `sigil test -o json` prints.
 - [Check policies in CI](/guides/ci/): check the team's policies against the exported kind file before your program ever loads them.

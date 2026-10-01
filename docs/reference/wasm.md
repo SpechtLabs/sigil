@@ -536,7 +536,7 @@ SigilError: invalid duration "90 minutes"
 | `Pool`, `PoolOptions`, `PoolStats` | Several instances, each holding the same policies |
 | `Kind`, `KindBuilder`, `Decision`, `Type`, `FnDecl`, `Outcome` | The kind builder |
 | `Error`, `SigilError`, `StoppedError` | Errors |
-| `Diagnostic`, `EvalResult`, `EvalEntry`, `EvalFailure`, `FailedAssert`, `Explanation`, `ExplainEntry`, `VersionInfo` | The record types, serde `Serialize` and `Deserialize`, field for field the CLI's JSON |
+| `Diagnostic`, `EvalResult`, `EvalEntry`, `EvalFailure`, `FailedAssert`, `Explanation`, `ExplainEntry`, `TestResult`, `TestCaseResult`, `VersionInfo` | The record types, serde `Serialize` and `Deserialize`, field for field the CLI's JSON |
 | `SourceFile`, `Requirement`, `CompileRequirement`, `Stub`, `StubCall`, `LintLevel`, `HostFunction` | The options' types |
 
 To embed Sigil in Rust step by step, see [Embed Sigil in Rust](/guides/embed-rust/).
@@ -557,6 +557,7 @@ To embed Sigil in Rust step by step, see [Embed Sigil in Rust](/guides/embed-rus
 | `sigil.compile` | `(&[SourceFile], CompileOptions) -> Result<Policy, Error>` | The [`compile`](#compile) op. An `Error::Sigil` carries the diagnostics |
 | `sigil.explain` | `(&[SourceFile], &ExplainOptions) -> Result<Vec<Explanation>, Error>` | The [`explain`](#explain) op on files |
 | `sigil.format` | `(&str, &FormatOptions) -> Result<String, Error>` | The [`format`](#format) op. An `Error::Sigil` carries the syntax errors |
+| `sigil.test` | `(&[SourceFile], &[SourceFile], &TestOptions) -> Result<Vec<TestResult>, Error>` | The [`test`](#test) op. The second list is its `test_files` |
 | `sigil.stopped` | `() -> Option<StoppedError>` | Why the instance stopped, or `None` while it works |
 | `sigil.memory_size` | `() -> Result<usize, Error>` | Bytes of linear memory the instance holds |
 
@@ -587,6 +588,7 @@ A `Policy` keeps its instance alive, so it may outlive the `Sigil` it came from.
 | `functions` | `CompileOptions` | `HashMap<String, HostFunction>`. Implementations; their names become the op's `functions` |
 | `policy`, `trusted_files` | `ExplainOptions` | The `explain` op's fields |
 | `path` | `FormatOptions` | The `format` op's `path` |
+| `data`, `run`, `trusted_files` | `TestOptions` | The `test` op's `data_files`, `run` and `trusted_files` |
 | `timeout` | `EvalOptions` | The `eval` op's `timeout_ms`, rounded up to whole milliseconds |
 | `grace` | `EvalOptions` | How long past `timeout` a call may run before it's killed. `Limits::grace` when `None` |
 | `fuel` | `EvalOptions` | Stops the call after this much fuel. Needs `ModuleConfig::fuel` |
