@@ -25,12 +25,12 @@ import (
 )
 
 // SuiteResult is one test file's run. When Error is set, none of the
-// file's cases ran.
+// file's cases ran, and Cases is empty.
 type SuiteResult struct { //nolint:govet // the field order is the JSON's
 	File   string       `json:"file" yaml:"file"`
 	Policy string       `json:"policy" yaml:"policy"`                   // the policy the file tests
 	Error  string       `json:"error,omitempty" yaml:"error,omitempty"` // an unreadable or invalid test file, or a policy that doesn't compile
-	Cases  []CaseResult `json:"cases" yaml:"cases"`                     // the cases the filter selects, in file order
+	Cases  []CaseResult `json:"cases" yaml:"cases"`                     // the cases the filter selects, in file order; empty rather than null
 	// What's behind Error, for a text report to render with each hint
 	// on its own line: the test file's problems, or the policy's compile
 	// errors with Sources finding their source lines.
@@ -52,7 +52,7 @@ type CaseResult struct { //nolint:govet // the field order is the JSON's
 
 // Unreadable is the result of a test file that couldn't be read.
 func Unreadable(file string, err error) SuiteResult {
-	return SuiteResult{File: file, Error: file + " couldn't be read: " + err.Error()}
+	return SuiteResult{File: file, Error: file + " couldn't be read: " + err.Error(), Cases: []CaseResult{}}
 }
 
 // Run runs the cases of the test file named file, whose contents are src,
@@ -62,7 +62,7 @@ func Unreadable(file string, err error) SuiteResult {
 // matches run. A test file that can't run is a result whose Error says
 // why, and a case that fails is one whose Passed is false.
 func Run(ctx context.Context, p *workspace.Project, file string, src []byte, inputs fs.FS, filter *regexp.Regexp) SuiteResult {
-	res := SuiteResult{File: file}
+	res := SuiteResult{File: file, Cases: []CaseResult{}}
 	s, err := testsuite.Parse(file, src)
 	if err != nil {
 		res.Error = err.Error()

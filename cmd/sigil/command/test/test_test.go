@@ -42,6 +42,7 @@ func TestTest(t *testing.T) {
 		{name: "bad_yaml", paths: []string{policies, "testdata/badyaml"}},
 		{name: "no_policy", paths: []string{policies, "testdata/nopolicy"}},
 		{name: "broken_bundle", paths: []string{"testdata/broken"}},
+		{name: "broken_bundle_json", paths: []string{"testdata/broken"}, format: output.JSON},
 		{name: "no_test_files", paths: []string{policies}},
 		{name: "invalid_run", paths: []string{"testdata/access"}, run: "("},
 		{name: "kind_among_paths", paths: []string{"testdata/access.sigil", "testdata/access"}, noKind: true},
