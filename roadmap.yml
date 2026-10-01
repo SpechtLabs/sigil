@@ -611,3 +611,19 @@ milestones:
           Web Worker helper, so other languages run the Go engine instead of a port. Publishing
           the package is an open question.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/wasm.md
+      - title: sigil compile
+        state: DONE
+        requirement: SHOULD
+        description: |
+          Checks a bundle as `sigil check` does and writes a copy of the binary with it compiled in,
+          whose `eval`, `explain`, `test` and `version` need no policy or kind file. `--policy`
+          narrows the bundle to one policy and what it uses. A host binary compiles kinds with host
+          functions, and on macOS the ad-hoc signature is updated in place.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/guides/compile.md
+      - title: Cross targets for sigil compile
+        state: TODO
+        requirement: MAY
+        description: |
+          `compile --from` would copy a release binary of another platform, after checking with
+          `debug/buildinfo` that it's the same build as the binary that checked the bundle.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/project/planned.md

@@ -54,7 +54,7 @@ A host with several kinds repeats `cli.WithKind`, and each document then uses th
 cli.Main(cli.WithKind(deploy.Kind), cli.WithKind(access.Kind), cli.WithVersion(version))
 ```
 
-The commands and their flags are in the [CLI reference](/reference/cli/); what the stock binary does at a host function call is in [Host functions and host binaries](/reference/cli/#host-functions-and-host-binaries).
+The commands and their flags are in the [CLI reference](/reference/cli/); what the stock binary does at a host function call is in [Host functions and host binaries](/reference/cli/#host-functions-and-host-binaries). The binary's `compile` writes a copy of it with your policies inside, which calls your real functions; see [Ship policies as a standalone binary](/guides/compile/#compile-kinds-with-host-functions).
 
 ## Export the kind
 

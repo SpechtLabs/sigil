@@ -16,6 +16,7 @@ The tools read the exported kind file (`deploy_approval.sigil` in the running ex
 | [`sigil eval`](#sigil-eval) | Evaluates a policy against a JSON or YAML input and prints the result and trace | Kind file; a host binary or stubs for functions |
 | [`sigil explain`](#sigil-explain) | Flattens a policy into its guarded decisions, with every invocation inlined | Kind file |
 | [`sigil test`](#sigil-test) | Runs test cases: an input plus the expected decision and reason, the asserts that fail, or a runtime error | Kind file; a host binary or stubs for functions |
+| [`sigil compile`](#sigil-compile) | Checks policies, then writes a copy of the binary with them compiled in, which evaluates them without any file | Kind file; a host binary for kinds with functions |
 | [`sigil export`](#sigil-export) | Writes the kind file of a kind linked into a host binary | A host binary; `sigil --help` lists it only there |
 | [`sigil version`](#sigil-version) | Shows the version and build information | Nothing |
 
@@ -35,7 +36,7 @@ The tools read the exported kind file (`deploy_approval.sigil` in the running ex
 
 ## Inputs
 
-Commands that read policies take their input the way `kubectl -f` does: every argument is a file, a directory or `-` for stdin, and the tool combines all the documents it finds into one bundle. `fmt`, `check`, `eval`, `explain` and `test` all follow the same rules, and with no arguments each reads the current directory, `.`.
+Commands that read policies take their input the way `kubectl -f` does: every argument is a file, a directory or `-` for stdin, and the tool combines all the documents it finds into one bundle. `fmt`, `check`, `eval`, `explain`, `test` and `compile` all follow the same rules, and with no arguments each reads the current directory, `.`.
 
 ```text
 sigil check   deploy_approval.sigil deploy/*.sigil payments/*.sigil
@@ -93,7 +94,7 @@ Every command takes two global flags:
 | `-o`, `--output` | `text` | Output format: `text`, `json` or `yaml`. Every command honors it; each command's section describes its records |
 | `--color` | `auto` | When to color text output: `auto`, `always` or `never`. `auto` colors on a terminal, and not when piped or when `NO_COLOR` is set |
 
-`check`, `test`, `fmt --check`, `fmt --write` and `export --out` end their text output with one line that sums the run up, marked `✓`, `!` or `✗`:
+`check`, `test`, `compile`, `fmt --check`, `fmt --write` and `export --out` end their text output with one line that sums the run up, marked `✓`, `!` or `✗`:
 
 ```text
 ✓ checked 4 files, no problems found
@@ -117,7 +118,7 @@ Caused by
 - The records carry what the text shows, including what failed, such as `check`'s error diagnostics or the `error` record of a [planned command](#sigil-breaking).
 - The `Error:` block of a command that couldn't run at all still goes to standard error as text.
 
-Every command exits with status 0 on success and 1 on any failure: a usage error, an unreadable file, an error found by `check`, a failed evaluation, a failing test case, an unformatted file under `fmt --check` or a stale file under `export --check`. There are no other exit codes. Warnings don't change the status, and the status is the same in every output format.
+Every command exits with status 0 on success and 1 on any failure: a usage error, an unreadable file, an error found by `check`, a failed evaluation, a failing test case, a bundle `compile` refuses, an unformatted file under `fmt --check` or a stale file under `export --check`. There are no other exit codes. Warnings don't change the status, and the status is the same in every output format.
 
 ## Host functions and host binaries
 
@@ -139,6 +140,7 @@ A host binary is the whole command line with the host's kind linked in by [packa
 - Every command uses the linked kind for the documents written against it, with no kind file. A kind file for the same kind, named with `--kind` or among the inputs, must match it exactly, which catches a stale export.
 - With several kinds linked (`cli.WithKind` repeated), each document uses the kind its header names, and `sigil export` takes the kind's name as its argument.
 - `sigil version` reports what `cli.WithVersion` set.
+- `sigil compile` copies the host binary, so the binary it writes calls the real functions, and it compiles bundles whose kinds have host functions, which the stock binary refuses.
 
 The running example's `deploy.common` calls `split`, so the `eval` and `test` samples on this page come from a host binary. To build one, see [Build a host binary](/guides/host-binary/). `go test` doesn't need one: [`policytest`](/reference/go-api/#package-policytest) runs inside the host.
 
@@ -668,6 +670,202 @@ FAIL  payments/production_test.yaml  1 of 3 cases failed
 | `cases[].error` | Why the case couldn't run: its input can't be read or doesn't fit the kind |
 
 Exits 1 when a case fails or a test file is invalid.
+
+## `sigil compile`
+
+Checks a bundle as [`sigil check`](#sigil-check) does, then writes a copy of the running binary with the bundle compiled in. The copy's commands are in [Compiled binaries](#compiled-binaries).
+
+```text
+sigil compile --out FILE [PATH...] [flags]
+```
+
+| Flag | Default | Does |
+| --- | --- | --- |
+| `--out` | required | File to write the binary to. There's no `-o`, which is `--output` |
+| `-p`, `--policy` | the bundle's only policy | Name of the policy the compiled `eval` evaluates by default. Narrows the bundle to it; see below |
+| `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
+| `--require` | none | Policy every root must invoke unconditionally, instead of the configuration's `require`. Repeatable |
+| `--trusted` | none | File or directory to read the `--require` policies from, as `policy.From` does. Needs `--require`. Repeatable |
+| `--config` | the nearest [configuration file](/reference/config/#finding-the-file) | File with the [kind files, requirements and lint levels](/reference/config/), in YAML, JSON or TOML by its extension |
+
+- Reads and checks the bundle as `sigil check` does: the same kinds, configuration file, requirements, trusted paths and lint levels. An error, a lint set to `error` and a failed requirement included, stops it with `the bundle doesn't check, so nothing was compiled`. Warnings are printed, and it goes on.
+- Without `--policy`, it checks every document and compiles in every file it read. The root is the bundle's only policy; a bundle with several has none, and the compiled `eval` then needs `--policy`.
+- `--policy` takes a name, or a pattern that matches exactly one policy, and checks the way `check --policy` does: an error in a file that doesn't go into the binary doesn't stop it.
+- With `--policy`, the binary holds the files that hold the policy and every document it uses, trusted and required ones included, and the kind files of their kinds. A file goes in whole, so another document in it goes in too, and the binary's `eval --policy` can evaluate it. A requirement goes in only when its required policy does.
+- Before it writes anything, `compile` checks what goes into the binary once more, on its own: every policy in it, with the same lints and the requirements that went in. The binary's bundle passes `sigil check` by itself, so a document that shares a file with the `--policy` policy and doesn't check, or breaks a requirement, fails the compile. Move it to a file of its own, or fix it.
+- A kind of a document that goes in may not declare host functions the binary doesn't link: the stock binary refuses such a bundle, and a [host binary](#host-functions-and-host-binaries) compiles it with its real functions. With `--policy`, that includes the kinds of the other documents in its files.
+- File names are relative to the configuration file's directory, or to the working directory when there's none. A name outside that directory is relative with `..`, and only an absolute name outside both directories stays absolute; stdin is `<stdin>`. Diagnostics and traces of the compiled binary use these names.
+- The digest is `sha256:` and the hex SHA-256 of the files' names and contents, the root and the requirements. Since the names are relative to the configuration file, a repository compiles to the same digest from any directory in it and on any machine. Renaming or moving a file changes the digest; the sigil version and the build time don't.
+- The binary records when it was compiled: `SOURCE_DATE_EPOCH`, in seconds since 1970, when it's set, otherwise the current time, in UTC. A value that isn't a number fails the command.
+- `--out` can't be `-`, a directory, the running binary, or a file `compile` reads: a policy, kind, trusted or configuration file. Each is refused before anything is written.
+- The output is a copy of the running binary, of the same size and for the same platform; see [cross targets](/project/planned/#cross-targets-for-compile). It's written to a temporary file next to `--out`, given mode `0755` whatever the umask, and renamed over `--out`. A symbolic link at `--out` is replaced by the binary, not written through.
+- The bundle, as JSON compressed with DEFLATE, goes into an area of 1 MiB that the binary reserves at link time. A bundle that doesn't fit fails the command with its size and the limit.
+- On macOS, compile updates the binary's ad-hoc signature. It refuses a binary signed with an identity, such as a Developer ID, or with Authenticode on Windows, and a universal macOS binary. Sign the compiled binary instead; see [Sign it for other Macs](/guides/compile/#sign-it-for-other-macs).
+
+Why it's built this way: [How compile works](/understanding/compile/).
+
+In the examples' `policies/` directory, where `sigil.yaml` requires `access.guardrails` from `platform/access`:
+
+```text
+$ sigil compile --out gate --policy access.main
+✓ compiled access.main from 4 files into gate (sha256:555f77fa9b73…)
+```
+
+The same directory without `--policy`, whose deploy policies call `split`:
+
+```text
+$ sigil compile --out gate
+Error: the bundle needs host functions this binary doesn't implement, so nothing was compiled: DeployApproval@1 declares split
+
+What you can do
+  • build a host binary with cli.Main(cli.WithKind(...)) from the pkg/cli package, which links the kind and its functions in, and compile with its compile command
+  • or name a policy of a kind without host functions with --policy, which compiles in only that policy and what it uses
+```
+
+`-o json` and `-o yaml` print one record:
+
+| Field | Holds |
+| --- | --- |
+| `out` | The `--out` file, as given |
+| `root` | The default policy; empty when there's none |
+| `digest` | The bundle's digest |
+| `files` | The files compiled in, kind files and trusted files included, each once |
+| `bytes` | The size of the encoded bundle in the binary |
+| `warnings` | The check's warnings, as [`check`'s records](#sigil-check); left out when there are none |
+
+```text
+$ sigil compile --out gate --policy access.main -o json
+{
+  "out": "gate",
+  "root": "access.main",
+  "digest": "sha256:555f77fa9b731b1e9fbc2084594b6a09bd7981333ad5366bd984cb23cae828fb",
+  "files": 4,
+  "bytes": 1410
+}
+```
+
+When the check fails, `-o json` and `-o yaml` print the diagnostics as [`check`'s records](#sigil-check) instead, and nothing else.
+
+Exits 1 when `--out` is missing or refused, the bundle doesn't check, `--policy` matches no policy of the bundle or several, a kind needs host functions the binary doesn't link, or the binary can't be written.
+
+## Compiled binaries
+
+A binary that `sigil compile` wrote is named after its file, so `./gate --help` shows `gate` in every usage line. It has these commands, plus `help`, `completion` and the global `--output` and `--color`:
+
+| Command | Does |
+| --- | --- |
+| `eval` | Evaluates a compiled policy against an input and prints the result and trace |
+| `explain` | Flattens the compiled policies into their guarded decisions |
+| `test` | Runs test files against the compiled policies |
+| `version` | Shows the build information and what was compiled in |
+
+- They read no `.sigil` file, kind file or configuration file. The policies, kind files and trusted documents come from the bundle, and a host binary's linked kinds are in every binary it compiles.
+- There's no `--kind`, `--config`, `--stub` or `--stubs`: host functions are the real ones a host binary linked in, and the stock binary compiles only kinds without them.
+- A binary whose bundle is damaged, for example because its file changed after it was compiled, fails every command with `this binary's compiled policies are damaged`.
+
+### Compiled `eval`
+
+```text
+NAME eval [--input FILE] [--policy NAME] [flags]
+```
+
+| Flag | Default | Does |
+| --- | --- | --- |
+| `-i`, `--input` | stdin | Input document, JSON or YAML, to evaluate against, or `-` for stdin |
+| `-p`, `--policy` | the bundle's root | Name of the compiled policy to evaluate; required when the bundle has no root |
+
+- Takes no paths.
+- `--policy` names one of the bundle's policies. A required policy read from a trusted path isn't one of them.
+- Inputs, output and exit status are those of [`sigil eval`](#sigil-eval), and its JSON and YAML record has one more field, `bundle`, the digest.
+
+```text
+$ ./gate eval access/testdata/sre.json
+Error: eval takes no paths, got access/testdata/sre.json: this binary has its policies compiled in
+
+What you can do
+  • pass the input with --input or on stdin, such as `gate eval < access/testdata/sre.json`
+```
+
+### Compiled `explain`
+
+```text
+NAME explain [--policy PATTERN] [flags]
+```
+
+| Flag | Default | Does |
+| --- | --- | --- |
+| `-p`, `--policy` | the bundle's root, or every policy when it has none | Name or pattern of the compiled policies to explain |
+
+Takes no paths. The output is that of [`sigil explain`](#sigil-explain).
+
+### Compiled `test`
+
+```text
+NAME test [PATH...] [flags]
+```
+
+| Flag | Default | Does |
+| --- | --- | --- |
+| `--run` | every case | Only runs cases whose name matches this regular expression |
+| `-v`, `--verbose` | off | Lists passing cases and skipped test files too |
+
+- Finds test files as [`sigil test`](#sigil-test) does, and runs them against the compiled policies. `.sigil` files under the paths are ignored.
+- A test file whose policy isn't compiled in is skipped, so the binary runs in a repository that holds other policies' tests too. A line before the summary counts the skipped files, and the summary counts only the files that ran. `-v` lists each skipped file with its policy, and in the JSON and YAML records a skipped file has `skipped: true` and no cases.
+- A test file that doesn't parse still fails.
+
+```text
+$ ./gate test
+ok    access/main_test.yaml  17 cases
+skipped 2 test files for policies not compiled in
+✓ 17 cases passed in 1 file
+```
+
+When every test file it finds is skipped, `test` fails:
+
+```text
+$ ./gate test teams
+Error: no test files for the compiled policies among teams
+
+What you can do
+  • the test files found test checkout.production, payments.production, and this binary has access.main compiled in
+```
+
+### Compiled `version`
+
+```text
+NAME version [flags]
+```
+
+Shows what [`sigil version`](#sigil-version) shows for the binary, then the bundle:
+
+| Line | JSON and YAML field | Holds |
+| --- | --- | --- |
+| `Bundle` | `digest` | The bundle's digest |
+| `Root policy` | `root` | The default policy; left out of the record when there's none |
+| `Kinds` | `kinds` | `Name@Version` of every kind the documents are written against |
+| `Files` | `files` | The files compiled in, each once |
+| `Requires` | `require` | Each requirement compile enforced: `policy`, and the `roots` it applies to |
+| `Compiled by` | `compiledBy` | The version of the sigil that compiled it |
+| `Built` | `built` | When it was compiled, RFC 3339 in UTC |
+
+The fields are under `bundle` in the record, next to the build information.
+
+```text
+$ ./gate version
+Version:     (devel)
+Commit:      unknown
+Commit time: unknown
+Go version:  go1.27.1
+Platform:    darwin/arm64
+
+Bundle:      sha256:555f77fa9b731b1e9fbc2084594b6a09bd7981333ad5366bd984cb23cae828fb
+Root policy: access.main
+Kinds:       AccessGrant@1
+Files:       4
+Requires:    access.guardrails for access.main
+Compiled by: (devel)
+Built:       2026-10-01T12:30:24Z
+```
 
 ## `sigil export`
 
