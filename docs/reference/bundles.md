@@ -66,7 +66,7 @@ On a hot reload, the host keeps the last policy that loaded; see [Reload without
 - Files are plain containers. One key per team, one file per policy, or everything in one file all resolve the same way.
 - The imported document must implement the same kind as the importing one; see [`use`](/reference/policy-files/#use).
 - A `use` of a kind's name is a compile error.
-- With a [trusted source](#trusted-sources), a required policy and everything it uses come from that source, not from the bundle.
+- With a [trusted source](#trusted-sources), its documents resolve first: a required policy and everything it uses, and the modules a team imports from it, come from that source, not from the bundle.
 
 ## Loading files
 
@@ -94,24 +94,32 @@ A mismatch fails with `kind document DeployApproval doesn't match the host's kin
 
 ```go
 policy.Require("deploy.guardrails", policy.From(platformFS))
+policy.Trusted(vocabularyFS)
 ```
 
-`policy.From(fsys)`, passed inside [`policy.Require`](/reference/evaluation/#required-policies), names the source a required policy must come from. The loader reads the trusted source as its own bundle, separate from the one passed to `Load`.
+`policy.From(fsys)`, passed inside [`policy.Require`](/reference/evaluation/#required-policies), names the source a required policy must come from. [`policy.Trusted(fsys)`](/reference/go-api/#trusted) adds a trusted source without requiring any policy from it, such as the vocabulary modules a platform ships. The loader reads every trusted source into one trusted bundle, separate from the one passed to `Load`.
 
 ```go
 //go:embed platform
 var platformFS embed.FS // or a platform-owned ConfigMap, mounted separately
 
+//go:embed vocabulary
+var vocabularyFS embed.FS
+
 p, err := Deploy.Load(policy.MapFS(cm.Data), "payments.production",
-	policy.Require("deploy.guardrails", policy.From(platformFS)))
+	policy.Require("deploy.guardrails", policy.From(platformFS)),
+	policy.Trusted(vocabularyFS))
 ```
 
-- The required policy is taken from the trusted source, and so is everything it imports and invokes. A trusted policy never resolves a name in the untrusted bundle.
-- Every name the trusted source defines is reserved. A document in the untrusted bundle that claims one of them, such as `deploy.guardrails` or `deploy.common`, is a compile error naming both definitions. Neither side overrides the other.
-- Several `Require` options may name the same source, and the loader reads it once. It recognizes the same source by value for a comparable `fs.FS`, such as `embed.FS`, `os.DirFS` or `fs.Sub`, and by map identity for a map-backed one such as `policy.MapFS`.
+- A trusted document resolves before the untrusted bundle's. The required policy is taken from the trusted bundle, and so is everything it imports and invokes. A trusted document never resolves a name in the untrusted bundle.
+- Every name a trusted source defines is reserved. A document in the untrusted bundle that claims one of them, such as `deploy.guardrails` or `deploy.common`, is a compile error naming both definitions. Neither side overrides the other.
+- Every trusted document is checked, so a broken one fails the load even when no policy uses it.
+- Several options may name the same source, `Trusted` and `From` alike, and the loader reads it once. It recognizes the same source by value for a comparable `fs.FS`, such as `embed.FS`, `os.DirFS` or `fs.Sub`, and by map identity for a map-backed one such as `policy.MapFS`.
+- Two different trusted sources can't hold a file of the same path, since a diagnostic names a file by its path. The load fails with `policy file deploy/common.sigil is in two of the sources read into one bundle`.
 - Team policies import and invoke trusted documents by name as usual: `use deploy.guardrails` and `use deploy.common.{cleared}` work unchanged.
-- Without `From`, the required policy is looked up in the bundle like any other document.
+- Without `From`, the required policy is looked up like any other document: in the trusted bundle first, then in the untrusted one.
 - A required policy bounds its own params with [`min` and `max`](/reference/policy-files/#bounds). `Require` takes no bounds of its own.
+- `sigil check` reads trusted paths the same way, from `--trusted` and the configuration file's [`trusted`](/reference/config/#keys); see [`sigil check`](/reference/cli/#sigil-check).
 
 ```text
 teams/payments.sigil:3:8: error: module deploy.common is defined twice
