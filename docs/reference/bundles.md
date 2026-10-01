@@ -112,10 +112,11 @@ p, err := Deploy.Load(policy.MapFS(cm.Data), "payments.production",
 ```
 
 - A trusted document resolves before the untrusted bundle's. The required policy is taken from the trusted bundle, and so is everything it imports and invokes. A trusted document never resolves a name in the untrusted bundle.
-- Every name a trusted source defines is reserved. A document in the untrusted bundle that claims one of them, such as `deploy.guardrails` or `deploy.common`, is a compile error naming both definitions. Neither side overrides the other.
+- Every name a trusted source defines is reserved. A document in the untrusted bundle that claims one of them, such as `deploy.guardrails` or `deploy.common`, is a compile error naming both definitions. Neither side overrides the other. A document that's a byte-for-byte copy of the trusted one is the same definition and is left out, so the bundle may hold the trusted source's directory too, as a repository that holds the platform's directory and the teams' does.
 - Every trusted document is checked, so a broken one fails the load even when no policy uses it.
-- Several options may name the same source, `Trusted` and `From` alike, and the loader reads it once. It recognizes the same source by value for a comparable `fs.FS`, such as `embed.FS`, `os.DirFS` or `fs.Sub`, and by map identity for a map-backed one such as `policy.MapFS`.
-- Two different trusted sources can't hold a file of the same path, since a diagnostic names a file by its path. The load fails with `policy file deploy/common.sigil is in two of the sources read into one bundle`.
+- A nil trusted source, or one that holds no policy or module, fails the load, since it would protect nothing: `the trusted source passed to Trusted holds no policies or modules`.
+- Several options may name the same source, `Trusted` and `From` alike, and the loader reads it once. It recognizes the same source by value for a comparable `fs.FS`, such as `embed.FS` or `os.DirFS`, and by map identity for a map-backed one such as `policy.MapFS`. Two values it can't tell are the same, such as two `fs.Sub` calls for one directory, are each read, and the second one's documents are copies.
+- Two trusted sources, or a trusted source and the bundle, may each hold a file of the same path, such as two ConfigMaps keyed `policies.sigil`. Every diagnostic quotes the file it's about.
 - Team policies import and invoke trusted documents by name as usual: `use deploy.guardrails` and `use deploy.common.{cleared}` work unchanged.
 - Without `From`, the required policy is looked up like any other document: in the trusted bundle first, then in the untrusted one.
 - A required policy bounds its own params with [`min` and `max`](/reference/policy-files/#bounds). `Require` takes no bounds of its own.
