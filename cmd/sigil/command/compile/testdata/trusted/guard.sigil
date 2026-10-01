@@ -1,0 +1,5 @@
+policy compile.guard: Gate@1
+
+when user == "" {
+  deny(reason: nobody)
+}

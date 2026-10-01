@@ -24,6 +24,7 @@ type Result struct {
 	Require []config.Require // the requirements it enforced: --require's, or the configuration's require:
 	Files   *project.Files   // the files it read, the configuration's kind files and trusted paths included
 	Project *project.Project // the files, loaded
+	Checks  workspace.Checks // what the check ran: the lint levels, the patterns, the requirements and whether it was strict
 	Errs    diag.ErrorList   // what it found, unresolved; nil when nothing
 }
 
@@ -52,11 +53,12 @@ func Run(configFile string, src project.Sources, patterns, requires []string, ki
 	if err != nil {
 		return nil, err
 	}
-	errs, err := p.Diagnose(workspace.Checks{Lints: cfg.Lints, Patterns: patterns, Require: requirements(cfg, reqs), Strict: whole(cfg, src.Paths)})
+	checks := workspace.Checks{Lints: cfg.Lints, Patterns: patterns, Require: requirements(cfg, reqs), Strict: whole(cfg, src.Paths)}
+	errs, err := p.Diagnose(checks)
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Config: cfg, Require: reqs, Files: files, Project: p, Errs: errs}, nil
+	return &Result{Config: cfg, Require: reqs, Files: files, Project: p, Checks: checks, Errs: errs}, nil
 }
 
 // Advice is what a failed check suggests: the general hint, and when an

@@ -1,0 +1,8 @@
+kinds:
+  - gate.sigil
+  - hostfn/lookup.sigil
+require:
+  - policy: compile.guard
+    trusted: [trusted]
+  - policy: compile.lookup_guard
+    trusted: [mixed/trusted]

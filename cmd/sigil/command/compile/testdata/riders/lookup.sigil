@@ -1,0 +1,13 @@
+policy compile.rider_gate: Gate@1
+
+when user == "root" {
+  allow(reason: admin)
+}
+
+---
+
+policy compile.rider_lookup: Lookup@1
+
+when owner(user) == "ada" {
+  allow(reason: owner)
+}

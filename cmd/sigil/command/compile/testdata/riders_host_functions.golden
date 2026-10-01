@@ -1,0 +1,4 @@
+--- error ---
+the bundle needs host functions this binary doesn't implement, so nothing was compiled: Lookup@1 declares owner, team
+advice: build a host binary with cli.Main(cli.WithKind(...)) from the pkg/cli package, which links the kind and its functions in, and compile with its compile command
+advice: or move compile.rider_lookup of kind Lookup out of the files that hold compile.rider_gate and what it uses: those files go into the binary whole

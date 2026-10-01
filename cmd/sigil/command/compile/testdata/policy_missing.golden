@@ -1,0 +1,3 @@
+--- error ---
+no policy matches "compile.nope"
+advice: the bundle defines: compile.single

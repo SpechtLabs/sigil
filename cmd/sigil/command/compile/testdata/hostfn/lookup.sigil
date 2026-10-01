@@ -1,0 +1,19 @@
+kind Lookup version 1
+
+input user: string
+
+fn owner(string) -> string
+fn team(string) -> string
+
+decision deny {
+  reason: no_rule_matched
+}
+
+decision allow {
+  reason: owner
+}
+
+collect one
+precedence deny > allow
+
+default deny(reason: no_rule_matched)

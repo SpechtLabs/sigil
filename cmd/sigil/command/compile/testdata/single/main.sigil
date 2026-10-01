@@ -1,0 +1,5 @@
+policy compile.single: Gate@1
+
+when user == "root" {
+  allow(reason: admin)
+}

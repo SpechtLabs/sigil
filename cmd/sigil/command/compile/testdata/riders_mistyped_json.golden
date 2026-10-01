@@ -1,0 +1,15 @@
+[
+  {
+    "severity": "error",
+    "file": "testdata/riders/mistyped.sigil",
+    "document": "compile.mistyped_b",
+    "message": "unknown name `nobody`",
+    "help": "names come from the kind's inputs, host functions, decisions and enum values, and the document's params, lets and imports",
+    "line": 19,
+    "column": 6
+  }
+]
+--- error ---
+the bundle doesn't check, so nothing was compiled
+advice: each diagnostic above says where the problem is and how to fix it
+advice: the files that hold compile.mistyped_a and what it uses go into the binary whole, so the other documents in them are checked too: move those to their own files, or fix them

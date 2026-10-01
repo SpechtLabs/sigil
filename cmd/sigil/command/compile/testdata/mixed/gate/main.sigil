@@ -1,0 +1,9 @@
+policy compile.mixed_gate: Gate@1
+
+use compile.guard
+
+guard()
+
+when user == "root" {
+  allow(reason: admin)
+}

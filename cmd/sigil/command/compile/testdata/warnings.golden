@@ -1,0 +1,8 @@
+testdata/warn/main.sigil:3:5 (compile.warn): warning: let unused is never read [unused-let]
+  |
+3 | let unused = user
+  |     ^^^^^^
+  = help: remove the let, or read it; a private let can't be imported
+
+✓ compiled compile.warn from 2 files into $TMP/policies (sha256:8192e065f47a…)
+--- ok ---

@@ -1,0 +1,3 @@
+✓ compiled 2 policies from 4 files into $TMP/policies (sha256:31b5eec10270…)
+  no policy is the default, so its eval needs --policy
+--- ok ---

@@ -1,0 +1,17 @@
+policy compile.unguarded_a: Gate@1
+
+use compile.guard
+
+guard()
+
+when user == "root" {
+  allow(reason: admin)
+}
+
+---
+
+policy compile.unguarded_b: Gate@1
+
+when user != "" {
+  allow(reason: member)
+}

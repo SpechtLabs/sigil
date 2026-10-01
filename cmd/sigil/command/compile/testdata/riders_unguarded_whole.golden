@@ -1,0 +1,9 @@
+--- error ---
+testdata/riders/unguarded.sigil:13:1 (compile.unguarded_b): error: compile.unguarded_b doesn't invoke compile.guard
+   |
+13 | policy compile.unguarded_b: Gate@1
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: the host requires compile.guard for every Gate policy; import it with `use compile.guard` and invoke it at the top level
+
+the bundle doesn't check, so nothing was compiled
+advice: each diagnostic above says where the problem is and how to fix it
