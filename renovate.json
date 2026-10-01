@@ -17,6 +17,14 @@
   "labels": [
     "dependencies"
   ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/__tests__/**",
+    "**/__fixtures__/**"
+  ],
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
     "labels": [
@@ -121,6 +129,97 @@
       ],
       "groupName": "Go modules",
       "groupSlug": "go-modules"
+    },
+    {
+      "description": "Group Rust crate updates together. bindings/rust and examples/feature-flags share most crates, and families like wasmtime/wasmtime-wasi and opentelemetry/tracing-opentelemetry only build when they move in lockstep.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "groupName": "Rust crates",
+      "groupSlug": "rust-crates"
+    },
+    {
+      "description": "Group Node package updates for bindings/typescript and examples/alert-routing together.",
+      "matchManagers": [
+        "bun",
+        "npm"
+      ],
+      "groupName": "Node packages",
+      "groupSlug": "node-packages"
+    },
+    {
+      "description": "The examples ship nothing, and release-please releases the whole repository from one package, so a fix(deps) there would cut a sigil release for an example app's dependency.",
+      "matchFileNames": [
+        "examples/**"
+      ],
+      "semanticCommitType": "chore"
+    },
+    {
+      "description": "Leave engines.node alone. It is the oldest Node @spechtlabs/sigil supports, not the toolchain; raising it to the newest Node breaks consumers on older ones. Bump it by hand when support is dropped.",
+      "matchDepTypes": [
+        "engines"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Rust is pinned in .mise.toml and in the examples/feature-flags/Dockerfile build image; move both at once. rust-version in the Cargo.toml files is the MSRV and is bumped by hand.",
+      "matchDepNames": [
+        "rust"
+      ],
+      "groupName": "Rust toolchain",
+      "groupSlug": "rust-toolchain"
+    },
+    {
+      "description": "Node is pinned in .mise.toml and in the examples/alert-routing/Dockerfile build image; move both at once. On a major, bump the distroless nodejsNN runtime image there by hand.",
+      "matchDatasources": [
+        "node-version",
+        "docker"
+      ],
+      "matchDepNames": [
+        "node"
+      ],
+      "groupName": "Node toolchain",
+      "groupSlug": "node-toolchain"
+    },
+    {
+      "description": "bun is pinned in .mise.toml, in the examples/alert-routing/Dockerfile bun stage, and as @types/bun; move them at once.",
+      "matchDepNames": [
+        "bun",
+        "oven/bun",
+        "@types/bun"
+      ],
+      "groupName": "bun",
+      "groupSlug": "bun"
+    },
+    {
+      "description": "The golang build images in the example Dockerfiles follow the Go toolchain in .mise.toml and go.mod.",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchDepNames": [
+        "golang"
+      ],
+      "groupName": "Go toolchain",
+      "groupSlug": "go-toolchain"
+    },
+    {
+      "description": "The examples' compose stacks pin the same Grafana images; examples/feature-flags/.mise.toml pins k6 to the compose k6 image.",
+      "matchPackageNames": [
+        "grafana/**"
+      ],
+      "groupName": "Grafana stack",
+      "groupSlug": "grafana-stack"
+    },
+    {
+      "description": "k6 in examples/feature-flags/.mise.toml goes with the compose k6 image, whatever package name the mise manager resolves it to.",
+      "matchFileNames": [
+        "examples/**/.mise.toml"
+      ],
+      "matchDepNames": [
+        "k6"
+      ],
+      "groupName": "Grafana stack",
+      "groupSlug": "grafana-stack"
     },
     {
       "description": "Update .mise.toml and go.mod Go versions together.",
