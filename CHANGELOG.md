@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.4](https://github.com/SpechtLabs/sigil/compare/v0.6.3...v0.6.4) (2026-10-01)
+
+
+### Features
+
+* **cli:** sigil compile builds a standalone binary from a policy bundle ([#119](https://github.com/SpechtLabs/sigil/issues/119)) ([cdec7d0](https://github.com/SpechtLabs/sigil/commit/cdec7d053d87efcb5ef7faa571ec439f290849bb))
+* **docs:** a Sigil playground that runs the engine in the browser ([#127](https://github.com/SpechtLabs/sigil/issues/127)) ([4109c71](https://github.com/SpechtLabs/sigil/commit/4109c7179ffa27ca774143d7ecabaf3c26201d0c))
+* **rust:** run test files with Sigil::test ([#126](https://github.com/SpechtLabs/sigil/issues/126)) ([f9a6b11](https://github.com/SpechtLabs/sigil/commit/f9a6b1136885238ed046ba8886af96ade966658c))
+* **stamp:** patch a payload into a binary's reserved area, the groundwork for sigil compile ([#118](https://github.com/SpechtLabs/sigil/issues/118)) ([59282a5](https://github.com/SpechtLabs/sigil/commit/59282a56680885cbe339f2e7b1e5110a70de4b41))
+* **typescript:** run test files with Sigil.test ([#125](https://github.com/SpechtLabs/sigil/issues/125)) ([3ed6b4c](https://github.com/SpechtLabs/sigil/commit/3ed6b4caee15b2f4ca9a91364e5a473d2b8549b2))
+* **wasm:** run test files in the WebAssembly module with a test op ([607fa47](https://github.com/SpechtLabs/sigil/commit/607fa47c6a4d19fe1738368ca670e2ad44a60bf4))
+
+
+### Bug Fixes
+
+* **deps:** update rust crates to 49.0.1 ([#131](https://github.com/SpechtLabs/sigil/issues/131)) ([74aa0cb](https://github.com/SpechtLabs/sigil/commit/74aa0cb67def4f6c1b4e65d4b53baa2066f8283e))
+* **test:** print a test file's cases as an empty list, not null, when it can't run ([607fa47](https://github.com/SpechtLabs/sigil/commit/607fa47c6a4d19fe1738368ca670e2ad44a60bf4))
+* **typescript:** start the worker helper in browsers, where the first message arrived before anyone listened ([#123](https://github.com/SpechtLabs/sigil/issues/123)) ([97aa4da](https://github.com/SpechtLabs/sigil/commit/97aa4daf51c7a9aa51133ea7326cbc654e6e352f))
+
 ## [0.6.3](https://github.com/SpechtLabs/sigil/compare/v0.6.2...v0.6.3) (2026-10-01)
 
 
