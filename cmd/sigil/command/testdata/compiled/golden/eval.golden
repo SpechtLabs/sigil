@@ -1,0 +1,8 @@
+payments.production: approve(reason: owner)
+  bake = 1h
+
+trace: 1 candidate
+  * approve(reason: owner)  testdata/compiled/teams/payments.sigil:10:3 (payments.production)
+      when "payments" in actor.teams
+      bake = 1h
+--- ok ---

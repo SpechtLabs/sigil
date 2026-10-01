@@ -1,0 +1,9 @@
+--- PASS: testdata/compiled/tests/checkout_test.yaml:3: checkout needs a day of soak
+--- PASS: testdata/compiled/tests/checkout_test.yaml:10: checkout owners approve after a day
+ok    testdata/compiled/tests/checkout_test.yaml  2 cases
+--- PASS: testdata/compiled/tests/payments_test.yaml:3: owners approve after four hours
+--- PASS: testdata/compiled/tests/payments_test.yaml:10: a fresh release is too short a soak
+--- PASS: testdata/compiled/tests/payments_test.yaml:17: an unnamed actor fails the assert
+ok    testdata/compiled/tests/payments_test.yaml  3 cases
+✓ 5 cases passed in 2 files
+--- ok ---

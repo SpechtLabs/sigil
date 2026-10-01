@@ -33,6 +33,9 @@ func NewCommand(opts ...Option) *cobra.Command {
 	for _, opt := range opts {
 		opt(o)
 	}
+	if o.payload != nil {
+		return newCompiledCommand(o)
+	}
 
 	cmd := &cobra.Command{
 		Use:        "explain [PATH...]",
@@ -116,6 +119,13 @@ func run(out io.Writer, o *options, configFile, pattern string, src project.Sour
 	if err != nil {
 		return err
 	}
+	return explain(out, o, proj, pattern)
+}
+
+// explain explains the policies of proj that pattern matches, or every
+// policy without it, and prints the explanations. Only those policies
+// and what they use have to check.
+func explain(out io.Writer, o *options, proj *project.Project, pattern string) humane.Error {
 	proj.Check()
 	roots, serr := selectRoots(proj.Policies(), pattern)
 	if serr != nil {

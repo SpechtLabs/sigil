@@ -1,0 +1,1 @@
+{"version":"1.2.3","commit":"abc123def456","commitTime":"2026-01-02T03:04:05Z","dirty":true,"goVersion":"go1.26.6","platform":"linux/arm64","bundle":{"digest":"sha256:5bd2134f40e8eeb493f8863f52d0fc1d1f3c575ad4e5742cb87553d43b0abd86","kinds":["Deploy@1"],"files":4,"compiledBy":"1.2.0"}}

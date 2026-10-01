@@ -1,0 +1,4 @@
+--- error ---
+the input from stdin: actor.nam: unknown field "nam" on type Actor
+advice: did you mean "name"? declared: name, teams
+advice: the input is a JSON or YAML object with one key per input the kind declares

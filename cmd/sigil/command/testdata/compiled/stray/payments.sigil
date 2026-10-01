@@ -1,0 +1,5 @@
+policy payments.production: Deploy@1
+
+when true {
+  deny(reason: no_rule_matched)
+}

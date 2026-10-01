@@ -1,0 +1,28 @@
+{
+  "error": {
+    "kind": "assertion",
+    "phase": "input",
+    "message": "assertions failed: \"named_actor\"",
+    "help": "the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong",
+    "asserts": [
+      {
+        "reason": "named_actor",
+        "policy": "payments.production",
+        "position": "testdata/compiled/teams/payments.sigil:7:1 (payments.production)"
+      }
+    ]
+  },
+  "policy": "payments.production",
+  "decision": "deny",
+  "reason": "no_rule_matched",
+  "outcome": [
+    {
+      "decision": "deny",
+      "reason": "no_rule_matched"
+    }
+  ],
+  "trace": [],
+  "bundle": "sha256:3dc98fa77fa73fa6d9f80f7ad7a724cf20afbaeb8e19e230f0da19b707902c69"
+}
+--- error ---
+the evaluation failed; the host would act on the fallback shown above

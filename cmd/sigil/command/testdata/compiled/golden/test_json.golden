@@ -1,0 +1,24 @@
+[
+  {
+    "file": "testdata/compiled/tests/payments_test.yaml",
+    "policy": "payments.production",
+    "cases": [
+      {
+        "name": "owners approve after four hours",
+        "line": 3,
+        "passed": true
+      },
+      {
+        "name": "a fresh release is too short a soak",
+        "line": 10,
+        "passed": true
+      },
+      {
+        "name": "an unnamed actor fails the assert",
+        "line": 17,
+        "passed": true
+      }
+    ]
+  }
+]
+--- ok ---

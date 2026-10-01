@@ -1,0 +1,13 @@
+Version:     1.2.3
+Commit:      abc123def456 (dirty)
+Commit time: 2026-01-02T03:04:05Z
+Go version:  go1.26.6
+Platform:    linux/arm64
+
+Bundle:      sha256:f5332d97dd6dc085691cb1f005570ed0f329053b770f3af259fcd7b259ab1f30
+Root policy: payments.production
+Kinds:       Deploy@1
+Files:       4
+Requires:    deploy.guardrails for payments.*, checkout.*
+Compiled by: 1.2.0
+Built:       2026-09-30T12:00:00Z

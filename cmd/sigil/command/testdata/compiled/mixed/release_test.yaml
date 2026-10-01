@@ -1,0 +1,7 @@
+policy: release.gate
+cases:
+  - name: releases need a tag
+    input: {}
+    expect:
+      decision: deny
+      reason: no_rule_matched

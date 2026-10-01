@@ -36,10 +36,9 @@ import (
 // [WithOutput] it prints text, and without [WithKinds] the kinds come from
 // the paths and --kind.
 func NewCommand(opts ...Option) *cobra.Command {
-	format := output.Text
-	o := &options{output: &format}
-	for _, opt := range opts {
-		opt(o)
+	o := newOptions(opts)
+	if o.payload != nil {
+		return newCompiledCommand(o)
 	}
 
 	cmd := &cobra.Command{
@@ -133,23 +132,13 @@ type osFS struct{}
 func (osFS) Open(name string) (fs.File, error) { return os.Open(name) } //nolint:gosec,wrapcheck,humaneerror // fs.FS fixes the signature; input files are named by test files the user asked to run
 
 func runTests(ctx context.Context, out io.Writer, o *options, configFile string, src project.Sources, run string, verbose bool) humane.Error {
-	var filter *regexp.Regexp
-	if run != "" {
-		re, err := regexp.Compile(run)
-		if err != nil {
-			return humane.Wrap(err, "--run isn't a valid regular expression", "--run takes a Go regular expression matched against case names")
-		}
-		filter = re
-	}
-	if len(src.Paths) == 0 {
-		src.Paths = []string{"."}
+	filter, err := runFilter(run)
+	if err != nil {
+		return err
 	}
 	sources, tests, err := find(src.Paths)
 	if err != nil {
 		return err
-	}
-	if len(tests) == 0 {
-		return humane.New("no test files among "+strings.Join(src.Paths, ", "), "test files are YAML files named *_test.yaml, next to the policies they test")
 	}
 	src.Paths = sources
 	if err = config.Apply(configFile, ".", &src); err != nil {
@@ -159,23 +148,63 @@ func runTests(ctx context.Context, out io.Writer, o *options, configFile string,
 	if err != nil {
 		return err
 	}
+	return write(out, suites(ctx, p, tests, filter, false), *o.output, verbose)
+}
+
+// suites runs every test file in tests against the policies of p, the
+// cases filter matches. With skipMissing, a test file for a policy p
+// doesn't hold is skipped, instead of failing.
+func suites(ctx context.Context, p *project.Project, tests []string, filter *regexp.Regexp, skipMissing bool) []testrun.SuiteResult {
 	p.Check()
-	var results []testrun.SuiteResult
+	results := make([]testrun.SuiteResult, 0, len(tests))
 	for _, file := range tests {
-		data, rerr := os.ReadFile(file) //nolint:gosec // the path was found under the command line's paths
-		if rerr != nil {
-			results = append(results, testrun.Unreadable(file, rerr))
+		data, err := os.ReadFile(file) //nolint:gosec // the path was found under the command line's paths
+		if err != nil {
+			results = append(results, testrun.Unreadable(file, err))
+			continue
+		}
+		if policy, ok := missing(p, file, data); skipMissing && ok {
+			results = append(results, testrun.SuiteResult{File: file, Policy: policy, Skipped: true, Cases: []testrun.CaseResult{}})
 			continue
 		}
 		results = append(results, testrun.Run(ctx, p, file, data, osFS{}, filter))
 	}
-	return write(out, results, *o.output, verbose)
+	return results
 }
 
-// find expands the paths for .sigil files and test files, by the rules
-// every command shares, and splits them. A file named on the command line
-// is a test file by its name, and a .sigil file otherwise.
+// missing returns the policy the test file named file, whose contents are
+// src, tests, and reports whether p doesn't hold it. A test file that
+// doesn't parse isn't missing: running it reports why.
+func missing(p *project.Project, file string, src []byte) (string, bool) {
+	s, err := testsuite.Parse(file, src)
+	if err != nil {
+		return "", false
+	}
+	return s.Policy, p.Group(s.Policy) == nil
+}
+
+// runFilter compiles --run, the regular expression the names of the cases
+// to run match, or returns nil for every case when it's empty.
+func runFilter(run string) (*regexp.Regexp, humane.Error) {
+	if run == "" {
+		return nil, nil
+	}
+	re, err := regexp.Compile(run)
+	if err != nil {
+		return nil, humane.Wrap(err, "--run isn't a valid regular expression", "--run takes a Go regular expression matched against case names")
+	}
+	return re, nil
+}
+
+// find expands the paths, the current directory when there are none,
+// for .sigil files and test files, by the rules every command shares,
+// and splits them. A file named on the command line is a test file by
+// its name, and a .sigil file otherwise. Finding no test file is an
+// error.
 func find(paths []string) (sources, tests []string, err humane.Error) {
+	if len(paths) == 0 {
+		paths = []string{"."}
+	}
 	files, err := project.Expand(paths, func(name string) bool {
 		return project.IsSigil(name) || testsuite.IsTestFile(name)
 	})
@@ -189,19 +218,27 @@ func find(paths []string) (sources, tests []string, err humane.Error) {
 			sources = append(sources, f)
 		}
 	}
+	if len(tests) == 0 {
+		return nil, nil, humane.New("no test files among "+strings.Join(paths, ", "), "test files are YAML files named *_test.yaml, next to the policies they test")
+	}
 	sort.Strings(tests)
 	return sources, tests, nil
 }
 
-// tally counts what happened across every test file.
+// tally counts what happened across every test file. files counts the
+// ones that weren't skipped.
 type tally struct {
-	files, broken, cases, failed int
+	files, broken, skipped, cases, failed int
 }
 
 func count(results []testrun.SuiteResult) tally {
 	var n tally
-	n.files = len(results)
 	for _, s := range results {
+		if s.Skipped {
+			n.skipped++
+			continue
+		}
+		n.files++
 		if s.Error != "" {
 			n.broken++
 		}
@@ -251,6 +288,12 @@ func write(out io.Writer, results []testrun.SuiteResult, format output.Format, v
 		if werr := p.Print(text(results, p.Theme(), verbose)); werr != nil {
 			return werr
 		}
+		if n.skipped > 0 {
+			skipped := fmt.Sprintf("skipped %d test %s for policies not compiled in", n.skipped, plural(n.skipped, "file", "files"))
+			if werr := p.Print(p.Theme().Muted(skipped) + "\n"); werr != nil {
+				return werr
+			}
+		}
 		if werr := summarize(p, n); werr != nil {
 			return werr
 		}
@@ -289,8 +332,15 @@ func text(results []testrun.SuiteResult, t pretty.Theme, verbose bool) string {
 }
 
 // writeSuite renders one test file: its failing cases, every case with
-// verbose, and a summary line.
+// verbose, and a summary line. A skipped file is listed with verbose
+// only.
 func writeSuite(b *strings.Builder, t pretty.Theme, s testrun.SuiteResult, verbose bool) {
+	if s.Skipped {
+		if verbose {
+			fmt.Fprintf(b, "%s  %s  %s\n", t.Muted("skip"), s.File, t.Muted(s.Policy+" isn't compiled in"))
+		}
+		return
+	}
 	if s.Error != "" {
 		detail := s.Error
 		switch {

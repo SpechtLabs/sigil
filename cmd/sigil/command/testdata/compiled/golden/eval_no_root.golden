@@ -1,0 +1,3 @@
+--- error ---
+the bundle holds several policies
+advice: name the one to evaluate with --policy: checkout.production, payments.production

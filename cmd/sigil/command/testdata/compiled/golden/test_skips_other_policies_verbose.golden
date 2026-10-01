@@ -1,0 +1,9 @@
+--- PASS: testdata/compiled/mixed/payments_test.yaml:3: owners approve after four hours
+--- PASS: testdata/compiled/mixed/payments_test.yaml:10: a fresh release is too short a soak
+--- PASS: testdata/compiled/mixed/payments_test.yaml:17: an unnamed actor fails the assert
+ok    testdata/compiled/mixed/payments_test.yaml  3 cases
+skip  testdata/compiled/mixed/release_test.yaml  release.gate isn't compiled in
+skip  testdata/compiled/mixed/staging_test.yaml  payments.staging isn't compiled in
+skipped 2 test files for policies not compiled in
+✓ 3 cases passed in 1 file
+--- ok ---

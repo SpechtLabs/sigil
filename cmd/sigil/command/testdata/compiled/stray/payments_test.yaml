@@ -1,0 +1,9 @@
+policy: payments.production
+cases:
+  - name: the compiled policy runs, not the file next to the test
+    input:
+      actor: {name: ada, teams: [payments]}
+      soak: 6h
+    expect:
+      decision: approve
+      reason: owner

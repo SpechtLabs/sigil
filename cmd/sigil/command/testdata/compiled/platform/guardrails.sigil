@@ -1,0 +1,7 @@
+policy deploy.guardrails: Deploy@1
+
+param min_soak: duration = 24h
+
+when soak < min_soak {
+  deny(reason: soak_too_short)
+}

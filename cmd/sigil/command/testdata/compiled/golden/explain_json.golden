@@ -1,0 +1,57 @@
+[
+  {
+    "policy": "payments.production",
+    "policies": 2,
+    "modules": 0,
+    "rules": [
+      {
+        "kind": "decision",
+        "decision": "deny",
+        "reason": "soak_too_short",
+        "chain": [
+          "payments.production:5",
+          "deploy.guardrails:6"
+        ],
+        "conditions": [
+          "soak \u003c 4h"
+        ]
+      },
+      {
+        "kind": "decision",
+        "decision": "approve",
+        "reason": "owner",
+        "chain": [
+          "payments.production:10"
+        ],
+        "conditions": [
+          "\"payments\" in actor.teams"
+        ]
+      },
+      {
+        "kind": "decision",
+        "decision": "approve",
+        "reason": "sre",
+        "chain": [
+          "payments.production:14"
+        ],
+        "conditions": [
+          "\"sre\" in actor.teams"
+        ],
+        "payload": [
+          "bake = 15m"
+        ]
+      },
+      {
+        "kind": "assert",
+        "reason": "named_actor",
+        "phase": "input",
+        "chain": [
+          "payments.production:7"
+        ],
+        "conditions": [],
+        "check": "actor.name != \"\""
+      }
+    ]
+  }
+]
+--- ok ---

@@ -1,0 +1,12 @@
+Version:     1.2.3
+Commit:      abc123def456 (dirty)
+Commit time: 2026-01-02T03:04:05Z
+Go version:  go1.26.6
+Platform:    linux/arm64
+
+Bundle:      sha256:c6acbd5256f0560fd7ffac3ac25327b53b0adfcb5eb7787379593a5cd31b80ad
+Root policy: none; eval takes --policy
+Kinds:       Deploy@1
+Files:       4
+Requires:    deploy.guardrails for every policy
+Compiled by: 1.2.0

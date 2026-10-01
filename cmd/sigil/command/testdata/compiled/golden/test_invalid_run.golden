@@ -1,0 +1,3 @@
+--- error ---
+--run isn't a valid regular expression
+advice: --run takes a Go regular expression matched against case names

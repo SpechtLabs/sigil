@@ -4,6 +4,8 @@ import (
 	"runtime/debug"
 
 	"github.com/spechtlabs/sigil/cmd/internal/output"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
+	"github.com/spechtlabs/sigil/internal/payload"
 )
 
 // Option configures the version command.
@@ -13,6 +15,11 @@ type options struct {
 	version   string
 	buildInfo *debug.BuildInfo
 	output    *output.Format
+	kinds     []project.Linked
+	// payload is the bundle compiled into the binary, and name the
+	// binary's; with a payload, the command describes the bundle too.
+	payload *payload.Payload
+	name    string
 }
 
 func defaultOptions() *options {
@@ -49,4 +56,19 @@ func WithOutput(format *output.Format) Option {
 			o.output = format
 		}
 	}
+}
+
+// WithKinds sets the kinds linked into the binary, which a compiled
+// bundle's documents may be written against. Only a compiled binary's
+// version uses them, to load the bundle and name its kinds.
+func WithKinds(kinds []project.Linked) Option {
+	return func(o *options) { o.kinds = kinds }
+}
+
+// WithPayload makes the command a compiled binary's version: it describes
+// the bundle of p as well, which policies it holds and which sigil
+// compiled them. name is the binary's name, as help shows it. A nil
+// p keeps the stock command.
+func WithPayload(p *payload.Payload, name string) Option {
+	return func(o *options) { o.payload, o.name = p, name }
 }

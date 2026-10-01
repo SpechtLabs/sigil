@@ -1,0 +1,18 @@
+policy: checkout.production
+cases:
+  - name: checkout needs a day of soak
+    input:
+      actor: {name: bo, teams: [checkout]}
+      soak: 6h
+    expect:
+      decision: deny
+      reason: soak_too_short
+  - name: checkout owners approve after a day
+    input:
+      actor: {name: bo, teams: [checkout]}
+      soak: 25h
+    expect:
+      decision: approve
+      reason: owner
+      payload:
+        bake: 30m

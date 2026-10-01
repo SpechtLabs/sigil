@@ -1,0 +1,25 @@
+kind Deploy version 1
+
+type Actor {
+  name: string
+  teams: list<string>
+}
+
+input actor: Actor
+input service: string
+input soak: duration
+
+decision deny {
+  reason: soak_too_short | no_rule_matched
+}
+
+decision approve {
+  reason: owner | sre
+  bake: duration = 1h
+}
+
+collect one
+precedence deny > approve
+precedence approve: owner > sre
+
+default deny(reason: no_rule_matched)

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
+	"github.com/spechtlabs/sigil/internal/payload"
 )
 
 func TestSigilFiles(t *testing.T) {
@@ -93,5 +94,37 @@ func TestPoliciesWithoutTrusted(t *testing.T) {
 	got, _ := complete.Policies(&cobra.Command{}, []string{dir}, "")
 	if !slices.Equal(got, []string{"p"}) {
 		t.Errorf("completion = %v, want [p]", got)
+	}
+}
+
+// TestCompiled checks that a compiled binary's --policy completes the
+// policies in its bundle's headers, trusted files and kind files apart.
+func TestCompiled(t *testing.T) {
+	b := &payload.Bundle{
+		Kinds: []payload.File{{Name: "k.sigil", Source: "kind K version 1\n"}},
+		Paths: []payload.File{
+			{Name: "teams/payments.sigil", Source: "policy payments.production: K@1\n\nwhen {\n"},
+			{Name: "teams/checkout.sigil", Source: "policy checkout.production: K@1\n---\nmodule checkout.common: K@1\n---\npolicy payments.production: K@1\n"},
+		},
+		Trusted: []payload.File{{Name: "platform/guard.sigil", Source: "policy deploy.guardrails: K@1\n"}},
+	}
+	tests := []struct {
+		name   string
+		bundle *payload.Bundle
+		prefix string
+		want   []string
+	}{
+		{name: "every policy", bundle: b, want: []string{"checkout.production", "payments.production"}},
+		{name: "a prefix", bundle: b, prefix: "pay", want: []string{"payments.production"}},
+		{name: "no match", bundle: b, prefix: "deploy"},
+		{name: "an empty bundle", bundle: &payload.Bundle{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, directive := complete.Compiled(tt.bundle)(nil, nil, tt.prefix)
+			if !slices.Equal(got, tt.want) || directive != cobra.ShellCompDirectiveNoFileComp {
+				t.Errorf("completion = %v, %v, want %v", got, directive, tt.want)
+			}
+		})
 	}
 }

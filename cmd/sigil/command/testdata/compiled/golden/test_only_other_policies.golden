@@ -1,0 +1,3 @@
+--- error ---
+no test files for the compiled policies among testdata/compiled/mixed/staging_test.yaml, testdata/compiled/mixed/release_test.yaml
+advice: the test files found test release.gate, payments.staging, and this binary has checkout.production, payments.production compiled in

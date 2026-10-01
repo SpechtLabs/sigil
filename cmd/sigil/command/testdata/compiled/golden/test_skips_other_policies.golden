@@ -1,0 +1,4 @@
+ok    testdata/compiled/mixed/payments_test.yaml  3 cases
+skipped 2 test files for policies not compiled in
+✓ 3 cases passed in 1 file
+--- ok ---
