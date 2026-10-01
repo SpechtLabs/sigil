@@ -28,6 +28,8 @@ config:
       - LineChart
       # The tour routes alerts through its policy with this component.
       - DecisionPlayground
+      # The playground page runs the engine in the browser with this one.
+      - SigilPlayground
 
   # MD036: Allow bold labels used as pseudo-headings.
   MD036: false
