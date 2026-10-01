@@ -260,6 +260,20 @@ func TestCheck(t *testing.T) {
 		}
 	})
 
+	t.Run("base file at a rendered path", func(t *testing.T) {
+		stale := strings.Repeat("// an older copy of the document\n", 10)
+		base := fstest.MapFS{"access/broken.sigil": {Data: []byte(stale)}}
+		err := build.Check(Access, base, broken)
+		for _, want := range []string{"7 | when score == 1 {}", "9 | pub let admin = true"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("message lacks %q:\n%v", want, err)
+			}
+		}
+		if strings.Contains(err.Error(), "older copy") {
+			t.Errorf("a diagnostic quotes the base's file:\n%v", err)
+		}
+	})
+
 	t.Run("base that shares its listing", func(t *testing.T) {
 		mapFS := fstest.MapFS{
 			"access/broken.sigil": {Data: []byte("replaced by the rendered document")},
