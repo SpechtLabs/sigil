@@ -2,28 +2,25 @@
 // worker_threads worker): one Sigil instance, driven by the messages in
 // protocol.ts. Importing it anywhere but a worker does nothing useful.
 
+import { connect, type ParentPort, type WorkerScope } from "./channel.js";
 import { SigilError } from "./errors.js";
-import type { CallMessage, InitMessage, Reply, Request, WireError } from "./protocol.js";
+import type { CallMessage, InitMessage, Request, WireError } from "./protocol.js";
 import { type Policy, Sigil } from "./sigil.js";
 import type { CompileOptions, HostFunction, JsonValue } from "./types.js";
-
-interface Port {
-  post(reply: Reply): void;
-  listen(handler: (request: Request) => void): void;
-}
 
 let sigil: Sigil | undefined;
 let functions: Record<string, unknown> = {};
 const policies = new Map<number, Policy>();
 
-void connect().then((port) =>
-  port.listen((request) => {
-    void handle(request).then(
-      (value) => port.post({ id: request.id, ok: true, value }),
-      (err: unknown) => port.post({ id: request.id, ok: false, error: toWire(err) }),
-    );
-  }),
-);
+// Listens before the top level ends: a browser delivers the init message
+// then, and drops it if nothing listens.
+const channel = connect(globalThis as unknown as WorkerScope, parentPort(), (request) => {
+  void handle(request).then(
+    (value) => channel.post({ id: request.id, ok: true, value }),
+    (err: unknown) => channel.post({ id: request.id, ok: false, error: toWire(err) }),
+  );
+});
+void channel.ready;
 
 async function handle(request: Request): Promise<unknown> {
   if (request.method === "init") return init(request);
@@ -102,35 +99,18 @@ function toWire(err: unknown): WireError {
 }
 
 /**
- * The channel to the client. Node's parentPort comes first where there is
- * one: a worker_threads worker on Bun also has the web scope's
- * postMessage, but messages from the parent arrive only on parentPort.
- * Browsers have no node:worker_threads, so the import fails there and the
- * worker global scope is the channel.
+ * node:worker_threads' parentPort, or null where there's no such module or
+ * this isn't one of its workers. Only a runtime that reports a Node version
+ * (Node, Bun, Deno) is asked: a browser would fetch the specifier as a URL,
+ * fail, and log a CORS error for it.
  */
-async function connect(): Promise<Port> {
-  type ParentPort = { postMessage(msg: unknown): void; on(type: "message", listener: (data: Request) => void): void };
-  let parentPort: ParentPort | null = null;
+async function parentPort(): Promise<ParentPort | null> {
+  const runtime = globalThis as { process?: { versions?: { node?: unknown } } };
+  if (typeof runtime.process?.versions?.node !== "string") return null;
   try {
     const specifier = "node:worker_threads";
-    ({ parentPort } = (await import(/* @vite-ignore */ specifier)) as { parentPort: ParentPort | null });
+    return ((await import(/* @vite-ignore */ specifier)) as { parentPort: ParentPort | null }).parentPort;
   } catch {
-    // Not a server-side runtime.
+    return null; // Not a server-side runtime.
   }
-  if (parentPort !== null) {
-    const port = parentPort;
-    return { post: (reply) => port.postMessage(reply), listen: (handler) => port.on("message", handler) };
-  }
-  const scope = globalThis as unknown as {
-    postMessage?: (msg: unknown) => void;
-    addEventListener?: (type: "message", listener: (ev: { data: Request }) => void) => void;
-  };
-  if (typeof scope.postMessage !== "function" || typeof scope.addEventListener !== "function") {
-    throw new Error("worker-entry runs only inside a worker");
-  }
-  const { postMessage, addEventListener } = scope as Required<typeof scope>;
-  return {
-    post: (reply) => postMessage.call(globalThis, reply),
-    listen: (handler) => addEventListener.call(globalThis, "message", (ev) => handler(ev.data)),
-  };
 }

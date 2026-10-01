@@ -28,7 +28,10 @@
     "access": "public",
     "provenance": true
   },
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/worker-entry.js",
+    "./src/worker-entry.ts"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
