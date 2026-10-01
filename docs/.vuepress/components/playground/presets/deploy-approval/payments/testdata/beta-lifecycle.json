@@ -1,0 +1,21 @@
+{
+  "release": {"soak": "6h", "hotfix": false},
+  "service": {
+    "name": "ledger",
+    "tier": "standard",
+    "owners": ["payments"],
+    "labels": {
+      "app.kubernetes.io/managed-by": "argocd",
+      "platform.example.com/lifecycle": "beta",
+      "regions": "eu,us",
+      "compliance": "pci"
+    }
+  },
+  "actor": {
+    "name": "ada",
+    "teams": ["payments"],
+    "roles": ["deployer"],
+    "regions": ["eu", "us"]
+  },
+  "environment": "production"
+}

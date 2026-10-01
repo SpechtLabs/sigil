@@ -4,10 +4,9 @@
 // engine or even this code.
 
 import { SigilWorker } from "@spechtlabs/sigil/worker";
-// Vite bundles the worker (the package's worker entry, behind the 0.6.2
-// workaround in worker.ts) as an ES module worker of its own (worker.format
-// in config.ts) and gives sigil.wasm a content-hashed URL.
-import SigilEntryWorker from "./worker.ts?worker";
+// Vite bundles the package's worker entry as an ES module worker of its own
+// (worker.format in config.ts) and gives sigil.wasm a content-hashed URL.
+import SigilEntryWorker from "@spechtlabs/sigil/worker-entry?worker";
 import wasmUrl from "@spechtlabs/sigil/sigil.wasm?url";
 
 // The module's size in bytes, uncompressed, which is what a download

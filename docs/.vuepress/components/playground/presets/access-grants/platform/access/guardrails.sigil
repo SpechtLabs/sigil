@@ -1,0 +1,11 @@
+policy access.guardrails: AccessGrant@1
+
+// Every grant is recorded against the actor's name, so a request without one
+// is an error, not an empty outcome. It's an input assert: it reads no
+// outcome, so it runs before any rule and no role is granted to nobody.
+assert("named_actor", actor.name != "")
+
+// Separation of duties: whoever audits a team's deploys can't also deploy
+// them. It reads outcome, so it runs once every role has been collected, and
+// it catches a deployer grant from any rule, in this policy or the root.
+assert("sod_auditor_deployer", [auditor, deployer] exclusive in outcome)
