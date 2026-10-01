@@ -150,6 +150,15 @@ linters:
         text: "^(emptyinterface|errorwrap):"
         path: ^internal/constant/
 
+      # stamp patches bytes and knows nothing about the command that asked:
+      # it returns sentinel errors and *TooLargeError, which compile matches
+      # with errors.Is and errors.As and turns into humane errors with
+      # advice that fits compiling. The details it wraps are sentences.
+      - linters:
+          - golint-sl
+        text: "^(humaneerror|errorwrap):"
+        path: ^internal/stamp/
+
     paths:
       - third_party$
       - builtin$
