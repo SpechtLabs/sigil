@@ -223,7 +223,10 @@ func WithHeader(text string) DocOption {
 // while a kind change rolls out; see
 // https://sigil.specht-labs.de/guides/evolve-a-kind/. n must be a version
 // the kind accepts: from its oldest accepted version, which WithAccepts
-// sets, up to the current one.
+// sets, up to the current one. Rendering doesn't know which version
+// added a name, so a pinned document that reads an input, field or other
+// name newer than its pin renders fine and fails [Check], where the Sigil
+// checker reports it.
 func WithPin(n int) DocOption {
 	return pinOption{n: n, s: callSite("build.WithPin")}
 }
