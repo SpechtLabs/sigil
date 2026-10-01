@@ -210,5 +210,6 @@ Ties are the other place composition shows. When two rules approve with differen
 ## Related
 
 - [Bundles and trust](/understanding/bundles/) covers where required policies come from.
+- [Facts, vocabulary and rules](/understanding/facts-vocabulary-rules/) covers modules as a platform's vocabulary over host-provided facts.
 - [Asserts and decisions](/understanding/asserts/) covers guardrails for collecting kinds.
 - [Per-team policies](/guides/team-policies/) puts all of this to work.
