@@ -1,0 +1,21 @@
+== compile payments.production ==
+ok
+
+== an eligible deploy by an owner ==
+decision  approve
+reason    payments_sre
+policy    payments.production
+payload   bake: 1h0m0s
+
+candidates
+  approve  payments_sre       teams/payments.sigil:8:3 (payments.production)  bake: 1h0m0s
+           eligible and cleared and owns_service
+
+== a deploy by another team ==
+decision  deny
+reason    no_rule_matched
+policy    payments.production
+payload   (none)
+
+candidates
+  (none)

@@ -1,0 +1,4 @@
+--- error ---
+testdata/config/trusted_no_sigil.yaml: the trusted path testdata/no_sigil holds no .sigil files
+advice: a trusted path is a .sigil file, or a directory with .sigil files below it; one with none would protect nothing, so check the path
+advice: trusted lists files and directories relative to trusted_no_sigil.yaml

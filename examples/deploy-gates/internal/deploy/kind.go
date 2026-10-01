@@ -17,7 +17,10 @@
 // The Go types here are the source of truth. `sigilc export` writes them out
 // as policies/deploy_approval.sigil for the tooling that runs without this
 // code, and TestKindFileIsCurrent fails when that copy is stale. The
-// package's tests also run every team's policy tests through
+// platform's deploy.freeze vocabulary is built here too, in Go, by
+// [FreezeModule], and rendered to policies/platform/deploy/freeze.sigil,
+// which TestVocabularyIsCurrent keeps current. The package's tests also
+// run every team's policy tests through
 // [github.com/spechtlabs/sigil/pkg/policytest.Run], with the guardrails
 // required from the platform's documents the way the service loads them.
 package deploy
@@ -53,6 +56,10 @@ type Input struct {
 	Actor   Actor   `policy:"actor" json:"actor"`
 	// Environment is where the release goes, such as production.
 	Environment string `policy:"environment" json:"environment"`
+	// Freeze is the change freeze in force when the policy runs. It is a
+	// fact the host resolves, not something a client asserts: deploygate
+	// fills it from its freeze source after decoding a request.
+	Freeze Freeze `policy:"freeze" json:"freeze"`
 }
 
 // Release describes the artifact that is about to ship.
@@ -93,6 +100,20 @@ type Actor struct {
 	Regions []string `policy:"regions" json:"regions"`
 }
 
+// Freeze is the change freeze as the host knows it when it evaluates. The
+// platform's deploy.freeze module turns it into is_frozen, and
+// deploy.guardrails denies a frozen deploy with change_freeze.
+type Freeze struct {
+	// Environments are the environments frozen right now. deploygate sends
+	// an empty list rather than null, so a logged input replays as it was.
+	Environments []string `policy:"environments" json:"environments"`
+	// Unknown is true when the host can't tell which environments are
+	// frozen, because its freeze source has been unreachable for longer than
+	// it may be stale. The policy then treats every environment as frozen:
+	// it fails closed.
+	Unknown bool `policy:"unknown" json:"unknown"`
+}
+
 // ReviewData is the payload of a review: who has to sign off.
 type ReviewData struct {
 	// Approvers are the groups whose sign-off the deploy waits for.
@@ -107,7 +128,7 @@ type ApproveData struct {
 
 // The decisions, declared with their reasons. Deny carries only a reason.
 var (
-	Deny    = policy.NewDecision[policy.None]("deny", "not_eligible", "soak_too_short", "no_rule_matched")
+	Deny    = policy.NewDecision[policy.None]("deny", "not_eligible", "change_freeze", "soak_too_short", "no_rule_matched")
 	Review  = policy.NewDecision[ReviewData]("review", "service_owner")
 	Approve = policy.NewDecision[ApproveData]("approve", "release_manager", "payments_sre")
 )
@@ -118,6 +139,7 @@ var (
 // did-you-mean hint, instead of compiling into a comparison that never matches.
 var (
 	NotEligible   = Deny.Reason("not_eligible")
+	ChangeFreeze  = Deny.Reason("change_freeze")
 	SoakTooShort  = Deny.Reason("soak_too_short")
 	NoRuleMatched = Deny.Reason("no_rule_matched")
 
@@ -125,21 +147,26 @@ var (
 	PaymentsSRE    = Approve.Reason("payments_sre")
 )
 
-// Kind is the DeployApproval contract, version 1. Decisions are listed in
+// Kind is the DeployApproval contract, version 2. Decisions are listed in
 // precedence order: a deny beats a review beats an approval, so a guardrail
 // always wins over a team's approval. The reasons of deny and approve are
 // ranked too, so two rules of the same decision never conflict: a deploy that
-// is both ineligible and too fresh is denied as not_eligible.
+// is both ineligible and too fresh is denied as not_eligible, and one that is
+// frozen and too fresh as change_freeze.
+//
+// Version 2 added the freeze input and the change_freeze reason. Both are
+// additions, so the kind accepts every version still, and a policy pinned
+// to @1 loads unchanged; see docs/guides/evolve-a-kind.md.
 //
 // A host function that panics fails the evaluation closed, with the default
 // and a [policy.RuntimeError], instead of unwinding into gin's recovery,
 // which would answer an empty 500 that skips the request metrics and the
 // evaluation error count. See [policy.WithRecoverHostPanics].
 var Kind = policy.NewKind[Input]("DeployApproval",
-	policy.WithVersion(1),
+	policy.WithVersion(2),
 	policy.WithEnum(TierCritical, TierStandard, TierInternal),
 	policy.WithDecisions(Deny, Review, Approve),
-	policy.WithReasonPrecedence(NotEligible, SoakTooShort, NoRuleMatched),
+	policy.WithReasonPrecedence(NotEligible, ChangeFreeze, SoakTooShort, NoRuleMatched),
 	policy.WithReasonPrecedence(ReleaseManager, PaymentsSRE),
 	policy.WithDefault(NoRuleMatched),
 	policy.WithFunc("split", strings.Split),

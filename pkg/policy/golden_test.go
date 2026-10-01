@@ -121,6 +121,17 @@ var goldenCases = map[string]func(t *testing.T, src, dir string) string{
 	"invocation_cycle": run(Deploy, "a", nil, nil),
 	"trusted": run(Deploy, "payments.production",
 		[]policy.LoadOption{policy.Require("deploy.guardrails", policy.From(os.DirFS(filepath.Join("testdata", "_platform"))))}, nil),
+	"vocabulary": run(Deploy, "payments.production",
+		[]policy.LoadOption{policy.Trusted(os.DirFS(filepath.Join("testdata", "_platform")))}, []scenario[Input]{
+			{"an eligible deploy by an owner", with(func(in *Input) { in.Service.Owners = []string{"payments-sre"} })},
+			{"a deploy by another team", eligible},
+		}),
+	"vocabulary_redefined": run(Deploy, "payments.production",
+		[]policy.LoadOption{policy.Trusted(os.DirFS(filepath.Join("testdata", "_platform")))}, nil),
+	// The team's file and the trusted one share a path; each diagnostic
+	// quotes its own.
+	"same_path": run(Deploy, "payments.production",
+		[]policy.LoadOption{policy.Trusted(os.DirFS(filepath.Join("testdata", "_same_path")))}, nil),
 	"twice": run(Deploy, "payments.regions", nil, []scenario[Input]{
 		{"an actor cleared for eu-1 only", with(func(in *Input) { in.Actor.Regions = []string{"eu-1"} })},
 		{"an actor cleared for both regions conflicts", eligible},

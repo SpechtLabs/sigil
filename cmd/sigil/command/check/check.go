@@ -51,10 +51,10 @@ name defined twice is an error.
 --policy narrows the check to the policies matching a name or a pattern such
 as 'payments.*' and the documents they use; only their problems are reported.
 --require names a policy that every root policy must invoke unconditionally,
-the same check a host makes with policy.Require. --trusted reads required
-policies, and everything they use, from separate paths, the same way
-policy.From does. The roots are the policies --policy matches, or every policy
-no other policy invokes, apart from required ones.
+the same check a host makes with policy.Require. --trusted reads paths as
+trusted, as policy.Trusted does, and the --require policies must come from
+them, as with policy.From. The roots are the policies --policy matches, or
+every policy no other policy invokes, apart from required ones.
 
 Each document's header names its kind, and the kind is found among the
 inputs: a kind file among the paths, or a kind document in the same file as the
@@ -66,11 +66,11 @@ own kind. The kind documents are checked too. A policy whose params have no
 defaults is checked with the params unbound, the way explain shows it.
 
 check reads the nearest sigil.yaml, sigil.json or sigil.toml (or .sigil.*), or
-the file --config names. kinds: adds kind files as --kind does, require: lists
-the policies check enforces with their trusted: paths and roots: patterns, and
-lints: sets lint levels. --require, with --trusted, replaces require: for one
-run; --policy narrows the roots. Name the roots: a policy another one invokes,
-even under when, isn't a root, so a requirement misses it.
+the file --config names. kinds: and trusted: add to --kind and --trusted,
+require: lists the required policies with their trusted: paths and roots:
+patterns, and lints: sets lint levels. --require, with --trusted, replaces
+require: for one run; --policy narrows the roots. Name the roots: a policy
+another one invokes, even under when, isn't a root, so a requirement misses it.
 
 check needs only the kind files, not implementations of the host functions it
 declares, so it is the command a policy repository runs in CI. It exits
@@ -115,9 +115,9 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolP("recursive", "R", false, "Read .sigil files in subdirectories too; always on")
 	_ = cmd.Flags().MarkDeprecated("recursive", "directories are always read recursively")
 	cmd.Flags().StringSliceP("policy", "p", nil, "Only check the policies matching this name or pattern, such as 'payments.*', and what they use; the roots for --require (repeatable)")
-	cmd.Flags().StringSlice("trusted", nil, "File or directory to read the --require policies from, as policy.From does; needs --require (repeatable)")
+	cmd.Flags().StringSlice("trusted", nil, "File or directory read as trusted, as policy.Trusted reads it: no other document may take a name it defines, and the --require policies must come from it (repeatable)")
 	cmd.Flags().StringSlice("require", nil, "Policy that every checked policy must invoke unconditionally (repeatable)")
-	cmd.Flags().String("config", "", "Configuration file with kind files, requirements and lint levels; the nearest "+config.Names+" when omitted")
+	cmd.Flags().String("config", "", "Configuration file with kind files, trusted paths, requirements and lint levels; the nearest "+config.Names+" when omitted")
 	// These only fail for an undefined flag, which the tests would catch.
 	_ = cmd.MarkFlagFilename("kind", "sigil")
 	_ = cmd.MarkFlagFilename("config", "yaml")

@@ -1,0 +1,6 @@
+== compile payments.production ==
+policies.sigil:5:29 (deploy.vocabulary): error: unknown field "hotfx" on type Release
+  |
+5 | pub let is_hotfix = release.hotfx
+  |                             ^^^^^
+  = help: did you mean "hotfix"? Release declares: soak, hotfix

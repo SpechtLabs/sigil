@@ -12,16 +12,11 @@ import (
 )
 
 // configure reads the configuration, from configFile or the nearest
-// configuration file, and applies it to src: its kind files, and the trusted
-// paths of the requirements the run enforces, which it returns: the
-// flags' when --require is given, and otherwise the file's. --trusted
-// without --require is an error: it says where required policies come
-// from, and on its own would read documents as trusted that no
-// requirement vouches for.
+// configuration file, and applies it to src: its kind files, its
+// trusted: paths after the --trusted ones, and the trusted paths of the
+// requirements the run enforces, which it returns: the flags' when
+// --require is given, and otherwise the file's.
 func configure(configFile string, src *project.Sources, patterns, requires []string) (*config.Config, []config.Require, humane.Error) {
-	if len(src.Trusted) > 0 && len(requires) == 0 {
-		return nil, nil, humane.New("--trusted names where required policies come from; pass --require, or set require: in the configuration file", "the require: entries of "+config.Names+" take the trusted paths of each required policy, as trusted:")
-	}
 	cfg, err := config.Load(configFile, ".")
 	if err != nil {
 		return nil, nil, err
@@ -32,7 +27,7 @@ func configure(configFile string, src *project.Sources, patterns, requires []str
 	}
 	src.Kinds = append(src.Kinds, kinds...)
 	reqs := cfg.Requirements(requires, src.Trusted, patterns)
-	if src.Trusted, err = cfg.Trusted(src.Trusted, reqs); err != nil {
+	if src.Trusted, err = cfg.TrustedPaths(src.Trusted, reqs); err != nil {
 		return nil, nil, err
 	}
 	return cfg, reqs, nil

@@ -39,6 +39,13 @@ cases:
       decision: deny
       reason: no_rule_matched
 
+  # deny change_freeze from the guardrails: a freeze outranks every approval.
+  - name: a release manager can't approve a deploy to a frozen environment
+    input_file: testdata/frozen-release-manager.json
+    expect:
+      decision: deny
+      reason: change_freeze
+
   # deny not_eligible and soak_too_short from the guardrails.
   - name: an actor without the deployer role is not eligible
     input_file: testdata/no-deployer-role.json

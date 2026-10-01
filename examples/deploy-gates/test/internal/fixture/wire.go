@@ -80,6 +80,7 @@ type (
 	DecisionResponse struct {
 		Error    *ErrorBody      `json:"error"`
 		Access   *AccessBlock    `json:"access"`
+		Freeze   *Freeze         `json:"freeze"`
 		Conflict *Conflict       `json:"conflict"`
 		Team     string          `json:"team"`
 		Policy   string          `json:"policy"`
@@ -88,6 +89,13 @@ type (
 		Payload  json.RawMessage `json:"payload"`
 		Trace    []TraceEntry    `json:"trace"`
 		Asserts  []AssertEntry   `json:"asserts"`
+	}
+
+	// Freeze is the change freeze the deploy policy read, as deploygate's
+	// freeze source answered it.
+	Freeze struct {
+		Environments []string `json:"environments"`
+		Unknown      bool     `json:"unknown"`
 	}
 
 	// AccessBlock is the access stage of a deployment: the access policy

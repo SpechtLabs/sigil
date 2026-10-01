@@ -133,8 +133,8 @@ func TestLoad(t *testing.T) {
 			if got := strings.Join(snap.PolicyNames(), ","); got != strings.Join(tt.wantNames, ",") {
 				t.Errorf("policies = %s, want %s", got, strings.Join(tt.wantNames, ","))
 			}
-			if snap.Kind != "DeployApproval" || snap.KindVersion != 1 {
-				t.Errorf("kind = %s@%d, want DeployApproval@1", snap.Kind, snap.KindVersion)
+			if snap.Kind != "DeployApproval" || snap.KindVersion != 2 {
+				t.Errorf("kind = %s@%d, want DeployApproval@2", snap.Kind, snap.KindVersion)
 			}
 			if snap.Source != dir {
 				t.Errorf("source = %q, want %q", snap.Source, dir)

@@ -1,10 +1,13 @@
 package policy
 
 import (
+	"fmt"
 	"io/fs"
 	"reflect"
 	"slices"
 	"testing/fstest"
+
+	"github.com/sierrasoftworks/humane-errors-go"
 
 	"github.com/spechtlabs/sigil/internal/bundle"
 )
@@ -68,21 +71,52 @@ func (k *Kind[In]) Compile(src, name string, opts ...LoadOption) (*Policy[In], e
 	return k.compile(b, name, o)
 }
 
-// trust loads the sources From named into a trusted bundle. Several
-// requirements may share a source; each source is read once.
+// trust loads the sources Trusted and From named into a trusted bundle,
+// Trusted's first. Several options may share a source; each source is
+// read once. A nil source, or one that holds no policy or module, is an
+// error: it would protect nothing, and the likely cause is an ignored
+// error or a wrong directory.
 func (k *Kind[In]) trust(b *bundle.Bundle, o *loadOptions) error {
+	type source struct {
+		fsys  fs.FS
+		named string // how the options name it, for the error
+	}
+	var sources []source
+	for i, fsys := range o.trusted {
+		named := "passed to Trusted"
+		if len(o.trusted) > 1 {
+			named = fmt.Sprintf("of Trusted option %d of %d", i+1, len(o.trusted))
+		}
+		sources = append(sources, source{fsys, named})
+	}
+	for _, r := range o.requires {
+		if r.trusting {
+			sources = append(sources, source{r.from, "From names for " + r.name})
+		}
+	}
 	var trusted *bundle.Bundle
 	var seen []fs.FS
-	for _, r := range o.requires {
-		if r.from == nil || slices.ContainsFunc(seen, func(prev fs.FS) bool { return sameSource(prev, r.from) }) {
+	for _, src := range sources {
+		if src.fsys == nil {
+			return humane.New("the trusted source "+src.named+" is nil",
+				"pass the fs.FS that holds the trusted documents; when building it returned an error, handle that error rather than passing nil")
+		}
+		if slices.ContainsFunc(seen, func(prev fs.FS) bool { return sameSource(prev, src.fsys) }) {
 			continue
 		}
-		seen = append(seen, r.from)
+		seen = append(seen, src.fsys)
 		if trusted == nil {
 			trusted = bundle.New(k.kind)
 		}
-		if err := trusted.Load(r.from); err != nil {
-			return err
+		before, failed := trusted.Read(), len(trusted.Errors())
+		if err := trusted.Load(src.fsys); err != nil {
+			return humane.Wrap(err, "the trusted source "+src.named+" couldn't be read", "check the directory passed to fs.Sub, or the //go:embed pattern")
+		}
+		// A source whose files don't parse holds nothing either, but its
+		// parse errors are the cause, and the compile reports them.
+		if trusted.Read() == before && len(trusted.Errors()) == failed {
+			return humane.New("the trusted source "+src.named+" holds no policies or modules",
+				"a trusted source is read like the bundle: every .sigil file in every directory, skipping names that start with `.`; check the directory passed to fs.Sub, or the //go:embed pattern")
 		}
 	}
 	if trusted != nil {

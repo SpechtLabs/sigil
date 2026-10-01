@@ -1,0 +1,5 @@
+policy access.baseline: Access@2
+
+when not actor.name like "bot-*" {
+  refuse(reason: frozen)
+}

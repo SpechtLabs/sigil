@@ -27,8 +27,9 @@ const deployFallbackAdvice = "the decision fields hold the fallback decision; ac
 // evaluate handles POST /api/v1/teams/{team}/deployments in two stages. The
 // access policy grants the requestor roles for the team, and the team's
 // deploy policy decides with those roles as actor.roles, so a client can't
-// claim a role it wasn't granted. The status encodes the decision, so a
-// client can act on the status alone.
+// claim a role it wasn't granted, and with the freeze deploygate's freeze
+// source answers, so it can't claim an unfrozen environment either. The
+// status encodes the decision, so a client can act on the status alone.
 func (s *Server) evaluate(c *gin.Context) {
 	team := c.Param("team")
 
@@ -73,8 +74,14 @@ func (s *Server) evaluate(c *gin.Context) {
 	}
 
 	roles := deployRoles(st.grants)
-	resp, status, failed := s.runDeploy(ctx, deploySnap.Kind, p, team, req.DeployInput(roles), roles)
+	in := req.DeployInput(roles)
+	// The freeze is the host's fact, not the client's: whatever was decoded,
+	// the policy reads the freeze source's answer, and the response, the span
+	// and the log carry it, so the input the policy read can be replayed.
+	in.Freeze = s.freeze.Freeze()
+	resp, status, failed := s.runDeploy(ctx, deploySnap.Kind, p, team, in, roles)
 	resp.Access = &AccessBlock{Policy: st.policy, Grants: st.grants}
+	resp.Freeze = &in.Freeze
 	if failed != nil {
 		s.deployFailed(c, &resp, *failed)
 		return
@@ -97,6 +104,8 @@ func (s *Server) runDeploy(ctx context.Context, kind string, p *policy.Policy[de
 		attribute.String("sigil.policy", p.Name()),
 		attribute.String("sigil.team", team),
 		attribute.StringSlice("sigil.roles", roles),
+		attribute.StringSlice("sigil.freeze.environments", in.Freeze.Environments),
+		attribute.Bool("sigil.freeze.unknown", in.Freeze.Unknown),
 	))
 	defer span.End()
 
@@ -125,9 +134,12 @@ func (s *Server) runDeploy(ctx context.Context, kind string, p *policy.Policy[de
 		zap.String("team", team),
 		zap.String("policy", p.Name()),
 		zap.Strings("roles", roles),
+		zap.Strings("freeze_environments", in.Freeze.Environments),
+		zap.Bool("freeze_unknown", in.Freeze.Unknown),
 		zap.String("decision", res.Decision),
 		zap.String("reason", res.Reason),
 		zap.Duration("took", took),
+		zap.Reflect("input", newReplayInput(in)),
 	)
 	return resp, status, nil
 }
@@ -150,6 +162,9 @@ func (s *Server) deployFailed(c *gin.Context, resp *DecisionResponse, f failure)
 	s.metrics.ObserveEvaluationError(telemetry.StageDeploy, resp.Team, f.kind)
 	ctx := c.Request.Context()
 	fallback := []zap.Field{zap.String("decision", resp.Decision), zap.String("reason", resp.Reason)}
+	if resp.Freeze != nil {
+		fallback = append(fallback, zap.Strings("freeze_environments", resp.Freeze.Environments), zap.Bool("freeze_unknown", resp.Freeze.Unknown))
+	}
 	telemetry.Log(ctx, f.logLevel(), "deploy evaluation failed, answering with the fallback decision",
 		f.logFields(slices.Concat(where, fallback)...)...)
 
@@ -208,4 +223,35 @@ func tierList() string {
 		names[i] = string(t)
 	}
 	return strings.Join(names, ", ")
+}
+
+// replayInput is a deploy input as `sigilc eval` and the policy test files
+// read one: keyed by the kind's input names, with durations written as
+// Sigil duration strings rather than encoding/json's nanoseconds. The
+// deploy decision's log line carries it as `input`, so the line alone
+// reproduces the decision: save the field as input.json and run `sigilc
+// eval --input input.json --policy <team>.production policies`.
+type replayInput struct {
+	Release     replayRelease  `json:"release"`
+	Service     deploy.Service `json:"service"`
+	Actor       deploy.Actor   `json:"actor"`
+	Environment string         `json:"environment"`
+	Freeze      deploy.Freeze  `json:"freeze"`
+}
+
+// replayRelease is [deploy.Release] with its soak as a duration string.
+type replayRelease struct {
+	Soak   Duration `json:"soak"`
+	Hotfix bool     `json:"hotfix"`
+}
+
+// newReplayInput is in as the log line carries it.
+func newReplayInput(in deploy.Input) replayInput {
+	return replayInput{
+		Release:     replayRelease{Soak: Duration(in.Release.Soak), Hotfix: in.Release.Hotfix},
+		Service:     in.Service,
+		Actor:       in.Actor,
+		Environment: in.Environment,
+		Freeze:      in.Freeze,
+	}
 }

@@ -84,6 +84,8 @@ func Schema() ([]byte, humane.Error) {
 			schemaKey: {Description: "The JSON Schema the file follows, for editors. The tools ignore it.", Type: typeString},
 			keyKinds: oneOrMany("Kind files outside the paths a command reads, which every policy command loads as if named with --kind.",
 				"A kind file, relative to the configuration file."),
+			keyTrusted: oneOrMany("Files and directories read as trusted, as --trusted reads them: their documents resolve first, and no other document may take a name they define.",
+				"A file or directory, relative to the configuration file."),
 			keyRequire: {
 				Description: "The policies sigil check enforces, one entry each. A policy can be required once.",
 				Type:        []string{typeArray, typeNull},

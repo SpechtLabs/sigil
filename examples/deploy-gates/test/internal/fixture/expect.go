@@ -64,7 +64,7 @@ func ExpectServedKinds(g gomega.Gomega, got PoliciesResponse) {
 
 	deployKind, ok := got.Kind("DeployApproval")
 	g.Expect(ok).To(gomega.BeTrue(), "no DeployApproval in %+v", got.Kinds)
-	g.Expect(deployKind.Version).To(gomega.Equal(1))
+	g.Expect(deployKind.Version).To(gomega.Equal(2))
 	g.Expect(deployKind.Source).NotTo(gomega.BeEmpty())
 	g.Expect(deployKind.LoadedAt).NotTo(gomega.BeZero())
 	g.Expect(deployKind.Policies).To(gomega.ConsistOf(
