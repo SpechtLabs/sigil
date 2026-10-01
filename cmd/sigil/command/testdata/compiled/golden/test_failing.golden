@@ -1,0 +1,8 @@
+--- FAIL: testdata/compiled/failing/payments_test.yaml:3: sre approves with a short bake
+      want approve(reason: owner)
+      got  approve(reason: sre)
+FAIL  testdata/compiled/failing/payments_test.yaml  1 of 1 cases failed
+✗ 1 of 1 test cases failed in 1 file
+--- error ---
+1 of 1 test cases failed
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

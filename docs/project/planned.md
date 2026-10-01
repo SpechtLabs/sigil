@@ -160,6 +160,22 @@ Imports and invocations get their own support:
 
 An `--input` flag on [`sigil explain`](/reference/cli/#sigil-explain) would take an input document and mark, in the flattened output, which rules fired and which candidate won. Like `sigil eval`, it would need a host binary for policies that call host functions.
 
+## Cross targets for compile
+
+**Status:** not implemented; tracked on the [roadmap](/project/roadmap/) under Tooling II.
+
+[`sigil compile`](/reference/cli/#sigil-compile) copies the binary it runs as, so it writes binaries for its own platform only. A `--from` flag would name another binary to copy, such as the release binary of another platform, while the running one still checks the bundle:
+
+```text
+sigil compile --out dist/gate-linux-amd64 --from sigil_linux_amd64/sigil --policy access.main
+```
+
+- Before it writes anything, `compile` reads the Go build information of both binaries with `debug/buildinfo`, and compares the main module's path, version and VCS revision, and the version of every dependency. A pair that differs fails, naming the difference: the binary that checked the bundle and the one that will compile and evaluate it would be different builds of the engine.
+- A host binary compiles the same way, with its own build for the target as `--from`, so the host's module and its kinds are compared too.
+- The `--from` binary is stamped as today, the ad-hoc signature of a darwin/arm64 binary included, so a Linux CI job could write binaries for Macs.
+
+Until it exists, a release pipeline compiles on each platform it ships to, with that platform's `sigil`. Why the two binaries have to match: [How compile works](/understanding/compile/#why-there-are-no-cross-targets-yet).
+
 ## File names for multi-document files
 
 **Status:** not implemented, and not on the [roadmap](/project/roadmap/) yet.

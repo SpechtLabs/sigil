@@ -1,0 +1,31 @@
+kind Refund version 1
+
+enum Channel: shop | phone
+
+type Order {
+  amount: int
+  age: duration
+  channel: Channel
+}
+
+input agent: string
+input order: Order
+input cause: string
+
+decision deny {
+  reason: too_old | no_rule_matched
+}
+
+decision review {
+  reason: large_amount
+  queue: string = "finance"
+}
+
+decision approve {
+  reason: within_limit | goodwill
+}
+
+collect one
+precedence deny > review > approve
+
+default deny(reason: no_rule_matched)

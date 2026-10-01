@@ -24,13 +24,14 @@ import (
 	"github.com/spechtlabs/sigil/internal/workspace"
 )
 
-// SuiteResult is one test file's run. When Error is set, none of the
-// file's cases ran, and Cases is empty.
+// SuiteResult is one test file's run. When Error or Skipped is set, none
+// of the file's cases ran, and Cases is empty.
 type SuiteResult struct { //nolint:govet // the field order is the JSON's
-	File   string       `json:"file" yaml:"file"`
-	Policy string       `json:"policy" yaml:"policy"`                   // the policy the file tests
-	Error  string       `json:"error,omitempty" yaml:"error,omitempty"` // an unreadable or invalid test file, or a policy that doesn't compile
-	Cases  []CaseResult `json:"cases" yaml:"cases"`                     // the cases the filter selects, in file order; empty rather than null
+	File    string       `json:"file" yaml:"file"`
+	Policy  string       `json:"policy" yaml:"policy"`                       // the policy the file tests
+	Error   string       `json:"error,omitempty" yaml:"error,omitempty"`     // an unreadable or invalid test file, or a policy that doesn't compile
+	Skipped bool         `json:"skipped,omitempty" yaml:"skipped,omitempty"` // set by a compiled binary's test for a policy that isn't compiled in
+	Cases   []CaseResult `json:"cases" yaml:"cases"`                         // the cases the filter selects, in file order; empty rather than null
 	// What's behind Error, for a text report to render with each hint
 	// on its own line: the test file's problems, or the policy's compile
 	// errors with Sources finding their source lines.

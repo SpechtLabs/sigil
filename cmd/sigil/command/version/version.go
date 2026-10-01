@@ -30,6 +30,9 @@ func NewCommand(opts ...Option) *cobra.Command {
 	for _, opt := range opts {
 		opt(o)
 	}
+	if o.payload != nil {
+		return newCompiledCommand(o)
+	}
 
 	return &cobra.Command{
 		Use:   "version",
@@ -59,8 +62,17 @@ func newInfo(o options) info {
 	return buildinfo.New(o.version, o.buildInfo)
 }
 
-func run(w io.Writer, o options) error {
+// run prints the version information, and in a compiled binary the
+// bundle's description after it.
+func run(w io.Writer, o options) humane.Error {
 	i := newInfo(o)
+	var b *bundleInfo
+	if o.payload != nil {
+		var err humane.Error
+		if b, err = newBundleInfo(o); err != nil {
+			return err
+		}
+	}
 
 	var out string
 	switch *o.output {
@@ -69,24 +81,41 @@ func run(w io.Writer, o options) error {
 		if i.Dirty {
 			commit += " (dirty)"
 		}
-		return pretty.New(w).KeyValues("sigil",
+		p := pretty.New(w)
+		if err := p.KeyValues("sigil",
 			pretty.KV{Key: "Version", Value: i.Version},
 			pretty.KV{Key: "Commit", Value: commit},
 			pretty.KV{Key: "Commit time", Value: i.CommitTime},
 			pretty.KV{Key: "Go version", Value: i.GoVersion},
 			pretty.KV{Key: "Platform", Value: i.Platform},
-		)
+		); err != nil {
+			return err
+		}
+		if b == nil {
+			return nil
+		}
+		if err := p.Print("\n"); err != nil {
+			return err
+		}
+		return p.KeyValues("bundle", b.rows()...)
 
 	case output.JSON:
-		b, err := json.Marshal(i)
+		var record any = i
+		if b != nil {
+			record = compiledInfo{info: i, Bundle: b}
+		}
+		js, err := json.Marshal(record)
 		if err != nil {
 			return humane.Wrap(err, "failed to encode version information as JSON", "this is a bug in sigil, please report it")
 		}
-		out = string(b) + "\n"
+		out = string(js) + "\n"
 
 	case output.YAML:
 		out = fmt.Sprintf("---\nversion: %q\ncommit: %q\ncommitTime: %q\ndirty: %t\ngoVersion: %q\nplatform: %q\n",
 			i.Version, i.Commit, i.CommitTime, i.Dirty, i.GoVersion, i.Platform)
+		if b != nil {
+			out += b.yaml()
+		}
 
 	default:
 		return humane.New(

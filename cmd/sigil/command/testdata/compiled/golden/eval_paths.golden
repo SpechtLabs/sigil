@@ -1,0 +1,3 @@
+--- error ---
+eval takes no paths, got testdata/compiled/inputs/owner.json: this binary has its policies compiled in
+advice: pass the input with --input or on stdin, such as `command.test eval < testdata/compiled/inputs/owner.json`

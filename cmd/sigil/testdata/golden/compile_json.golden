@@ -1,0 +1,8 @@
+$ sigil compile --out $TMP/refunds -o json teams
+{
+  "out": "$TMP/refunds",
+  "root": "",
+  "digest": "sha256:592a27bd045bedc32a20d16c5c09474cdea9d5e9a383e3ca9ddd8823be339b53",
+  "files": 4,
+  "bytes": <n>
+}

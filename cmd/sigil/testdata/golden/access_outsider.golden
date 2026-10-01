@@ -1,0 +1,4 @@
+$ access eval -i requests/access-outsider.json
+access.main: no decisions
+
+trace: no rule fired

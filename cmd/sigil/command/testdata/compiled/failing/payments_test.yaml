@@ -1,0 +1,9 @@
+policy: payments.production
+cases:
+  - name: sre approves with a short bake
+    input:
+      actor: {name: cy, teams: [sre]}
+      soak: 6h
+    expect:
+      decision: approve
+      reason: owner

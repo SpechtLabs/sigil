@@ -1,0 +1,3 @@
+--- error ---
+<stdin> isn't UTF-8 text, and a compiled bundle holds only text
+advice: save the files as UTF-8, and name them and the policies in UTF-8

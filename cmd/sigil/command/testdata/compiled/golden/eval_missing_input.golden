@@ -1,0 +1,3 @@
+--- error ---
+the input couldn't be read
+advice: name a JSON or YAML file with --input, or - for stdin

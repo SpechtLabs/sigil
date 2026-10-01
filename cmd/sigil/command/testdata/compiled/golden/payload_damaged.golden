@@ -1,0 +1,8 @@
+Error: this binary's compiled policies are damaged
+
+What you can do
+  • the binary changed after it was compiled; compile it again from its policies
+  • if the binary was copied or downloaded, fetch it again and compare its checksum with the original's
+
+Caused by
+  • the compiled bundle is damaged: its checksum doesn't match its contents

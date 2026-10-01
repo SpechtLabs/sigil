@@ -1,0 +1,4 @@
+--- PASS: testdata/compiled/stray/payments_test.yaml:3: the compiled policy runs, not the file next to the test
+ok    testdata/compiled/stray/payments_test.yaml  1 case
+✓ 1 case passed in 1 file
+--- ok ---

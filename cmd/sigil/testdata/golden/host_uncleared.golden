@@ -1,0 +1,4 @@
+$ gates eval -p payments.production -i policies/teams/payments/testdata/uncleared-region.json
+payments.production: deny(reason: no_rule_matched), the kind's default
+
+trace: no rule fired

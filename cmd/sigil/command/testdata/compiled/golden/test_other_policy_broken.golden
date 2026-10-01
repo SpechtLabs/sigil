@@ -1,0 +1,9 @@
+FAIL  testdata/compiled/foreign/broken_test.yaml
+      testdata/compiled/foreign/broken_test.yaml: not a valid test file: line 5: unknown key "expcet" in a case
+        = help: a test file holds `policy:` and a list of `cases:`, each with `name`, `input` or `input_file`, and `expect`
+skip  testdata/compiled/foreign/staging_test.yaml  payments.staging isn't compiled in
+skipped 1 test file for policies not compiled in
+✗ 1 of 1 test files couldn't run
+--- error ---
+1 of 1 test files couldn't run
+advice: each failure above says what the policy decided and what the case expected, or why the file couldn't run

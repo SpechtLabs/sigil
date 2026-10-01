@@ -30,6 +30,7 @@ import (
 	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/eval"
 	"github.com/spechtlabs/sigil/internal/gokind"
+	"github.com/spechtlabs/sigil/internal/payload"
 	"github.com/spechtlabs/sigil/internal/result"
 	"github.com/spechtlabs/sigil/internal/stub"
 )
@@ -58,6 +59,9 @@ func NewCommand(opts ...Option) *cobra.Command {
 	o := &options{output: &format}
 	for _, opt := range opts {
 		opt(o)
+	}
+	if o.payload != nil {
+		return newCompiledCommand(o)
 	}
 
 	cmd := &cobra.Command{
@@ -150,7 +154,7 @@ func run(ctx context.Context, out io.Writer, o *options, req request) humane.Err
 	if len(src.Paths) == 0 {
 		src.Paths = []string{"."}
 	}
-	input, err := inputFile(req.input, slices.Contains(src.Paths, "-"), req.terminal)
+	input, err := inputFile(req.input, slices.Contains(src.Paths, "-"), req.terminal, "sigil eval < release.json")
 	if err != nil {
 		return err
 	}
@@ -158,19 +162,25 @@ func run(ctx context.Context, out io.Writer, o *options, req request) humane.Err
 	if err != nil {
 		return err
 	}
-	raw, err := readInput(input, src.Stdin)
+	return evaluate(ctx, out, o, k, prog, input, src.Stdin)
+}
+
+// evaluate reads the input from file, or stdin for "-", evaluates prog
+// with it, and prints the report. It fails when the evaluation does.
+func evaluate(ctx context.Context, out io.Writer, o *options, k *project.Kind, prog *eval.Policy, file string, stdin io.Reader) humane.Error {
+	raw, err := readInput(file, stdin)
 	if err != nil {
 		return err
 	}
 	in, derr := k.Binding.DecodeInput(k.Model, raw)
 	if derr != nil {
-		return decodeError(input, derr)
+		return decodeError(file, derr)
 	}
 	if err := ctx.Err(); err != nil {
 		return humane.Wrap(err, "eval was interrupted", "run it again")
 	}
 	r := report.New(k, result.Evaluate(prog, in.Interface()))
-	if err := write(out, r, *o.output); err != nil {
+	if err := write(out, r, *o.output, o.payload); err != nil {
 		return err
 	}
 	if r.Error != nil {
@@ -181,8 +191,9 @@ func run(ctx context.Context, out io.Writer, o *options, req request) humane.Err
 
 // inputFile returns where the input comes from: the file --input names,
 // or "-" for stdin, which is also where it comes from without --input,
-// unless stdin holds the bundle or is a terminal.
-func inputFile(input string, bundleFromStdin, terminal bool) (string, humane.Error) {
+// unless stdin holds the bundle or is a terminal. example is a command
+// line that pipes an input in, for the advice.
+func inputFile(input string, bundleFromStdin, terminal bool, example string) (string, humane.Error) {
 	switch {
 	case input == "-" && bundleFromStdin:
 		return "", humane.New("the input and the bundle can't both come from stdin", "pass the input with --input FILE, or name the bundle's files")
@@ -191,7 +202,7 @@ func inputFile(input string, bundleFromStdin, terminal bool) (string, humane.Err
 	case bundleFromStdin:
 		return "", humane.New("--input is required when the bundle comes from stdin", "name the input file with --input")
 	case terminal:
-		return "", humane.New("--input is required when stdin is a terminal", "name the input file with --input, or pipe the input in, such as `sigil eval < release.json`")
+		return "", humane.New("--input is required when stdin is a terminal", "name the input file with --input, or pipe the input in, such as `"+example+"`")
 	}
 	return "-", nil
 }
@@ -233,6 +244,13 @@ func compile(o *options, req request, src project.Sources) (*project.Kind, *eval
 	if err != nil {
 		return nil, nil, err
 	}
+	return compileRoot(p, req)
+}
+
+// compileRoot compiles the policy req names in p, or p's only policy,
+// against its kind, with the stubs req names, and returns the kind and
+// the compiled policy. Only the policy and what it uses have to check.
+func compileRoot(p *project.Project, req request) (*project.Kind, *eval.Policy, humane.Error) {
 	p.Check()
 	root, err := project.Root(p.Policies(), req.policy)
 	if err != nil {
@@ -364,18 +382,23 @@ func inputName(file string) string {
 	return file
 }
 
-// write prints the report in the chosen format.
-func write(out io.Writer, r *report.Report, format output.Format) humane.Error {
+// write prints the report in the chosen format. In a compiled binary,
+// with p compiled in, the JSON and YAML record names p's bundle too.
+func write(out io.Writer, r *report.Report, format output.Format, p *payload.Payload) humane.Error {
+	var record any = r
+	if p != nil {
+		record = compiledReport{Report: r, Bundle: p.Bundle.Digest()}
+	}
 	var err error
 	switch format {
 	case output.JSON:
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
-		err = enc.Encode(r)
+		err = enc.Encode(record)
 	case output.YAML:
 		enc := yaml.NewEncoder(out)
 		enc.SetIndent(2)
-		err = enc.Encode(r)
+		err = enc.Encode(record)
 	default:
 		p := pretty.New(out)
 		return p.Print(report.Text(r, p.Theme()))

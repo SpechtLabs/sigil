@@ -1,0 +1,5 @@
+policy compile.lookup: Lookup@1
+
+when owner(user) == "ada" {
+  allow(reason: owner)
+}

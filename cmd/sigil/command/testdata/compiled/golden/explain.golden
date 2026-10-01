@@ -1,0 +1,15 @@
+payments.production: 4 rules from 2 policies
+
+  deny(reason: soak_too_short)  payments.production:5 → deploy.guardrails:6
+    when soak < 4h
+
+  approve(reason: owner)        payments.production:10
+    when "payments" in actor.teams
+
+  approve(reason: sre)          payments.production:14
+    when "sre" in actor.teams
+    with bake = 15m
+
+  assert named_actor (input)    payments.production:7
+    check actor.name != ""
+--- ok ---

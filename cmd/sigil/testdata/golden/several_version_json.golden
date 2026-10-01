@@ -1,0 +1,2 @@
+$ refunds version -o json
+{"version":"v0.0.0-e2e","commit":"unknown","commitTime":"unknown","dirty":false,"goVersion":"<build>","platform":"<build>","bundle":{"digest":"sha256:592a27bd045bedc32a20d16c5c09474cdea9d5e9a383e3ca9ddd8823be339b53","kinds":["Refund@1"],"files":4,"require":[{"policy":"refunds.guardrails","roots":["*.refunds"]}],"compiledBy":"v0.0.0-e2e","built":"2026-01-01T00:00:00Z"}}

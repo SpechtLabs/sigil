@@ -1,0 +1,24 @@
+payload:
+  bake: 1h
+policy: payments.production
+decision: approve
+reason: owner
+outcome:
+  - payload:
+      bake: 1h
+    decision: approve
+    reason: owner
+    policy: payments.production
+    position: testdata/compiled/teams/payments.sigil:10:3 (payments.production)
+trace:
+  - payload:
+      bake: 1h
+    decision: approve
+    reason: owner
+    policy: payments.production
+    position: testdata/compiled/teams/payments.sigil:10:3 (payments.production)
+    conditions:
+      - '"payments" in actor.teams'
+    outcome: true
+bundle: sha256:3dc98fa77fa73fa6d9f80f7ad7a724cf20afbaeb8e19e230f0da19b707902c69
+--- ok ---

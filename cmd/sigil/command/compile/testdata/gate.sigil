@@ -1,0 +1,16 @@
+kind Gate version 1
+
+input user: string
+
+decision deny {
+  reason: no_rule_matched | nobody
+}
+
+decision allow {
+  reason: admin | member
+}
+
+collect one
+precedence deny > allow
+
+default deny(reason: no_rule_matched)

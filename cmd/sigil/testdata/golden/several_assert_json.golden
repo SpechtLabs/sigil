@@ -1,0 +1,28 @@
+$ refunds -o json eval -p support.refunds -i inputs/unnamed.yaml
+{
+  "error": {
+    "kind": "assertion",
+    "phase": "input",
+    "message": "assertions failed: \"named_agent\"",
+    "help": "the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong",
+    "asserts": [
+      {
+        "reason": "named_agent",
+        "policy": "refunds.guardrails",
+        "position": "teams/support.sigil:5:1 (support.refunds) → platform/guardrails.sigil:5:1 (refunds.guardrails)"
+      }
+    ]
+  },
+  "policy": "support.refunds",
+  "decision": "deny",
+  "reason": "no_rule_matched",
+  "outcome": [
+    {
+      "decision": "deny",
+      "reason": "no_rule_matched"
+    }
+  ],
+  "trace": [],
+  "bundle": "sha256:592a27bd045bedc32a20d16c5c09474cdea9d5e9a383e3ca9ddd8823be339b53"
+}
+--- exit status 1

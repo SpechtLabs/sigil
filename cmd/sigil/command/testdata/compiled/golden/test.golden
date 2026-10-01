@@ -1,0 +1,4 @@
+ok    testdata/compiled/tests/checkout_test.yaml  2 cases
+ok    testdata/compiled/tests/payments_test.yaml  3 cases
+✓ 5 cases passed in 2 files
+--- ok ---

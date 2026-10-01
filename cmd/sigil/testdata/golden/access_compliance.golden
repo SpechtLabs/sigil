@@ -1,0 +1,20 @@
+$ access eval -i requests/access-compliance-member.json
+access.main: an assert failed, the host falls back to no decisions
+
+assert sod_auditor_deployer failed at access/main.sigil:6:1 → platform/access/guardrails.sigil:11:1
+  the outcome it read:
+    reader(reason: team_member)         access/main.sigil:9:3
+    deployer(reason: team_member)       access/main.sigil:10:3
+      ttl = 8h
+    auditor(reason: compliance_member)  access/main.sigil:40:3
+  = help: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong
+
+trace: 3 candidates
+    reader(reason: team_member)         access/main.sigil:9:3
+      when team_member
+    deployer(reason: team_member)       access/main.sigil:10:3
+      when team_member
+      ttl = 8h
+    auditor(reason: compliance_member)  access/main.sigil:40:3
+      when compliance_member
+--- exit status 1

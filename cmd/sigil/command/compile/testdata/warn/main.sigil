@@ -1,0 +1,7 @@
+policy compile.warn: Gate@1
+
+let unused = user
+
+when user == "root" {
+  allow(reason: admin)
+}

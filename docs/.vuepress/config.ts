@@ -162,6 +162,7 @@ export default defineUserConfig({
             { text: "Common patterns", link: "patterns", icon: "mdi:puzzle" },
             { text: "Test your policies", link: "test-policies", icon: "mdi:test-tube" },
             { text: "Check policies in CI", link: "ci", icon: "mdi:check-decagram-outline" },
+            { text: "Ship policies as a binary", link: "compile", icon: "mdi:package-variant-closed-check" },
           ],
         },
         {
@@ -216,6 +217,7 @@ export default defineUserConfig({
             { text: "Composition without templating", link: "composition", icon: "mdi:layers-triple" },
             { text: "Bundles and trust", link: "bundles", icon: "mdi:package-variant-closed" },
             { text: "One engine for every host", link: "one-engine", icon: "mdi:cube-outline" },
+            { text: "How compile works", link: "compile", icon: "mdi:package-variant-closed-check" },
           ],
         },
       ],

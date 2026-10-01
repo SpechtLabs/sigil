@@ -1,0 +1,6 @@
+--- PASS: testdata/compiled/tests/checkout_test.yaml:3: checkout needs a day of soak
+ok    testdata/compiled/tests/checkout_test.yaml  1 case
+--- PASS: testdata/compiled/tests/payments_test.yaml:10: a fresh release is too short a soak
+ok    testdata/compiled/tests/payments_test.yaml  1 case
+✓ 2 cases passed in 2 files
+--- ok ---

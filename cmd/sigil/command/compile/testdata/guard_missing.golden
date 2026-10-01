@@ -1,0 +1,27 @@
+--- error ---
+testdata/several/a.sigil:3:5 (compile.a): error: unknown document `compile.guard`
+  |
+3 | use compile.guard
+  |     ^^^^^^^^^^^^^
+  = help: `use` names a policy or module by the name in its header, wherever its file is
+
+testdata/several/a.sigil:5:1 (compile.a): error: unknown decision `guard`
+  |
+5 | guard()
+  | ^^^^^
+  = help: constructors name one of the kind's decisions; invocations name an imported policy
+
+testdata/several/b.sigil:3:5 (compile.b): error: unknown document `compile.guard`
+  |
+3 | use compile.guard
+  |     ^^^^^^^^^^^^^
+  = help: `use` names a policy or module by the name in its header, wherever its file is
+
+testdata/several/b.sigil:5:1 (compile.b): error: unknown decision `guard`
+  |
+5 | guard()
+  | ^^^^^
+  = help: constructors name one of the kind's decisions; invocations name an imported policy
+
+the bundle doesn't check, so nothing was compiled
+advice: each diagnostic above says where the problem is and how to fix it

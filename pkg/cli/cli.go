@@ -27,6 +27,13 @@
 // kind, named with --kind or among the paths, must match it exactly, which
 // catches a stale export.
 //
+// The binary's `sigil compile` writes a copy of it with a bundle of
+// policies compiled in, which evaluates them with no policy or kind file.
+// The copy has the host's kinds and real functions linked in, so a bundle
+// whose kinds declare host functions, which the stock binary refuses to
+// compile, compiles with a host binary. How to ship one is at
+// https://sigil.specht-labs.de/guides/compile/.
+//
 // The command reference is at https://sigil.specht-labs.de/reference/cli/.
 package cli
 

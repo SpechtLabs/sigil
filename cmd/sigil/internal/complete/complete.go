@@ -13,7 +13,16 @@ import (
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/internal/ast"
 	"github.com/spechtlabs/sigil/internal/parser"
+	"github.com/spechtlabs/sigil/internal/payload"
 )
+
+// names collects policy names for a completion: those that start with
+// prefix, each once.
+type names struct {
+	seen   map[string]bool
+	prefix string
+	out    []cobra.Completion
+}
 
 // SigilFiles completes .sigil files and directories for every argument.
 func SigilFiles(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
@@ -49,6 +58,20 @@ func Required(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Com
 	return policies(args, nil, toComplete), cobra.ShellCompDirectiveNoFileComp
 }
 
+// Compiled completes a --policy flag of a compiled binary with the names
+// of the policies compiled into it, b's, apart from its trusted files,
+// which the commands don't read as its own. Like [Policies], it reads only
+// the headers, so it needs no kind and stays fast.
+func Compiled(b *payload.Bundle) cobra.CompletionFunc {
+	return func(_ *cobra.Command, _ []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		n := names{prefix: toComplete, seen: map[string]bool{}}
+		for _, f := range b.Paths {
+			n.add(f.Name, []byte(f.Source))
+		}
+		return n.sorted(), cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
 // policies returns the names of the policies in paths, apart from those
 // under skip, that start with prefix, sorted. It only parses: a header
 // names its policy whatever its kind, so completing needs no kind and
@@ -68,8 +91,7 @@ func policies(paths, skip []string, prefix string) []cobra.Completion {
 			skipped[f] = true
 		}
 	}
-	seen := map[string]bool{}
-	var out []cobra.Completion
+	n := names{prefix: prefix, seen: map[string]bool{}}
 	for _, f := range files {
 		if f == "-" || skipped[f] {
 			continue
@@ -78,20 +100,31 @@ func policies(paths, skip []string, prefix string) []cobra.Completion {
 		if err != nil {
 			continue
 		}
-		parsed, _ := parser.ParseFile(f, src)
-		for _, doc := range parsed.Docs {
-			d, ok := doc.(*ast.PolicyDoc)
-			if !ok || d.Name == nil {
-				continue
-			}
-			if name := d.Name.String(); strings.HasPrefix(name, prefix) && !seen[name] {
-				seen[name] = true
-				out = append(out, name)
-			}
+		n.add(f, src)
+	}
+	return n.sorted()
+}
+
+// add collects the names of the policies in one file's headers that
+// start with the prefix, each once.
+func (n *names) add(file string, src []byte) {
+	parsed, _ := parser.ParseFile(file, src)
+	for _, doc := range parsed.Docs {
+		d, ok := doc.(*ast.PolicyDoc)
+		if !ok || d.Name == nil {
+			continue
+		}
+		if name := d.Name.String(); strings.HasPrefix(name, n.prefix) && !n.seen[name] {
+			n.seen[name] = true
+			n.out = append(n.out, name)
 		}
 	}
-	sort.Strings(out)
-	return out
+}
+
+// sorted returns the names collected, sorted.
+func (n *names) sorted() []cobra.Completion {
+	sort.Strings(n.out)
+	return n.out
 }
 
 // trusted returns the command's --trusted paths, or nil when it has no

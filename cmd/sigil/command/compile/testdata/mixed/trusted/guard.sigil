@@ -1,0 +1,5 @@
+policy compile.lookup_guard: Lookup@1
+
+when team(user) == "" {
+  deny(reason: no_rule_matched)
+}

@@ -1,0 +1,14 @@
+$ access eval -i requests/access-break-glass-platform.json
+access.main: the candidates conflict, the host falls back to no decisions
+
+conflict: exclusive admin, release_manager: more than one fired
+    admin(reason: break_glass)                access/main.sigil:36:3
+    release_manager(reason: platform_member)  access/main.sigil:25:3
+  = help: a conflict is a defect in the policy: rank the reasons with precedence, or keep the exclusive outcomes' conditions apart
+
+trace: 2 candidates
+    release_manager(reason: platform_member)  access/main.sigil:25:3
+      ttl = 4h
+    admin(reason: break_glass)                access/main.sigil:36:3
+      ttl = 15m
+--- exit status 1

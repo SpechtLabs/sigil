@@ -1,0 +1,21 @@
+policy compile.mistyped_a: Gate@1
+
+use compile.guard
+
+guard()
+
+when user == "root" {
+  allow(reason: admin)
+}
+
+---
+
+policy compile.mistyped_b: Gate@1
+
+use compile.guard
+
+guard()
+
+when nobody {
+  allow(reason: member)
+}

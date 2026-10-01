@@ -1,4 +1,4 @@
-package check
+package diagnose
 
 import (
 	"path/filepath"

@@ -1,0 +1,9 @@
+policy checkout.production: Deploy@1
+
+use deploy.guardrails
+
+guardrails()
+
+when "checkout" in actor.teams {
+  approve(reason: owner, bake: 30m)
+}

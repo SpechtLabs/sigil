@@ -1,0 +1,8 @@
+policy: payments.staging
+cases:
+  - name: staging approves anyone
+    input:
+      actor: {name: ada}
+    expect:
+      decision: approve
+      reason: owner

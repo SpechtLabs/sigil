@@ -1,0 +1,3 @@
+$ sigilc compile --out $TMP/gates --config policies/sigil.yaml policies
+✓ compiled 3 policies from 10 files into $TMP/gates (sha256:<digest>)
+  no policy is the default, so its eval needs --policy

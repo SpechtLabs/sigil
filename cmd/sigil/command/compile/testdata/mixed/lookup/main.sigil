@@ -1,0 +1,9 @@
+policy compile.mixed_lookup: Lookup@1
+
+use compile.lookup_guard
+
+lookup_guard()
+
+when owner(user) == "ada" {
+  allow(reason: owner)
+}

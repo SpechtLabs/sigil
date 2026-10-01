@@ -1,0 +1,2 @@
+$ sigil compile --out $TMP/refunds --require refunds.guardrails --trusted platform --policy support.refunds teams/support.sigil
+✓ compiled support.refunds from 3 files into $TMP/refunds (sha256:4268b6a16a71…)

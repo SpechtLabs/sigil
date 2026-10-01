@@ -1,0 +1,7 @@
+policy: shop.refunds
+cases:
+  - name: a large refund is approved, which it isn't
+    input_file: ../inputs/large.json
+    expect:
+      decision: approve
+      reason: within_limit

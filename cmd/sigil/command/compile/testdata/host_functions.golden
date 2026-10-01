@@ -1,0 +1,4 @@
+--- error ---
+the bundle needs host functions this binary doesn't implement, so nothing was compiled: Lookup@1 declares owner, team
+advice: build a host binary with cli.Main(cli.WithKind(...)) from the pkg/cli package, which links the kind and its functions in, and compile with its compile command
+advice: or name a policy of a kind without host functions with --policy, which compiles in only that policy and what it uses

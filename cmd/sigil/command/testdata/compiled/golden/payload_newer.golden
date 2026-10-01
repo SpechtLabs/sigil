@@ -1,0 +1,8 @@
+Error: this binary can't read the policies compiled into it
+
+What you can do
+  • compile the policies again with the sigil this binary was built from
+  • or evaluate the policies with the newer sigil that compiled them, from their source files
+
+Caused by
+  • the compiled bundle was written by a newer sigil: its format is version 99, and this sigil reads up to version 1

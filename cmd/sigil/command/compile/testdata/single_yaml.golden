@@ -1,0 +1,6 @@
+out: $TMP/policies
+root: compile.single
+digest: sha256:b0d864725732af09d556058494735aaa9cea6c95dc96f26941a8d36d1daeef37
+files: 2
+bytes: <n>
+--- ok ---

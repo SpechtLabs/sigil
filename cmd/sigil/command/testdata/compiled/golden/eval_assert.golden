@@ -1,0 +1,8 @@
+payments.production: an assert failed, the host falls back to deny(reason: no_rule_matched), the kind's default
+
+assert named_actor failed at testdata/compiled/teams/payments.sigil:7:1 (payments.production)
+  = help: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong
+
+trace: no rule fired
+--- error ---
+the evaluation failed; the host would act on the fallback shown above

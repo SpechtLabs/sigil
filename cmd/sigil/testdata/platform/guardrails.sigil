@@ -1,0 +1,9 @@
+policy refunds.guardrails: Refund@1
+
+param max_age: duration = 720h
+
+assert("named_agent", agent != "")
+
+when order.age > max_age {
+  deny(reason: too_old)
+}

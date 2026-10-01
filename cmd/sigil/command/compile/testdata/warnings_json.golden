@@ -1,0 +1,20 @@
+{
+  "out": "$TMP/policies",
+  "root": "compile.warn",
+  "digest": "sha256:8192e065f47a161ce00062a8c516a35ca85cefdeeecdcebfb509325c697ed47c",
+  "files": 2,
+  "bytes": <n>,
+  "warnings": [
+    {
+      "severity": "warning",
+      "lint": "unused-let",
+      "file": "testdata/warn/main.sigil",
+      "document": "compile.warn",
+      "message": "let unused is never read",
+      "help": "remove the let, or read it; a private let can't be imported",
+      "line": 3,
+      "column": 5
+    }
+  ]
+}
+--- ok ---

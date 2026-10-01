@@ -30,6 +30,7 @@ export const navbar = defineNavbarConfig([
           { text: "Common patterns", link: "/guides/patterns", icon: "mdi:puzzle" },
           { text: "Test your policies", link: "/guides/test-policies", icon: "mdi:test-tube" },
           { text: "Check policies in CI", link: "/guides/ci", icon: "mdi:check-decagram-outline" },
+          { text: "Ship policies as a binary", link: "/guides/compile", icon: "mdi:package-variant-closed-check" },
         ],
       },
       {
@@ -70,6 +71,7 @@ export const navbar = defineNavbarConfig([
       { text: "Composition without templating", link: "/understanding/composition", icon: "mdi:layers-triple" },
       { text: "Bundles and trust", link: "/understanding/bundles", icon: "mdi:package-variant-closed" },
       { text: "One engine for every host", link: "/understanding/one-engine", icon: "mdi:cube-outline" },
+      { text: "How compile works", link: "/understanding/compile", icon: "mdi:package-variant-closed-check" },
     ],
   },
 

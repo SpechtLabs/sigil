@@ -1,0 +1,10 @@
+payments.production: deny(reason: soak_too_short)
+
+trace: 3 candidates
+  * deny(reason: soak_too_short)  testdata/compiled/teams/payments.sigil:5:1 (payments.production) → testdata/compiled/platform/guardrails.sigil:6:3 (deploy.guardrails)
+      when soak < 4h
+    approve(reason: owner)        testdata/compiled/teams/payments.sigil:10:3 (payments.production)
+      bake = 1h
+    approve(reason: sre)          testdata/compiled/teams/payments.sigil:14:3 (payments.production)
+      bake = 15m
+--- ok ---

@@ -1,0 +1,7 @@
+policy: payments.staging
+cases:
+  - name: misspelled expect
+    input: {actor: {name: ada}}
+    expcet:
+      decision: approve
+      reason: owner

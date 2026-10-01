@@ -1,0 +1,27 @@
+$ shop eval -o json < inputs/small.json
+{
+  "policy": "shop.refunds",
+  "decision": "approve",
+  "reason": "within_limit",
+  "outcome": [
+    {
+      "decision": "approve",
+      "reason": "within_limit",
+      "policy": "shop.refunds",
+      "position": "teams/shop.sigil:8:3 (shop.refunds)"
+    }
+  ],
+  "trace": [
+    {
+      "decision": "approve",
+      "reason": "within_limit",
+      "policy": "shop.refunds",
+      "position": "teams/shop.sigil:8:3 (shop.refunds)",
+      "conditions": [
+        "order.amount \u003c= 100"
+      ],
+      "outcome": true
+    }
+  ],
+  "bundle": "sha256:79e452bf54af2c649bdf5d1849a69a683162ef4273d45fcc25d527bd7eb90634"
+}

@@ -1,0 +1,15 @@
+policy payments.production: Deploy@1
+
+use deploy.guardrails
+
+guardrails(min_soak: 4h)
+
+assert("named_actor", actor.name != "")
+
+when "payments" in actor.teams {
+  approve(reason: owner)
+}
+
+when "sre" in actor.teams {
+  approve(reason: sre, bake: 15m)
+}

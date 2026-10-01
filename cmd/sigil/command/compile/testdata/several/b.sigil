@@ -1,0 +1,9 @@
+policy compile.b: Gate@1
+
+use compile.guard
+
+guard()
+
+when user != "" {
+  allow(reason: member)
+}

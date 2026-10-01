@@ -1,0 +1,8 @@
+{
+  "out": "$TMP/policies",
+  "root": "",
+  "digest": "sha256:31b5eec10270d82b4f012db00a561a69b41adb268a2b29922c56ba64178a7368",
+  "files": 4,
+  "bytes": <n>
+}
+--- ok ---

@@ -1,0 +1,6 @@
+$ refunds eval -p shop.refunds -i inputs/small.json
+shop.refunds: approve(reason: within_limit)
+
+trace: 1 candidate
+  * approve(reason: within_limit)  teams/shop.sigil:8:3 (shop.refunds)
+      when order.amount <= 100

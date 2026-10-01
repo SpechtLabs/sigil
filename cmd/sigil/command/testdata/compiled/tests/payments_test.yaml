@@ -1,0 +1,22 @@
+policy: payments.production
+cases:
+  - name: owners approve after four hours
+    input_file: inputs/owner.json
+    expect:
+      decision: approve
+      reason: owner
+      payload:
+        bake: 1h
+  - name: a fresh release is too short a soak
+    input:
+      actor: {name: ada, teams: [payments]}
+      soak: 1h
+    expect:
+      decision: deny
+      reason: soak_too_short
+  - name: an unnamed actor fails the assert
+    input:
+      actor: {name: "", teams: [payments]}
+      soak: 6h
+    expect:
+      asserts: [named_actor]

@@ -1,0 +1,6 @@
+checkout.production: deny(reason: soak_too_short)
+
+trace: 1 candidate
+  * deny(reason: soak_too_short)  testdata/compiled/teams/checkout.sigil:5:1 (checkout.production) → testdata/compiled/platform/guardrails.sigil:6:3 (deploy.guardrails)
+      when soak < 1d
+--- ok ---

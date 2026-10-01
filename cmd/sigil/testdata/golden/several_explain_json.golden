@@ -1,0 +1,58 @@
+$ refunds explain -o json -p support.*
+[
+  {
+    "policy": "support.refunds",
+    "policies": 2,
+    "modules": 0,
+    "rules": [
+      {
+        "kind": "decision",
+        "decision": "deny",
+        "reason": "too_old",
+        "chain": [
+          "support.refunds:5",
+          "refunds.guardrails:8"
+        ],
+        "conditions": [
+          "order.age \u003e 90d"
+        ]
+      },
+      {
+        "kind": "decision",
+        "decision": "approve",
+        "reason": "goodwill",
+        "chain": [
+          "support.refunds:8"
+        ],
+        "conditions": [
+          "cause == \"damaged\""
+        ]
+      },
+      {
+        "kind": "decision",
+        "decision": "review",
+        "reason": "large_amount",
+        "chain": [
+          "support.refunds:12"
+        ],
+        "conditions": [
+          "order.channel == phone and order.amount \u003e 500"
+        ],
+        "payload": [
+          "queue = \"support-leads\""
+        ]
+      },
+      {
+        "kind": "assert",
+        "reason": "named_agent",
+        "phase": "input",
+        "chain": [
+          "support.refunds:5",
+          "refunds.guardrails:5"
+        ],
+        "conditions": [],
+        "check": "agent != \"\""
+      }
+    ]
+  }
+]

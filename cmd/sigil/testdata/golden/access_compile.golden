@@ -1,0 +1,2 @@
+$ sigil compile --out $TMP/access --config policies/sigil.yaml --policy access.main policies
+✓ compiled access.main from 4 files into $TMP/access (sha256:<digest>)

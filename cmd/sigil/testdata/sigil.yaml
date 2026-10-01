@@ -1,0 +1,10 @@
+# The configuration the end-to-end tests compile with: they run sigil in
+# this directory, so it's the nearest one. Paths are relative to this file.
+kinds: [refund.sigil]
+
+require:
+  # Every team's refund policy invokes the platform's guardrails, read as
+  # trusted from platform/, which the tests never pass as a path.
+  - policy: refunds.guardrails
+    trusted: [platform]
+    roots: ["*.refunds"]
