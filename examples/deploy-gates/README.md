@@ -473,6 +473,8 @@ go run ./cmd/sigilc eval --config policies/sigil.yaml --input input.json --polic
 
 `TestDecisionLogReplays` in `internal/server` does exactly this for a frozen, an unknown and an unfrozen freeze, a short soak and an approval.
 
+The `input` field holds personal data: the actor's name, teams, regions and granted roles, and the service's labels. It is logged at info level on every decision. Decide who can read the decision log, and how long it is kept, with that in mind.
+
 ## Watch it reload
 
 The compose stack bind-mounts `policies/teams` into the container as `/etc/deploygate/policies` and `policies/access` as `/etc/deploygate/access`, so the policies deploygate serves are the files in your checkout. It reloads both bundles when you ask and on `SIGHUP`, and each one whenever a poll finds that its content changed. Compose sets `DEPLOYGATE_RELOAD_INTERVAL` to 5 seconds so you can watch it happen; the default is 30.
@@ -872,7 +874,7 @@ Each deployment request gets the gin server span and, below it, two siblings. Th
 | `--debug` | `DEPLOYGATE_DEBUG` | `false` | Debug logging and gin's debug mode |
 | `--log-format` | `DEPLOYGATE_LOG_FORMAT` | `json` | `json` or `console` |
 | `--freeze-environments` | `DEPLOYGATE_FREEZE_ENVIRONMENTS` | empty | Environments frozen for as long as deploygate runs, repeatable or comma-separated. Can't be combined with `--freeze-ofrep-url` |
-| `--freeze-known-environments` | `DEPLOYGATE_FREEZE_KNOWN_ENVIRONMENTS` | `production,staging` | Environments a freeze may name, repeatable or comma-separated. A flag value naming another fails its refresh, and `--freeze-environments` may name no other |
+| `--freeze-known-environments` | `DEPLOYGATE_FREEZE_KNOWN_ENVIRONMENTS` | `production,staging` | Environments a freeze may name, repeatable or comma-separated. A flag value naming another fails its refresh, and `--freeze-environments` may name no other. When you add an environment, add it here too: until then a freeze naming it fails every refresh, and once the last answer is older than `--freeze-max-staleness`, every deploy is denied as frozen |
 | `--freeze-ofrep-url` | `DEPLOYGATE_FREEZE_OFREP_URL` | empty | Base URL of an OFREP flag service the freeze is read from, such as `http://flagd:8016`. Empty uses `--freeze-environments` |
 | `--freeze-flag` | `DEPLOYGATE_FREEZE_FLAG` | `change-freeze` | Key of the flag that lists the frozen environments, as a list of strings or one comma-separated string |
 | `--freeze-context` | `DEPLOYGATE_FREEZE_CONTEXT` | empty | `key=value` attributes of the flag's evaluation context, repeatable or comma-separated. `targetingKey` is `deploygate` unless set here |
