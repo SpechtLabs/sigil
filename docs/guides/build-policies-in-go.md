@@ -40,7 +40,7 @@ type Freeze struct {
 
 Add `Unknown` from the start. A host that can't reach its flag service has to say so, and the module decides what that means.
 
-A new input is a change to the kind, so bump its version. The example added the reason `change_freeze` in the same step, ranked between `not_eligible` and `soak_too_short`. Both are additions, so `accepts` stays where it was and every policy pinned to `@1` keeps loading; [Evolve a kind safely](/guides/evolve-a-kind/#bump-the-version-raise-accepts-when-it-breaks) has the rules. Re-export the kind file afterwards, as [Export the kind](/guides/host-binary/#export-the-kind) shows.
+A new input is a change to the kind, so bump its version. The example added the reason `change_freeze` in the same step, ranked between `not_eligible` and `soak_too_short`. Both are additions, and the kind sets no `accepts`, so every version stays accepted: the team policies keep their `@1` pins, and only the documents that read the freeze, `deploy.freeze` and the guardrails, pin `@2`; [Evolve a kind safely](/guides/evolve-a-kind/#bump-the-version-raise-accepts-when-it-breaks) has the rules. Re-export the kind file afterwards, as [Export the kind](/guides/host-binary/#export-the-kind) shows.
 
 ## Write the module in Go
 
@@ -79,6 +79,16 @@ pub let is_frozen = freeze.unknown or environment in freeze.environments
 ```
 
 The header names the Go file, so a reviewer who wants to change the module knows where to do it. `build.WithHeader` replaces the text.
+
+The handwritten guardrails import the name and deny with it:
+
+```sigil title="policies/platform/deploy/guardrails.sigil"
+use deploy.freeze.{is_frozen}
+
+when is_frozen {
+  deny(reason: change_freeze)
+}
+```
 
 ## Write a policy in Go
 
@@ -184,7 +194,7 @@ func TestVocabularyChecks(t *testing.T) {
 }
 ```
 
-`policies.Only` shows only the `deploy/` directory of the platform tree, because `access/` holds another kind's documents. The rendered module replaces the committed file at the same path, so the check sees what the Go code builds now. Rename `is_frozen` to `frozen` in Go, regenerate, and the handwritten guardrails stop compiling:
+`policies.Only` shows only the `deploy/` directory of the platform tree. Passing the whole tree fails, because `access/` holds `AccessGrant` documents and a bundle holds one kind: `document is for kind AccessGrant, not DeployApproval`. The rendered module replaces the committed file at the same path, so the check sees what the Go code builds now. Rename `is_frozen` to `frozen` in Go, regenerate, and the handwritten guardrails stop compiling:
 
 ```text
 --- FAIL: TestVocabularyChecks (0.00s)
