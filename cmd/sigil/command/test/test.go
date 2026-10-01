@@ -3,8 +3,8 @@
 // bundle, then runs each test file's cases against the policy the file
 // names. A case passes when the evaluation gives the decision, reason and
 // payload it expects, the whole outcome of a collecting kind, or exactly
-// the failing asserts it lists. [SuiteResult] and [CaseResult] are the
-// records it prints as JSON and YAML.
+// the failing asserts it lists. Package internal/testrun runs the cases,
+// and its records are what it prints as JSON and YAML.
 package test
 
 import (
@@ -14,7 +14,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -28,10 +27,8 @@ import (
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/config"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
-	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/diag"
-	"github.com/spechtlabs/sigil/internal/eval"
-	"github.com/spechtlabs/sigil/internal/result"
+	"github.com/spechtlabs/sigil/internal/testrun"
 	"github.com/spechtlabs/sigil/internal/testsuite"
 )
 
@@ -128,32 +125,6 @@ func addFlags(cmd *cobra.Command) {
 	_ = cmd.RegisterFlagCompletionFunc("run", cobra.NoFileCompletions)
 }
 
-// SuiteResult is one test file's run. When Error is set, none of the
-// file's cases ran.
-type SuiteResult struct {
-	File   string       `json:"file" yaml:"file"`
-	Policy string       `json:"policy" yaml:"policy"`                   // the policy the file tests
-	Error  string       `json:"error,omitempty" yaml:"error,omitempty"` // an unreadable or invalid test file, or a policy that doesn't compile
-	Cases  []CaseResult `json:"cases" yaml:"cases"`                     // the cases --run selects, in file order
-	// What's behind Error, for the text report to render with each hint
-	// on its own line: the test file's problems, or the policy's compile
-	// errors with src finding their source lines.
-	problems []*testsuite.Error
-	diags    diag.ErrorList
-	src      diag.Sources
-}
-
-// CaseResult is one test case's run.
-type CaseResult struct {
-	Name     string              `json:"name" yaml:"name"`
-	Error    string              `json:"error,omitempty" yaml:"error,omitempty"`       // why the case couldn't run: its input can't be read or doesn't fit the kind
-	Failures []string            `json:"failures,omitempty" yaml:"failures,omitempty"` // how the evaluation differs from what the case expects
-	Line     int                 `json:"line" yaml:"line"`                             // of the case in its test file
-	Passed   bool                `json:"passed" yaml:"passed"`
-	problem  *testsuite.Error    // what's behind Error
-	diffs    []testsuite.Failure // what's behind Failures
-}
-
 // osFS reads input files by their paths on disk, relative to the working
 // directory or absolute, as the command line gave them.
 type osFS struct{}
@@ -189,162 +160,16 @@ func runTests(ctx context.Context, out io.Writer, o *options, configFile string,
 		return err
 	}
 	p.Check()
-	var results []SuiteResult
+	var results []testrun.SuiteResult
 	for _, file := range tests {
-		results = append(results, runSuite(ctx, p, file, filter))
-	}
-	return write(out, results, *o.output, verbose)
-}
-
-// runSuite runs one test file's cases against the policy it names, with
-// that policy's kind.
-func runSuite(ctx context.Context, p *project.Project, file string, filter *regexp.Regexp) SuiteResult {
-	res := SuiteResult{File: file}
-	src, err := os.ReadFile(file) //nolint:gosec // the path was found under the command line's paths
-	if err != nil {
-		res.Error = file + " couldn't be read: " + err.Error()
-		return res
-	}
-	s, err := testsuite.Parse(file, src)
-	if err != nil {
-		res.Error = err.Error()
-		switch e := err.(type) {
-		case *testsuite.Error:
-			res.problems = []*testsuite.Error{e}
-		case testsuite.Errors:
-			res.problems = e
-		}
-		return res
-	}
-	res.Policy = s.Policy
-	g := p.Group(s.Policy)
-	if g == nil {
-		// The policy may be missing because its document or kind doesn't
-		// check, which the project's diagnostics then say.
-		errs := p.Errors()
-		if errs == nil {
-			errs = diag.ErrorList{noPolicy(p, s.Policy)}
-		}
-		return failSuite(res, p, errs)
-	}
-	// Only the policy, what it uses and the kinds count: an error in a
-	// document it doesn't use doesn't stop its tests.
-	scope := p.ScopeOf([]string{s.Policy})
-	if errs := scope.Keep(p.Errors()); errs != nil {
-		return failSuite(res, p, errs)
-	}
-	b := scope.Bundle(g)
-	runner := &testsuite.Runner{Kind: g.Kind.Model, Binding: g.Kind.Binding, FS: osFS{}}
-	if errs := s.Validate(runner.Kind); len(errs) > 0 {
-		msgs := make([]string, len(errs))
-		for i, e := range errs {
-			msgs[i] = e.Error()
-			if e.Help != "" {
-				msgs[i] += " (" + e.Help + ")"
-			}
-		}
-		res.Error = strings.Join(msgs, "\n")
-		res.problems = errs
-		return res
-	}
-	base, berr := runner.Bind(s, nil)
-	if berr != nil {
-		res.Error, res.problems = berr.Display(), []*testsuite.Error{berr}
-		return res
-	}
-	prog, errs := b.Compile(s.Policy, bundle.Options{Binding: base})
-	if errs != nil {
-		return failSuite(res, p, errs)
-	}
-	for _, c := range s.Cases {
-		if filter != nil && !filter.MatchString(c.Name) {
+		data, rerr := os.ReadFile(file) //nolint:gosec // the path was found under the command line's paths
+		if rerr != nil {
+			results = append(results, testrun.Unreadable(file, rerr))
 			continue
 		}
-		res.Cases = append(res.Cases, runCase(ctx, p, b, runner, s, c, prog))
+		results = append(results, testrun.Run(ctx, p, file, data, osFS{}, filter))
 	}
-	return res
-}
-
-// runCase runs one case against prog, the policy compiled with the test
-// file's stubs, or, when the case stubs host functions of its own, the
-// policy compiled again with them: host functions are bound when a
-// policy compiles.
-func runCase(ctx context.Context, p *project.Project, b *bundle.Bundle, runner *testsuite.Runner, s *testsuite.Suite, c *testsuite.Case, prog *eval.Policy) CaseResult {
-	cr := CaseResult{Name: c.Name, Line: c.Line}
-	if len(c.Stubs) > 0 {
-		cb, berr := runner.Bind(s, c)
-		if berr != nil {
-			return caseError(cr, berr)
-		}
-		var errs diag.ErrorList
-		if prog, errs = b.Compile(s.Policy, bundle.Options{Binding: cb}); errs != nil {
-			return caseError(cr, &testsuite.Error{File: s.File, Line: c.Line, Case: c.Name, Msg: "the policy doesn't compile with the case's stubs: " + p.Render(errs)})
-		}
-	}
-	r := runner.RunCase(ctx, s, c, evaluator(prog))
-	cr.Passed, cr.diffs = r.Passed(), r.Failures
-	for _, f := range r.Failures {
-		cr.Failures = append(cr.Failures, f.Text)
-	}
-	if r.Err != nil {
-		return caseError(cr, r.Err)
-	}
-	return cr
-}
-
-// caseError records why a case couldn't run.
-func caseError(cr CaseResult, err *testsuite.Error) CaseResult {
-	cr.Passed, cr.problem, cr.Error = false, err, err.Msg
-	if err.Help != "" {
-		cr.Error += " (" + err.Help + ")"
-	}
-	return cr
-}
-
-// failSuite records why a test file's policy couldn't run: the
-// diagnostics behind it.
-func failSuite(res SuiteResult, p *project.Project, errs diag.ErrorList) SuiteResult {
-	res.Error = p.Render(errs)
-	res.diags, res.src = p.Resolve(errs), p.SourceOf
-	return res
-}
-
-// noPolicy describes a test file's policy that isn't in the project,
-// listing what is.
-func noPolicy(p *project.Project, name string) *diag.Error {
-	help := "the bundle defines no policies"
-	if policies := p.Policies(); len(policies) > 0 {
-		help = "the bundle defines: " + strings.Join(policies, ", ")
-	}
-	return &diag.Error{Msg: "bundle has no policy " + name, Help: help}
-}
-
-// evaluator evaluates the compiled policy for the runner.
-func evaluator(prog *eval.Policy) testsuite.Eval {
-	return func(_ context.Context, input reflect.Value) *testsuite.Outcome {
-		return outcome(result.Evaluate(prog, input.Interface()))
-	}
-}
-
-// outcome converts an evaluation into what the runner compares.
-func outcome(res *result.Result) *testsuite.Outcome {
-	out := &testsuite.Outcome{}
-	switch f := res.Failure; {
-	case f == nil:
-		for _, e := range res.Outcome {
-			out.Entries = append(out.Entries, testsuite.Got{Decision: e.Decision, Reason: e.Reason, Payload: e.Payload, Position: e.Position.String()})
-		}
-	case f.Runtime != nil:
-		out.Err, out.Runtime, out.Help = "a runtime error", f.Runtime.Msg, f.Runtime.Help
-		out.Detail = f.Runtime.Position.String() + ": " + f.Runtime.Msg
-	case f.Conflict != nil:
-		out.Err = "a conflict (" + f.Conflict.Msg + ")"
-	default:
-		for _, a := range f.Asserts {
-			out.Asserts = append(out.Asserts, a.Reason)
-		}
-	}
-	return out
+	return write(out, results, *o.output, verbose)
 }
 
 // find expands the paths for .sigil files and test files, by the rules
@@ -373,7 +198,7 @@ type tally struct {
 	files, broken, cases, failed int
 }
 
-func count(results []SuiteResult) tally {
+func count(results []testrun.SuiteResult) tally {
 	var n tally
 	n.files = len(results)
 	for _, s := range results {
@@ -409,7 +234,7 @@ func (n tally) failure(files bool) string {
 
 // write prints the results and, in text, a line that sums them up, and
 // fails when a case failed or a test file couldn't run.
-func write(out io.Writer, results []SuiteResult, format output.Format, verbose bool) humane.Error {
+func write(out io.Writer, results []testrun.SuiteResult, format output.Format, verbose bool) humane.Error {
 	n := count(results)
 	var err error
 	switch format {
@@ -455,7 +280,7 @@ func summarize(p *pretty.Printer, n tally) humane.Error {
 }
 
 // text renders the results the way go test does.
-func text(results []SuiteResult, t pretty.Theme, verbose bool) string {
+func text(results []testrun.SuiteResult, t pretty.Theme, verbose bool) string {
 	var b strings.Builder
 	for _, s := range results {
 		writeSuite(&b, t, s, verbose)
@@ -465,15 +290,15 @@ func text(results []SuiteResult, t pretty.Theme, verbose bool) string {
 
 // writeSuite renders one test file: its failing cases, every case with
 // verbose, and a summary line.
-func writeSuite(b *strings.Builder, t pretty.Theme, s SuiteResult, verbose bool) {
+func writeSuite(b *strings.Builder, t pretty.Theme, s testrun.SuiteResult, verbose bool) {
 	if s.Error != "" {
 		detail := s.Error
 		switch {
-		case s.diags != nil:
-			detail = diag.RenderAll(s.diags, s.src, t.Diagnostics())
-		case s.problems != nil:
-			parts := make([]string, len(s.problems))
-			for i, e := range s.problems {
+		case s.Diagnostics != nil:
+			detail = diag.RenderAll(s.Diagnostics, s.Sources, t.Diagnostics())
+		case s.Problems != nil:
+			parts := make([]string, len(s.Problems))
+			for i, e := range s.Problems {
 				parts[i] = problem(t, e.Error(), e.Help)
 			}
 			detail = strings.Join(parts, "\n")
@@ -491,10 +316,10 @@ func writeSuite(b *strings.Builder, t pretty.Theme, s SuiteResult, verbose bool)
 		}
 		failed++
 		fmt.Fprintf(b, "%s %s: %s\n", t.Fail("--- FAIL:"), t.Location(fmt.Sprintf("%s:%d", s.File, c.Line)), t.Bold(c.Name))
-		if c.problem != nil {
-			b.WriteString(indent(problem(t, c.problem.Msg, c.problem.Help), "      ") + "\n")
+		if c.Problem != nil {
+			b.WriteString(indent(problem(t, c.Problem.Msg, c.Problem.Help), "      ") + "\n")
 		}
-		for _, f := range c.diffs {
+		for _, f := range c.Diffs {
 			if f.Want == "" {
 				b.WriteString(indent(f.Text, "      ") + "\n")
 				continue
