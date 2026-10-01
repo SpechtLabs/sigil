@@ -114,6 +114,8 @@ export const navbar = defineNavbarConfig([
     ],
   },
 
+  { text: "Playground", link: "/playground/", icon: "mdi:play-box-outline" },
+
   {
     text: "Project",
     icon: "mdi:dots-horizontal",

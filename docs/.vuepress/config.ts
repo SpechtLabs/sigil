@@ -1,3 +1,5 @@
+import { statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { viteBundler } from "@vuepress/bundler-vite";
 import { registerComponentsPlugin } from "@vuepress/plugin-register-components";
 import { path } from "@vuepress/utils";
@@ -25,7 +27,23 @@ export default defineUserConfig({
     ["link", { rel: "icon", type: "image/png", href: "/images/specht.png" }],
   ],
 
-  bundler: viteBundler(),
+  bundler: viteBundler({
+    viteOptions: {
+      // The playground runs @spechtlabs/sigil in a worker. Pre-bundling the
+      // package would move its files away from sigil.wasm and its worker
+      // entry, so the dev server serves it as published.
+      optimizeDeps: { exclude: ["@spechtlabs/sigil"] },
+      // The worker entry imports modules on demand, which only an ES module
+      // worker can do.
+      worker: { format: "es" },
+      define: {
+        // The playground shows the engine's download progress against this.
+        __SIGIL_WASM_SIZE__: JSON.stringify(
+          statSync(createRequire(import.meta.url).resolve("@spechtlabs/sigil/sigil.wasm")).size,
+        ),
+      },
+    },
+  }),
   shouldPrefetch: false,
 
   extendsMarkdown: (md) => {
@@ -69,6 +87,9 @@ export default defineUserConfig({
   plugins: [
     registerComponentsPlugin({
       componentsDir: path.resolve(__dirname, "./components"),
+      // Top-level components only: the playground's pieces under
+      // components/playground/ are imported where they're used.
+      componentsPatterns: ["*.vue"],
     }),
   ],
 
