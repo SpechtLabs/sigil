@@ -17,7 +17,7 @@ import (
 // apart from the files the paths already hold.
 func TestApply(t *testing.T) {
 	dir := t.TempDir()
-	for _, name := range []string{"k.sigil", "platform/guard.sigil", "platform/common.sigil", "teams/a.sigil"} {
+	for _, name := range []string{"k.sigil", "platform/guard.sigil", "platform/common.sigil", "teams/a.sigil", "docs/README.md"} {
 		path := filepath.Join(dir, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
@@ -45,6 +45,8 @@ func TestApply(t *testing.T) {
 		{name: "top-level trusted outside the paths", src: "trusted: [platform]\n", paths: []string{filepath.Join(dir, "teams")}, wantKinds: []string{"flag.sigil"}, wantTrusted: []string{at("platform/common.sigil"), at("platform/guard.sigil")}},
 		{name: "top-level trusted shared with an entry", src: "trusted: platform\n" + platform, paths: []string{filepath.Join(dir, "teams")}, wantKinds: []string{"flag.sigil"}, wantTrusted: []string{at("platform/common.sigil"), at("platform/guard.sigil")}},
 		{name: "top-level trusted path missing", src: "trusted: [nope]\n", wantErr: "sigil.yaml: the trusted path " + filepath.Join(dir, "nope") + " can't be read"},
+		{name: "top-level trusted path without .sigil files", src: "trusted: [docs]\n", wantErr: "sigil.yaml: the trusted path " + filepath.Join(dir, "docs") + " holds no .sigil files"},
+		{name: "trusted path of an entry without .sigil files", src: "require:\n  - policy: guard\n    trusted: [docs]\n", wantErr: "sigil.yaml:2:13: the trusted path " + filepath.Join(dir, "docs") + " of guard holds no .sigil files"},
 		{name: "trusted path missing", src: "require:\n  - policy: guard\n    trusted: [nope]\n", wantErr: "sigil.yaml:2:13: the trusted path " + filepath.Join(dir, "nope") + " of guard can't be read"},
 		{name: "paths unreadable", src: platform, paths: []string{filepath.Join(dir, "nope")}, wantKinds: []string{"flag.sigil"}, wantTrusted: []string{filepath.Join(dir, "platform")}},
 		{name: "missing kind file", src: "kinds: [k.sigil, nope.sigil]\n", wantErr: "sigil.yaml: the kind file " + filepath.Join(dir, "nope.sigil") + " can't be read"},
