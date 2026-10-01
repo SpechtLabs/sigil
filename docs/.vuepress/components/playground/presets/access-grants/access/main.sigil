@@ -1,0 +1,41 @@
+policy access.main: AccessGrant@1
+
+use access.guardrails
+use access.common.{admin_cleared, break_glass, compliance_member, on_call, platform_member, team_member}
+
+guardrails()
+
+when team_member {
+  reader(reason: team_member)
+  deployer(reason: team_member)
+}
+
+when environment == "staging" {
+  reader(reason: everyone_in_staging)
+}
+
+// The on-call SRE deploys for two hours, long enough to ship a fix.
+when on_call {
+  deployer(reason: oncall, ttl: 2h)
+}
+
+// An admin already holds everything a release manager does, and the kind
+// declares the two exclusive, so the platform grant leaves admins out.
+when platform_member and not admin_cleared {
+  release_manager(reason: platform_member, ttl: 4h)
+}
+
+when admin_cleared {
+  admin(reason: clearance)
+}
+
+// Break-glass access is short-lived by design. It doesn't check for platform
+// membership: a break-glass member in platform is a conflict the host reports,
+// because the two groups aren't meant to overlap.
+when break_glass {
+  admin(reason: break_glass, ttl: 15m)
+}
+
+when compliance_member {
+  auditor(reason: compliance_member)
+}

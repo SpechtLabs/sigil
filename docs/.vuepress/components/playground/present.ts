@@ -52,3 +52,28 @@ export function literal(v: JsonValue): string {
 export function megabytes(n: number): string {
   return (n / 1_000_000).toFixed(1);
 }
+
+/** Why a run produced no result, as the result pane shows it. */
+export interface Failure {
+  title: string;
+  message: string;
+  help?: string;
+  /** The diagnostics of files that don't compile; the problems list has them. */
+  diagnostics?: { file?: string }[];
+  /** The pane the failure is in, for an input or stubs that don't parse. */
+  pane?: "input" | "stubs";
+  line?: number;
+}
+
+/** What the file tree shows next to a file. */
+export interface FileMarks {
+  errors: number;
+  warnings: number;
+  /** A rule in it fired in the last run. */
+  fired: boolean;
+  /** For a test file, its cases in the last test run. */
+  passed: number;
+  failed: number;
+  /** For a test file, none of its cases could run. */
+  suiteError: boolean;
+}

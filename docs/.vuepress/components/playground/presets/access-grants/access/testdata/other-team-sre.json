@@ -1,0 +1,9 @@
+{
+  "actor": {
+    "name": "linus",
+    "groups": ["checkout-sre"],
+    "clearance": "standard"
+  },
+  "team": "payments",
+  "environment": "production"
+}

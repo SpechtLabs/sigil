@@ -1,0 +1,30 @@
+policy: checkout.alerts
+cases:
+  - name: a critical production alert pages the on-call
+    input:
+      alert: {name: CheckoutErrorRate, severity: critical, labels: {env: production}, firing_for: 2m}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: page
+      reason: critical_alert
+      payload: {target: checkout-primary}
+  - name: a warning that keeps firing pages
+    input_file: testdata/latency.json
+    expect:
+      decision: page
+      reason: sustained
+  - name: staging is dropped, even when it's critical
+    input:
+      alert: {name: CheckoutErrorRate, severity: critical, labels: {env: staging}}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: drop
+      reason: not_production
+  - name: info alerts fall back to the shared channel
+    input:
+      alert: {name: CheckoutPodRestarted, severity: info, labels: {env: production}}
+      team: {name: checkout, oncall: checkout-primary, channel: "#checkout-alerts"}
+    expect:
+      decision: notify
+      reason: unrouted
+      payload: {channel: "#checkout-alerts"}
