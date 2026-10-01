@@ -379,7 +379,7 @@ During a change freeze, nothing ships to a frozen environment. Which environment
 | Vocabulary | `deploy.freeze`: `pub let is_frozen = freeze.unknown or environment in freeze.environments`, built by `deploy.FreezeModule` and rendered to `policies/platform/deploy/freeze.sigil` | Go with `pkg/build`, reviewed as rendered Sigil | the platform team | rarely, reviewed as a diff |
 | Rules | `deploy.guardrails`: `when is_frozen { deny(reason: change_freeze) }` | Sigil | the platform team, required of every team | when the policy changes |
 
-The flag's value is never part of a policy. It's data in the input, so flipping the flag doesn't reload anything, and the rendered module stays the same from one review to the next. The request plus the response's `freeze` block is the whole input the policy read, so `sigilc eval` on that input reproduces the decision. Fail-closed handling lives in the vocabulary, `freeze.unknown or …`, where a reviewer sees it, and not in Go code that a policy reviewer never reads.
+The flag's value is never part of a policy. It's data in the input, so flipping the flag doesn't reload anything, and the rendered module stays the same from one review to the next. Each `deploy decision` log line carries the whole input the policy read, freeze included, as its `input` field, so `sigilc eval` on that field alone reproduces the decision; see [Replay a decision](#replay-a-decision). Fail-closed handling lives in the vocabulary, `freeze.unknown or …`, where a reviewer sees it, and not in Go code that a policy reviewer never reads.
 
 ### The vocabulary, built in Go
 
@@ -420,14 +420,21 @@ go test ./internal/deploy -run Vocabulary -update
 
 ### Where the freeze comes from
 
-A request can't carry a freeze. `freeze` isn't a field of the request, so a body that sends one is refused with `400` like any other unknown field. After decoding a request, the handler overwrites `Input.Freeze` with the freeze source's answer. The policy, the response's `freeze` block, the `deploygate.evaluate` span (`sigil.freeze.environments`, `sigil.freeze.unknown`) and the `deploy decision` log line (`freeze_environments`, `freeze_unknown`) all carry the same value. That value plus the rest of the request is the input the policy read.
+A request can't carry a freeze. `freeze` isn't a field of the request, so a body that sends one is refused with `400` like any other unknown field. After decoding a request, the handler overwrites `Input.Freeze` with the freeze source's answer. The policy, the response's `freeze` block, the `deploygate.evaluate` span (`sigil.freeze.environments`, `sigil.freeze.unknown`) and the `deploy decision` log line (`freeze_environments`, `freeze_unknown`, and the whole input as `input`) all carry the same value.
 
 There are two sources:
 
-- **Fixed**, `--freeze-environments production`: the same environments for as long as the process runs. Without it, nothing is frozen.
-- **A feature flag**, `--freeze-ofrep-url http://flagd:8016`: deploygate evaluates one flag over the [OpenFeature Remote Evaluation Protocol](https://github.com/open-feature/protocol), by default `change-freeze`, with `POST /ofrep/v1/evaluate/flags/change-freeze` and the context `{"targetingKey": "deploygate"}`, plus any `--freeze-context key=value` attributes for a service that targets on them. deploygate expects the flag's value to list the frozen environments, as a JSON array of strings (`["production", "staging"]`) or as one comma-separated string (`"production,staging"`), so a service with only boolean and string flags can hold it. An empty array or an empty string freezes nothing. Any other value, an error answer, and an answer whose `reason` is `ERROR` count as failed refreshes. The [featuregate](../feature-flags/README.md) example speaks OFREP but doesn't serve a `change-freeze` flag yet, so the two examples don't run together out of the box.
+- **Fixed**, `--freeze-environments production`: the same environments for as long as the process runs. Without it, nothing is frozen. Each must be one of `--freeze-known-environments`, or deploygate doesn't start.
+- **A feature flag**, `--freeze-ofrep-url http://flagd:8016`: deploygate evaluates one flag over the [OpenFeature Remote Evaluation Protocol](https://github.com/open-feature/protocol), by default `change-freeze`, with `POST /ofrep/v1/evaluate/flags/change-freeze` and the context `{"targetingKey": "deploygate"}`, plus any `--freeze-context key=value` attributes for a service that targets on them. deploygate expects the flag's value to list the frozen environments, as a JSON array of strings (`["production", "staging"]`) or as one comma-separated string (`"production,staging"`), so a service with only boolean and string flags can hold it. An array item may hold several names separated by commas too. An empty array or an empty string freezes nothing. The [featuregate](../feature-flags/README.md) example speaks OFREP but doesn't serve a `change-freeze` flag yet, so the two examples don't run together out of the box.
 
-The flag is refreshed in the background every `--freeze-refresh-interval`, and a request never waits on the flag service: it reads the last answer. A refresh that fails keeps the last answer, and so does an answer that isn't a list of environments, or one whose OFREP `reason` is `ERROR`. Each failure is logged as a warning. Once the last answer is older than `--freeze-max-staleness`, the freeze is `unknown`. `is_frozen` is then true for every environment, so every deploy is denied with `change_freeze` until the flag service answers again, and the failures are logged as errors. The freeze is also `unknown` from startup until the first answer arrives. A flag service that is down at startup doesn't stop deploygate from starting; deploygate denies every deploy as frozen until the service answers.
+The flag is refreshed in the background every `--freeze-refresh-interval`, and a request never waits on the flag service: it reads the last answer. deploygate logs the parsed list, `the change freeze changed`, whenever it changes. A refresh that fails keeps the last answer, and each failure is logged as a warning that quotes the value. A mistyped value never means "nothing frozen"; these all fail the refresh:
+
+- a name outside `--freeze-known-environments` (default `production,staging`), compared exactly as written, so `"Production"`, `"prod"` and `"production; staging"` are failures, not other environments
+- an array item that isn't a string, `null` included, and a value that is neither a string nor an array
+- an answer with the key `value` twice, an answer for another flag than the one asked for, and keys in another case (`"Value"` isn't `value`, so such an answer has no value)
+- an error answer, and an answer whose OFREP `reason` is `ERROR`
+
+An answer that turns the flag off, such as `reason` `DISABLED` with the value `""`, isn't a failure: it lifts the freeze. Whoever can flip the flag in the flag service can therefore end a freeze, so access to that flag is part of deploygate's trust model, as much as access to the platform's policies. Once the last answer is older than `--freeze-max-staleness`, the freeze is `unknown`. `is_frozen` is then true for every environment, so every deploy is denied with `change_freeze` until the flag service answers again, and the failures are logged as errors. The freeze is also `unknown` from startup until the first answer arrives. A flag service that is down at startup doesn't stop deploygate from starting; deploygate denies every deploy as frozen until the service answers.
 
 ### A frozen deploy
 
@@ -452,6 +459,19 @@ The status is `403 Forbidden`. Excerpt from the response:
 ```
 
 `change_freeze` ranks below `not_eligible` and above `soak_too_short`. A frozen deploy that also soaked too briefly is denied for the freeze, and one that isn't eligible at all is still denied as `not_eligible`. A release manager's approval loses to the freeze like any other approval, because `deny` outranks `approve`.
+
+The example has no break-glass. A frozen deploy is denied for everyone: a hotfix, which skips the minimum soak, is still denied, and so are a release manager and the on-call SRE. The only way through a freeze is to lift it, in the flag or the configuration.
+
+### Replay a decision
+
+The `deploy decision` log line's `input` field is the input the policy read: the request as the access stage turned it into the deploy kind's input, the granted roles as `actor.roles`, and the freeze. Durations are written as Sigil reads them. Save the field and evaluate it with `sigilc`, and you get the same decision:
+
+```bash
+jq -c 'select(.msg == "deploy decision") | .input' deploygate.log | tail -1 > input.json
+go run ./cmd/sigilc eval --config policies/sigil.yaml --input input.json --policy payments.production policies
+```
+
+`TestDecisionLogReplays` in `internal/server` does exactly this for a frozen, an unknown and an unfrozen freeze, a short soak and an approval.
 
 ## Watch it reload
 
@@ -852,6 +872,7 @@ Each deployment request gets the gin server span and, below it, two siblings. Th
 | `--debug` | `DEPLOYGATE_DEBUG` | `false` | Debug logging and gin's debug mode |
 | `--log-format` | `DEPLOYGATE_LOG_FORMAT` | `json` | `json` or `console` |
 | `--freeze-environments` | `DEPLOYGATE_FREEZE_ENVIRONMENTS` | empty | Environments frozen for as long as deploygate runs, repeatable or comma-separated. Can't be combined with `--freeze-ofrep-url` |
+| `--freeze-known-environments` | `DEPLOYGATE_FREEZE_KNOWN_ENVIRONMENTS` | `production,staging` | Environments a freeze may name, repeatable or comma-separated. A flag value naming another fails its refresh, and `--freeze-environments` may name no other |
 | `--freeze-ofrep-url` | `DEPLOYGATE_FREEZE_OFREP_URL` | empty | Base URL of an OFREP flag service the freeze is read from, such as `http://flagd:8016`. Empty uses `--freeze-environments` |
 | `--freeze-flag` | `DEPLOYGATE_FREEZE_FLAG` | `change-freeze` | Key of the flag that lists the frozen environments, as a list of strings or one comma-separated string |
 | `--freeze-context` | `DEPLOYGATE_FREEZE_CONTEXT` | empty | `key=value` attributes of the flag's evaluation context, repeatable or comma-separated. `targetingKey` is `deploygate` unless set here |

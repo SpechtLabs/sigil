@@ -39,6 +39,7 @@ func TestNewOFREP(t *testing.T) {
 		{name: "no host", url: "http://", wantErr: "isn't an absolute http or https URL"},
 		{name: "another scheme", url: "ftp://flagd", wantErr: "isn't an absolute http or https URL"},
 		{name: "empty flag", url: "http://f", opts: []freeze.Option{freeze.WithFlag("")}, wantErr: "flag key is empty"},
+		{name: "no known environments", url: "http://f", opts: []freeze.Option{freeze.WithKnownEnvironments(" ", "")}, wantErr: "the freeze has no known environments"},
 		{name: "no refresh interval", url: "http://f", opts: []freeze.Option{freeze.WithRefreshInterval(0)}, wantErr: "refresh interval 0s isn't positive"},
 		{
 			name:    "staleness no longer than the interval",
@@ -85,7 +86,27 @@ func TestOFREPRefresh(t *testing.T) {
 		{name: "a null value", body: `{"key":"change-freeze","value":null,"reason":"STATIC"}`, wantErr: "the flag change-freeze has no value"},
 		{name: "no value", body: `{"key":"change-freeze","reason":"STATIC"}`, wantErr: "the flag change-freeze has no value"},
 		{name: "a boolean", body: `{"key":"change-freeze","value":true,"reason":"STATIC"}`, wantErr: "isn't a list of environments: true"},
-		{name: "a list of numbers", body: `{"key":"change-freeze","value":[1,2],"reason":"STATIC"}`, wantErr: "isn't a list of environments: [1,2]"},
+		{name: "a list of numbers", body: `{"key":"change-freeze","value":[1,2],"reason":"STATIC"}`, wantErr: "holds 1, which isn't an environment name: [1,2]"},
+		{name: "a list holding null", body: `{"key":"change-freeze","value":[null],"reason":"STATIC"}`, wantErr: "holds null, which isn't an environment name"},
+		{name: "list items split on commas", body: `{"key":"change-freeze","value":["production,staging"," staging"],"reason":"STATIC"}`, want: []string{"production", "staging"}},
+		{name: "no key, as some services answer", body: `{"value":"staging"}`, want: []string{"staging"}},
+		{
+			name:       "an environment spelled another way",
+			body:       `{"key":"change-freeze","value":["Production"],"reason":"STATIC"}`,
+			wantErr:    `names environments deploygate doesn't know: "Production", in ["Production"]`,
+			wantAdvice: "production, staging",
+		},
+		{name: "another separator", body: `{"key":"change-freeze","value":"production; staging","reason":"STATIC"}`, wantErr: `doesn't know: "production; staging"`},
+		{name: "an answer for another flag", body: `{"key":"some-other-flag","value":[],"reason":"STATIC"}`, wantErr: "answered for the flag some-other-flag when asked for change-freeze"},
+		{name: "the value twice", body: `{"key":"change-freeze","value":["production"],"value":[],"reason":"STATIC"}`, wantErr: `the key "value" appears twice`},
+		{name: "keys in another case", body: `{"Key":"change-freeze","REASON":"STATIC","Value":[],"errorcode":"GENERAL"}`, wantErr: "the flag change-freeze has no value"},
+		{name: "a reason that isn't a string", body: `{"key":"change-freeze","value":[],"reason":1}`, wantErr: "reason isn't a string: 1"},
+		{name: "a second JSON value", body: `{"key":"change-freeze","value":[]}{}`, wantErr: "more than one JSON value"},
+		{name: "not an object", body: `["production"]`, wantErr: "isn't an OFREP evaluation"},
+		{name: "cut off after a value", body: `{"value":["production"],`, wantErr: "isn't an OFREP evaluation"},
+		{name: "cut off in a value", body: `{"value":`, wantErr: "isn't an OFREP evaluation"},
+		{name: "unclosed", body: `{"value":[]`, wantErr: "isn't an OFREP evaluation"},
+		{name: "closed with a bracket", body: `{"value":[]]`, wantErr: "isn't an OFREP evaluation"},
 		{
 			name:    "a failed evaluation answered with 200",
 			body:    `{"key":"change-freeze","value":"","reason":"ERROR","variant":"off","metadata":{"sigil.error":"timeout"}}`,
@@ -322,6 +343,7 @@ func TestOFREPRun(t *testing.T) {
 			fail(w, r)
 		},
 		ok(`["production","staging"]`), // the recovery
+		ok(`["production","staging"]`), // the same answer again, which logs nothing
 		func(_ http.ResponseWriter, r *http.Request) { // in flight when the context ends
 			// The server notices a client that left only once the body is read.
 			_, _ = io.Copy(io.Discard, r.Body)
@@ -353,7 +375,7 @@ func TestOFREPRun(t *testing.T) {
 		src.Run(ctx)
 	}()
 
-	for range 4 {
+	for range 5 {
 		clock.tick <- clock.Now()
 	}
 	<-blocked

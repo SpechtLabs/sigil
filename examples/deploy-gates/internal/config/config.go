@@ -44,6 +44,7 @@ const (
 	keyDebug                 = "debug"
 	keyLogFormat             = "log-format"
 	keyFreezeEnvironments    = "freeze-environments"
+	keyFreezeKnown           = "freeze-known-environments"
 	keyFreezeOFREPURL        = "freeze-ofrep-url"
 	keyFreezeFlag            = "freeze-flag"
 	keyFreezeContext         = "freeze-context"
@@ -107,6 +108,10 @@ type Config struct {
 	// process runs, when no flag service is configured. Empty freezes
 	// nothing.
 	FreezeEnvironments []string
+	// FreezeKnownEnvironments are the environments a freeze may name. A flag
+	// value naming another fails its refresh, and FreezeEnvironments may
+	// name no other either.
+	FreezeKnownEnvironments []string
 	// FreezeOFREPURL is the base URL of the OFREP flag service the freeze
 	// is read from, such as http://flagd:8016. Empty means the freeze
 	// is FreezeEnvironments. Setting both is an error.
@@ -168,11 +173,12 @@ func Load(v *viper.Viper) (Config, humane.Error) {
 		Debug:             v.GetBool(keyDebug),
 		LogFormat:         v.GetString(keyLogFormat),
 
-		FreezeEnvironments:    splitList(v.GetStringSlice(keyFreezeEnvironments)),
-		FreezeOFREPURL:        v.GetString(keyFreezeOFREPURL),
-		FreezeFlag:            v.GetString(keyFreezeFlag),
-		FreezeRefreshInterval: v.GetDuration(keyFreezeRefreshInterval),
-		FreezeMaxStaleness:    v.GetDuration(keyFreezeMaxStaleness),
+		FreezeEnvironments:      splitList(v.GetStringSlice(keyFreezeEnvironments)),
+		FreezeKnownEnvironments: splitList(v.GetStringSlice(keyFreezeKnown)),
+		FreezeOFREPURL:          v.GetString(keyFreezeOFREPURL),
+		FreezeFlag:              v.GetString(keyFreezeFlag),
+		FreezeRefreshInterval:   v.GetDuration(keyFreezeRefreshInterval),
+		FreezeMaxStaleness:      v.GetDuration(keyFreezeMaxStaleness),
 	}
 
 	freezeContext, err := splitPairs(v.GetStringSlice(keyFreezeContext))
@@ -219,6 +225,7 @@ func (c Config) Validate() humane.Error {
 func (c Config) FreezeOptions() []freeze.Option { //nolint:optionspattern // returns the freeze package's options built from the configuration; it isn't an option itself
 	return []freeze.Option{
 		freeze.WithFlag(c.FreezeFlag),
+		freeze.WithKnownEnvironments(c.FreezeKnownEnvironments...),
 		freeze.WithEvaluationContext(c.FreezeContext),
 		freeze.WithRefreshInterval(c.FreezeRefreshInterval),
 		freeze.WithMaxStaleness(c.FreezeMaxStaleness),
@@ -249,7 +256,9 @@ request can't carry one. --freeze-environments freezes a fixed list.
 --freeze-ofrep-url reads the list from a flag on an OpenFeature Remote
 Evaluation Protocol service instead, refreshed in the background: when the
 service hasn't answered for --freeze-max-staleness, the freeze is unknown,
-and every deploy is denied as frozen until it answers again.
+and every deploy is denied as frozen until it answers again. A freeze may
+only name --freeze-known-environments: a flag value naming another fails
+its refresh, and --freeze-environments naming another doesn't start.
 
 Tracing follows the standard OpenTelemetry variables: OTEL_EXPORTER_OTLP_ENDPOINT,
 OTEL_SERVICE_NAME (default deploygate) and OTEL_TRACES_EXPORTER=none.
@@ -297,12 +306,7 @@ gracefully.`,
 	flags.Duration(keyEvaluationTimeout, DefaultEvaluationTimeout, "how long one policy evaluation may take before the request answers 503 with the fallback decision")
 	flags.Bool(keyDebug, false, "debug logging and gin debug mode")
 	flags.String(keyLogFormat, DefaultLogFormat, "log format: json or console")
-	flags.StringSlice(keyFreezeEnvironments, nil, "environment frozen for as long as deploygate runs, repeatable; can't be combined with --freeze-ofrep-url")
-	flags.String(keyFreezeOFREPURL, "", "base URL of the OFREP flag service the change freeze is read from, such as http://flagd:8016; empty uses --freeze-environments")
-	flags.String(keyFreezeFlag, DefaultFreezeFlag, "key of the flag that lists the frozen environments, as a list of strings or one comma-separated string")
-	flags.StringSlice(keyFreezeContext, nil, "key=value attribute of the freeze flag's evaluation context, repeatable, such as region=eu-1")
-	flags.Duration(keyFreezeRefreshInterval, DefaultFreezeRefreshInterval, "how often to evaluate the freeze flag")
-	flags.Duration(keyFreezeMaxStaleness, DefaultFreezeMaxStaleness, "how old the last freeze flag answer may get before the freeze is unknown and every deploy is denied as frozen; longer than --freeze-refresh-interval")
+	addFreezeFlags(flags)
 
 	return cmd
 }
@@ -318,6 +322,17 @@ func newVersionCommand(version string) *cobra.Command {
 			return err
 		},
 	}
+}
+
+// addFreezeFlags declares the change freeze flags of `deploygate serve`.
+func addFreezeFlags(flags *pflag.FlagSet) {
+	flags.StringSlice(keyFreezeEnvironments, nil, "environment frozen for as long as deploygate runs, repeatable; can't be combined with --freeze-ofrep-url")
+	flags.StringSlice(keyFreezeKnown, freeze.DefaultKnownEnvironments, "environment a freeze may name, repeatable; a flag value naming another fails its refresh, so a typo never means nothing is frozen")
+	flags.String(keyFreezeOFREPURL, "", "base URL of the OFREP flag service the change freeze is read from, such as http://flagd:8016; empty uses --freeze-environments")
+	flags.String(keyFreezeFlag, DefaultFreezeFlag, "key of the flag that lists the frozen environments, as a list of strings or one comma-separated string")
+	flags.StringSlice(keyFreezeContext, nil, "key=value attribute of the freeze flag's evaluation context, repeatable, such as region=eu-1")
+	flags.Duration(keyFreezeRefreshInterval, DefaultFreezeRefreshInterval, "how often to evaluate the freeze flag")
+	flags.Duration(keyFreezeMaxStaleness, DefaultFreezeMaxStaleness, "how old the last freeze flag answer may get before the freeze is unknown and every deploy is denied as frozen; longer than --freeze-refresh-interval")
 }
 
 // bind wires every flag of cmd to v and v to the environment, so each
@@ -342,9 +357,21 @@ func bind(v *viper.Viper, cmd *cobra.Command) humane.Error {
 	return herr
 }
 
-// validateFreeze reports a freeze setting that can't work: a fixed list and
-// a flag service both set, or flag service settings freeze.NewOFREP refuses.
+// validateFreeze reports a freeze setting that can't work: no known
+// environments, a fixed list naming another, a fixed list and a flag service
+// both set, or flag service settings freeze.NewOFREP refuses.
 func (c Config) validateFreeze() humane.Error {
+	if len(c.FreezeKnownEnvironments) == 0 {
+		return humane.New("the change freeze has no known environments",
+			"set --freeze-known-environments to the environments a freeze may name, for example "+strings.Join(freeze.DefaultKnownEnvironments, ","))
+	}
+	for _, env := range c.FreezeEnvironments {
+		if !slices.Contains(c.FreezeKnownEnvironments, env) {
+			return humane.New(fmt.Sprintf("the frozen environment %q isn't a known environment", env),
+				"freeze only the known environments, spelled exactly as they are: "+strings.Join(c.FreezeKnownEnvironments, ", "),
+				"or add it to --freeze-known-environments")
+		}
+	}
 	if c.FreezeOFREPURL == "" {
 		return nil
 	}

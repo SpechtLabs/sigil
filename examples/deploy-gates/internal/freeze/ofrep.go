@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -40,6 +42,13 @@ const (
 	DefaultMaxStaleness = time.Minute
 )
 
+// DefaultKnownEnvironments are the environments a flag value may name
+// unless [WithKnownEnvironments] says otherwise: the ones the example's
+// policies and requests use. A name outside them fails the refresh, so a
+// typo in the flag, such as "Production" or "prod", is reported instead of
+// freezing nothing.
+var DefaultKnownEnvironments = []string{"production", "staging"}
+
 // evaluatePath is OFREP's single-flag evaluation endpoint; the flag key
 // follows it.
 const evaluatePath = "/ofrep/v1/evaluate/flags/"
@@ -58,8 +67,15 @@ const reasonError = "ERROR"
 // Evaluation Protocol service, such as flagd. The
 // flag's value lists the frozen environments: a JSON array of strings, or a
 // string of comma-separated names, which is what a flag service with only
-// boolean and string flags can hold. An empty list or an empty string means
+// boolean and string flags can hold; an item of the array may hold several
+// names separated by commas too. An empty list or an empty string means
 // nothing is frozen.
+//
+// A value that doesn't say exactly that fails the refresh rather than
+// freezing nothing: a name outside the known environments, compared as
+// written, so "Production" isn't production; an item that isn't a string;
+// a value of another type; an answer with two "value" keys; and an answer
+// for another flag.
 //
 // [OFREP.Refresh] evaluates the flag once and [OFREP.Run] keeps doing so in
 // the background; [OFREP.Freeze] answers from the last successful
@@ -77,6 +93,7 @@ type OFREP struct {
 	endpoint     string
 	flag         string
 	body         []byte
+	known        []string
 	interval     time.Duration
 	maxStaleness time.Duration
 }
@@ -92,6 +109,7 @@ type ofrepConfig struct {
 	tracer       trace.Tracer
 	context      map[string]string
 	flag         string
+	known        []string
 	interval     time.Duration
 	maxStaleness time.Duration
 }
@@ -121,6 +139,15 @@ type evaluation struct {
 func WithFlag(key string) Option {
 	return func(c *ofrepConfig) {
 		c.flag = key
+	}
+}
+
+// WithKnownEnvironments sets the environments a flag value may name. A
+// refresh whose value names any other fails, and the last answer stays. The
+// default is [DefaultKnownEnvironments].
+func WithKnownEnvironments(environments ...string) Option {
+	return func(c *ofrepConfig) {
+		c.known = environments
 	}
 }
 
@@ -183,12 +210,13 @@ func WithTracer(tracer trace.Tracer) Option {
 // [OFREP.Refresh] for the first answer and [OFREP.Run] for the rest. Until
 // the first refresh succeeds, the freeze is unknown. It returns an error
 // for a base URL that isn't an absolute http or https URL, an empty flag
-// key, a refresh interval that isn't positive, and a maximum staleness no
-// longer than the refresh interval.
+// key, no known environments, a refresh interval that isn't positive, and a
+// maximum staleness no longer than the refresh interval.
 func NewOFREP(baseURL string, opts ...Option) (*OFREP, humane.Error) {
 	cfg := ofrepConfig{
 		context:      map[string]string{"targetingKey": DefaultTargetingKey},
 		flag:         DefaultFlag,
+		known:        DefaultKnownEnvironments,
 		interval:     DefaultRefreshInterval,
 		maxStaleness: DefaultMaxStaleness,
 	}
@@ -202,6 +230,11 @@ func NewOFREP(baseURL string, opts ...Option) (*OFREP, humane.Error) {
 	}
 	if cfg.flag == "" {
 		return nil, humane.New("the freeze flag key is empty", "set the key of the flag that lists the frozen environments, such as "+DefaultFlag)
+	}
+	known := normalize(cfg.known)
+	if len(known) == 0 {
+		return nil, humane.New("the freeze has no known environments",
+			"list the environments a freeze flag may name, such as "+strings.Join(DefaultKnownEnvironments, ", "))
 	}
 	if cfg.interval <= 0 {
 		return nil, humane.New("the freeze refresh interval "+cfg.interval.String()+" isn't positive",
@@ -223,6 +256,7 @@ func NewOFREP(baseURL string, opts ...Option) (*OFREP, humane.Error) {
 		endpoint:     base + evaluatePath + url.PathEscape(cfg.flag),
 		flag:         cfg.flag,
 		body:         body,
+		known:        known,
 		interval:     cfg.interval,
 		maxStaleness: cfg.maxStaleness,
 	}
@@ -254,9 +288,9 @@ func (o *OFREP) Freeze() deploy.Freeze {
 }
 
 // Refresh evaluates the flag once, in a span of its own, and keeps the
-// answer when it is one. A failed evaluation, an answer that isn't a list
-// of environments included, leaves the last answer in place to age, and
-// returns why.
+// answer when it is one, logging the environments whenever they change. A
+// failed evaluation, an answer that isn't a list of known environments
+// included, leaves the last answer in place to age, and returns why.
 func (o *OFREP) Refresh(ctx context.Context) humane.Error {
 	ctx, span := o.tracer.Start(ctx, "deploygate.freeze.refresh", trace.WithAttributes(
 		attribute.String("freeze.flag", o.flag),
@@ -264,13 +298,24 @@ func (o *OFREP) Refresh(ctx context.Context) humane.Error {
 	))
 	defer span.End()
 
+	// The answer is as old as the question: the flag may have changed while
+	// the request was on its way, so its age counts from before it was sent.
+	at := o.clock.Now()
 	environments, herr := o.evaluate(ctx)
 	if herr != nil {
 		span.RecordError(herr)
 		span.SetStatus(codes.Error, herr.Error())
 		return herr
 	}
-	o.last.Store(&answer{at: o.clock.Now(), environments: environments})
+	previous := o.last.Swap(&answer{at: at, environments: environments})
+	if previous == nil || !slices.Equal(previous.environments, environments) {
+		var was []string
+		if previous != nil {
+			was = previous.environments
+		}
+		telemetry.FromContext(ctx).InfoContext(ctx, "the change freeze changed",
+			zap.String("flag", o.flag), zap.Strings("environments", environments), zap.Strings("previous", was))
+	}
 	span.SetAttributes(attribute.StringSlice("sigil.freeze.environments", environments))
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -364,15 +409,18 @@ func (o *OFREP) evaluate(ctx context.Context) ([]string, humane.Error) {
 			"check that the freeze's OFREP URL points at an OFREP service")
 	}
 
-	var ev evaluation
-	if err := json.Unmarshal(body, &ev); err != nil {
-		return nil, humane.Wrap(err, fmt.Sprintf("the flag service answered %d for %s with a body that isn't an OFREP evaluation", resp.StatusCode, o.flag),
-			"check that the freeze's OFREP URL points at an OFREP service")
+	ev, herr := decodeEvaluation(body)
+	if herr != nil {
+		return nil, humane.Wrap(herr, fmt.Sprintf("the flag service answered %d for %s with a body that isn't an OFREP evaluation: %s", resp.StatusCode, o.flag, herr.Error()), herr.Advice()...)
 	}
 	if resp.StatusCode != http.StatusOK || ev.ErrorCode != "" || ev.Reason == reasonError {
 		return nil, o.failed(resp.StatusCode, ev)
 	}
-	return environments(o.flag, ev.Value)
+	if ev.Key != "" && ev.Key != o.flag {
+		return nil, humane.New(fmt.Sprintf("the flag service answered for the flag %s when asked for %s", ev.Key, o.flag),
+			"check that the flag service serves "+o.flag+" at its own key")
+	}
+	return o.environments(ev.Value)
 }
 
 // failed explains an evaluation the flag service answered with an error.
@@ -411,22 +459,102 @@ func parseBase(raw string) (string, humane.Error) {
 }
 
 // environments reads a flag value as the frozen environments: a JSON array
-// of strings, or one string of comma-separated names.
-func environments(flag string, value json.RawMessage) ([]string, humane.Error) {
+// of strings, or one string, each holding names separated by commas. Every
+// name must be a known environment, as written. An empty array or string
+// freezes nothing; anything else that isn't such a list is an error that
+// quotes the value.
+func (o *OFREP) environments(value json.RawMessage) ([]string, humane.Error) {
 	advice := "make the flag's value a list of environment names, or one string of them separated by commas; an empty one freezes nothing"
-
-	if len(bytes.TrimSpace(value)) == 0 || string(value) == "null" {
-		return nil, humane.New("the flag "+flag+" has no value", advice)
+	trimmed := bytes.TrimSpace(value)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		return nil, humane.New("the flag "+o.flag+" has no value", advice)
 	}
 
-	var list []string
-	errList := json.Unmarshal(value, &list)
-	if errList == nil {
-		return normalize(list), nil
-	}
+	var items []string
 	var s string
-	if err := json.Unmarshal(value, &s); err == nil {
-		return normalize(strings.Split(s, ",")), nil
+	var raw []json.RawMessage
+	switch {
+	case json.Unmarshal(trimmed, &s) == nil:
+		items = []string{s}
+	case json.Unmarshal(trimmed, &raw) == nil:
+		for _, r := range raw {
+			var item string
+			if bytes.Equal(bytes.TrimSpace(r), []byte("null")) || json.Unmarshal(r, &item) != nil {
+				return nil, humane.New(fmt.Sprintf("the value of the flag %s holds %s, which isn't an environment name: %s", o.flag, r, trimmed), advice)
+			}
+			items = append(items, item)
+		}
+	default:
+		return nil, humane.New("the value of the flag "+o.flag+" isn't a list of environments: "+string(trimmed), advice)
 	}
-	return nil, humane.Wrap(errList, "the value of the flag "+flag+" isn't a list of environments: "+string(value), advice)
+
+	var names []string
+	for _, item := range items {
+		names = append(names, strings.Split(item, ",")...)
+	}
+	envs := normalize(names)
+	var unknown []string
+	for _, env := range envs {
+		if !slices.Contains(o.known, env) {
+			unknown = append(unknown, strconv.Quote(env))
+		}
+	}
+	if len(unknown) > 0 {
+		return nil, humane.New(fmt.Sprintf("the flag %s names environments deploygate doesn't know: %s, in %s", o.flag, strings.Join(unknown, ", "), trimmed),
+			"name only the known environments, spelled exactly as they are: "+strings.Join(o.known, ", "),
+			"or add the environment to the known environments in deploygate's configuration")
+	}
+	return envs, nil
+}
+
+// decodeEvaluation reads an OFREP evaluation strictly. The keys are matched
+// exactly, unlike encoding/json, which would read "Value" as value, and a
+// key of the evaluation that appears twice is an error, where encoding/json
+// would keep the last one silently. Other keys, such as metadata, are
+// skipped. The error says what's wrong with the body; the caller adds
+// which answer it was.
+func decodeEvaluation(body []byte) (evaluation, humane.Error) {
+	const advice = "check that the freeze's OFREP URL points at an OFREP service"
+	var ev evaluation
+	dec := json.NewDecoder(bytes.NewReader(body))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return ev, humane.New("the body isn't a JSON object", advice)
+	}
+	fields := map[string]*json.RawMessage{
+		"key": new(json.RawMessage), "reason": new(json.RawMessage), "variant": new(json.RawMessage),
+		"errorCode": new(json.RawMessage), "errorDetails": new(json.RawMessage), "value": &ev.Value,
+	}
+	seen := map[string]bool{}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return ev, humane.Wrap(err, "the body isn't valid JSON: "+err.Error(), advice)
+		}
+		key, _ := tok.(string)
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			return ev, humane.Wrap(err, "the body isn't valid JSON: "+err.Error(), advice)
+		}
+		dst, ok := fields[key]
+		if !ok {
+			continue
+		}
+		if seen[key] {
+			return ev, humane.New(fmt.Sprintf("the key %q appears twice", key), "an OFREP evaluation holds each key once; check the flag service")
+		}
+		seen[key] = true
+		*dst = raw
+	}
+	if _, err := dec.Token(); err != nil {
+		return ev, humane.Wrap(err, "the body isn't valid JSON: "+err.Error(), advice)
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return ev, humane.New("the body holds more than one JSON value", advice)
+	}
+	for name, dst := range map[string]*string{"key": &ev.Key, "reason": &ev.Reason, "variant": &ev.Variant, "errorCode": &ev.ErrorCode, "errorDetails": &ev.ErrorDetails} {
+		if raw := *fields[name]; raw != nil && json.Unmarshal(raw, dst) != nil {
+			return ev, humane.New(fmt.Sprintf("%s isn't a string: %s", name, raw), advice)
+		}
+	}
+	return ev, nil
 }

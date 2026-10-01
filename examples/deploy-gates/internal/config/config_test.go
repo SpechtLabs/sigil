@@ -21,9 +21,10 @@ func TestServeConfig(t *testing.T) {
 		EvaluationTimeout: time.Second,
 		LogFormat:         "json",
 
-		FreezeFlag:            "change-freeze",
-		FreezeRefreshInterval: 15 * time.Second,
-		FreezeMaxStaleness:    time.Minute,
+		FreezeFlag:              "change-freeze",
+		FreezeKnownEnvironments: []string{"production", "staging"},
+		FreezeRefreshInterval:   15 * time.Second,
+		FreezeMaxStaleness:      time.Minute,
 	}
 
 	tests := []struct {
@@ -118,6 +119,23 @@ func TestServeConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "known environments of its own",
+			env:  map[string]string{"DEPLOYGATE_FREEZE_KNOWN_ENVIRONMENTS": "production,qa", "DEPLOYGATE_FREEZE_ENVIRONMENTS": "qa"},
+			edit: func(c *config.Config) {
+				c.FreezeKnownEnvironments, c.FreezeEnvironments = []string{"production", "qa"}, []string{"qa"}
+			},
+		},
+		{
+			name:    "a frozen environment that isn't known",
+			args:    []string{"--freeze-environments", "Production"},
+			wantErr: `the frozen environment "Production" isn't a known environment`,
+		},
+		{
+			name:    "no known environments",
+			args:    []string{"--freeze-known-environments", " , "},
+			wantErr: "the change freeze has no known environments",
+		},
+		{
 			name:    "a freeze set twice",
 			args:    []string{"--freeze-environments", "production", "--freeze-ofrep-url", "http://flagd:8016"},
 			wantErr: "the change freeze is set twice",
@@ -170,7 +188,7 @@ func TestServeConfig(t *testing.T) {
 				got.ReloadInterval != want.ReloadInterval || got.ShutdownTimeout != want.ShutdownTimeout ||
 				got.EvaluationTimeout != want.EvaluationTimeout ||
 				got.Debug != want.Debug || got.LogFormat != want.LogFormat ||
-				!slices.Equal(got.FreezeEnvironments, want.FreezeEnvironments) || got.FreezeOFREPURL != want.FreezeOFREPURL ||
+				!slices.Equal(got.FreezeEnvironments, want.FreezeEnvironments) || !slices.Equal(got.FreezeKnownEnvironments, want.FreezeKnownEnvironments) || got.FreezeOFREPURL != want.FreezeOFREPURL ||
 				got.FreezeFlag != want.FreezeFlag || !maps.Equal(got.FreezeContext, want.FreezeContext) ||
 				got.FreezeRefreshInterval != want.FreezeRefreshInterval || got.FreezeMaxStaleness != want.FreezeMaxStaleness {
 				t.Errorf("config = %+v, want %+v", *got, want)
