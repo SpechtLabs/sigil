@@ -17,7 +17,10 @@
 // The Go types here are the source of truth. `sigilc export` writes them out
 // as policies/deploy_approval.sigil for the tooling that runs without this
 // code, and TestKindFileIsCurrent fails when that copy is stale. The
-// package's tests also run every team's policy tests through
+// platform's deploy.freeze vocabulary is built here too, in Go, by
+// [FreezeModule], and rendered to policies/platform/deploy/freeze.sigil,
+// which TestVocabularyIsCurrent keeps current. The package's tests also
+// run every team's policy tests through
 // [github.com/spechtlabs/sigil/pkg/policytest.Run], with the guardrails
 // required from the platform's documents the way the service loads them.
 package deploy

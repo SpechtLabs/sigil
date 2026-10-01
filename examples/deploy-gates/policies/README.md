@@ -12,7 +12,7 @@ which roles the requestor holds for it.
 | `deploy_approval.sigil` | generated | The `DeployApproval` kind file, exported from `internal/deploy`. Regenerate it with `go generate ./cmd/sigilc`; `go test` fails when it's stale |
 | `access_grant.sigil` | generated | The `AccessGrant` kind file, exported from `internal/access` the same way |
 | `platform/deploy/common.sigil` | platform | `deploy.common`: shared `let`s (`eligible`, `cleared`, `owns_service`) |
-| `platform/deploy/freeze.sigil` | platform | `deploy.freeze`: the vocabulary `is_frozen`, true when the input's freeze covers the environment or is unknown |
+| `platform/deploy/freeze.sigil` | generated | `deploy.freeze`: the vocabulary `is_frozen`, true when the input's freeze covers the environment or is unknown. Rendered from `deploy.FreezeModule` in `internal/deploy/vocabulary.go`; regenerate it with `mise run generate`, and `go test` fails when it's stale |
 | `platform/deploy/guardrails.sigil` | platform | `deploy.guardrails`: the denies every team gets, the change freeze among them, with a tunable `min_soak` |
 | `platform/deploy/production.sigil` | platform | `deploy.production`: the review and approval rules teams invoke with their own `approvers` and `tiers` |
 | `platform/access/common.sigil` | platform | `access.common`: shared `let`s for group membership and clearance, and each team's on-call SRE group |
