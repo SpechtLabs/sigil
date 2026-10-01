@@ -330,6 +330,81 @@ guardrails()
 	// policy deploy.guardrails is defined twice
 }
 
+// Trusted serves the platform's vocabulary to team policies without
+// requiring a policy from it: the team imports deploy.freeze, and can't
+// ship a deploy.freeze of its own.
+func ExampleTrusted() {
+	type Input struct {
+		Environment string   `policy:"environment"`
+		Frozen      []string `policy:"frozen"`
+	}
+	deny := policy.NewDecision[policy.None]("deny", "change_freeze", "no_rule_matched")
+	allow := policy.NewDecision[policy.None]("allow", "team")
+	k := policy.NewKind[Input]("Deploy",
+		policy.WithVersion(1),
+		policy.WithDecisions(deny, allow),
+		policy.WithDefault(deny.Reason("no_rule_matched")),
+	)
+
+	vocabulary := policy.MapFS(map[string]string{"deploy/freeze.sigil": `
+module deploy.freeze: Deploy@1
+
+pub let is_frozen = environment in frozen
+`})
+
+	team := policy.MapFS(map[string]string{"team.sigil": `
+policy team.search: Deploy@1
+
+use deploy.freeze.{is_frozen}
+
+when is_frozen {
+  deny(reason: change_freeze)
+}
+
+when true {
+  allow(reason: team)
+}
+`})
+
+	p, err := k.Load(team, "team.search", policy.Trusted(vocabulary))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	res, err := p.Eval(context.Background(), Input{Environment: "production", Frozen: []string{"production"}})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(res.Decision, res.Reason)
+
+	// The team ships its own deploy.freeze, which never freezes.
+	forged := policy.MapFS(map[string]string{"team.sigil": `
+module deploy.freeze: Deploy@1
+
+pub let is_frozen = false
+---
+policy team.search: Deploy@1
+
+use deploy.freeze.{is_frozen}
+
+when not is_frozen {
+  allow(reason: team)
+}
+`})
+
+	_, err = k.Load(forged, "team.search", policy.Trusted(vocabulary))
+	if ce, ok := errors.AsType[*policy.CompileError](err); ok {
+		d := ce.Diagnostics[0]
+		fmt.Println(d.Position, d.Message)
+		fmt.Println(d.Help)
+	}
+	// Output:
+	// deny change_freeze
+	// team.sigil:2:8 module deploy.freeze is defined twice
+	// the name belongs to the trusted source, defined at deploy/freeze.sigil:2:1; documents resolve by name, so each name has one definition
+}
+
 // Eval never returns a nil result. On an error the result holds the kind's
 // default, so a host that fails closed can act on it and handle the error
 // apart.

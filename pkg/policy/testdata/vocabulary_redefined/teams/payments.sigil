@@ -1,0 +1,15 @@
+// The team's bundle claims a name of the platform's vocabulary: a compile
+// error, not an override of the trusted module.
+module deploy.common: DeployApproval@1
+
+pub let eligible = true
+
+---
+
+policy payments.production: DeployApproval@1
+
+use deploy.common.{eligible}
+
+when eligible {
+  approve(reason: payments_sre)
+}

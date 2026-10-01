@@ -25,7 +25,7 @@ import (
 type Params map[string]any //nolint:emptyinterface // values are the host's Go values, checked against the param's type
 
 // LoadOption configures [Kind.Compile] and [Kind.Load]. The load options
-// are [Params] and [Require].
+// are [Params], [Require] and [Trusted].
 type LoadOption interface {
 	apply(*loadOptions)
 }
@@ -38,6 +38,7 @@ type RequireOption interface {
 type loadOptions struct {
 	params   Params
 	requires []requirement
+	trusted  []fs.FS // the sources Trusted names, in order
 }
 
 // requirement is one required policy and, with From, the source it
@@ -103,3 +104,23 @@ func From(fsys fs.FS) RequireOption { return fromOption{fsys} }
 type fromOption struct{ fsys fs.FS }
 
 func (o fromOption) applyRequire(r *requirement) { r.from = o.fsys }
+
+// Trusted adds a trusted source without requiring a policy from it, such
+// as the vocabulary modules a platform ships for team policies to import.
+// It's read into the same trusted bundle as the sources [From] names: its
+// documents resolve before the bundle's, and a document in the bundle
+// passed to [Kind.Load] that takes a name it defines is a compile error.
+// Every document in it is checked, so a broken one fails the load even
+// when nothing uses it.
+//
+// Trusted may be repeated, and may name a source a [From] names too,
+// which is then read once; sources are the same as [From] compares them.
+// A required policy without From that a trusted source defines comes from
+// there, as it would with From.
+//
+//	Deploy.Load(teamFS, "payments.production", policy.Trusted(vocabularyFS))
+func Trusted(fsys fs.FS) LoadOption { return trustedOption{fsys} }
+
+type trustedOption struct{ fsys fs.FS }
+
+func (o trustedOption) apply(lo *loadOptions) { lo.trusted = append(lo.trusted, o.fsys) }

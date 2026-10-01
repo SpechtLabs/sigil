@@ -1,0 +1,9 @@
+// The team imports the platform's vocabulary, which the host serves with
+// policy.Trusted, without requiring any policy.
+policy payments.production: DeployApproval@1
+
+use deploy.common.{cleared, eligible, owns_service}
+
+when eligible and cleared and owns_service {
+  approve(reason: payments_sre)
+}
