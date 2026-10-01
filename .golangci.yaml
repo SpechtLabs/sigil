@@ -117,23 +117,27 @@ linters:
       # outcomes the evaluator guarantees, and the tooling (the decoder,
       # the lints, the test runner, the stubs, the CLIs, the workspace they
       # share with the WebAssembly engine, and the engine) takes kinds,
-      # documents, YAML nodes and results its own callers built; returning
+      # documents, YAML nodes and results its own callers built, as the Go
+      # builder takes the trees and documents it built itself; returning
       # quietly on nil would hide a bug rather than prevent one.
       - linters:
           - golint-sl
         text: "^nilcheck:"
-        path: ^(internal/(ast|check|engine|eval|gokind|lint|result|stub|testsuite|workspace)|pkg/(policy|policytest)|cmd)/
+        path: ^(internal/(ast|check|engine|eval|gokind|lint|result|stub|testsuite|workspace)|pkg/(build|policy|policytest)|cmd)/
 
       # The public API returns typed errors (*CompileError, *AssertionError,
       # *RuntimeError) that hosts match with errors.As, each carrying its own
       # position and fix hint, passes loader errors through unwrapped since
       # they already carry advice, returns fs.FS and option interfaces by
       # design, and its options are values, because policy.Params is a map
-      # literal in the documented API.
+      # literal in the documented API. The Go builder in pkg/build follows
+      # it: typed errors (Errors, *CheckError, *DriftError), syntax tree
+      # interfaces in its internals, and param bounds named Default, Min and
+      # Max after the Sigil they render.
       - linters:
           - golint-sl
         text: "^(humaneerror|optionspattern|returninterface|errorwrap):"
-        path: ^pkg/policy/
+        path: ^pkg/(build|policy)/
 
       # Runtime values are boxed as any when they cross into host data, and
       # a runtime error already carries the failing expression's position.
