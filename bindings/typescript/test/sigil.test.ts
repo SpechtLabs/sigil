@@ -6,11 +6,22 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { type Diagnostic, type EvalResult, type JsonValue, type SourceFile, Sigil, SigilError, SigilStoppedError } from "../src/index.js";
+import {
+  type Diagnostic,
+  type EvalResult,
+  type JsonValue,
+  type SourceFile,
+  Sigil,
+  SigilError,
+  SigilStoppedError,
+  type TestResult,
+} from "../src/index.js";
 import { Minimal } from "./kinds/coverage.js";
-import { buildCli, cli, DEPLOY_GATES, HAVE_WASM, json, ROOT, sigilFiles, WASM } from "./fixtures.js";
+import { buildCli, cli, cliTest, DEPLOY_GATES, HAVE_WASM, json, ROOT, sigilFiles, type TestWorkspace, testWorkspace, WASM } from "./fixtures.js";
 
 const CHECK_TESTDATA = join(ROOT, "cmd", "sigil", "command", "check", "testdata");
+const TEST_TESTDATA = join(ROOT, "cmd", "sigil", "command", "test", "testdata");
+const ALERT_ROUTING = join(ROOT, "examples", "alert-routing", "policies");
 const KIND: SourceFile = {
   path: "deploy_approval.sigil",
   source: readFileSync(join(CHECK_TESTDATA, "deploy_approval.sigil"), "utf8"),
@@ -357,6 +368,97 @@ describe.skipIf(!HAVE_WASM)("sigil.wasm", () => {
       expect(err.diagnostics.length).toBeGreaterThan(0);
       expect(err.diagnostics[0]?.file).toBe("x.sigil");
     });
+  });
+
+  describe("test", () => {
+    // The CLI's test fixtures: the access kind and policy, and a directory
+    // of test files per situation.
+    const fixtures = testWorkspace(TEST_TESTDATA);
+    const pick = (...prefixes: string[]): TestWorkspace => {
+      const keep = (f: SourceFile) => prefixes.some((p) => f.path === p || f.path.startsWith(`${p}/`));
+      return { files: fixtures.files.filter(keep), trusted: [], tests: fixtures.tests.filter(keep), data: fixtures.data.filter(keep) };
+    };
+    const run = (ws: TestWorkspace, filter?: string) =>
+      sigil.test(ws.files, ws.tests, {
+        data: ws.data,
+        ...(ws.trusted.length > 0 ? { trustedFiles: ws.trusted } : {}),
+        ...(filter === undefined ? {} : { run: filter }),
+      });
+
+    const parity: [string, TestWorkspace, string?][] = [
+      ["the deploy-gates example, with its input files and a host function no stub answers", testWorkspace(DEPLOY_GATES)],
+      ["the alert-routing example", testWorkspace(ALERT_ROUTING)],
+      ["the alert-routing example, with the platform's policies trusted", testWorkspace(ALERT_ROUTING, ["platform"])],
+      ["no files", { ...pick("access"), files: [] }],
+      ["passing cases", pick("access.sigil", "access")],
+      ["failing cases", pick("access.sigil", "access/main.sigil", "failing")],
+      ["the cases run selects", pick("access.sigil", "access/main.sigil", "failing"), "^wrong"],
+      ["no case run selects", pick("access.sigil", "access/main.sigil", "failing"), "nothing"],
+      ["an invalid test file", pick("access.sigil", "access/main.sigil", "invalid")],
+      ["a test file that isn't YAML", pick("access.sigil", "access/main.sigil", "badyaml")],
+      ["a policy the files don't define", pick("access.sigil", "access/main.sigil", "nopolicy")],
+      ["a policy that doesn't compile", pick("access.sigil", "broken")],
+      ["file and case stubs", pick("access.sigil", "access/main.sigil", "stubbed")],
+      ["stubs that fail", pick("access.sigil", "access/main.sigil", "stubfail")],
+      ["stubs that don't fit", pick("access.sigil", "access/main.sigil", "badstubs")],
+    ];
+    for (const [name, ws, filter] of parity) {
+      test(`${name} equal the CLI's results`, () => {
+        const results = run(ws, filter);
+        expect(results.length).toBe(ws.tests.length);
+        expect(results).toEqual(cliTest(ws, filter) as TestResult[]);
+      });
+    }
+
+    test("an input file the request doesn't hold fails its case, like a missing file for the CLI", () => {
+      const ws = { ...pick("access.sigil", "access"), data: [] };
+      const results = run(ws);
+      const missing = results[0]?.cases.find((c) => c.error !== undefined);
+      expect(missing?.passed).toBe(false);
+      expect(missing?.error).toContain("couldn't be read (input_file is relative to the test file)");
+      expect(results).toEqual(cliTest(ws) as TestResult[]);
+    });
+
+    test("reports passing, failing and broken test files apart", () => {
+      const ws = pick("access.sigil", "access", "failing", "broken");
+      const results = run(ws);
+      expect(results.map((r) => r.file)).toEqual(["access/main_test.yaml", "broken/main_test.yaml", "failing/main_test.yaml"]);
+      const [pass, broken, failing] = results;
+      expect(pass?.cases.every((c) => c.passed)).toBe(true);
+      expect(broken?.error).toBeString();
+      expect(broken?.cases).toEqual([]);
+      expect(failing?.error).toBeUndefined();
+      expect(failing?.cases.some((c) => !c.passed && (c.failures?.length ?? 0) > 0)).toBe(true);
+    });
+
+    const files = pick("access.sigil", "access/main.sigil").files;
+    const suite = fixtures.tests.find((f) => f.path === "access/main_test.yaml") as SourceFile;
+    const failures: [string, () => TestResult[], string][] = [
+      ["no test files", () => sigil.test(files, []), "the request holds no test files"],
+      ["a test file not named like one", () => sigil.test(files, [{ path: "access/main.yaml", source: suite.source }]), "the test file access/main.yaml isn't named like one"],
+      ["a test file without a path", () => sigil.test(files, [{ path: "", source: suite.source }]), "test file 1 has no path"],
+      ["a run that isn't a regular expression", () => sigil.test(files, [suite], { run: "(" }), "run isn't a valid regular expression"],
+      ["a path given twice with two sources", () => sigil.test(files, [suite], { data: [{ path: suite.path, source: "{}" }] }), "access/main_test.yaml is given twice, with two sources"],
+      [
+        "a path among the files and the trusted files",
+        () => sigil.test(files, [suite], { trustedFiles: files }),
+        "is among both the files and the trusted files",
+      ],
+    ];
+    for (const [name, call, message] of failures) {
+      test(`${name} is a SigilError`, () => {
+        const err = (() => {
+          try {
+            call();
+          } catch (e) {
+            return e;
+          }
+        })() as SigilError;
+        expect(err).toBeInstanceOf(SigilError);
+        expect(err.message).toContain(message);
+        expect(err.help).toBeString();
+      });
+    }
   });
 
   describe("release", () => {

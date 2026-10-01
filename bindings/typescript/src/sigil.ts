@@ -13,6 +13,8 @@ import type {
   HostFunction,
   JsonValue,
   SourceFile,
+  TestOptions,
+  TestResult,
   VersionInfo,
 } from "./types.js";
 
@@ -148,6 +150,25 @@ export class Sigil {
    */
   format(source: string, options: FormatOptions = {}): string {
     return this.#request("format", { source, ...options })["source"] as string;
+  }
+
+  /**
+   * Runs test files against the files like `sigil test`: one result per
+   * test file, in the order of their paths. A test file whose policy the
+   * files don't define is a result that says so. Host functions come from
+   * the test files' `stubs:`. A test file that can't run is a result with
+   * `error`, and a failing case one with `passed: false`; it throws a
+   * {@link SigilError} only for a request the CLI's command line couldn't
+   * have given, such as no test files, a test file not named
+   * `*_test.yaml` or `*_test.yml`, or a `run` that isn't a regular
+   * expression.
+   */
+  test(files: SourceFile[], tests: SourceFile[], options: TestOptions = {}): TestResult[] {
+    const { data, run, ...rest } = wire(options);
+    const fields: Record<string, unknown> = { files, test_files: tests, ...rest };
+    if (data !== undefined) fields["data_files"] = data;
+    if (run !== undefined) fields["run"] = run;
+    return this.#request("test", fields)["results"] as TestResult[];
   }
 
   #request(op: string, fields: Record<string, unknown>): Record<string, unknown> {

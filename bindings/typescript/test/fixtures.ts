@@ -80,3 +80,47 @@ export function cli(files: SourceFile[], args: string[], extra: Record<string, s
   if (stdout.trim() === "") throw new Error(`sigil ${args.join(" ")} printed nothing:\n${run.stderr.toString()}`);
   return JSON.parse(stdout);
 }
+
+/** The files `sigil test` reads below a directory, as virtual files with paths relative to it. */
+export interface TestWorkspace {
+  /** The .sigil files. */
+  files: SourceFile[];
+  /** The .sigil files below the trusted directories, apart from the others. */
+  trusted: SourceFile[];
+  /** The test files, named *_test.yaml or *_test.yml. */
+  tests: SourceFile[];
+  /** The files below a testdata directory, which a case's input_file names. */
+  data: SourceFile[];
+}
+
+/**
+ * Every .sigil file, test file and testdata file below dir, with paths
+ * relative to it, in a stable order. The .sigil files below the trusted
+ * directories, relative to dir, are the trusted ones.
+ */
+export function testWorkspace(dir: string, trusted: string[] = []): TestWorkspace {
+  const ws: TestWorkspace = { files: [], trusted: [], tests: [], data: [] };
+  const walk = (d: string) => {
+    for (const entry of readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const path = join(d, entry.name);
+      const rel = relative(dir, path).split(sep).join("/");
+      const file = () => ({ path: rel, source: readFileSync(path, "utf8") });
+      if (entry.isDirectory()) walk(path);
+      else if (entry.name.endsWith(".sigil")) (trusted.some((t) => rel.startsWith(`${t}/`)) ? ws.trusted : ws.files).push(file());
+      else if (/_test\.ya?ml$/.test(entry.name)) ws.tests.push(file());
+      else if (rel.split("/").includes("testdata")) ws.data.push(file());
+    }
+  };
+  walk(dir);
+  return ws;
+}
+
+/**
+ * Runs `sigil test -o json` over the workspace, laid out in a fresh
+ * directory, on its .sigil files, trusted or not, and test files, and
+ * returns the parsed output.
+ */
+export function cliTest({ files, trusted, tests, data }: TestWorkspace, run?: string): unknown {
+  const extra = Object.fromEntries([...tests, ...data].map((f) => [f.path, f.source]));
+  return cli([...files, ...trusted], ["test", ...(run === undefined ? [] : ["--run", run]), ...tests.map((f) => f.path)], extra);
+}

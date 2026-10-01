@@ -17,7 +17,7 @@ export interface InitMessage {
 /** Calls one method of the worker's Sigil instance or one of its policies. */
 export interface CallMessage {
   id: number;
-  method: "version" | "check" | "compile" | "explain" | "format" | "eval" | "explainPolicy" | "release";
+  method: "version" | "check" | "compile" | "explain" | "format" | "test" | "eval" | "explainPolicy" | "release";
   args: unknown[];
 }
 

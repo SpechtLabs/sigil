@@ -82,6 +82,9 @@ describe("SigilWorker", () => {
     const { sigil, workers } = harness(() => []);
     await sigil.check(files, { lints: { "unused-input": "error" } });
     expect(workers[0]?.requests[1]).toMatchObject({ method: "check", args: [files, { lints: { "unused-input": "error" } }] });
+    const tests = [{ path: "p_test.yaml", source: "policy: p\ncases: []\n" }];
+    await sigil.test(files, tests, { run: "^a" });
+    expect(workers[0]?.requests[2]).toMatchObject({ method: "test", args: [files, tests, { run: "^a" }] });
   });
 
   test("rebuilds a SigilError with its help and diagnostics", async () => {

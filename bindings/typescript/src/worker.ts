@@ -17,6 +17,8 @@ import type {
   FormatOptions,
   JsonValue,
   SourceFile,
+  TestOptions,
+  TestResult,
   VersionInfo,
 } from "./types.js";
 
@@ -105,6 +107,10 @@ export class SigilWorker {
 
   async format(source: string, options: FormatOptions = {}, call?: CallOptions): Promise<string> {
     return (await this.call("format", [source, options], call)).value as string;
+  }
+
+  async test(files: SourceFile[], tests: SourceFile[], options: TestOptions = {}, call?: CallOptions): Promise<TestResult[]> {
+    return (await this.call("test", [files, tests, options], call)).value as TestResult[];
   }
 
   /** Stops the worker and fails the calls waiting on it. The next call starts a new one. */

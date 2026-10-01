@@ -11,7 +11,7 @@ import { SigilError, SigilStoppedError, SigilTimeoutError, SigilWorker } from ".
 import type { InputOf } from "../src/index.js";
 import { Minimal } from "./kinds/coverage.js";
 import { Approve, DeployApproval } from "./kinds/examples.js";
-import { DEPLOY_GATES, HAVE_WASM, json, sigilFiles, WASM } from "./fixtures.js";
+import { DEPLOY_GATES, HAVE_WASM, json, sigilFiles, testWorkspace, WASM } from "./fixtures.js";
 
 const ENTRY = new URL("../src/worker-entry.ts", import.meta.url);
 const FUNCTIONS = new URL("./host-functions.ts", import.meta.url);
@@ -34,6 +34,8 @@ describe.skipIf(!HAVE_WASM)("SigilWorker with sigil.wasm", () => {
       expect(await sigil.explain(files, { policy: "access.main" })).toEqual(direct.explain(files, { policy: "access.main" }));
       const source = files[0]?.source ?? "";
       expect(await sigil.format(source)).toBe(direct.format(source));
+      const ws = testWorkspace(DEPLOY_GATES);
+      expect(await sigil.test(ws.files, ws.tests, { data: ws.data, run: "admin" })).toEqual(direct.test(ws.files, ws.tests, { data: ws.data, run: "admin" }));
 
       const policy = await sigil.compile(files, { policy: "payments.production", functions: ["split"] });
       using expected = direct.compile(files, { policy: "payments.production", functions: { split: (s: string, sep: string) => s.split(sep) } });
@@ -67,6 +69,10 @@ describe.skipIf(!HAVE_WASM)("SigilWorker with sigil.wasm", () => {
       const missing = await sigil.compile(files, { functions: ["split"] }).catch((e) => e);
       expect(missing).toBeInstanceOf(SigilError);
       expect(missing.message).toContain("functions module");
+      const noTests = await sigil.test(files, []).catch((e) => e);
+      expect(noTests).toBeInstanceOf(SigilError);
+      expect(noTests.message).toBe("the request holds no test files");
+      expect(noTests.help).toContain("test_files");
     } finally {
       sigil.terminate();
     }

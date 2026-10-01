@@ -182,6 +182,33 @@ export interface Explanation {
   rules: ExplainEntry[];
 }
 
+/** One test file's run, as `sigil test -o json` prints it. */
+export interface TestResult {
+  /** The test file's path. */
+  file: string;
+  /** The policy the file tests; empty when the file couldn't be read as a test file. */
+  policy: string;
+  /**
+   * Why none of the file's cases ran: it isn't a valid test file, or its
+   * policy doesn't compile. `cases` is empty then.
+   */
+  error?: string;
+  /** The cases `run` selects, in file order. */
+  cases: TestCaseResult[];
+}
+
+/** One test case's run. */
+export interface TestCaseResult {
+  name: string;
+  /** Why the case couldn't run: its input can't be read or doesn't fit the kind. */
+  error?: string;
+  /** How the evaluation differs from what the case expects. */
+  failures?: string[];
+  /** The case's line in its test file, from 1. */
+  line: number;
+  passed: boolean;
+}
+
 /** Options shared by the operations that read files. */
 export interface CheckOptions {
   /** Name patterns of the policies to check, like `sigil check`'s arguments; every policy without them. */
@@ -251,4 +278,20 @@ export interface ExplainOptions {
 export interface FormatOptions {
   /** The file's path, for the diagnostics of a source that doesn't parse. */
   path?: string;
+}
+
+export interface TestOptions {
+  /**
+   * The files a case's `input_file` names. A path is relative to the
+   * test file's, as on disk: `testdata/owner.json` from
+   * `checkout/alerts_test.yaml` is `checkout/testdata/owner.json`.
+   */
+  data?: SourceFile[];
+  /** Runs only the cases whose names this Go regular expression matches, like `sigil test --run`. */
+  run?: string;
+  /**
+   * Documents read as trusted, as for {@link CompileOptions.trustedFiles}:
+   * the files below a configuration file's `trusted` paths, for the CLI.
+   */
+  trustedFiles?: SourceFile[];
 }
