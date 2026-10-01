@@ -32,12 +32,12 @@ tokio = { version = "1.53.1", default-features = false, features = ["io-util", "
 unicode-general-category = "1.1.0"
 # Only what the crate uses: compile with Cranelift, run, epoch interruption and fuel.
 # Not the defaults: GC, components, profiling and the on-disk cache are dead weight here.
-wasmtime = { version = "49", default-features = false, features = ["cranelift", "runtime", "std", "parallel-compilation"] }
-wasmtime-wasi = { version = "49", default-features = false, features = ["p1"] }
+wasmtime = { version = "49.0.1", default-features = false, features = ["cranelift", "runtime", "std", "parallel-compilation"] }
+wasmtime-wasi = { version = "49.0.1", default-features = false, features = ["p1"] }
 
 [dev-dependencies]
 # Text format for the tiny modules the unit tests assemble.
-wasmtime = { version = "49", default-features = false, features = ["wat"] }
+wasmtime = { version = "49.0.1", default-features = false, features = ["wat"] }
 rstest = "0.27.0"
 tempfile = "3.27.0"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "rt"] }
