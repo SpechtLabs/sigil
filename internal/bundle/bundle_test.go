@@ -3,6 +3,7 @@ package bundle_test
 import (
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/check"
@@ -194,5 +195,42 @@ func TestIndex(t *testing.T) {
 	}
 	if e := bundle.Redefined("p.sigil", f.Docs[0], trusted); e != nil {
 		t.Errorf("Redefined() of a kind document = %v, want nil", e)
+	}
+}
+
+// TestLoadSeveralSources loads two sources into one bundle, as a trusted
+// bundle does: distinct paths add up, and a path both hold is an error,
+// since a diagnostic names a file by its path alone.
+func TestLoadSeveralSources(t *testing.T) {
+	k, errs := check.LoadKind("k.sigil", []byte(kindSrc))
+	if errs != nil {
+		t.Fatal(errs)
+	}
+	platform := fstest.MapFS{"deploy/lib.sigil": &fstest.MapFile{Data: []byte(library)}}
+	tests := []struct {
+		name    string
+		second  fstest.MapFS
+		wantErr string
+	}{
+		{name: "distinct paths", second: fstest.MapFS{"vocabulary/lib.sigil": &fstest.MapFile{Data: []byte("module vocabulary: K@1\n")}}},
+		{name: "one path in both", second: fstest.MapFS{"deploy/lib.sigil": &fstest.MapFile{Data: []byte("module other: K@1\n")}}, wantErr: "policy file deploy/lib.sigil is in two of the sources read into one bundle"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := bundle.New(k)
+			if err := b.Load(platform); err != nil {
+				t.Fatal(err)
+			}
+			err := b.Load(tt.second)
+			switch {
+			case tt.wantErr == "" && err != nil:
+				t.Fatalf("Load() = %v, want no error", err)
+			case tt.wantErr != "" && (err == nil || err.Error() != tt.wantErr):
+				t.Fatalf("Load() = %v, want %q", err, tt.wantErr)
+			}
+			if string(b.SourceOf("deploy/lib.sigil")) != library {
+				t.Error("the second source replaced the first's file")
+			}
+		})
 	}
 }
