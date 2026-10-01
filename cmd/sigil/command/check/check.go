@@ -19,9 +19,9 @@ import (
 	"github.com/spechtlabs/sigil/cmd/internal/pretty"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/complete"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/config"
+	"github.com/spechtlabs/sigil/cmd/sigil/internal/diagnose"
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	"github.com/spechtlabs/sigil/internal/diag"
-	"github.com/spechtlabs/sigil/internal/workspace"
 )
 
 // NewCommand returns the check command, configured by opts. Without
@@ -132,22 +132,11 @@ func addFlags(cmd *cobra.Command) {
 // --require names, or the configuration's require: without it, and reports the
 // diagnostics and lint findings with a summary.
 func run(out io.Writer, o *options, configFile string, src project.Sources, patterns, requires []string) humane.Error {
-	if len(src.Paths) == 0 {
-		src.Paths = []string{"."}
-	}
-	cfg, reqs, err := configure(configFile, &src, patterns, requires)
+	r, err := diagnose.Run(configFile, src, patterns, requires, o.kinds)
 	if err != nil {
 		return err
 	}
-	p, err := project.Load(src, o.kinds)
-	if err != nil {
-		return err
-	}
-	errs, err := p.Diagnose(workspace.Checks{Lints: cfg.Lints, Patterns: patterns, Require: requirements(cfg, reqs), Strict: whole(cfg, src.Paths)})
-	if err != nil {
-		return err
-	}
-	return report(out, p, errs, *o.output)
+	return report(out, r.Project, r.Errs, *o.output)
 }
 
 // report prints the diagnostics, then a summary, and fails when there's
@@ -172,7 +161,7 @@ func report(out io.Writer, p *project.Project, errs diag.ErrorList, format outpu
 		return err
 	}
 	if failed > 0 {
-		return pretty.Fail(fmt.Sprintf("check found %s", problems(failed, len(diags)-failed)), advice(p, diags, "each diagnostic says where the problem is and how to fix it")...)
+		return pretty.Fail(fmt.Sprintf("check found %s", problems(failed, len(diags)-failed)), diagnose.Advice(p, diags, "each diagnostic says where the problem is and how to fix it")...)
 	}
 	return nil
 }
@@ -198,23 +187,11 @@ func reportText(out io.Writer, proj *project.Project, diags diag.ErrorList, fail
 		if err := p.Fail(files + problems(failed, warnings)); err != nil {
 			return err
 		}
-		return pretty.Fail(fmt.Sprintf("check found %s", problems(failed, warnings)), advice(proj, diags, "each diagnostic above says where the problem is and how to fix it")...)
+		return pretty.Fail(fmt.Sprintf("check found %s", problems(failed, warnings)), diagnose.Advice(proj, diags, "each diagnostic above says where the problem is and how to fix it")...)
 	case warnings > 0:
 		return p.Warning(files + problems(failed, warnings))
 	}
 	return p.Ok(files + "no problems found")
-}
-
-// advice is what a failed check suggests: the general hint, and when an
-// error sits in a kind document, how to fix a kind file, including the
-// rewrite of the decision syntax the language dropped.
-func advice(p *project.Project, diags diag.ErrorList, general string) []string {
-	for _, d := range diags {
-		if d.Severity == diag.SeverityError && p.InKind(d) {
-			return []string{general, "fix the kind file, or regenerate it from the host's Schema(); `sigil fmt --write` rewrites the old decision syntax"}
-		}
-	}
-	return []string{general}
 }
 
 // problems spells `1 error`, `2 warnings` or `1 error and 2 warnings`.
