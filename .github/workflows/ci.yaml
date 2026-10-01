@@ -561,6 +561,7 @@ jobs:
       - test
       - wasm
       - typescript
+      - rust
     # Fuzz and benchmark are skipped on release runs; a skipped need would skip
     # this job too, so only a failure or cancellation stops it.
     if: ${{ !cancelled() && !failure() }}
