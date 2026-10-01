@@ -3,6 +3,7 @@ package config_test
 import (
 	"bytes"
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -19,6 +20,10 @@ func TestServeConfig(t *testing.T) {
 		ShutdownTimeout:   15 * time.Second,
 		EvaluationTimeout: time.Second,
 		LogFormat:         "json",
+
+		FreezeFlag:            "change-freeze",
+		FreezeRefreshInterval: 15 * time.Second,
+		FreezeMaxStaleness:    time.Minute,
 	}
 
 	tests := []struct {
@@ -74,6 +79,60 @@ func TestServeConfig(t *testing.T) {
 		{name: "no shutdown budget", args: []string{"--shutdown-timeout", "0"}, wantErr: "shutdown timeout"},
 		{name: "no evaluation budget", args: []string{"--evaluation-timeout", "0"}, wantErr: "evaluation timeout 0s isn't positive"},
 		{name: "empty team list", env: map[string]string{"DEPLOYGATE_TEAMS": " , "}, wantErr: "no team to serve"},
+		{
+			name: "a fixed freeze, repeated and comma-separated",
+			args: []string{"--freeze-environments", "production,staging", "--freeze-environments", "production"},
+			edit: func(c *config.Config) { c.FreezeEnvironments = []string{"production", "staging"} },
+		},
+		{
+			name: "a freeze from a flag service, by flags",
+			args: []string{
+				"--freeze-ofrep-url", "http://featuregate:8080", "--freeze-flag", "ops-freeze", "--freeze-context", "region=eu-1",
+				"--freeze-context", "tier=gold,region=eu-2", "--freeze-refresh-interval", "5s", "--freeze-max-staleness", "30s",
+			},
+			edit: func(c *config.Config) {
+				c.FreezeOFREPURL, c.FreezeFlag = "http://featuregate:8080", "ops-freeze"
+				c.FreezeContext = map[string]string{"region": "eu-2", "tier": "gold"}
+				c.FreezeRefreshInterval, c.FreezeMaxStaleness = 5*time.Second, 30*time.Second
+			},
+		},
+		{
+			name: "a freeze from a flag service, by the environment",
+			env: map[string]string{
+				"DEPLOYGATE_FREEZE_OFREP_URL":        "https://flags.example.com",
+				"DEPLOYGATE_FREEZE_CONTEXT":          "region=eu-1, targetingKey=gate",
+				"DEPLOYGATE_FREEZE_REFRESH_INTERVAL": "10s",
+				"DEPLOYGATE_FREEZE_MAX_STALENESS":    "2m",
+			},
+			edit: func(c *config.Config) {
+				c.FreezeOFREPURL = "https://flags.example.com"
+				c.FreezeContext = map[string]string{"region": "eu-1", "targetingKey": "gate"}
+				c.FreezeRefreshInterval, c.FreezeMaxStaleness = 10*time.Second, 2*time.Minute
+			},
+		},
+		{
+			name: "the freeze environments ignore an unused flag service setting",
+			env:  map[string]string{"DEPLOYGATE_FREEZE_ENVIRONMENTS": "production", "DEPLOYGATE_FREEZE_MAX_STALENESS": "1s"},
+			edit: func(c *config.Config) {
+				c.FreezeEnvironments, c.FreezeMaxStaleness = []string{"production"}, time.Second
+			},
+		},
+		{
+			name:    "a freeze set twice",
+			args:    []string{"--freeze-environments", "production", "--freeze-ofrep-url", "http://featuregate:8080"},
+			wantErr: "the change freeze is set twice",
+		},
+		{
+			name:    "a flag service URL that isn't one",
+			args:    []string{"--freeze-ofrep-url", "featuregate:8080"},
+			wantErr: "isn't an absolute http or https URL",
+		},
+		{
+			name:    "a staleness shorter than the refresh",
+			args:    []string{"--freeze-ofrep-url", "http://featuregate:8080", "--freeze-max-staleness", "10s"},
+			wantErr: "isn't longer than its refresh interval",
+		},
+		{name: "a freeze context attribute without a key", args: []string{"--freeze-context", "=eu-1"}, wantErr: "the freeze context attribute =eu-1 has no key"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -110,7 +169,10 @@ func TestServeConfig(t *testing.T) {
 				!slices.Equal(got.Teams, want.Teams) ||
 				got.ReloadInterval != want.ReloadInterval || got.ShutdownTimeout != want.ShutdownTimeout ||
 				got.EvaluationTimeout != want.EvaluationTimeout ||
-				got.Debug != want.Debug || got.LogFormat != want.LogFormat {
+				got.Debug != want.Debug || got.LogFormat != want.LogFormat ||
+				!slices.Equal(got.FreezeEnvironments, want.FreezeEnvironments) || got.FreezeOFREPURL != want.FreezeOFREPURL ||
+				got.FreezeFlag != want.FreezeFlag || !maps.Equal(got.FreezeContext, want.FreezeContext) ||
+				got.FreezeRefreshInterval != want.FreezeRefreshInterval || got.FreezeMaxStaleness != want.FreezeMaxStaleness {
 				t.Errorf("config = %+v, want %+v", *got, want)
 			}
 		})

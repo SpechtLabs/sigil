@@ -29,8 +29,9 @@
 // the version GoReleaser set, or dev.
 //
 // The service is split over the examples module's internal packages: config
-// builds this command line, store loads and reloads the bundles, server is
-// the HTTP API, and telemetry sets up traces, logs, metrics and profiles.
+// builds this command line, store loads and reloads the bundles, freeze
+// resolves the change freeze every deploy input carries, server is the HTTP
+// API, and telemetry sets up traces, logs, metrics and profiles.
 package main
 
 import (

@@ -18,6 +18,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
+	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/freeze"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/server"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/store"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/telemetry"
@@ -45,7 +46,7 @@ func TestEndpoints(t *testing.T) {
 		{name: "readyz with only the team policies", method: http.MethodGet, path: "/readyz", env: envOptions{deployLoaded: true}, wantStatus: http.StatusServiceUnavailable},
 		{name: "readyz with only the access policies", method: http.MethodGet, path: "/readyz", env: envOptions{accessLoaded: true}, wantStatus: http.StatusServiceUnavailable},
 		{name: "policies lists both kinds", method: http.MethodGet, path: "/api/v1/policies", env: loaded, wantStatus: http.StatusOK, wantBody: []string{
-			`{"kind":"DeployApproval","version":1,`, `"source":"embedded"`,
+			`{"kind":"DeployApproval","version":2,`, `"source":"embedded"`,
 			`{"team":"payments","policy":"payments.production"}`, `{"team":"checkout","policy":"checkout.production"}`,
 			`{"kind":"AccessGrant","version":1,`, `"policies":[{"policy":"access.main"}]`,
 		}},
@@ -226,6 +227,9 @@ type envOptions struct {
 	// onSpanStart is called with the name of every span that starts, so a
 	// test can act at a known point inside a request.
 	onSpanStart spanStartHook
+	// freeze is the server's freeze source; nil leaves the default, nothing
+	// frozen.
+	freeze freeze.Source
 }
 
 // spanStartHook is a span processor that only reports span starts.
@@ -286,6 +290,7 @@ func newEnv(t *testing.T, o envOptions) testEnv {
 		server.WithMetrics(env.metrics),
 		server.WithTracerProvider(tp),
 		server.WithEvaluationTimeout(o.evaluationTimeout),
+		server.WithFreeze(o.freeze),
 	)
 	if err != nil {
 		t.Fatalf("New: %v", err)

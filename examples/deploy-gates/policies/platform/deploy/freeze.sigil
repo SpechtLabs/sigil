@@ -1,0 +1,3 @@
+module deploy.freeze: DeployApproval@2
+
+pub let is_frozen = freeze.unknown or environment in freeze.environments
