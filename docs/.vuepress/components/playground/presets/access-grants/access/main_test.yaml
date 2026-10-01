@@ -1,0 +1,150 @@
+policy: access.main
+# Every grant access.main can make has a case here, and so does every assert
+# access.guardrails can fail. AccessGrant collects, so each case expects the
+# whole outcome: `outcome:` passes only if exactly those grants fire, in any
+# order, and `outcome: []` expects nothing to fire. The fixtures ask for the
+# payments team in production unless the case says otherwise.
+cases:
+  # reader and deployer for team_member: membership in the team's own group.
+  - name: a payments member reads and deploys for payments with the default ttl
+    input_file: testdata/team-member.json
+    expect:
+      outcome:
+        - decision: reader
+          reason: team_member
+        - decision: deployer
+          reason: team_member
+          payload:
+            ttl: 8h
+
+  # reader everyone_in_staging: staging is open to read for anyone named.
+  - name: an actor outside the team still reads in staging
+    input_file: testdata/staging-outsider.json
+    expect:
+      outcome:
+        - decision: reader
+          reason: everyone_in_staging
+  - name: a payments member in staging gets both reader grants, which aren't merged
+    input_file: testdata/team-member-staging.json
+    expect:
+      outcome:
+        - decision: reader
+          reason: team_member
+        - decision: reader
+          reason: everyone_in_staging
+        - decision: deployer
+          reason: team_member
+          payload:
+            ttl: 8h
+
+  # deployer oncall: the team's SRE group, looked up in access.common.
+  - name: payments-sre deploys for payments for two hours
+    input_file: testdata/sre.json
+    expect:
+      outcome:
+        - decision: deployer
+          reason: oncall
+          payload:
+            ttl: 2h
+  - name: checkout-sre deploys for checkout for two hours
+    input_file: testdata/checkout-sre.json
+    expect:
+      outcome:
+        - decision: deployer
+          reason: oncall
+          payload:
+            ttl: 2h
+  - name: checkout-sre gets nothing for payments
+    input_file: testdata/other-team-sre.json
+    expect:
+      outcome: []
+
+  # release_manager platform_member: platform members who aren't admins.
+  - name: a platform member is a release manager for four hours
+    input_file: testdata/platform.json
+    expect:
+      outcome:
+        - decision: release_manager
+          reason: platform_member
+          payload:
+            ttl: 4h
+  - name: a payments member in platform reads, deploys and manages releases
+    input_file: testdata/release-manager.json
+    expect:
+      outcome:
+        - decision: reader
+          reason: team_member
+        - decision: deployer
+          reason: team_member
+          payload:
+            ttl: 8h
+        - decision: release_manager
+          reason: platform_member
+          payload:
+            ttl: 4h
+
+  # admin clearance and admin break_glass.
+  - name: admin clearance grants admin with the default hour
+    input_file: testdata/admin.json
+    expect:
+      outcome:
+        - decision: admin
+          reason: clearance
+          payload:
+            ttl: 1h
+  - name: an admin in platform gets admin and no release_manager, which the kind makes exclusive
+    input_file: testdata/admin-platform.json
+    expect:
+      outcome:
+        - decision: admin
+          reason: clearance
+          payload:
+            ttl: 1h
+  - name: break-glass grants admin for fifteen minutes
+    input_file: testdata/break-glass.json
+    expect:
+      outcome:
+        - decision: admin
+          reason: break_glass
+          payload:
+            ttl: 15m
+  # A break-glass member who is also in platform gets admin(reason: break_glass) and
+  # release_manager(reason: platform_member), which the kind declares exclusive, so the
+  # evaluation fails with a conflict naming both. The test format has no
+  # expectation for a conflict: a case expects an outcome, a decision or
+  # failing asserts, and a conflict fails any of them. The Go integration
+  # suite covers it through the API's 500.
+
+  # auditor compliance_member.
+  - name: a compliance member audits
+    input_file: testdata/compliance.json
+    expect:
+      outcome:
+        - decision: auditor
+          reason: compliance_member
+
+  # Nothing fires: no team, SRE, platform, admin or compliance group.
+  - name: an actor in none of the groups gets no grants
+    input_file: testdata/outsider.json
+    expect:
+      outcome: []
+
+  # sod_auditor_deployer: an outcome assert, so it sees every grant collected.
+  - name: a compliance member in payments can't audit and deploy
+    input_file: testdata/auditor-in-team.json
+    expect:
+      asserts: [sod_auditor_deployer]
+  - name: a compliance member in payments-sre can't audit and deploy on call
+    input_file: testdata/auditor-sre.json
+    expect:
+      asserts: [sod_auditor_deployer]
+
+  # named_actor: an input assert, so it fails before any rule runs.
+  - name: an unnamed actor fails named_actor
+    input_file: testdata/unnamed-actor.json
+    expect:
+      asserts: [named_actor]
+  - name: an unnamed auditor in payments fails only named_actor, since no rule ran
+    input_file: testdata/unnamed-auditor-in-team.json
+    expect:
+      asserts: [named_actor]

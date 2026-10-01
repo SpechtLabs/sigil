@@ -1,0 +1,9 @@
+{
+  "actor": {
+    "name": "ken",
+    "groups": ["platform"],
+    "clearance": "admin"
+  },
+  "team": "payments",
+  "environment": "production"
+}

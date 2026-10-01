@@ -1,0 +1,41 @@
+kind AlertRouting version 1
+
+enum Severity: critical | warning | info
+
+type Alert {
+  name: string
+  severity: Severity
+  labels: map<string, string>
+  firing_for: duration
+}
+
+type Team {
+  name: string
+  oncall: string
+  channel: string
+}
+
+input alert: Alert
+input team: Team
+
+decision page {
+  reason: critical_alert | sustained
+  target: string
+}
+
+decision drop {
+  reason: muted | not_production
+}
+
+decision notify {
+  reason: routine | unrouted
+  channel: string = "#alerts"
+}
+
+collect one
+precedence page > drop > notify
+precedence page: critical_alert > sustained
+precedence drop: muted > not_production
+precedence notify: routine > unrouted
+
+default notify(reason: unrouted)
