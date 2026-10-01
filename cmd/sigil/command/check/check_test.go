@@ -64,6 +64,8 @@ func TestCheck(t *testing.T) {
 		{name: "config_trusted", config: "trusted.yaml", paths: []string{"testdata/collision"}},
 		{name: "config_trusted_and_flag", config: "trusted.yaml", paths: []string{"testdata/collision"}, trusted: []string{"testdata/lints/deploy"}},
 		{name: "config_trusted_missing", config: "trusted_missing.yaml", paths: []string{"testdata/collision"}},
+		{name: "config_trusted_no_sigil", config: "trusted_no_sigil.yaml", paths: []string{"testdata/collision"}},
+		{name: "trusted_no_sigil", paths: []string{"testdata/collision"}, trusted: []string{"testdata/no_sigil"}},
 		{name: "kinds", paths: []string{"testdata/multikind"}, noKind: true},
 		{name: "require_other_kind", paths: []string{"testdata/multikind"}, requires: []string{"roles.main"}, noKind: true},
 		{name: "require_missing", paths: []string{"testdata/multikind"}, requires: []string{"nope.guard"}, noKind: true},
