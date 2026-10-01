@@ -38,6 +38,10 @@ type Value interface {
 // A timestamp, an optional and a struct have no literal, and neither has
 // a duration with a remainder below a millisecond or a float that isn't
 // finite; using one is an error when the document renders.
+//
+// An empty slice or map renders `[]` or `{}`, which takes its type from
+// where it stands, such as the other operand of `in` or a param's type.
+// Standing alone, as in `let none = []`, it fails [Check].
 func Lit[T any](v T) Expr[T] {
 	return Expr[T]{&litNode{v: reflect.ValueOf(&v).Elem(), t: reflect.TypeFor[T](), s: callSite("build.Lit")}}
 }
@@ -45,14 +49,17 @@ func Lit[T any](v T) Expr[T] {
 // Raw is Sigil source spliced into an expression, for a construct the
 // builder has no function for. It must parse as one expression; the
 // printer adds parentheses around it where the surrounding operators
-// need them. Prefer the typed functions: Raw names inputs and lets by
-// hand, so a rename in Go doesn't reach it.
+// need them. The source is reprinted from its syntax tree, so a comment
+// in it is dropped. Prefer the typed functions: Raw names inputs and lets
+// by hand, so a rename in Go doesn't reach it.
 func Raw[T any](src string) Expr[T] {
 	return Expr[T]{&rawNode{src: src, s: callSite("build.Raw")}}
 }
 
 // List is a list literal of expressions, `[a, b]`. For a list of
-// constants, [Lit] of a slice is shorter.
+// constants, [Lit] of a slice is shorter. With no expressions it's `[]`,
+// which needs a type from where it stands, as [Lit] of an empty slice
+// does.
 func List[E any](xs ...Expr[E]) Expr[[]E] {
 	n := &listNode{xs: make([]node, len(xs)), s: callSite("build.List")}
 	for i, x := range xs {
@@ -63,43 +70,43 @@ func List[E any](xs ...Expr[E]) Expr[[]E] {
 
 // Eq is `x == y`.
 func (x Expr[T]) Eq(y Expr[T]) Expr[bool] {
-	return Expr[bool]{binary(callSite("Eq"), ast.OpEq, x.n, y.n)}
+	return Expr[bool]{binary(callSite("Expr.Eq"), ast.OpEq, x.n, y.n)}
 }
 
 // NotEq is `x != y`.
 func (x Expr[T]) NotEq(y Expr[T]) Expr[bool] {
-	return Expr[bool]{binary(callSite("NotEq"), ast.OpNotEq, x.n, y.n)}
+	return Expr[bool]{binary(callSite("Expr.NotEq"), ast.OpNotEq, x.n, y.n)}
 }
 
 // Lt is `x < y`.
 func (x Expr[T]) Lt(y Expr[T]) Expr[bool] {
-	return Expr[bool]{binary(callSite("Lt"), ast.OpLt, x.n, y.n)}
+	return Expr[bool]{binary(callSite("Expr.Lt"), ast.OpLt, x.n, y.n)}
 }
 
 // Le is `x <= y`.
 func (x Expr[T]) Le(y Expr[T]) Expr[bool] {
-	return Expr[bool]{binary(callSite("Le"), ast.OpLtEq, x.n, y.n)}
+	return Expr[bool]{binary(callSite("Expr.Le"), ast.OpLtEq, x.n, y.n)}
 }
 
 // Gt is `x > y`.
 func (x Expr[T]) Gt(y Expr[T]) Expr[bool] {
-	return Expr[bool]{binary(callSite("Gt"), ast.OpGt, x.n, y.n)}
+	return Expr[bool]{binary(callSite("Expr.Gt"), ast.OpGt, x.n, y.n)}
 }
 
 // Ge is `x >= y`.
 func (x Expr[T]) Ge(y Expr[T]) Expr[bool] {
-	return Expr[bool]{binary(callSite("Ge"), ast.OpGtEq, x.n, y.n)}
+	return Expr[bool]{binary(callSite("Expr.Ge"), ast.OpGtEq, x.n, y.n)}
 }
 
 // Within is `x in s` on strings: x is a substring of s.
 func (x Expr[T]) Within(s Expr[string]) Expr[bool] {
-	return Expr[bool]{binary(callSite("Within"), ast.OpIn, x.n, s.n)}
+	return Expr[bool]{binary(callSite("Expr.Within"), ast.OpIn, x.n, s.n)}
 }
 
 // Like is `x like "glob"`: `*` matches any run of characters and `?`
 // exactly one, over the whole string.
 func (x Expr[T]) Like(glob string) Expr[bool] {
-	return Expr[bool]{&patternNode{x: x.n, pattern: glob, op: ast.OpLike, s: callSite("Like")}}
+	return Expr[bool]{&patternNode{x: x.n, pattern: glob, op: ast.OpLike, s: callSite("Expr.Like")}}
 }
 
 // Matches is `x matches "re"`, a Go RE2 regular expression matched
@@ -107,19 +114,19 @@ func (x Expr[T]) Like(glob string) Expr[bool] {
 // string, so it reads as written. An invalid pattern is an error when the
 // document renders.
 func (x Expr[T]) Matches(re string) Expr[bool] {
-	return Expr[bool]{&patternNode{x: x.n, pattern: re, op: ast.OpMatches, s: callSite("Matches")}}
+	return Expr[bool]{&patternNode{x: x.n, pattern: re, op: ast.OpMatches, s: callSite("Expr.Matches")}}
 }
 
 // Add is `x + y` on numbers and durations. For a timestamp, see
 // [TimeAdd].
 func (x Expr[T]) Add(y Expr[T]) Expr[T] {
-	return Expr[T]{binary(callSite("Add"), ast.OpAdd, x.n, y.n)}
+	return Expr[T]{binary(callSite("Expr.Add"), ast.OpAdd, x.n, y.n)}
 }
 
 // Sub is `x - y` on numbers and durations. For timestamps, see [TimeSub]
 // and [TimeDiff].
 func (x Expr[T]) Sub(y Expr[T]) Expr[T] {
-	return Expr[T]{binary(callSite("Sub"), ast.OpSub, x.n, y.n)}
+	return Expr[T]{binary(callSite("Expr.Sub"), ast.OpSub, x.n, y.n)}
 }
 
 // And is `a and b and …`, true when every x is. It needs at least one

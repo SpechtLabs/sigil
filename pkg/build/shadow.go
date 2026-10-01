@@ -72,6 +72,10 @@ type binderNode struct {
 // an optional struct is read with [Opt]; the address of the pointer field
 // itself, `&in.Approval`, is an Expr of the pointer type, for [Present]
 // and [Coalesce].
+//
+// A list element or a map value has no address in the shadow: the
+// shadow's slices and maps are empty, so `&in.Commits[0].Author` panics
+// with an index out of range. Read it with [Index] or [Get], then [Sel].
 func Field[T any](p *T) Expr[T] {
 	return Expr[T]{field(callSite("build.Field"), reflect.ValueOf(p), reflect.TypeFor[T](), readField)}
 }
@@ -140,8 +144,13 @@ func (n *fieldNode) lower(l *lowerer) ast.Expr {
 	}
 	roots = append(roots, l.doc.shadow)
 	for _, r := range roots {
-		if path, ok := r.find(n.p.Pointer(), n.t); ok {
-			return n.path(l, r, path)
+		switch paths := r.find(n.p.Pointer(), n.t); len(paths) {
+		case 0:
+		case 1:
+			return n.path(l, r, paths[0])
+		default:
+			l.errorf(n.s, "%s", shared(r, paths))
+			return &ast.BadExpr{}
 		}
 	}
 	for _, r := range roots {
@@ -177,6 +186,8 @@ func (n *fieldNode) path(l *lowerer, r *root, path []segment) ast.Expr {
 		l.errorf(n.s, "%s reaches through an optional struct; read it with build.Opt, which renders `?.`", flat(x, top))
 	case n.mode != readField && !crosses:
 		l.errorf(n.s, "%s reaches through no optional struct; read it with build.Field", flat(x, top))
+	case n.mode == readOpt && n.t.Kind() == reflect.Pointer:
+		l.errorf(n.s, "%s is optional itself, and optionals don't nest; read it with build.OptPtr", flat(x, top))
 	}
 	return x
 }
@@ -187,12 +198,17 @@ func (n *selNode) lower(l *lowerer) ast.Expr {
 		l.errorf(n.s, "the field function returned nil; return the address of a field of its argument")
 		return &ast.BadExpr{}
 	}
-	path, ok := n.r.find(n.p.Pointer(), n.t)
-	if !ok {
+	paths := n.r.find(n.p.Pointer(), n.t)
+	switch len(paths) {
+	case 0:
 		l.errorf(n.s, "the field function must return the address of a tagged field of its argument, of type *%v", n.t)
 		return &ast.BadExpr{}
+	case 1:
+	default:
+		l.errorf(n.s, "%s", shared(n.r, paths))
+		return &ast.BadExpr{}
 	}
-	for _, seg := range path {
+	for _, seg := range paths[0] {
 		if seg.opt {
 			l.errorf(n.s, "the field reaches through an optional struct, which build.Sel can't read; read the optional struct with build.Opt")
 			return &ast.BadExpr{}
@@ -215,18 +231,24 @@ func (n *binderNode) lower(l *lowerer) ast.Expr {
 	return &ast.QuantExpr{Op: n.op, Var: v, Range: rng, Body: body}
 }
 
-// find returns the path from r to the field at address p of type t. The
-// type tells a struct from its first field, which shares its address.
-func (r *root) find(p uintptr, t reflect.Type) ([]segment, bool) {
+// find returns the paths from r to the fields at address p of type t: r
+// itself, as an empty path, or tagged fields below it. The type tells a
+// struct from its first field, which shares its address. Fields that take
+// no memory, such as two fields of an empty struct type, can share an
+// address and a type too, so there may be more than one path.
+func (r *root) find(p uintptr, t reflect.Type) [][]segment {
 	if r.v.Addr().Pointer() == p && r.v.Type() == t {
-		return nil, true
+		return [][]segment{nil}
 	}
+	var paths [][]segment
 	if r.v.Kind() == reflect.Pointer && !r.v.IsNil() {
 		// A variable over a list of optional structs: its fields are read
 		// with `?.`.
-		return search(r.v.Elem(), p, t, nil, true)
+		search(r.v.Elem(), p, t, nil, true, &paths)
+	} else {
+		search(r.v, p, t, nil, false, &paths)
 	}
-	return search(r.v, p, t, nil, false)
+	return paths
 }
 
 // field is the node of Field, Opt and OptPtr.
@@ -286,12 +308,12 @@ func allocate(v reflect.Value, path map[reflect.Type]bool) {
 	}
 }
 
-// search looks for the field at address p of type t among the tagged
-// fields of v and the structs below them. path is the way to v; opt says
-// whether v was reached through a pointer.
-func search(v reflect.Value, p uintptr, t reflect.Type, path []segment, opt bool) ([]segment, bool) {
+// search adds to paths the way to every field at address p of type t
+// among the tagged fields of v and the structs below them. path is the
+// way to v; opt says whether v was reached through a pointer.
+func search(v reflect.Value, p uintptr, t reflect.Type, path []segment, opt bool, paths *[][]segment) {
 	if v.Kind() != reflect.Struct {
-		return nil, false
+		return
 	}
 	for sf, f := range v.Fields() {
 		name, ok := tagName(sf)
@@ -300,20 +322,32 @@ func search(v reflect.Value, p uintptr, t reflect.Type, path []segment, opt bool
 		}
 		here := slices.Concat(path, []segment{{name: name, opt: opt}})
 		if f.Addr().Pointer() == p && f.Type() == t {
-			return here, true
+			*paths = append(*paths, here)
 		}
 		switch {
 		case f.Kind() == reflect.Struct:
-			if found, ok := search(f, p, t, here, false); ok {
-				return found, true
-			}
+			search(f, p, t, here, false, paths)
 		case f.Kind() == reflect.Pointer && !f.IsNil():
-			if found, ok := search(f.Elem(), p, t, here, true); ok {
-				return found, true
-			}
+			search(f.Elem(), p, t, here, true, paths)
 		}
 	}
-	return nil, false
+}
+
+// shared says that the fields at paths below r share an address and a
+// type, so a pointer can't say which of them it means.
+func shared(r *root, paths [][]segment) string {
+	names := make([]string, len(paths))
+	for i, path := range paths {
+		parts := make([]string, 0, len(path)+1)
+		if r.name != "" {
+			parts = append(parts, r.name)
+		}
+		for _, seg := range path {
+			parts = append(parts, seg.name)
+		}
+		names[i] = strings.Join(parts, ".")
+	}
+	return "fields " + strings.Join(names, " and ") + " take no memory and share one address, so the pointer doesn't say which is meant; give their type a field, or read the one you mean with build.Raw"
 }
 
 // untagged looks for the field at address p of type t among the exported

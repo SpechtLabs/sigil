@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -15,6 +16,14 @@ import (
 
 // unreadableFS is a file system nothing can be read from.
 type unreadableFS struct{}
+
+// sharedDirFS hands out one slice for every listing of dir, as a file
+// system that caches its listings may.
+type sharedDirFS struct {
+	fstest.MapFS
+	dir     string
+	entries []fs.DirEntry
+}
 
 func TestFS(t *testing.T) {
 	c := common()
@@ -45,6 +54,7 @@ func TestRenderAll(t *testing.T) {
 	a := build.Module("a.b", Access, nil)
 	samePath := build.Module("a_b", Access, nil, build.WithPath("a/b.sigil"))
 	sameName := build.Module("a.b", Access, nil, build.WithPath("other.sigil"))
+	otherCase := build.Module("x.y", Access, nil, build.WithPath("A/b.sigil"))
 	var nilDoc *build.ModuleDoc[Request]
 	tests := []struct {
 		name string
@@ -55,6 +65,7 @@ func TestRenderAll(t *testing.T) {
 		{name: "same path", docs: []build.Doc{a, samePath}, err: "a.b and a_b both render to a/b.sigil"},
 		{name: "same name", docs: []build.Doc{a, sameName}, err: "two documents are named a.b"},
 		{name: "nil", docs: []build.Doc{a, nilDoc}, err: "document 2 is nil"},
+		{name: "paths that differ in case", docs: []build.Doc{a, otherCase}, err: "a/b.sigil and A/b.sigil render to paths that differ only in case"},
 	}
 	outputs := map[string]func(docs []build.Doc) error{
 		"FS": func(docs []build.Doc) error {
@@ -136,6 +147,18 @@ func TestDiff(t *testing.T) {
 				"deploy/guardrails.sigil is missing",
 			},
 		},
+		{
+			name: "line endings",
+			fsys: fstest.MapFS{
+				"deploy/common.sigil":     {Data: []byte(strings.ReplaceAll(string(src), "\n", "\r\n"))},
+				"deploy/guardrails.sigil": {Data: mustSource(t, g)},
+			},
+			stale: []string{"deploy/common.sigil"},
+			msg: []string{
+				"deploy/common.sigil is stale:\nonly the line endings differ: CRLF on disk, LF rendered",
+				"add `*.sigil text eol=lf` to .gitattributes",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -204,7 +227,8 @@ func TestCheck(t *testing.T) {
 	}
 	for _, want := range []string{
 		"access/broken.sigil:7:6: error: `==` needs operands of the same type, found float and int",
-		"  = go: output_test.go:",
+		"  = go: output_test.go:" + strconv.Itoa(whenLine) + ": (*PolicyDoc).When",
+		"  = go: output_test.go:" + strconv.Itoa(pubLine) + ": build.Pub",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("message lacks %q:\n%v", want, err)
@@ -236,6 +260,25 @@ func TestCheck(t *testing.T) {
 		}
 	})
 
+	t.Run("base that shares its listing", func(t *testing.T) {
+		mapFS := fstest.MapFS{
+			"access/broken.sigil": {Data: []byte("replaced by the rendered document")},
+			"access/other.sigil":  {Data: []byte("module access.other: Access@2\n")},
+		}
+		listing, err := mapFS.ReadDir("access")
+		if err != nil {
+			t.Fatal(err)
+		}
+		base := sharedDirFS{MapFS: mapFS, dir: "access", entries: listing}
+		ok := build.Policy("access.broken", Access, nil)
+		if err := build.Check(Access, base, ok); err != nil {
+			t.Fatal(err)
+		}
+		if listing[0].Name() != "broken.sigil" || listing[1].Name() != "other.sigil" {
+			t.Errorf("Check changed the base's listing: %v", listing)
+		}
+	})
+
 	t.Run("another kind", func(t *testing.T) {
 		err := build.Check(Access, nil, common())
 		wantError(t, err, 0, "deploy.common is built for kind DeployApproval, not Access")
@@ -244,6 +287,13 @@ func TestCheck(t *testing.T) {
 	t.Run("nil kind", func(t *testing.T) {
 		wantError(t, build.Check[Request](nil, nil), 0, "the kind is nil")
 	})
+}
+
+func (s sharedDirFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if name == s.dir {
+		return s.entries, nil
+	}
+	return s.MapFS.ReadDir(name)
 }
 
 func (unreadableFS) Open(name string) (fs.File, error) {

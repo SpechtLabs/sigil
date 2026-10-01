@@ -24,13 +24,21 @@ type refNode struct {
 type imports struct {
 	paths   map[string]*use
 	invoked map[string]bool // the paths the document invokes, found before lowering
+	errs    Errors          // documents imported under two names
+}
+
+// importRef is a document a Ref or an Invoke names: its path, and the
+// alias As gave it, if any.
+type importRef struct {
+	path, alias string
 }
 
 // use is the import of one path: a whole import when the document
-// invokes it, otherwise the pub lets it reads.
+// invokes it or gives it an alias, otherwise the pub lets it reads.
 type use struct {
 	items map[string]Site // the pub lets read, with the first Ref of each
-	site  Site            // the first Ref or Invoke
+	alias string
+	site  Site // the first Ref or Invoke
 }
 
 // span is the lines a statement of a rendered document spans, and the
@@ -43,7 +51,7 @@ type span struct {
 // lower reads the let as its import binds it: by its own name, or
 // qualified by the document when that's imported whole.
 func (n *refNode) lower(l *lowerer) ast.Expr {
-	path, ok := l.target(n.target, n.s)
+	r, ok := l.target(n.target, n.s)
 	if !ok {
 		return &ast.BadExpr{}
 	}
@@ -57,49 +65,53 @@ func (n *refNode) lower(l *lowerer) ast.Expr {
 			if len(names) > 0 {
 				exports = "it exports: " + strings.Join(names, ", ")
 			}
-			l.errorf(n.s, "%s has no pub let %s; %s", path, n.name, exports)
+			l.errorf(n.s, "%s has no pub let %s; %s", r.path, n.name, exports)
 			return &ast.BadExpr{}
 		}
 	}
-	l.uses.ref(path, n.name, n.s)
-	if l.uses.invoked[path] {
-		return &ast.SelectorExpr{X: &ast.Ident{Name: last(path)}, Sel: &ast.Ident{Name: n.name}}
+	l.uses.ref(r, n.name, n.s)
+	if r.alias != "" || l.uses.invoked[r.path] {
+		return &ast.SelectorExpr{X: &ast.Ident{Name: r.bound()}, Sel: &ast.Ident{Name: n.name}}
 	}
 	return &ast.Ident{Name: n.name}
 }
 
 // target checks a document the one being lowered imports, and returns
-// its path.
-func (l *lowerer) target(t Importable, s Site) (string, bool) {
+// how it's imported.
+func (l *lowerer) target(t Importable, s Site) (importRef, bool) {
 	if isNil(t) {
 		l.errorf(s, "the document is nil")
-		return "", false
+		return importRef{}, false
 	}
-	if e, ok := t.(*ExternDoc); ok && e.err != nil {
-		l.errs = append(l.errs, e.err)
-		return "", false
+	if err := t.fault(); err != nil {
+		l.errs = append(l.errs, err)
+		return importRef{}, false
 	}
-	path, d := t.Name(), t.built()
+	r := importRef{path: t.Name()}
+	if a, ok := t.(*Alias); ok {
+		r.alias = a.name
+	}
+	d := t.built()
 	switch {
-	case d == l.doc || path == l.doc.name:
-		l.errorf(s, "%s can't import itself", path)
-		return "", false
+	case d == l.doc || r.path == l.doc.name:
+		l.errorf(s, "%s can't import itself", r.path)
+		return importRef{}, false
 	case d != nil && d.contract != nil && d.contract.Model.Name != l.model.Name:
-		l.errorf(s, "%s is built for kind %s, and %s for kind %s; a document imports documents of its own kind", path, d.contract.Model.Name, l.doc.name, l.model.Name)
-		return "", false
+		l.errorf(s, "%s is built for kind %s, and %s for kind %s; a document imports documents of its own kind", r.path, d.contract.Model.Name, l.doc.name, l.model.Name)
+		return importRef{}, false
 	}
-	return path, true
+	return r, true
 }
 
 // invocation records an invocation of t and returns the name the import
 // binds it to.
 func (l *lowerer) invocation(t Invocable, s Site) string {
-	path, ok := l.target(t, s)
+	r, ok := l.target(t, s)
 	if !ok {
 		return "<error>"
 	}
-	l.uses.invoke(path, s)
-	return last(path)
+	l.uses.use(r, s)
+	return r.bound()
 }
 
 // source renders the document, or returns every error.
@@ -134,7 +146,7 @@ func (d *document) render() ([]byte, []span, Errors) {
 
 	var src strings.Builder
 	if d.header != "" {
-		for line := range strings.SplitSeq(d.header, "\n") {
+		for _, line := range lines(d.header) {
 			src.WriteString(strings.TrimRight("// "+line, " \t\r") + "\n")
 		}
 		src.WriteString("\n")
@@ -143,7 +155,11 @@ func (d *document) render() ([]byte, []span, Errors) {
 	if d.module {
 		keyword = "module"
 	}
-	fmt.Fprintf(&src, "%s %s: %s@%d\n", keyword, d.name, d.contract.Model.Name, d.contract.Model.Version)
+	pin := d.contract.Model.Version
+	if d.pin != 0 {
+		pin = d.pin
+	}
+	fmt.Fprintf(&src, "%s %s: %s@%d\n", keyword, d.name, d.contract.Model.Name, pin)
 	for _, u := range uses {
 		src.WriteString("\n" + u)
 	}
@@ -184,25 +200,26 @@ func (d *document) spans(out []byte, useSites []Site) []span {
 	return match(d.top, stmts, spans)
 }
 
-// ref records a Ref of the pub let name of path.
-func (u *imports) ref(path, name string, s Site) {
-	p := u.use(path, s)
+// ref records a Ref of the pub let name of r.
+func (u *imports) ref(r importRef, name string, s Site) {
+	p := u.use(r, s)
 	if _, ok := p.items[name]; !ok {
 		p.items[name] = s
 	}
 }
 
-// invoke records an invocation of path.
-func (u *imports) invoke(path string, s Site) {
-	u.use(path, s)
-}
-
-// use returns the import of path, starting it at s.
-func (u *imports) use(path string, s Site) *use {
-	p, ok := u.paths[path]
-	if !ok {
-		p = &use{items: map[string]Site{}, site: s}
-		u.paths[path] = p
+// use returns the import of r, starting it at s. A document imports
+// another under one name, so an alias other than the one before is an
+// error.
+func (u *imports) use(r importRef, s Site) *use {
+	p, ok := u.paths[r.path]
+	switch {
+	case !ok:
+		p = &use{items: map[string]Site{}, alias: r.alias, site: s}
+		u.paths[r.path] = p
+	case p.alias != r.alias:
+		first := importRef{path: r.path, alias: p.alias}
+		u.errs = append(u.errs, s.errorf("%s is imported as %s here and as %s at %s; import a document under one name", r.path, r.bound(), first.bound(), p.site.at()))
 	}
 	return p
 }
@@ -213,7 +230,7 @@ func (u *imports) scan(b *body) {
 	for _, s := range b.stmts {
 		switch s := s.(type) {
 		case *callStmt:
-			if e, extern := s.target.(*ExternDoc); s.target != nil && (!extern || e.err == nil) {
+			if s.target != nil && s.target.fault() == nil {
 				u.invoked[s.target.Name()] = true
 			}
 		case *whenStmt:
@@ -242,9 +259,13 @@ func (u *imports) render(d *document) (lines []string, sites []Site, errs Errors
 	for _, path := range slices.Sorted(maps.Keys(u.paths)) {
 		p := u.paths[path]
 		sites = append(sites, p.site)
-		if u.invoked[path] {
-			bind(last(path), path, p.site)
-			lines = append(lines, "use "+path)
+		if r := (importRef{path: path, alias: p.alias}); u.invoked[path] || r.alias != "" {
+			bind(r.bound(), path, p.site)
+			line := "use " + path
+			if r.alias != "" {
+				line += " as " + r.alias
+			}
+			lines = append(lines, line)
 			continue
 		}
 		items := slices.Sorted(maps.Keys(p.items))
@@ -253,7 +274,7 @@ func (u *imports) render(d *document) (lines []string, sites []Site, errs Errors
 		}
 		lines = append(lines, "use "+path+".{"+strings.Join(items, ", ")+"}")
 	}
-	return lines, sites, errs
+	return lines, sites, append(u.errs, errs...)
 }
 
 // match pairs the statements of b, comments left out, with the parsed
@@ -287,6 +308,15 @@ func at(spans []span, line int) (Site, bool) {
 		}
 	}
 	return site, found
+}
+
+// bound returns the name the import of r binds: its alias, or the last
+// segment of its path.
+func (r importRef) bound() string {
+	if r.alias != "" {
+		return r.alias
+	}
+	return last(r.path)
 }
 
 // last returns the last segment of a dotted name.

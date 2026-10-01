@@ -38,6 +38,14 @@ func TestOperators(t *testing.T) {
 			build.Let(m, "x", build.Field(&in.Actor.Name).Matches("`\\d"))
 			return 0
 		}},
+		{name: "pattern with a backslash and a line ending", want: `let x = actor.name matches "\\d\r"`, build: func(m *build.ModuleDoc[Request], in *Request) int {
+			build.Let(m, "x", build.Field(&in.Actor.Name).Matches("\\d\r"))
+			return 0
+		}},
+		{name: "pattern with a backslash and invalid UTF-8", want: `let x = actor.name like "a\\\xff*"`, build: func(m *build.ModuleDoc[Request], in *Request) int {
+			build.Let(m, "x", build.Field(&in.Actor.Name).Like("a\\\xff*"))
+			return 0
+		}},
 		{name: "maps", want: "let x =\n  quotas has critical\n  and quotas[service.class] > 0\n  and service.labels has {\"a\": \"b\"}", build: func(m *build.ModuleDoc[Request], in *Request) int {
 			build.Let(m, "x", build.And(
 				build.HasKey(build.Field(&in.Quotas), build.Lit(ClassCritical)),

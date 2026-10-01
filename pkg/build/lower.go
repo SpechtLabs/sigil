@@ -93,7 +93,9 @@ func (n *unaryNode) lower(l *lowerer) ast.Expr {
 }
 
 // lower renders the pattern as a raw string when it holds a backslash,
-// so a regular expression reads as written.
+// so a regular expression reads as written, unless a raw string can't
+// hold it: a backtick, a control character such as a line ending, or
+// invalid UTF-8 go into a quoted string.
 func (n *patternNode) lower(l *lowerer) ast.Expr {
 	x := l.expr(n.x, n.s)
 	if n.op == ast.OpMatches {
@@ -102,7 +104,7 @@ func (n *patternNode) lower(l *lowerer) ast.Expr {
 		}
 	}
 	lit := &ast.StringLit{Text: strconv.Quote(n.pattern), Value: n.pattern}
-	if strings.Contains(n.pattern, `\`) && !strings.Contains(n.pattern, "`") {
+	if strings.Contains(n.pattern, `\`) && strconv.CanBackquote(n.pattern) {
 		lit.Text, lit.Raw = "`"+n.pattern+"`", true
 	}
 	return &ast.BinaryExpr{Op: n.op, X: x, Y: lit}
