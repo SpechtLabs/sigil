@@ -3,7 +3,8 @@
   "extends": [
     "config:recommended",
     ":semanticCommits",
-    "helpers:pinGitHubActionDigests"
+    "helpers:pinGitHubActionDigests",
+    "customManagers:githubActionsVersions"
   ],
   "timezone": "Europe/Berlin",
   "dependencyDashboard": true,
@@ -89,6 +90,15 @@
     }
   ],
   "packageRules": [
+    {
+      "description": "mise is pinned as MISE_VERSION in every workflow that sets it up; move them at once, and only to a release a day old, the age mise-action waited for before the pin.",
+      "matchDepNames": [
+        "jdx/mise"
+      ],
+      "groupName": "mise",
+      "groupSlug": "mise",
+      "minimumReleaseAge": "1 day"
+    },
     {
       "description": "Automerge digest, pin, patch, and minor updates once CI passes.",
       "matchUpdateTypes": [
