@@ -153,6 +153,7 @@ export default defineUserConfig({
             { text: "Handle failed evaluations", link: "handle-errors", icon: "mdi:alert-circle-outline" },
             { text: "Policies in a ConfigMap", link: "configmaps", icon: "mdi:kubernetes" },
             { text: "Build a host binary", link: "host-binary", icon: "mdi:console" },
+            { text: "Build policies in Go", link: "build-policies-in-go", icon: "mdi:code-braces-box" },
             { text: "Evolve a kind safely", link: "evolve-a-kind", icon: "mdi:source-branch" },
             { text: "The example service", link: "example-service", icon: "mdi:rocket-launch-outline" },
           ],
@@ -194,6 +195,7 @@ export default defineUserConfig({
             { text: "Halting by construction", link: "halting", icon: "mdi:timer-sand-complete" },
             { text: "Composition without templating", link: "composition", icon: "mdi:layers-triple" },
             { text: "Bundles and trust", link: "bundles", icon: "mdi:package-variant-closed" },
+            { text: "Facts, vocabulary and rules", link: "facts-vocabulary-rules", icon: "mdi:layers-outline" },
             { text: "One engine for every host", link: "one-engine", icon: "mdi:cube-outline" },
           ],
         },
@@ -237,6 +239,7 @@ export default defineUserConfig({
           prefix: "/reference/",
           items: [
             { text: "Go API", link: "go-api", icon: "mdi:language-go" },
+            { text: "Go builder", link: "go-builder", icon: "mdi:hammer-wrench" },
             { text: "Performance", link: "performance", icon: "mdi:speedometer" },
           ],
         },
