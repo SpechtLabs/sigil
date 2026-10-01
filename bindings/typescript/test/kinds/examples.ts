@@ -39,12 +39,13 @@ const DeployActor = struct("Actor", {
   roles: t.list(t.string),
   regions: t.list(t.string),
 });
-export const Deny = decision("deny", ["not_eligible", "soak_too_short", "no_rule_matched"]);
+const Freeze = struct("Freeze", { environments: t.list(t.string), unknown: t.bool });
+export const Deny = decision("deny", ["not_eligible", "change_freeze", "soak_too_short", "no_rule_matched"]);
 export const Review = decision("review", ["service_owner"], { approvers: t.list(t.string) });
 export const Approve = decision("approve", ["release_manager", "payments_sre"], { bake: t.duration.default("1h") });
 export const DeployApproval = defineKind("DeployApproval", {
-  version: 1,
-  inputs: { release: Release, service: Service, actor: DeployActor, environment: t.string },
+  version: 2,
+  inputs: { release: Release, service: Service, actor: DeployActor, environment: t.string, freeze: Freeze },
   functions: { split: fn([t.string, t.string], t.list(t.string), (s, sep) => s.split(sep)) },
   decisions: [Deny, Review, Approve],
   reasonPrecedence: [Deny, Approve],
