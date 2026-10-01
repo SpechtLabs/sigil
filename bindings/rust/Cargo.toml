@@ -65,3 +65,13 @@ required-features = ["bundled"]
 [[test]]
 name = "async_runtime"
 required-features = ["bundled"]
+
+# Every test binary compiles sigil.wasm with Cranelift once, and a Cranelift
+# built without optimizations takes over a minute for that on a CI runner, so
+# the dependencies build optimized and without debuginfo. The crate itself
+# still builds unoptimized, with debuginfo. Cargo reads profiles from the
+# workspace root only, so this never reaches a crate that depends on this one;
+# examples/feature-flags sets the same.
+[profile.dev.package."*"]
+opt-level = 3
+debug = false
