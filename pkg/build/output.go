@@ -259,10 +259,14 @@ func renderAll(s Site, docs []Doc) ([]rendered, error) {
 // to those in a rendered document.
 func checkError(b *bundle.Bundle, byPath map[string]rendered) *CheckError {
 	e := &CheckError{}
-	errs := b.Resolve(b.Errors())
+	errs := b.Errors() // sorted by file and position
 	parts := make([]string, 0, len(errs))
-	for _, d := range errs {
-		text := strings.TrimRight(diag.Render(d, b.SourceOf(d.File)), "\n")
+	for _, orig := range errs {
+		// The bundle knows which source it reported orig against, even when
+		// two of its sources hold a file of the same path; a copy it doesn't.
+		d := *orig
+		d.Doc = b.DocumentOf(orig)
+		text := strings.TrimRight(diag.Render(&d, b.SourceFor(orig)), "\n")
 		var site *Site
 		if f, ok := byPath[d.File]; ok {
 			s, found := at(f.spans, d.Pos.Line)
