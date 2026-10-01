@@ -1241,7 +1241,7 @@ dependencies = [
 
 [[package]]
 name = "spechtlabs-sigil"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "rstest",
  "serde",
