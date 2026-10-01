@@ -61,6 +61,14 @@ type Resolver interface {
 
 The evaluator would check each resolved value against the kind's schema and reject a type mismatch with the failing path. The interface and how it integrates with `Eval` are undecided.
 
+## Host-function results in the trace
+
+**Status:** a proposal, not on the [roadmap](/project/roadmap/) yet. The trace records no host function calls today.
+
+A logged input replays a decision with `sigil eval` because the same compiled policy and the same input give the same result. That holds only while every host function returns what it returned the first time. A function that looks something up in a live system, such as a registry or a directory, breaks it: replaying last week's input asks today's registry. [When a host function is the better tool](/understanding/facts-vocabulary-rules/#when-a-host-function-is-the-better-tool) covers when a host takes that trade.
+
+The proposal records every host function call an evaluation makes, its arguments and its result or error, in the result's trace. A recorded trace then has the shape of a test file's [`stubs`](/reference/test-files/#stubs), `calls` with `args` and `returns`, so replaying an evaluation means passing its input and its recorded calls as stubs, and `sigil eval` could read both from one log entry. Undecided: whether recording is on by default, since a function called inside a quantifier can be called once per element, and how a host keeps sensitive results out of a trace it logs.
+
 ## Loading a kind at run time
 
 **Status:** in progress on the [roadmap](/project/roadmap/) as the LoadKind deliverable of the Hardening milestone. The internal kind-file loader and the Go binding it synthesizes already back the CLI and have fuzz coverage; the public API doesn't exist.
@@ -115,6 +123,43 @@ sigil breaking old/deploy_approval.sigil deploy_approval.sigil
 ```
 
 Until it exists, reviewers check `version` and `accepts` by hand; [Evolve a kind safely](/guides/evolve-a-kind/) shows what CI catches today.
+
+## Module versioning
+
+**Status:** a proposal, not on the [roadmap](/project/roadmap/) yet. Modules have no version of their own.
+
+A policy pins its kind's version, `DeployApproval@2`, but nothing pins a module. When a platform changes what one of its `pub let`s means, every importer gets the new meaning at its next reload, and [Vocabulary is a public API](/understanding/facts-vocabulary-rules/#vocabulary-is-a-public-api) explains why that's the dangerous kind of change.
+
+A naming convention works today. A module name can end in a version, `deploy.freeze.v2` in `deploy/freeze/v2.sigil`, and sit next to `deploy.freeze` in the same bundle, so the platform publishes the new meaning under a new name and each team moves its import when it's ready:
+
+```sigil
+use deploy.freeze.v2.{is_frozen}
+```
+
+A whole import binds the last segment, `use deploy.freeze.v2` makes the names `v2.is_frozen`, so a selective import reads better. What a real module version would add over the convention is undecided: a version in the module header that imports pin, or a deprecation marker on a `pub let` that `sigil check` warns about in every importer. Either needs [`sigil breaking` for modules](#sigil-breaking-for-modules) to say when a new version is due.
+
+## `sigil breaking` for modules
+
+**Status:** a proposal, not on the [roadmap](/project/roadmap/) yet. It extends [`sigil breaking`](#sigil-breaking), which isn't implemented either.
+
+The command would also compare two versions of a module file and classify the changes to its exported surface, the `pub let`s:
+
+| Change | Classified as | Why |
+| --- | --- | --- |
+| A `pub let` added | Compatible | No importer reads it yet |
+| A `pub let` removed or renamed | Breaking | Every document that imports it stops compiling |
+| A `pub let`'s type changed | Breaking | Its importers' expressions stop type-checking |
+| A `pub let`'s expression changed, with the same name and type | Changed meaning | Every importer compiles and decides differently, so it's reported for review rather than failed |
+
+The last row is the one CI can't catch any other way. The platform's own tests pass, every team's `sigil check` passes, and decisions change.
+
+## `sigil export` for trusted modules
+
+**Status:** a proposal, not on the [roadmap](/project/roadmap/) yet. [`sigil export`](/reference/cli/#sigil-export) writes the kind file only.
+
+A host binary exports its kind, so a policy repository can check team policies without the host's Go code. It doesn't export the host's trusted documents, such as a vocabulary module built with [`pkg/build`](/reference/go-builder/) and embedded in the service. A repository that imports `deploy.freeze` has to vendor a copy and list it under [`trusted`](/reference/config/#keys), and nothing tells it when that copy goes stale.
+
+The proposal links the trusted documents into the host binary the way `cli.WithKind` links the kind, and has `sigil export` write them into a directory next to the kind file, with `--check` failing on a stale copy as it does for the kind. The option that would link them doesn't exist in package `cli` yet.
 
 ## `sigil gen go`
 
