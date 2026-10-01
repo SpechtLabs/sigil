@@ -10,6 +10,13 @@ import (
 	"github.com/spechtlabs/sigil/pkg/policy"
 )
 
+// The kinds of ParamOption.
+const (
+	optDefault = iota
+	optMin
+	optMax
+)
+
 // Doc is a module or policy built in Go: a [*ModuleDoc] or a
 // [*PolicyDoc]. Its source is rendered on demand, in `sigil fmt`'s
 // canonical style.
@@ -42,6 +49,8 @@ type Invocable interface {
 
 // Scope is where a [Let] goes: a [*ModuleDoc] or [*PolicyDoc] for a
 // top-level let, or a [*Block] for a let scoped to a `when` body.
+// A nil scope has no document to report the mistake to, so the error
+// comes from the document that reads the let.
 type Scope interface {
 	scope() *body
 }
@@ -106,13 +115,6 @@ type ParamOption[T any] struct {
 	s    Site
 	kind int
 }
-
-// The kinds of ParamOption.
-const (
-	optDefault = iota
-	optMin
-	optMax
-)
 
 // document is what a module and a policy built in Go have in common,
 // whatever their input type.
