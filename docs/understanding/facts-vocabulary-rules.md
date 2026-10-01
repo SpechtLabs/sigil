@@ -60,7 +60,7 @@ There's an obvious shortcut once the platform builds its module in Go. The Go co
 
 **The rendered file stops being reviewable.** The committed module is what reviewers approve. If the running module is rendered from a flag, the file in the repository and the file in the service differ most of the time, and a review approves neither. A module that reads `freeze.environments` changes only when its meaning changes, so its diff is worth reading.
 
-**Replay breaks.** The same compiled policy and the same input always give the same result, trace included ([Evaluation semantics](/reference/evaluation/)). That's what lets a logged `input.json` reproduce a decision with `sigil eval`, for a test or for an audit. With the freeze baked into the module, the logged input doesn't carry it, so replaying a decision from last Tuesday runs today's module and gets today's answer. With the freeze in the input, the logged input has it, and the replay gets last Tuesday's answer.
+**Replay breaks.** The same compiled policy and the same input always give the same result, trace included ([Evaluation semantics](/reference/evaluation/)). That's what lets a logged input reproduce a decision with `sigil eval`, for a test or for an audit; deploygate writes the whole input into each decision log line for that reason. With the freeze baked into the module, the logged input doesn't carry it, so replaying a decision from last Tuesday runs today's module and gets today's answer. With the freeze in the input, the logged input has it, and the replay gets last Tuesday's answer.
 
 The input is also where facts are the host's to fill. A fact a caller could set is a fact the caller controls, so the host overwrites the field after it decodes a request; deploygate refuses a request body that carries a `freeze` at all.
 
@@ -77,6 +77,8 @@ pub let is_frozen = freeze.unknown or environment in freeze.environments
 ```
 
 The fail-closed choice is now in the file a policy reviewer reads, in the same language as the rules, and a [policy test](/guides/test-policies/) can pin it with an input whose `unknown` is true.
+
+The host still owns one half of failing closed: it must never turn a value it can't read into an empty freeze. A flag that says `"Production"` when the host knows `production`, or holds a number where a list belongs, is a failed lookup, not "nothing frozen". deploygate counts it as a failed refresh, keeps its last answer, and reports `unknown` once that answer goes stale, so a typo left in the flag service ends up, once the staleness limit passes, as a deny the policy can see.
 
 ## When a host function is the better tool
 
@@ -129,6 +131,8 @@ Each fact family is a field of the input, so the kind grows. Adding the `freeze`
 The host resolves its facts for every request, including requests no rule asks about. For the freeze that's free, because the host refreshes the flag in the background and every request reads the cached answer. For a fact that costs a network call per request, a host function that only runs when a rule needs it can be cheaper.
 
 Facts in the input are as current as the host's cache. How stale a fact may get becomes host configuration, deploygate's `--freeze-max-staleness`, and the policy only sees the consequence, `unknown`. That's the right owner for the question, but it means the policy can't tighten it.
+
+Whoever can change a fact can change decisions. Lifting the freeze is a flag flip, with no policy review, so access to that flag belongs to the same trust model as access to the platform's policies.
 
 ## Related
 

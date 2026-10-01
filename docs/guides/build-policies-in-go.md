@@ -241,7 +241,7 @@ Then pick the load option by whether a required policy imports the module:
   	policy.Trusted(vocabularyFS))
   ```
 
-Either way, a team document that defines `deploy.freeze` fails the load. `build.FS(deploy.FreezeModule())` returns an `fs.FS` both options take, but loading the embedded file keeps the service on the bytes that were reviewed, and the drift test keeps those equal to the Go code.
+Either way, a team document that defines `deploy.freeze` differently fails the load. A byte-for-byte copy of the trusted file is the same definition and is left out, so the bundle may be a repository that holds the platform's directory too. A trusted source that holds no policy or module fails the load, which catches an embed or `fs.Sub` of the wrong directory. `build.FS(deploy.FreezeModule())` returns an `fs.FS` both options take, but loading the embedded file keeps the service on the bytes that were reviewed, and the drift test keeps those equal to the Go code.
 
 Policy repositories check against the same source. In `sigil.yaml`, list the directory under `trusted`, or under the `trusted` of the `require` entry that imports it, as the example does; the keys are in [Configuration file](/reference/config/#keys). A team file that redefines the module then fails `sigil check`:
 
@@ -281,10 +281,11 @@ type Source interface {
 ```
 
 - Refresh the fact in the background, and answer every request from the last result. The example's OFREP source evaluates a feature flag every 15 seconds.
+- Treat a value you can't read as a failed refresh, never as "nothing frozen". deploygate checks every environment a flag names against `--freeze-known-environments`, so `"Production"` or `"prod"` fails the refresh and the last answer stays in force.
 - Set `Unknown` once the last answer is older than you can tolerate, and from startup until the first answer arrives. The module turns that into a deny.
-- Log the input you evaluated, the fact included. That input replays the decision with `sigil eval`.
+- Log the whole input you evaluated, the fact included, as one field. deploygate's `deploy decision` log line carries it as `input`, and `sigilc eval` on that field alone reproduces the decision; see the README's [Replay a decision](https://github.com/SpechtLabs/sigil/tree/main/examples/deploy-gates#replay-a-decision).
 
-The example's [README](https://github.com/SpechtLabs/sigil/tree/main/examples/deploy-gates#a-change-freeze-facts-vocabulary-and-rules) covers its two sources, the flags that configure them and a frozen deploy's full response.
+The example's [README](https://github.com/SpechtLabs/sigil/tree/main/examples/deploy-gates#a-change-freeze-facts-vocabulary-and-rules) covers its two sources, the flags that configure them, which flag values fail a refresh, and a frozen deploy's full response.
 
 ## Test the rules on the facts
 
