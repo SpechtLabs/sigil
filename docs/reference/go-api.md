@@ -346,15 +346,16 @@ var policies embed.FS
 p, err := Deploy.Load(policies, "payments.production", policy.Require("deploy.guardrails"))
 ```
 
-| Fails when                                                   | Error                                                                                                                                                           |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A document doesn't parse, type-check or compile              | `*CompileError`                                                                                                                                                 |
-| A name is defined twice                                      | `*CompileError`                                                                                                                                                 |
-| A document is for another kind                               | `*CompileError`: `document is for kind AccessGrant, not DeployApproval`                                                                                         |
-| A kind document with the kind's name differs from `Schema()` | `*CompileError`: `kind document DeployApproval doesn't match the host's kind`; see [Kind documents in a bundle](/reference/bundles/#kind-documents-in-a-bundle) |
-| The root is a module                                         | `*CompileError`: `deploy.common is a module, not a policy`                                                                                                      |
-| A `Params` value or a `Require` doesn't hold                 | `*CompileError`; see [Load options](#load-options)                                                                                                              |
-| `fsys` can't be read (`Load` only)                           | The error from reading `fsys`                                                                                                                                   |
+| Fails when                                                          | Error                                                                                                                                                           |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A document doesn't parse, type-check or compile                     | `*CompileError`                                                                                                                                                 |
+| A name is defined twice                                             | `*CompileError`                                                                                                                                                 |
+| A document is for another kind                                      | `*CompileError`: `document is for kind AccessGrant, not DeployApproval`                                                                                         |
+| A kind document with the kind's name differs from `Schema()`        | `*CompileError`: `kind document DeployApproval doesn't match the host's kind`; see [Kind documents in a bundle](/reference/bundles/#kind-documents-in-a-bundle) |
+| The root is a module                                                | `*CompileError`: `deploy.common is a module, not a policy`                                                                                                      |
+| A `Params` value or a `Require` doesn't hold                        | `*CompileError`; see [Load options](#load-options)                                                                                                              |
+| `fsys` can't be read (`Load` only)                                  | The error from reading `fsys`                                                                                                                                   |
+| A trusted source can't be read, or two hold a file of the same path | The error from reading it, or `policy file deploy/freeze.sigil is in two of the sources read into one bundle`                                                   |
 
 ### Compile errors
 
@@ -407,6 +408,7 @@ type LoadOption interface{ /* unexported methods */ }
 type Params map[string]any
 
 func Require(name string, opts ...RequireOption) LoadOption
+func Trusted(fsys fs.FS) LoadOption
 
 type RequireOption interface{ /* unexported methods */ }
 
@@ -418,8 +420,9 @@ func From(fsys fs.FS) RequireOption
 | `Params{...}`        | Binds the root policy's params from Go                                                     |
 | `Require(name, ...)` | Requires the root policy to invoke the named policy unconditionally                        |
 | `From(fsys)`         | Inside `Require`: takes the required policy, and everything it uses, from a trusted source |
+| `Trusted(fsys)`      | Adds a trusted source without requiring a policy from it                                   |
 
-`LoadOption` is implemented by `Params` and `Require`; `RequireOption` only by `From`.
+`LoadOption` is implemented by `Params`, `Require` and `Trusted`; `RequireOption` only by `From`.
 
 #### `Params`
 
@@ -459,6 +462,24 @@ p, err := Deploy.Load(policy.MapFS(cm.Data), "payments.production",
 ```
 
 Why `From` exists: [Why required policies need a trusted source](/understanding/bundles/#why-required-policies-need-a-trusted-source).
+
+#### `Trusted`
+
+- Adds a trusted source, such as the vocabulary modules a platform ships, without requiring any policy from it.
+- Reads the source into the same trusted bundle as the sources `From` names. Its documents resolve before the bundle's, and a document in the bundle passed to `Load` that defines one of their names is a compile error.
+- Every document in the source is checked, so a broken one fails the load even when no policy uses it.
+- Repeat it to add several sources. A source that `Trusted` or `From` already names is read once.
+- Two trusted sources, from `Trusted` or `From`, can't hold a file of the same path, since a diagnostic names a file by its path.
+- A `Require` without `From` whose policy a trusted source defines takes it from there, as `From` would.
+- The rules for what resolves where are in [Trusted sources](/reference/bundles/#trusted-sources). `sigil check --trusted` and the configuration file's [`trusted`](/reference/config/#keys) key make the same check.
+
+```go
+//go:embed vocabulary
+var vocabularyFS embed.FS
+
+p, err := Deploy.Load(policy.MapFS(cm.Data), "payments.production",
+	policy.Trusted(vocabularyFS))
+```
 
 ## Evaluating
 
