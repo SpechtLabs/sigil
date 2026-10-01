@@ -55,7 +55,7 @@ const maxResponseBytes = 64 << 10
 const reasonError = "ERROR"
 
 // OFREP is a [Source] that evaluates a flag on an OpenFeature Remote
-// Evaluation Protocol service, such as the featuregate example or flagd. The
+// Evaluation Protocol service, such as flagd. The
 // flag's value lists the frozen environments: a JSON array of strings, or a
 // string of comma-separated names, which is what a flag service with only
 // boolean and string flags can hold. An empty list or an empty string means
@@ -126,7 +126,7 @@ func WithFlag(key string) Option {
 
 // WithEvaluationContext adds attributes to the evaluation context the flag
 // is evaluated with, next to the targetingKey, which it may override. A flag
-// service that targets on attributes, such as featuregate's region, needs
+// service that targets on attributes, such as a region, needs
 // them to evaluate the flag the way its policy expects.
 func WithEvaluationContext(attrs map[string]string) Option {
 	return func(c *ofrepConfig) {
@@ -179,7 +179,7 @@ func WithTracer(tracer trace.Tracer) Option {
 }
 
 // NewOFREP returns a source that evaluates a flag on the OFREP service at
-// baseURL, such as http://featuregate:8080. It sends no request: call
+// baseURL, such as http://flagd:8016. It sends no request: call
 // [OFREP.Refresh] for the first answer and [OFREP.Run] for the rest. Until
 // the first refresh succeeds, the freeze is unknown. It returns an error
 // for a base URL that isn't an absolute http or https URL, an empty flag
@@ -401,11 +401,11 @@ func (o *OFREP) failed(status int, ev evaluation) humane.Error {
 func parseBase(raw string) (string, humane.Error) {
 	u, err := url.Parse(raw)
 	if err != nil {
-		return "", humane.Wrap(err, "the freeze's OFREP URL "+raw+" isn't a URL", "set it to the flag service's base URL, such as http://featuregate:8080")
+		return "", humane.Wrap(err, "the freeze's OFREP URL "+raw+" isn't a URL", "set it to the flag service's base URL, such as http://flagd:8016")
 	}
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return "", humane.New("the freeze's OFREP URL "+raw+" isn't an absolute http or https URL",
-			"set it to the flag service's base URL, such as http://featuregate:8080")
+			"set it to the flag service's base URL, such as http://flagd:8016")
 	}
 	return strings.TrimSuffix(u.String(), "/"), nil
 }

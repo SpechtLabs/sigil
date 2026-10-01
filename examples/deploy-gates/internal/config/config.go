@@ -108,7 +108,7 @@ type Config struct {
 	// nothing.
 	FreezeEnvironments []string
 	// FreezeOFREPURL is the base URL of the OFREP flag service the freeze
-	// is read from, such as http://featuregate:8080. Empty means the freeze
+	// is read from, such as http://flagd:8016. Empty means the freeze
 	// is FreezeEnvironments. Setting both is an error.
 	FreezeOFREPURL string
 	// FreezeFlag is the key of the flag that lists the frozen environments.
@@ -271,8 +271,8 @@ gracefully.`,
   # Freeze production, without a flag service
   deploygate serve --freeze-environments production
 
-  # Read the freeze from featuregate's change-freeze flag, as a user in eu-1
-  deploygate serve --freeze-ofrep-url http://featuregate:8080 --freeze-context region=eu-1`,
+  # Read the freeze from the change-freeze flag of an OFREP service, in region eu-1
+  deploygate serve --freeze-ofrep-url http://flagd:8016 --freeze-context region=eu-1`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if herr := bind(v, cmd); herr != nil {
@@ -298,7 +298,7 @@ gracefully.`,
 	flags.Bool(keyDebug, false, "debug logging and gin debug mode")
 	flags.String(keyLogFormat, DefaultLogFormat, "log format: json or console")
 	flags.StringSlice(keyFreezeEnvironments, nil, "environment frozen for as long as deploygate runs, repeatable; can't be combined with --freeze-ofrep-url")
-	flags.String(keyFreezeOFREPURL, "", "base URL of the OFREP flag service the change freeze is read from, such as http://featuregate:8080; empty uses --freeze-environments")
+	flags.String(keyFreezeOFREPURL, "", "base URL of the OFREP flag service the change freeze is read from, such as http://flagd:8016; empty uses --freeze-environments")
 	flags.String(keyFreezeFlag, DefaultFreezeFlag, "key of the flag that lists the frozen environments, as a list of strings or one comma-separated string")
 	flags.StringSlice(keyFreezeContext, nil, "key=value attribute of the freeze flag's evaluation context, repeatable, such as region=eu-1")
 	flags.Duration(keyFreezeRefreshInterval, DefaultFreezeRefreshInterval, "how often to evaluate the freeze flag")
