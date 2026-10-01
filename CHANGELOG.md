@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.3](https://github.com/SpechtLabs/sigil/compare/v0.6.2...v0.6.3) (2026-10-01)
+
+
+### Features
+
+* **examples:** featuregate, an OFREP feature-flag service in Rust on the Sigil crate ([#111](https://github.com/SpechtLabs/sigil/issues/111)) ([bd544ba](https://github.com/SpechtLabs/sigil/commit/bd544ba20fb6dc09778dc54c216d582116b008ea))
+* **rust:** add spechtlabs-sigil, Rust bindings for the WebAssembly module ([#110](https://github.com/SpechtLabs/sigil/issues/110)) ([44dc458](https://github.com/SpechtLabs/sigil/commit/44dc45873c84e927152406f5d7fcc0e850e5c6d6))
+
 ## [0.6.2](https://github.com/SpechtLabs/sigil/compare/v0.6.1...v0.6.2) (2026-09-30)
 
 
