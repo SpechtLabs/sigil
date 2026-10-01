@@ -9,7 +9,9 @@ import (
 
 // DeploymentRequest is the body of POST /api/v1/teams/{team}/deployments.
 // It carries no roles: the access policy grants them, and the handler feeds
-// them into the deploy policy's actor.roles.
+// them into the deploy policy's actor.roles. It carries no freeze either: the
+// handler asks deploygate's freeze source, and a body with a freeze field is
+// refused like any other unknown field.
 type DeploymentRequest struct {
 	Release ReleaseRequest `json:"release"`
 	// Service is the deploy policy's service as it is. The handler refuses
@@ -69,6 +71,10 @@ type DecisionResponse struct {
 	Trace []CandidateResult `json:"trace"`
 	// Access is the access stage that ran before the deploy policy.
 	Access *AccessBlock `json:"access,omitempty"`
+	// Freeze is the change freeze the deploy policy read, as deploygate's
+	// freeze source answered it. It is set whenever the deploy stage was
+	// reached, and left out when the access stage failed first.
+	Freeze *deploy.Freeze `json:"freeze,omitempty"`
 	// Error is set when an evaluation failed, and Asserts or Conflict
 	// explain the failure when it was a failed assert or a conflict.
 	Error    *ErrorResponse  `json:"error,omitempty"`

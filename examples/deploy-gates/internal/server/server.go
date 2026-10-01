@@ -24,6 +24,7 @@ import (
 
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/access"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/deploy"
+	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/freeze"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/store"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/telemetry"
 )
@@ -69,6 +70,7 @@ var quietPaths = []string{RouteHealthz, RouteReadyz, RouteMetrics}
 type Server struct {
 	deploy  *store.Store[deploy.Input]
 	access  *store.Store[access.Input]
+	freeze  freeze.Source
 	router  *gin.Engine
 	metrics *telemetry.Metrics
 
@@ -82,8 +84,9 @@ type Server struct {
 
 // New builds the server and its routes. [WithStore] and [WithAccessStore]
 // are required, and New returns an error without either; without
-// [WithMetrics] the server reports on a private set of metrics, and without
-// [WithTracerProvider] it uses the global tracer provider.
+// [WithFreeze] nothing is frozen, without [WithMetrics] the server reports
+// on a private set of metrics, and without [WithTracerProvider] it uses the
+// global tracer provider.
 func New(opts ...Option) (*Server, humane.Error) {
 	s := &Server{
 		addr:              DefaultAddr,
@@ -99,6 +102,9 @@ func New(opts ...Option) (*Server, humane.Error) {
 	}
 	if s.access == nil {
 		return nil, humane.New("the server has no store for the access policies", "pass server.WithAccessStore(store.NewAccess(...)) to server.New")
+	}
+	if s.freeze == nil {
+		s.freeze = freeze.NewStatic()
 	}
 	if s.metrics == nil {
 		s.metrics = telemetry.NewMetrics()

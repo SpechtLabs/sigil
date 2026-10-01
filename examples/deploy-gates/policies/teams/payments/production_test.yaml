@@ -66,6 +66,41 @@ cases:
       decision: deny
       reason: not_eligible
 
+  # deny change_freeze: deploy.freeze's is_frozen, from the freeze deploygate
+  # resolves and puts in the input. It outranks every rule but not_eligible.
+  - name: a deploy to a frozen environment is denied
+    input_file: testdata/frozen.json
+    expect:
+      decision: deny
+      reason: change_freeze
+  - name: a deploy while the freeze is unknown is denied, failing closed
+    input_file: testdata/freeze-unknown.json
+    expect:
+      decision: deny
+      reason: change_freeze
+  - name: a freeze of another environment doesn't stop a production deploy
+    input_file: testdata/frozen-elsewhere.json
+    expect:
+      decision: review
+      reason: service_owner
+      payload:
+        approvers: [payments-leads, security-leads]
+  - name: a frozen deploy that also soaked too briefly is denied for the freeze
+    input_file: testdata/frozen-short-soak.json
+    expect:
+      decision: deny
+      reason: change_freeze
+  - name: a deploy to a frozen environment that isn't production is still not eligible
+    input_file: testdata/frozen-staging.json
+    expect:
+      decision: deny
+      reason: not_eligible
+  - name: payments-sre can't approve a deploy to a frozen environment
+    input_file: testdata/frozen-sre.json
+    expect:
+      decision: deny
+      reason: change_freeze
+
   # deny soak_too_short: payments lowers the platform's 24h minimum to 4h.
   - name: a 2h soak is denied
     input_file: testdata/short-soak.json

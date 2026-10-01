@@ -11,6 +11,7 @@ The example is a separate Go module, `github.com/spechtlabs/sigil/examples/deplo
 - **Guardrails no team can remove.** The platform's documents are embedded in the binary and passed to `policy.Require("deploy.guardrails", policy.From(platformFS))`, so a team policy has to invoke the guardrails unconditionally and can't redefine them. See [Trusted sources](../../docs/reference/bundles.md#trusted-sources).
 - **Policies loaded from directories.** The team policies and the access policy each come from a directory, a mounted ConfigMap in a cluster, and reload in place. A bundle that doesn't compile never replaces the one that serves. See [Policies in a ConfigMap](../../docs/guides/configmaps.md) and [Reload without an outage](../../docs/guides/configmaps.md#reload-without-an-outage).
 - **A second, collecting kind.** `internal/access` declares `AccessGrant`, a `collect all` kind that grants roles. Its outcome feeds the deploy policy's `actor.roles`, so a client can't claim a role, and it shows both ways a collecting kind says no: a host-declared `exclusive` line and a separation-of-duties assert in a required policy.
+- **Facts, vocabulary and rules.** A change freeze comes from a feature flag the host reads over OFREP and puts into every deploy input. The platform's `deploy.freeze` module turns it into `is_frozen`, and the guardrails deny a frozen deploy with `change_freeze`. When the flag service has been unreachable for too long, every deploy fails closed. See [A change freeze](#a-change-freeze-facts-vocabulary-and-rules).
 - **Typed matching.** The handler matches deploy results with `deploy.Review.Match` and `deploy.Approve.Match`, and access results with `access.Deployer.MatchAll` and friends, and gets `ReviewData`, `ApproveData` and `GrantData` back, not maps. See [Typed matching](../../docs/reference/go-api.md#typed-matching).
 - **A complete local observability stack.** Alloy sends metrics to Mimir, traces to Tempo and JSON logs to Loki. Pyroscope collects every profile type supported by its Go SDK. Grafana connects decisions, logs, traces and profiles in one provisioned dashboard. k6 exercises both policy stages and records throughput, latency and correctness.
 
@@ -368,6 +369,53 @@ Excerpt from the response:
 
 The trace still shows the three roles that fired, so it's clear which two couldn't stand together. Both failures end a deployment the same way, before the deploy policy runs: the deployments endpoint answers `500` with the fallback `deny` and an empty `access.grants`. An actor without a name fails the access guardrails' input assert instead, and that's the caller's to fix, so both endpoints answer it with `422`.
 
+## A change freeze: facts, vocabulary and rules
+
+During a change freeze, nothing ships to a frozen environment. Which environments are frozen is a fact about the world that changes several times a day, usually by flipping a feature flag. What "frozen" means for a deploy is something the platform decides once. What happens to a frozen deploy is a rule every team must follow. deploygate keeps these three apart, and each one has its own owner:
+
+| Layer | Here | Written in | Owned by | Changes |
+| --- | --- | --- | --- | --- |
+| Facts | `internal/freeze` fills `freeze` in every deploy input | Go host code | the service team | whenever the flag flips |
+| Vocabulary | `deploy.freeze` in `policies/platform/deploy/freeze.sigil`: `pub let is_frozen = freeze.unknown or environment in freeze.environments` | Sigil | the platform team | rarely, reviewed as a diff |
+| Rules | `deploy.guardrails`: `when is_frozen { deny(reason: change_freeze) }` | Sigil | the platform team, required of every team | when the policy changes |
+
+The flag's value is never part of a policy. It's data in the input, so flipping the flag doesn't reload anything, and the module stays the same from one review to the next. The request plus the response's `freeze` block is the whole input the policy read, so `sigilc eval` on that input reproduces the decision. Fail-closed handling lives in the vocabulary, `freeze.unknown or …`, where a reviewer sees it, and not in Go code that a policy reviewer never reads.
+
+### Where the freeze comes from
+
+A request can't carry a freeze. `freeze` isn't a field of the request, so a body that sends one is refused with `400` like any other unknown field. After decoding a request, the handler overwrites `Input.Freeze` with the freeze source's answer. The policy, the response's `freeze` block, the `deploygate.evaluate` span (`sigil.freeze.environments`, `sigil.freeze.unknown`) and the `deploy decision` log line (`freeze_environments`, `freeze_unknown`) all carry the same value. That value plus the rest of the request is the input the policy read.
+
+There are two sources:
+
+- **Fixed**, `--freeze-environments production`: the same environments for as long as the process runs. Without it, nothing is frozen.
+- **A feature flag**, `--freeze-ofrep-url http://featuregate:8080`: deploygate evaluates the flag `change-freeze` over the [OpenFeature Remote Evaluation Protocol](https://github.com/open-feature/protocol) with `POST /ofrep/v1/evaluate/flags/change-freeze` and the context `{"targetingKey": "deploygate"}`, plus any `--freeze-context key=value` attributes. The value lists the frozen environments, either as a JSON array of strings or as one comma-separated string. An empty value freezes nothing. A string value fits a flag service that only has boolean and string flags, such as the [featuregate](../feature-flags/README.md) example. featuregate doesn't ship a `change-freeze` flag. Serving it there takes a string flag with `off: ""` and a policy that enables it with the frozen environments as the variant. featuregate's residency guardrail turns off every flag for a context without a ready region, so pass one, for example `--freeze-context region=eu-1`.
+
+The flag is refreshed in the background every `--freeze-refresh-interval`, and a request never waits on the flag service: it reads the last answer. A refresh that fails keeps the last answer, and so does an answer that isn't a list of environments, or one whose OFREP `reason` is `ERROR`. Each failure is logged as a warning. Once the last answer is older than `--freeze-max-staleness`, the freeze is `unknown`. `is_frozen` is then true for every environment, so every deploy is denied with `change_freeze` until the flag service answers again, and the failures are logged as errors. The freeze is also `unknown` from startup until the first answer arrives. A flag service that is down at startup doesn't stop deploygate from starting; deploygate denies every deploy as frozen until the service answers.
+
+### A frozen deploy
+
+With production frozen, the owner's deploy that went to review above is denied:
+
+```bash
+go run ./cmd/deploygate serve --freeze-environments production --log-format console
+```
+
+The status is `403 Forbidden`. Excerpt from the response:
+
+```json
+{
+  "decision": "deny",
+  "reason": "change_freeze",
+  "trace": [
+    {"decision": "deny", "reason": "change_freeze", "policy": "deploy.guardrails", "location": "payments/production.sigil:7:1 → deploy/guardrails.sigil:13:3", "conditions": ["is_frozen"], "winner": true},
+    {"decision": "review", "reason": "service_owner", "policy": "deploy.production", "winner": false}
+  ],
+  "freeze": {"environments": ["production"], "unknown": false}
+}
+```
+
+`change_freeze` ranks below `not_eligible` and above `soak_too_short`. A frozen deploy that also soaked too briefly is denied for the freeze, and one that isn't eligible at all is still denied as `not_eligible`. A release manager's approval loses to the freeze like any other approval, because `deny` outranks `approve`.
+
 ## Watch it reload
 
 The compose stack bind-mounts `policies/teams` into the container as `/etc/deploygate/policies` and `policies/access` as `/etc/deploygate/access`, so the policies deploygate serves are the files in your checkout. It reloads both bundles when you ask and on `SIGHUP`, and each one whenever a poll finds that its content changed. Compose sets `DEPLOYGATE_RELOAD_INTERVAL` to 5 seconds so you can watch it happen; the default is 30.
@@ -645,6 +693,7 @@ examples/deploy-gates/
     access/                  the AccessGrant kind
     config/                  flags, environment variables and their defaults
     deploy/                  the DeployApproval kind
+    freeze/                  the change freeze: a fixed list or an OFREP flag
     server/                  HTTP routes, handlers and the JSON error model
     store/                   the loaded policies and hot reload
     telemetry/               tracing, logging, metrics and continuous profiles
@@ -652,7 +701,7 @@ examples/deploy-gates/
     deploy_approval.sigil    the exported DeployApproval kind file, generated
     access_grant.sigil       the exported AccessGrant kind file, generated
     embed.go                 embeds platform/, teams/ and access/ into the binary
-    platform/deploy/         the platform's trusted deploy documents
+    platform/deploy/         the platform's trusted deploy documents, the freeze vocabulary among them
     platform/access/         the platform's trusted access documents
     teams/<team>/            each team's policy, its test cases and their inputs
     access/                  access.main, its test cases and their inputs
@@ -674,7 +723,11 @@ examples/deploy-gates/
 
 ### deploy
 
-`internal/deploy` is the contract, and nothing else. The `Input` struct and its nested `Release`, `Service` and `Actor` types carry `policy:` tags that name the inputs policies read. `Tier` is a named string type, and `policy.WithEnum` registers its three constants as the kind's `enum Tier`, so policies write `service.tier == critical`. A tier outside the enum would fail any evaluation that reads it, so the server checks `Tier.Valid` and answers `400` first. `Deny`, `Review` and `Approve` are the decision handles, and `Kind` ties them together with the enum, the precedence, the default `deny(reason: no_rule_matched)` and the `split` function, and `policy.WithRecoverHostPanics()`: a host function that panics fails the evaluation closed instead of unwinding into gin; see [server](#server). Every other package imports this one; the kind file in `policies/` is generated from it.
+`internal/deploy` is the contract, and nothing else. The `Input` struct and its nested `Release`, `Service`, `Actor` and `Freeze` types carry `policy:` tags that name the inputs policies read. The kind is at version 2: version 2 added the `freeze` input and the `change_freeze` reason. Both are additions, so every pin is still accepted, and the team policies stay on `@1`. `Tier` is a named string type, and `policy.WithEnum` registers its three constants as the kind's `enum Tier`, so policies write `service.tier == critical`. A tier outside the enum would fail any evaluation that reads it, so the server checks `Tier.Valid` and answers `400` first. `Deny`, `Review` and `Approve` are the decision handles, and `Kind` ties them together with the enum, the precedence, the default `deny(reason: no_rule_matched)` and the `split` function, and `policy.WithRecoverHostPanics()`: a host function that panics fails the evaluation closed instead of unwinding into gin; see [server](#server). Every other package imports this one; the kind file in `policies/` is generated from it.
+
+### freeze
+
+`internal/freeze` resolves the change freeze. A `freeze.Source` answers `Freeze() deploy.Freeze` from memory, once per deploy request. `freeze.NewStatic` is a fixed list. `freeze.NewOFREP(url, freeze.WithFlag(...), freeze.WithEvaluationContext(...), freeze.WithRefreshInterval(...), freeze.WithMaxStaleness(...))` evaluates a flag over OFREP. `Refresh` evaluates it once, and `Run` keeps refreshing until its context ends. It answers from the last successful evaluation until that evaluation is older than the maximum staleness, and from then on with `Unknown: true`. `cmd/deploygate` refreshes once at startup, runs `Run` next to the store watchers, and hands the source to the server with `server.WithFreeze`. `freeze.WithClock` lets the tests age an answer and fire refreshes by hand.
 
 ### access
 
@@ -744,7 +797,7 @@ Every label is bounded. `url` is the route template, `/api/v1/teams/:team/deploy
 
 `deploygate_decisions_total` counts the decisions a deploy policy made, and nothing else. A failed evaluation answers with the kind's default, `deny` / `no_rule_matched`, but the policy didn't decide it, so it counts only in `deploygate_evaluation_errors_total`, in either stage: with `stage="access"` when the access stage failed and the deploy policy never ran, with `stage="deploy"` when the deploy policy itself failed. A `deny` / `no_rule_matched` in `deploygate_decisions_total` is always a request no rule matched. A request the client canceled during an evaluation counts in neither: the policy decided nothing and nothing failed. It shows up only as `deploygate_requests_total{code="499"}`, which says how often clients give up without adding a series of its own or putting a client's choice into an error rate an alert reads.
 
-Each deployment request gets the gin server span and, below it, two siblings. The `deploygate.access` span comes first, with `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.environment` and `sigil.grants`, plus one `sigil.grant` event per grant with its `role`, `reason` and `ttl`. The `deploygate.evaluate` span follows, with `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.roles`, `sigil.decision`, `sigil.reason` and `sigil.candidates`, plus one `sigil.candidate` event per trace entry. A failed evaluation sets its span's status to error, except when the client canceled the request: that span records the error and leaves the status unset, as OpenTelemetry's gRPC conventions do for a server call the client canceled, and the request span of a `499` is unset too. When the access stage fails, there is no `deploygate.evaluate` span at all. The access endpoint records the same `deploygate.access` span on its own. Reloads run in a `deploygate.policies.reload` span with `sigil.source`, `sigil.kind`, `deploygate.reload.trigger` (`startup`, `manual`, `sighup` or `poll`) and, on success, `sigil.policies`; a rejected bundle sets the status to error and records the diagnostics. The first loads sit under a `deploygate.startup` span, and a graceful shutdown runs in a `server.shutdown` span.
+Each deployment request gets the gin server span and, below it, two siblings. The `deploygate.access` span comes first, with `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.environment` and `sigil.grants`, plus one `sigil.grant` event per grant with its `role`, `reason` and `ttl`. The `deploygate.evaluate` span follows, with `sigil.kind`, `sigil.policy`, `sigil.team`, `sigil.roles`, `sigil.freeze.environments`, `sigil.freeze.unknown`, `sigil.decision`, `sigil.reason` and `sigil.candidates`, plus one `sigil.candidate` event per trace entry. A failed evaluation sets its span's status to error, except when the client canceled the request: that span records the error and leaves the status unset, as OpenTelemetry's gRPC conventions do for a server call the client canceled, and the request span of a `499` is unset too. When the access stage fails, there is no `deploygate.evaluate` span at all. The access endpoint records the same `deploygate.access` span on its own. Reloads run in a `deploygate.policies.reload` span with `sigil.source`, `sigil.kind`, `deploygate.reload.trigger` (`startup`, `manual`, `sighup` or `poll`) and, on success, `sigil.policies`; a rejected bundle sets the status to error and records the diagnostics. Each refresh of a freeze flag runs in a `deploygate.freeze.refresh` span with `freeze.flag`, `freeze.source` and, on success, `sigil.freeze.environments`. A failed refresh sets the status to error and records why. The first loads sit under a `deploygate.startup` span, and a graceful shutdown runs in a `server.shutdown` span.
 
 ### config
 
@@ -761,6 +814,12 @@ Each deployment request gets the gin server span and, below it, two siblings. Th
 | `--evaluation-timeout` | `DEPLOYGATE_EVALUATION_TIMEOUT` | `1s` | How long one policy evaluation may take, each stage on its own; past it the request answers `503` with the fallback decision. Must be positive |
 | `--debug` | `DEPLOYGATE_DEBUG` | `false` | Debug logging and gin's debug mode |
 | `--log-format` | `DEPLOYGATE_LOG_FORMAT` | `json` | `json` or `console` |
+| `--freeze-environments` | `DEPLOYGATE_FREEZE_ENVIRONMENTS` | empty | Environments frozen for as long as deploygate runs, repeatable or comma-separated. Can't be combined with `--freeze-ofrep-url` |
+| `--freeze-ofrep-url` | `DEPLOYGATE_FREEZE_OFREP_URL` | empty | Base URL of an OFREP flag service the freeze is read from, such as `http://featuregate:8080`. Empty uses `--freeze-environments` |
+| `--freeze-flag` | `DEPLOYGATE_FREEZE_FLAG` | `change-freeze` | Key of the flag that lists the frozen environments, as a list of strings or one comma-separated string |
+| `--freeze-context` | `DEPLOYGATE_FREEZE_CONTEXT` | empty | `key=value` attributes of the flag's evaluation context, repeatable or comma-separated. `targetingKey` is `deploygate` unless set here |
+| `--freeze-refresh-interval` | `DEPLOYGATE_FREEZE_REFRESH_INTERVAL` | `15s` | How often the flag is evaluated. Must be positive |
+| `--freeze-max-staleness` | `DEPLOYGATE_FREEZE_MAX_STALENESS` | `1m` | How old the last answer may get before the freeze is unknown and every deploy is denied as frozen. Must be longer than `--freeze-refresh-interval` |
 
 Tracing takes the standard variables. Spans are exported over OTLP only when `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` points at Alloy or another collector; without one, spans are still created, so trace IDs appear in the logs. `OTEL_EXPORTER_OTLP_INSECURE=true` turns off TLS the way an `http://` endpoint does, `OTEL_SERVICE_NAME` defaults to `deploygate`, and `OTEL_TRACES_EXPORTER=none` turns export off even when an endpoint is set.
 
