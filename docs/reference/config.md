@@ -142,7 +142,7 @@ Every key is optional, and the file holds no others. A TOML `require` entry is a
 - `--trusted` adds to them for one run.
 - They don't say where a required policy must come from; an entry's own `trusted` does.
 - `eval`, `explain` and `test` read them too, as trusted sources, apart from files among their paths.
-- A path that doesn't exist fails the command, naming the configuration file:
+- A path that doesn't exist, or holds no `.sigil` file, fails the command, naming the configuration file:
 
 ```text
 Error: sigil.yaml: the trusted path platform/vocabulary can't be read
@@ -168,7 +168,7 @@ Caused by
 - With `trusted`, the required policy must be defined below this entry's `trusted` paths, where the host reads it. One defined anywhere else, among the paths or below another entry's `trusted`, is an error at the entry.
 - A required policy applies only to roots of its own kind, so one file can hold the requirements of several kinds.
 - A policy can be required once.
-- A `trusted` path that doesn't exist is an error at the entry.
+- A `trusted` path that doesn't exist, or holds no `.sigil` file, is an error at the entry.
 - When the command reads the directory the configuration file is in, or one above it, every entry must apply: a required policy no document defines, a `roots` pattern that matches nothing, and `roots` that match no policy of the required policy's kind are errors at the entry.
 - When it reads only part of that directory, such as one team's, `roots` pick among the policies it read, and an entry without `trusted` whose policy isn't among them is skipped.
 - `eval`, `explain` and `test` read the `trusted` paths too, as trusted sources, apart from files among their paths, so a policy in the directory they read finds the required policies it uses.
