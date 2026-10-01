@@ -38,7 +38,7 @@ pub fn alert_routing() -> Kind {
 
 pub fn deploy_decisions() -> (Decision, Decision, Decision) {
     (
-        Decision::new("deny", ["not_eligible", "soak_too_short", "no_rule_matched"]),
+        Decision::new("deny", ["not_eligible", "change_freeze", "soak_too_short", "no_rule_matched"]),
         Decision::new("review", ["service_owner"]).field("approvers", Type::list(Type::string())),
         Decision::new("approve", ["release_manager", "payments_sre"]).field_default("bake", Type::duration(), json!("1h")),
     )
@@ -66,13 +66,15 @@ pub fn deploy_approval() -> Kind {
             ("regions", Type::list(Type::string())),
         ],
     );
+    let freeze = Type::structure("Freeze", [("environments", Type::list(Type::string())), ("unknown", Type::bool())]);
     let (deny, review, approve) = deploy_decisions();
     Kind::builder("DeployApproval")
-        .version(1)
+        .version(2)
         .input("release", release)
         .input("service", service)
         .input("actor", actor)
         .input("environment", Type::string())
+        .input("freeze", freeze)
         .function(
             "split",
             FnDecl::new([Type::string(), Type::string()], Type::list(Type::string())).implement(host_fn(|args| {
