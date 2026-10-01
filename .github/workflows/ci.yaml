@@ -356,6 +356,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: bindings/rust
+          # release.yaml's crates job restores this cache by the same key.
+          shared-key: bindings-rust
           cache-bin: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -564,9 +566,6 @@ jobs:
       - lint
       - test
       - wasm-build
-    # Fuzz and benchmark are skipped on release runs; a skipped need would skip
-    # this job too, so only a failure or cancellation stops it.
-    if: ${{ !cancelled() && !failure() }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

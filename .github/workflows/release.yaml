@@ -250,6 +250,18 @@ jobs:
               exit 1 ;;
           esac
 
+      # Packaging builds the crate, and its dependencies, from the package
+      # alone. The CI run this release waited for saved them compiled for this
+      # Cargo.lock under this key (see the rust job in ci.yaml).
+      - name: Restore cargo registry and dependencies
+        if: steps.check.outputs.publish == 'true'
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: bindings/rust
+          shared-key: bindings-rust
+          cache-bin: false
+          save-if: false
+
       # Builds sigil.wasm from the tag, copies it into the package, and builds
       # the crate from the package alone.
       - name: Package the crate
