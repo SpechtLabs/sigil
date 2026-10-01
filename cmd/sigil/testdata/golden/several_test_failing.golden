@@ -1,0 +1,7 @@
+$ refunds test failing
+--- FAIL: failing/shop_test.yaml:3: a large refund is approved, which it isn't
+      want approve(reason: within_limit)
+      got  review(reason: large_amount)
+FAIL  failing/shop_test.yaml  1 of 1 cases failed
+✗ 1 of 1 test cases failed in 1 file
+--- exit status 1

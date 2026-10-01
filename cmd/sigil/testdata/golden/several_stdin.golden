@@ -1,0 +1,9 @@
+$ refunds eval -p support.refunds < inputs/large.json
+support.refunds: review(reason: large_amount)
+  queue = "support-leads"
+
+trace: 2 candidates
+  * review(reason: large_amount)  teams/support.sigil:12:3 (support.refunds)
+      when order.channel == phone and order.amount > 500
+      queue = "support-leads"
+    approve(reason: goodwill)     teams/support.sigil:8:3 (support.refunds)

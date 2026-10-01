@@ -1,0 +1,8 @@
+$ shop eval < inputs/unnamed.yaml
+shop.refunds: an assert failed, the host falls back to deny(reason: no_rule_matched), the kind's default
+
+assert named_agent failed at teams/shop.sigil:5:1 (shop.refunds) → platform/guardrails.sigil:5:1 (refunds.guardrails)
+  = help: the input breaks an assert of the policy; if the input is right, the policy's assumption is wrong
+
+trace: no rule fired
+--- exit status 1

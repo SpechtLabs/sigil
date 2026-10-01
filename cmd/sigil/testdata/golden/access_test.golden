@@ -1,0 +1,3 @@
+$ access test policies/access
+ok    policies/access/main_test.yaml  17 cases
+✓ 17 cases passed in 1 file

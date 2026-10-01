@@ -1,0 +1,4 @@
+$ shop test tests
+ok    tests/shop_test.yaml  3 cases
+skipped 1 test file for policies not compiled in
+✓ 3 cases passed in 1 file

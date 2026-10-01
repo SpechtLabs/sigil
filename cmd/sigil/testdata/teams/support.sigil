@@ -1,0 +1,13 @@
+policy support.refunds: Refund@1
+
+use refunds.guardrails
+
+guardrails(max_age: 2160h)
+
+when cause == "damaged" {
+  approve(reason: goodwill)
+}
+
+when order.channel == phone and order.amount > 500 {
+  review(reason: large_amount, queue: "support-leads")
+}

@@ -1,0 +1,8 @@
+$ shop eval --input inputs/large.json
+shop.refunds: review(reason: large_amount)
+  queue = "finance"
+
+trace: 1 candidate
+  * review(reason: large_amount)  teams/shop.sigil:12:3 (shop.refunds)
+      when order.amount > 100
+      queue = "finance"

@@ -1,0 +1,2 @@
+$ shop version -o json
+{"version":"v0.0.0-e2e","commit":"unknown","commitTime":"unknown","dirty":false,"goVersion":"<build>","platform":"<build>","bundle":{"digest":"sha256:79e452bf54af2c649bdf5d1849a69a683162ef4273d45fcc25d527bd7eb90634","root":"shop.refunds","kinds":["Refund@1"],"files":3,"require":[{"policy":"refunds.guardrails","roots":["*.refunds"]}],"compiledBy":"v0.0.0-e2e","built":"2026-01-01T00:00:00Z"}}

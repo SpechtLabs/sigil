@@ -1,0 +1,29 @@
+$ refunds explain
+shop.refunds: 4 rules from 2 policies
+
+  deny(reason: too_old)          shop.refunds:5 → refunds.guardrails:8
+    when order.age > 30d
+
+  approve(reason: within_limit)  shop.refunds:8
+    when order.amount <= 100
+
+  review(reason: large_amount)   shop.refunds:12
+    when order.amount > 100
+
+  assert named_agent (input)     shop.refunds:5 → refunds.guardrails:5
+    check agent != ""
+
+support.refunds: 4 rules from 2 policies
+
+  deny(reason: too_old)         support.refunds:5 → refunds.guardrails:8
+    when order.age > 90d
+
+  approve(reason: goodwill)     support.refunds:8
+    when cause == "damaged"
+
+  review(reason: large_amount)  support.refunds:12
+    when order.channel == phone and order.amount > 500
+    with queue = "support-leads"
+
+  assert named_agent (input)    support.refunds:5 → refunds.guardrails:5
+    check agent != ""

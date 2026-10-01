@@ -1,0 +1,19 @@
+policy: shop.refunds
+cases:
+  - name: a small refund is approved
+    input_file: ../inputs/small.json
+    expect:
+      decision: approve
+      reason: within_limit
+  - name: a large refund goes to finance
+    input_file: ../inputs/large.json
+    expect:
+      decision: review
+      reason: large_amount
+      payload:
+        queue: finance
+  - name: a month-old order is too old
+    input_file: ../inputs/old.json
+    expect:
+      decision: deny
+      reason: too_old

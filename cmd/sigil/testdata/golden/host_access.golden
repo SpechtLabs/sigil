@@ -1,0 +1,12 @@
+$ gates eval -p access.main -i requests/access-member.json
+access.main: 2 decisions
+  reader(reason: team_member)    access/main.sigil:9:3
+  deployer(reason: team_member)  access/main.sigil:10:3
+    ttl = 8h
+
+trace: 2 candidates
+  * reader(reason: team_member)    access/main.sigil:9:3
+      when team_member
+  * deployer(reason: team_member)  access/main.sigil:10:3
+      when team_member
+      ttl = 8h

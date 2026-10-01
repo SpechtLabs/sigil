@@ -1,0 +1,7 @@
+$ refunds eval -i inputs/small.json
+--- stderr
+Error: the bundle holds several policies
+
+What you can do
+  • name the one to evaluate with --policy: shop.refunds, support.refunds
+--- exit status 1

@@ -1,0 +1,2 @@
+$ sigil compile --out $TMP/refunds --policy shop.refunds teams
+✓ compiled shop.refunds from 3 files into $TMP/refunds (sha256:79e452bf54af…)

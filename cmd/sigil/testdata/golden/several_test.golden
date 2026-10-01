@@ -1,0 +1,10 @@
+$ refunds test -v tests
+--- PASS: tests/shop_test.yaml:3: a small refund is approved
+--- PASS: tests/shop_test.yaml:8: a large refund goes to finance
+--- PASS: tests/shop_test.yaml:15: a month-old order is too old
+ok    tests/shop_test.yaml  3 cases
+--- PASS: tests/support_test.yaml:3: support refunds a damaged order up to three months old
+--- PASS: tests/support_test.yaml:8: a large phone refund goes to the support leads
+--- PASS: tests/support_test.yaml:15: an unnamed agent fails the guardrails' assert
+ok    tests/support_test.yaml  3 cases
+✓ 6 cases passed in 2 files

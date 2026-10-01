@@ -1,0 +1,7 @@
+$ shop eval -p support.refunds -i inputs/small.json
+--- stderr
+Error: no policy matches "support.refunds"
+
+What you can do
+  • the bundle defines: shop.refunds
+--- exit status 1

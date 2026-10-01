@@ -1,0 +1,14 @@
+$ shop explain
+shop.refunds: 4 rules from 2 policies
+
+  deny(reason: too_old)          shop.refunds:5 → refunds.guardrails:8
+    when order.age > 30d
+
+  approve(reason: within_limit)  shop.refunds:8
+    when order.amount <= 100
+
+  review(reason: large_amount)   shop.refunds:12
+    when order.amount > 100
+
+  assert named_agent (input)     shop.refunds:5 → refunds.guardrails:5
+    check agent != ""

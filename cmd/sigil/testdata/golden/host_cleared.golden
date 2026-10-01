@@ -1,0 +1,10 @@
+$ gates eval -p payments.production -i policies/teams/payments/testdata/owner.json
+payments.production: review(reason: service_owner)
+  approvers = ["payments-leads", "security-leads"]
+
+trace: 1 candidate
+  * review(reason: service_owner)  teams/payments/production.sigil:10:3 → platform/deploy/production.sigil:16:5
+      when service.labels["compliance"] == "pci"
+       and cleared
+       and service.tier in [standard, internal] and owns_service
+      approvers = ["payments-leads", "security-leads"]

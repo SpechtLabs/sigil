@@ -1,0 +1,18 @@
+policy: support.refunds
+cases:
+  - name: support refunds a damaged order up to three months old
+    input_file: ../inputs/old.json
+    expect:
+      decision: approve
+      reason: goodwill
+  - name: a large phone refund goes to the support leads
+    input_file: ../inputs/large.json
+    expect:
+      decision: review
+      reason: large_amount
+      payload:
+        queue: support-leads
+  - name: an unnamed agent fails the guardrails' assert
+    input_file: ../inputs/unnamed.yaml
+    expect:
+      asserts: [named_agent]

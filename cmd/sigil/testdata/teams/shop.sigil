@@ -1,0 +1,13 @@
+policy shop.refunds: Refund@1
+
+use refunds.guardrails
+
+guardrails()
+
+when order.amount <= 100 {
+  approve(reason: within_limit)
+}
+
+when order.amount > 100 {
+  review(reason: large_amount)
+}
