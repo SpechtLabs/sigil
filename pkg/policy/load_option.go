@@ -44,8 +44,9 @@ type loadOptions struct {
 // requirement is one required policy and, with From, the source it
 // must come from.
 type requirement struct {
-	from fs.FS
-	name string
+	from     fs.FS
+	name     string
+	trusting bool // From was given, even with a nil source
 }
 
 // required lists the required policies' names.
@@ -93,17 +94,21 @@ func (o requireOption) apply(lo *loadOptions) { lo.requires = append(lo.requires
 // The source is loaded as its own bundle: the required policy, and
 // everything it imports and invokes, resolve there and never in the bundle
 // passed to [Kind.Load], and a document in that bundle that takes a name
-// the source defines is a compile error.
+// the source defines is a compile error, unless it's a byte-for-byte
+// copy of that document. A nil source, or one that holds no policy or
+// module, fails the load.
 //
 // Several requirements may name the same source, which is then read once.
-// Sources are the same when they compare equal, as [embed.FS], [os.DirFS]
-// and [io/fs.Sub] values do, or, for a map-backed source such as [MapFS],
-// when they are the same map.
+// Sources are the same when they compare equal, as [embed.FS] and
+// [os.DirFS] values do, or, for a map-backed source such as [MapFS], when
+// they are the same map. Two values that aren't the same but hold the
+// same files, such as two [io/fs.Sub] calls for one directory, are each
+// read; the second one's documents are copies, and are left out.
 func From(fsys fs.FS) RequireOption { return fromOption{fsys} }
 
 type fromOption struct{ fsys fs.FS }
 
-func (o fromOption) applyRequire(r *requirement) { r.from = o.fsys }
+func (o fromOption) applyRequire(r *requirement) { r.from, r.trusting = o.fsys, true }
 
 // Trusted adds a trusted source without requiring a policy from it, such
 // as the vocabulary modules a platform ships for team policies to import.
@@ -111,12 +116,29 @@ func (o fromOption) applyRequire(r *requirement) { r.from = o.fsys }
 // documents resolve before the bundle's, and a document in the bundle
 // passed to [Kind.Load] that takes a name it defines is a compile error.
 // Every document in it is checked, so a broken one fails the load even
-// when nothing uses it.
+// when nothing uses it. A nil source, or one that holds no policy or
+// module, such as the wrong directory of an [io/fs.Sub], fails the load:
+// it would protect nothing.
+//
+// A document in the bundle that's a byte-for-byte copy of a trusted one
+// is the same definition, and is left out rather than reported. So the
+// trusted source may be a directory of the bundle's own fs.FS, as in a
+// repository that holds the platform's directory and the teams':
+//
+//	platform, err := fs.Sub(repo, "platform")
+//	// ...
+//	p, err := Deploy.Load(repo, "payments.production", policy.Trusted(platform))
+//
+// A copy that differs from the trusted document is a compile error. The
+// CLI reads a file under both a path and a --trusted path as trusted
+// only; a copy at another path is an error there.
 //
 // Trusted may be repeated, and may name a source a [From] names too,
 // which is then read once; sources are the same as [From] compares them.
-// A required policy without From that a trusted source defines comes from
-// there, as it would with From.
+// Two sources, or a source and the bundle, may hold files of the same
+// path: every diagnostic quotes the file it's about. A required policy
+// without From that a trusted source defines comes from there, as it
+// would with From.
 //
 //	Deploy.Load(teamFS, "payments.production", policy.Trusted(vocabularyFS))
 func Trusted(fsys fs.FS) LoadOption { return trustedOption{fsys} }

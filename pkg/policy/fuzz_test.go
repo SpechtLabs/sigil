@@ -128,7 +128,12 @@ func FuzzComposition(f *testing.F) {
 		if err != nil || got.Decision != want {
 			t.Fatalf("got %v, %v; want %s", got, err, want)
 		}
-		if _, err := Deploy.Load(policy.MapFS(map[string]string{"root.sigil": root, "guard.sigil": guard}), "p", policy.Require("guard", policy.From(trusted))); err == nil {
+		// A copy of the trusted guard is the same definition; an empty one
+		// replaces it, which the load rejects.
+		if _, err := Deploy.Load(policy.MapFS(map[string]string{"root.sigil": root, "guard.sigil": guard}), "p", policy.Require("guard", policy.From(trusted))); err != nil {
+			t.Fatalf("a copy of the trusted policy: %v", err)
+		}
+		if _, err := Deploy.Load(policy.MapFS(map[string]string{"root.sigil": root, "guard.sigil": "policy guard: DeployApproval@1\n"}), "p", policy.Require("guard", policy.From(trusted))); err == nil {
 			t.Fatal("bundle replaced a trusted policy")
 		}
 	})

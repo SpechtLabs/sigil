@@ -13,7 +13,13 @@
 //
 // A host's required policies can come from a trusted source, a second
 // Bundle passed to [Bundle.Trust]. A trusted document resolves before the
-// bundle's own, and a bundle document that claims its name is an error.
+// bundle's own, and a bundle document that claims its name is an error,
+// unless it's a byte-for-byte copy of the trusted one.
+//
+// File paths are names for messages, not keys: two sources read into a
+// bundle, or a bundle and its trusted one, may each hold a file of the
+// same path. Every document keeps the bytes it was read from, and every
+// diagnostic quotes the source it was reported against.
 //
 // Diagnostics accumulate in the bundle rather than stopping it, so one
 // run reports every error. [Bundle.Errors] returns them, and
@@ -22,6 +28,7 @@
 package bundle
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strings"
@@ -48,11 +55,14 @@ const MaxImportDepth = 64
 // Bundle is a set of documents against one kind, indexed by name.
 type Bundle struct {
 	kind    *kind.Kind
-	Sources map[string][]byte // file name to source
+	Sources map[string][]byte // file name to source; the first file read when two sources hold one path
 	docs    map[string]*Document
-	trusted *Bundle // documents from a trusted source, resolved before this bundle's
+	trusted *Bundle                // documents from a trusted source, resolved before this bundle's
+	quotes  map[*diag.Error][]byte // the source each diagnostic was reported against
 	order   []string
 	errs    diag.ErrorList
+	loaded  int // counts the sources Load has read, so a document knows which one it came from
+	read    int // policies and modules added, indexed or not
 	checked bool
 }
 
@@ -64,9 +74,11 @@ type Document struct {
 	Exported *check.Exported // what a `use` of the document sees; nil until checked
 	Name     string          // the name in the document's header
 	File     string
-	Kind     bool // a kind document, indexed only so `use` of its name is an error
-	Trusted  bool // the document comes from the trusted bundle
-	failed   bool // checked with errors, or in an import cycle
+	src      []byte // the source of the file it was read from
+	from     int    // which source Load read it from, by the count of sources loaded before it
+	Kind     bool   // a kind document, indexed only so `use` of its name is an error
+	Trusted  bool   // the document comes from the trusted bundle
+	failed   bool   // checked with errors, or in an import cycle
 }
 
 // Module reports whether the document is a module.
@@ -81,7 +93,7 @@ func (d *Document) Clean() bool { return d.Info != nil && !d.failed }
 
 // New returns an empty bundle for k.
 func New(k *kind.Kind) *Bundle {
-	return &Bundle{kind: k, Sources: map[string][]byte{}, docs: map[string]*Document{}}
+	return &Bundle{kind: k, Sources: map[string][]byte{}, docs: map[string]*Document{}, quotes: map[*diag.Error][]byte{}}
 }
 
 // Redefined is the diagnostic for doc, a policy or module in file, taking
@@ -114,8 +126,9 @@ func Redefined(file string, doc ast.Doc, prev *Document) *diag.Error {
 }
 
 // Trust adds a trusted bundle: required policies resolve there first,
-// and a document here that takes a trusted name is an error. Call it
-// before adding this bundle's own files, since the name check runs as
+// and a document here that takes a trusted name is an error, unless it's
+// a byte-for-byte copy of the trusted document, which is left out. Call
+// it before adding this bundle's own files, since the name check runs as
 // each document is indexed. t's diagnostics join this bundle's on
 // [Bundle.Check].
 func (b *Bundle) Trust(t *Bundle) {
@@ -131,7 +144,7 @@ func (b *Bundle) Trust(t *Bundle) {
 // [Bundle.Errors]. Add keeps src; the caller must not modify it after.
 func (b *Bundle) Add(file string, src []byte) {
 	f, errs := parser.ParseFile(file, src)
-	b.errs = append(b.errs, errs...)
+	b.report(src, errs...)
 	b.add(file, src, f.Docs, true)
 }
 
@@ -146,19 +159,32 @@ func (b *Bundle) Index(file string, src []byte, docs []ast.Doc) {
 	b.add(file, src, docs, false)
 }
 
+// Read returns how many policies and modules the bundle has been given
+// so far, counting those it left out as defined twice or as copies of a
+// trusted document. A caller that loads a source compares it before and
+// after, to tell a source that holds none.
+func (b *Bundle) Read() int { return b.read }
+
 // add keeps src as file's source and indexes its documents, checking a
 // kind document for the bundle's kind against it when checkKind is set.
+// When an earlier source holds a file of the same path, Sources keeps
+// that one; the documents keep their own.
 func (b *Bundle) add(file string, src []byte, docs []ast.Doc, checkKind bool) {
-	b.Sources[file] = src
+	if _, ok := b.Sources[file]; !ok {
+		b.Sources[file] = src
+	}
 	for _, doc := range docs {
-		b.index(file, doc, checkKind)
+		b.index(file, src, doc, checkKind)
 	}
 }
 
-// index records doc by its header name, or reports the name as defined
-// twice. With checkKind, a kind document with the bundle's kind name
-// must match the contract; one for another kind is ignored.
-func (b *Bundle) index(file string, doc ast.Doc, checkKind bool) {
+// index records doc, read from file whose source is src, by its header
+// name, or reports the name as defined twice. A document that's a copy
+// of one an earlier source or the trusted bundle defines, byte for byte,
+// is left out instead: it's the same definition, read twice. With
+// checkKind, a kind document with the bundle's kind name must match the
+// contract; one for another kind is ignored.
+func (b *Bundle) index(file string, src []byte, doc ast.Doc, checkKind bool) {
 	var name string
 	switch d := doc.(type) {
 	case *ast.PolicyDoc:
@@ -171,21 +197,39 @@ func (b *Bundle) index(file string, doc ast.Doc, checkKind bool) {
 			if loaded := c.Kind(d); loaded != nil && loaded.Source() != b.kind.Source() {
 				c.KindMismatch(d, b.kind.Name)
 			}
-			b.errs = append(b.errs, c.Errors()...)
+			b.report(src, c.Errors()...)
 		}
 		if _, taken := b.docs[d.Name.Name]; !taken {
-			b.docs[d.Name.Name] = &Document{Node: doc, Name: d.Name.Name, File: file, Kind: true}
+			b.docs[d.Name.Name] = &Document{Node: doc, Name: d.Name.Name, File: file, Kind: true, src: src, from: b.loaded}
 		}
 		return
 	default:
 		return
 	}
+	b.read++
+	d := &Document{Node: doc, Name: name, File: file, src: src, from: b.loaded}
 	if prev := b.lookup(name); prev != nil && !prev.Kind {
-		b.errs = append(b.errs, Redefined(file, doc, prev))
+		if (prev.Trusted || prev.from != d.from) && prev.src != nil && bytes.Equal(prev.text(), d.text()) {
+			return
+		}
+		b.report(src, Redefined(file, doc, prev))
 		return
 	}
-	b.docs[name] = &Document{Node: doc, Name: name, File: file}
+	b.docs[name] = d
 	b.order = append(b.order, name)
+}
+
+// text is the document's source, from its header to its end.
+func (d *Document) text() []byte {
+	return d.src[d.Node.Pos().Offset:d.Node.End().Offset]
+}
+
+// report records errs, each quoting src.
+func (b *Bundle) report(src []byte, errs ...*diag.Error) {
+	for _, e := range errs {
+		b.quotes[e] = src
+	}
+	b.errs = append(b.errs, errs...)
 }
 
 // lookup finds a document by name, in the trusted bundle first.
@@ -242,7 +286,9 @@ func (b *Bundle) Check() {
 	b.checked = true
 	if b.trusted != nil {
 		b.trusted.Check()
-		b.errs = append(b.errs, b.trusted.errs...)
+		for _, e := range b.trusted.errs {
+			b.report(b.trusted.quotes[e], e)
+		}
 		b.trusted.errs = nil
 	}
 	for _, name := range b.topological() {
@@ -374,7 +420,7 @@ func (s *sorter) leave(f *frame) {
 	if depth != MaxImportDepth+1 {
 		return
 	}
-	s.b.errs = append(s.b.errs, &diag.Error{
+	s.b.report(f.doc.src, &diag.Error{
 		File: f.doc.File, Pos: deepest.Pos(), End: deepest.End(),
 		Msg:  fmt.Sprintf("imports nest more than %d levels deep: %s starts a chain of %d documents, each importing the next", MaxImportDepth, name, depth),
 		Help: fmt.Sprintf("a chain of imports may be at most %d documents long; import the documents deep in the chain directly, from one nearer its start", MaxImportDepth),
@@ -405,7 +451,7 @@ func (s *sorter) cycle(d *Document, u *ast.UseStmt, cycle []string) {
 	if s.b.anyPolicy(cycle) {
 		help = "a policy can't invoke itself, directly or through other policies; imports form a directed acyclic graph"
 	}
-	s.b.errs = append(s.b.errs, &diag.Error{
+	s.b.report(d.src, &diag.Error{
 		File: d.File, Pos: u.Pos(), End: u.End(),
 		Msg:  "import cycle: " + strings.Join(cycle, " -> "),
 		Help: help,
@@ -433,7 +479,7 @@ func (b *Bundle) checkDoc(d *Document) {
 		c.Module(n, b.kind)
 	}
 	if errs := c.Errors(); errs != nil {
-		b.errs = append(b.errs, errs...)
+		b.report(d.src, errs...)
 		d.failed = true
 	}
 	d.Info, d.Exported = c.Info(), c.Exported()
@@ -484,11 +530,11 @@ func (b *Bundle) Compile(root string, o Options) (*eval.Policy, diag.ErrorList) 
 	case d == nil:
 		return nil, fail(b.noRoot(root))
 	case d.Module():
-		return nil, fail(&diag.Error{
+		return nil, fail(b.quote(d, &diag.Error{
 			File: d.File, Pos: d.Node.Pos(), End: d.Node.Pos(),
 			Msg:  fmt.Sprintf("%s is a module, not a policy", root),
 			Help: "a module holds only lets and has no rules to evaluate; name a policy",
-		})
+		}))
 	}
 	if errs := b.Errors(); errs != nil {
 		return nil, errs
@@ -517,18 +563,18 @@ func (b *Bundle) require(prog *eval.Policy, names []string) diag.ErrorList {
 		case req.Unconditional:
 		case req.Invoked:
 			for _, site := range req.Gated {
-				errs = append(errs, &diag.Error{
-					File: site.File, Pos: site.Pos, End: site.End,
+				errs = append(errs, b.quote(b.lookup(site.Policy), &diag.Error{
+					File: site.File, Doc: site.Policy, Pos: site.Pos, End: site.End,
 					Msg:  fmt.Sprintf("%s must be invoked unconditionally", name),
 					Help: fmt.Sprintf("the host requires %s for every %s policy; move the call to the top level", name, b.kind.Name),
-				})
+				}))
 			}
 		default:
-			errs = append(errs, &diag.Error{
+			errs = append(errs, b.quote(root, &diag.Error{
 				File: root.File, Pos: root.Node.Pos(), End: root.Node.Pos(),
 				Msg:  fmt.Sprintf("%s doesn't invoke %s", prog.Name, name),
 				Help: fmt.Sprintf("the host requires %s for every %s policy; import it with `use %s` and invoke it at the top level", name, b.kind.Name, name),
-			})
+			}))
 		}
 	}
 	return errs
@@ -539,11 +585,7 @@ func (b *Bundle) source(d *Document) *eval.Source {
 	if d == nil {
 		return nil
 	}
-	src := b.Sources[d.File]
-	if d.Trusted && b.trusted != nil {
-		src = b.trusted.Sources[d.File]
-	}
-	return &eval.Source{Doc: d.Node, Info: d.Info, File: d.File, Src: src}
+	return &eval.Source{Doc: d.Node, Info: d.Info, File: d.File, Src: d.src}
 }
 
 // linker resolves the compiler's links through the bundle.
@@ -588,9 +630,23 @@ func sortErrors(errs diag.ErrorList) {
 }
 
 // Render renders every diagnostic with its source line, in the plain
-// form. The CLI renders Resolve's list itself, styled for a terminal.
+// form, each quoting the source [Bundle.SourceFor] finds for it. The CLI
+// renders Resolve's list itself, styled for a terminal.
 func (b *Bundle) Render(errs diag.ErrorList) string {
-	return diag.RenderAll(b.Resolve(errs), b.SourceOf, diag.Plain)
+	quoted := make(map[*diag.Error][]byte, len(errs))
+	out := make(diag.ErrorList, len(errs))
+	for i, e := range errs {
+		named := *e
+		named.Doc = b.DocumentOf(e)
+		out[i] = &named
+		quoted[out[i]] = b.SourceFor(e)
+	}
+	sortErrors(out)
+	parts := make([]string, len(out))
+	for i, e := range out {
+		parts[i] = strings.TrimRight(diag.RenderWith(e, quoted[e], diag.Plain), "\n")
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // Resolve prepares diagnostics for rendering: it names the document each
@@ -600,17 +656,56 @@ func (b *Bundle) Resolve(errs diag.ErrorList) diag.ErrorList {
 	out := make(diag.ErrorList, len(errs))
 	for i, e := range errs {
 		named := *e
-		if named.Doc == "" {
-			named.Doc = b.DocumentAt(e.File, e.Pos)
-		}
+		named.Doc = b.DocumentOf(e)
 		out[i] = &named
 	}
 	sortErrors(out)
 	return out
 }
 
+// SourceFor returns the source e quotes: the source the bundle, or its
+// trusted one, reported e against, or for a diagnostic from elsewhere,
+// such as the compiler's, the source of the document at its position.
+// Unlike [Bundle.SourceOf], it tells apart two files of the same path
+// from different sources.
+func (b *Bundle) SourceFor(e *diag.Error) []byte {
+	if e == nil {
+		return nil
+	}
+	if src, ok := b.quoteOf(e); ok {
+		return src
+	}
+	if d := b.documentAt(e.File, e.Pos); d != nil {
+		return d.src
+	}
+	return b.SourceOf(e.File)
+}
+
+// DocumentOf returns the name of the document e is in: the one it names,
+// or the one at its position in the source it quotes, or "".
+func (b *Bundle) DocumentOf(e *diag.Error) string {
+	if e == nil {
+		return ""
+	}
+	if e.Doc != "" || !e.Pos.IsValid() {
+		return e.Doc
+	}
+	src, ok := b.quoteOf(e)
+	if !ok {
+		return b.DocumentAt(e.File, e.Pos)
+	}
+	for _, d := range b.all() {
+		if d.File == e.File && sameSource(d.src, src) && d.contains(e.Pos) {
+			return d.Name
+		}
+	}
+	return ""
+}
+
 // SourceOf returns a file's source, from this bundle or the trusted one,
-// or nil for a file neither read.
+// or nil for a file neither read. When both, or two sources, hold a file
+// of that path, it's this bundle's, or the first one read; a diagnostic's
+// own is [Bundle.SourceFor]'s.
 func (b *Bundle) SourceOf(file string) []byte {
 	if src, ok := b.Sources[file]; ok {
 		return src
@@ -621,21 +716,65 @@ func (b *Bundle) SourceOf(file string) []byte {
 	return nil
 }
 
-// DocumentAt returns the name of the document at p in file, or "".
+// DocumentAt returns the name of the document at p in file, or "". When
+// this bundle and the trusted one both hold a file of that path, it looks
+// in this bundle's first.
 func (b *Bundle) DocumentAt(file string, p token.Pos) string {
-	if !p.IsValid() {
-		return ""
-	}
-	for _, name := range b.order {
-		d := b.docs[name]
-		if d.File == file && d.Node.Pos().Offset <= p.Offset && p.Offset < d.Node.End().Offset {
-			return name
-		}
-	}
-	if b.trusted != nil {
-		return b.trusted.DocumentAt(file, p)
+	if d := b.documentAt(file, p); d != nil {
+		return d.Name
 	}
 	return ""
+}
+
+// documentAt returns the document at p in file, this bundle's first, or
+// nil.
+func (b *Bundle) documentAt(file string, p token.Pos) *Document {
+	if !p.IsValid() {
+		return nil
+	}
+	for _, d := range b.all() {
+		if d.File == file && d.contains(p) {
+			return d
+		}
+	}
+	return nil
+}
+
+// quoteOf returns the source the bundle reported e against. [Bundle.Check]
+// records the trusted bundle's diagnostics here too, as it moves them.
+func (b *Bundle) quoteOf(e *diag.Error) ([]byte, bool) {
+	src, ok := b.quotes[e]
+	return src, ok
+}
+
+// quote records that e quotes d's source, and returns e. A nil d records
+// nothing.
+func (b *Bundle) quote(d *Document, e *diag.Error) *diag.Error {
+	if d != nil {
+		b.quotes[e] = d.src
+	}
+	return e
+}
+
+// all lists the bundle's own policies and modules in reading order, then
+// the trusted bundle's.
+func (b *Bundle) all() []*Document {
+	out := b.Documents()
+	if b.trusted != nil {
+		out = append(out, b.trusted.all()...)
+	}
+	return out
+}
+
+// contains reports whether p falls inside the document.
+func (d *Document) contains(p token.Pos) bool {
+	return d.Node.Pos().Offset <= p.Offset && p.Offset < d.Node.End().Offset
+}
+
+// sameSource reports whether a and b are the same source: the same bytes
+// in memory, not merely equal ones.
+func sameSource(a, b []byte) bool {
+	return len(a) > 0 && len(a) == len(b) && &a[0] == &b[0]
 }
 
 // describe names a document's kind for a message.
