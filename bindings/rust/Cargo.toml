@@ -1,6 +1,6 @@
 [package]
 name = "spechtlabs-sigil"
-version = "0.6.0"
+version = "0.6.2"
 edition = "2024"
 rust-version = "1.98"
 description = "Embed Sigil, a typed policy language, in Rust: the Go engine as a WebAssembly module on wasmtime"
@@ -10,9 +10,8 @@ homepage = "https://github.com/SpechtLabs/sigil/tree/main/bindings/rust#readme"
 readme = "README.md"
 keywords = ["policy", "sigil", "webassembly", "wasmtime", "authorization"]
 categories = ["wasm", "config"]
-# Crates.io is for later: the user decides. Everything else is set up as if it
-# were published, so flipping this is the only change.
-publish = false
+# The release workflow copies sigil.wasm to module/ before cargo publish, so the
+# crate ships the module and installing it needs no Go.
 include = ["src/**", "module/sigil.wasm", "build.rs", "README.md", "LICENSE", "Cargo.toml"]
 
 [lib]
@@ -21,8 +20,8 @@ name = "sigil"
 [features]
 default = ["bundled"]
 # Embeds sigil.wasm in the crate: Sigil::bundled() and Module::bundled(). build.rs
-# reads it from $SIGIL_WASM or ../../dist/wasm/sigil.wasm (mise run wasm-build).
-# A published crate would ship the module inside the package instead (see README).
+# reads it from $SIGIL_WASM, module/sigil.wasm (in the published package) or
+# ../../dist/wasm/sigil.wasm (mise run wasm-build, in the repository).
 bundled = []
 
 [dependencies]

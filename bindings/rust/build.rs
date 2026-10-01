@@ -1,11 +1,9 @@
 // Finds sigil.wasm for the `bundled` feature and copies it next to the build's
 // output, where src/bundled.rs includes it.
 //
-// Lookup order: $SIGIL_WASM, then ../../dist/wasm/sigil.wasm (what
-// `mise run wasm-build` writes, relative to this crate in the Sigil repository).
-// A published crate would ship the module inside the package, at
-// `module/sigil.wasm`, and this script would prefer that path; the repository
-// checkout has no such file and uses the build output.
+// Lookup order: $SIGIL_WASM, then module/sigil.wasm, which the published crate
+// ships inside its package, then ../../dist/wasm/sigil.wasm, what
+// `mise run wasm-build` writes in a checkout of the Sigil repository.
 
 use std::env;
 use std::fs;

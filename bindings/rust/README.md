@@ -8,16 +8,13 @@ What Rust adds over the other hosts is control from outside. A runaway evaluatio
 
 ## Install
 
-The crate is `publish = false` for now. Depend on it by path from inside the repository:
-
-```toml
-[dependencies]
-spechtlabs-sigil = { path = "../../bindings/rust" }
+```sh
+cargo add spechtlabs-sigil
 ```
 
-and `use sigil::...`: the library is named `sigil`.
+and `use sigil::...`: the library is named `sigil`. The crate is versioned with Sigil: `spechtlabs-sigil` 0.7.0 runs the engine of Sigil 0.7.0.
 
-The default feature `bundled` embeds `sigil.wasm` in the crate. `build.rs` reads it from `$SIGIL_WASM`, else from `module/sigil.wasm` in the package, else from `../../dist/wasm/sigil.wasm`, which `mise run wasm-build` writes. A published crate would ship the module in `module/sigil.wasm` inside the package (the release workflow would copy it there before `cargo publish`), so installing it needs no Go. Without the feature, load the module yourself with `Module::from_file` or `Module::from_bytes`.
+The default feature `bundled` embeds `sigil.wasm` in the crate. The package ships the module in `module/sigil.wasm` (the release builds it from the tag and copies it there before `cargo publish`), so installing the crate needs no Go. `build.rs` reads `$SIGIL_WASM` first, so a build can swap in another module, and in a checkout of the repository it falls back to `../../dist/wasm/sigil.wasm`, which `mise run wasm-build` writes. Without the feature, load the module yourself with `Module::from_file` or `Module::from_bytes`.
 
 ## Build from the repository
 
@@ -28,6 +25,7 @@ mise run wasm-build   # dist/wasm/sigil.wasm
 mise run rust-build   # cargo build, with the module bundled
 mise run rust-test    # cargo test against the real module and the sigil CLI
 mise run rust-lint    # cargo fmt --check and cargo clippy -D warnings
+mise run rust-package # cargo package with the module inside, as the release publishes it
 ```
 
 The tests build the `sigil` CLI and run the Go kind generator with `go`, to compare their output with this crate's, so `go` must be on `PATH` too.

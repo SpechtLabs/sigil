@@ -41,27 +41,13 @@ The policies are the ones [Getting Started](/getting-started/share-rules/) build
 
 ## Add the crate
 
-::: warning Not on crates.io yet
-The crate is `publish = false` for now, so depend on it from a checkout of the repository. The crate bundles `sigil.wasm`, and a checkout has to build it first:
-
 ```sh
-git clone https://github.com/SpechtLabs/sigil
-cd sigil
-mise run wasm-build   # dist/wasm/sigil.wasm
+cargo add spechtlabs-sigil
+cargo add serde --features derive
+cargo add serde_json
 ```
 
-:::
-
-Then depend on the crate by path:
-
-```toml
-[dependencies]
-spechtlabs-sigil = { path = "../sigil/bindings/rust" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-```
-
-The library is named `sigil`, so the code says `use sigil::...`. The default feature `bundled` embeds the module in the crate; its `build.rs` reads `dist/wasm/sigil.wasm` of the checkout, or the file `SIGIL_WASM` names. A git dependency has no `dist/`, so it needs `SIGIL_WASM=/path/to/sigil.wasm` in the build's environment, or `default-features = false` and a module loaded with `Module::from_file`. The crate's version is the Sigil release it was built from, and it needs Rust 1.98 or later. Everything below ran on Rust 1.98.1 against Sigil 0.6.0 with wasmtime 49.
+The library is named `sigil`, so the code says `use sigil::...`. The crate's version is the Sigil release it was built from, and it needs Rust 1.98 or later. The default feature `bundled` embeds the WebAssembly module, which ships inside the crate, so the build needs no Go. To load a module of your own instead, turn the feature off with `default-features = false` and use `Module::from_file`. Everything below ran on Rust 1.98.1 against Sigil 0.6.0 with wasmtime 49.
 
 ## Define the kind
 

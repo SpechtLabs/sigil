@@ -256,6 +256,11 @@ jobs:
       - name: Test the crate
         run: mise run rust-test
 
+      # What the release publishes to crates.io: the package with sigil.wasm
+      # inside, built from the package alone.
+      - name: Package the crate
+        run: mise run rust-package
+
   # examples/alert-routing is a TypeScript service on the module and the
   # package above, not a Go module, so the examples matrix doesn't cover it.
   # Its install task builds sigil.wasm and the package from this checkout

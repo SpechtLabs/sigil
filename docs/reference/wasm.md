@@ -9,8 +9,8 @@ The WebAssembly module `sigil.wasm`, built from `cmd/sigil-wasm`, and the TypeSc
 
 To embed Sigil step by step, see [Embed Sigil in TypeScript](/guides/embed-typescript/) and [Embed Sigil in Rust](/guides/embed-rust/). Why: [One engine for every host](/understanding/one-engine/).
 
-::: warning Unpublished
-The package is on npm as `@spechtlabs/sigil`, versioned with Sigil. Each [release](https://github.com/SpechtLabs/sigil/releases) attaches the module as the archive `sigil_<version>_wasip1_wasm`, and [Building](#building) shows how to build it yourself. The Rust crate isn't on crates.io yet: [Add the crate](/guides/embed-rust/#add-the-crate) shows how to depend on it from a checkout.
+::: tip Packages
+The TypeScript package is on npm as `@spechtlabs/sigil` and the Rust crate on crates.io as `spechtlabs-sigil`, both versioned with Sigil. Each [release](https://github.com/SpechtLabs/sigil/releases) attaches the module as the archive `sigil_<version>_wasip1_wasm`, and [Building](#building) shows how to build it yourself.
 :::
 
 ## Building
@@ -495,7 +495,7 @@ SigilError: invalid duration "90 minutes"
 
 ## Rust crate
 
-`spechtlabs-sigil` loads the module on wasmtime and speaks its ABI. The library is named `sigil`. It needs Rust 1.98 or later, and the `bundled` feature (on by default) embeds the module, from `$SIGIL_WASM` or `dist/wasm/sigil.wasm` of the repository.
+`spechtlabs-sigil` loads the module on wasmtime and speaks its ABI. The library is named `sigil`. It needs Rust 1.98 or later, and the `bundled` feature (on by default) embeds the module the package ships, or the one `$SIGIL_WASM` names.
 
 | Item | Holds |
 | --- | --- |
