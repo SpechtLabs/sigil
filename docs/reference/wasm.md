@@ -386,6 +386,7 @@ Every method is synchronous and runs on the calling thread.
 | `sigil.compile` | `(files: SourceFile[], options?: CompileOptions) => Policy` | The [`compile`](#compile) op. Throws a `SigilError` with the diagnostics |
 | `sigil.explain` | `(files: SourceFile[], options?: ExplainOptions) => Explanation[]` | The [`explain`](#explain) op on files |
 | `sigil.format` | `(source: string, options?: FormatOptions) => string` | The [`format`](#format) op. Throws a `SigilError` with the syntax errors |
+| `sigil.test` | `(files: SourceFile[], tests: SourceFile[], options?: TestOptions) => TestResult[]` | The [`test`](#test) op. `tests` are its `test_files` |
 | `policy.name` | `string` | The compiled policy's name |
 | `policy.diagnostics` | `Diagnostic[]` | Problems in documents the policy doesn't use |
 | `policy.handle` | `number \| undefined` | The module's handle; `undefined` once released |
@@ -403,11 +404,12 @@ Every method is synchronous and runs on the calling thread.
 | `timeoutMs` | `EvalOptions` | The `eval` op's `timeout_ms` |
 | `policy`, `trustedFiles` | `ExplainOptions` | The `explain` op's `policy` and `trusted_files` |
 | `path` | `FormatOptions` | The `format` op's `path` |
+| `data`, `run`, `trustedFiles` | `TestOptions` | The `test` op's `data_files`, `run` and `trusted_files` |
 
 - `WasmSource` is a `URL` or URL string (`file:` URLs on Node, Bun and Deno), a `Response` or a promise of one, the module's bytes, or a compiled `WebAssembly.Module`.
 - A host function runs synchronously, inside `eval`. A function that returns a promise, or calls back into its `Sigil`, fails the call with a runtime error.
 - A `Policy` that's garbage collected without `release()` is released eventually.
-- The record types, `Diagnostic`, `EvalResult`, `EvalEntry`, `EvalFailure`, `FailedAssert`, `Explanation`, `ExplainEntry` and `VersionInfo`, match the CLI's JSON field for field. `SourceFile`, `Requirement`, `CompileRequirement`, `Stub`, `StubCall`, `LintLevel`, `HostFunction` and `JsonValue` type the options.
+- The record types, `Diagnostic`, `EvalResult`, `EvalEntry`, `EvalFailure`, `FailedAssert`, `Explanation`, `ExplainEntry`, `TestResult`, `TestCaseResult` and `VersionInfo`, match the CLI's JSON field for field. `SourceFile`, `Requirement`, `CompileRequirement`, `Stub`, `StubCall`, `LintLevel`, `HostFunction` and `JsonValue` type the options.
 
 ### Errors
 
@@ -425,7 +427,7 @@ A failed evaluation doesn't throw; its result's `error` says why.
 | Member | Signature | Does |
 | --- | --- | --- |
 | `new SigilWorker` | `(options: SigilWorkerOptions)` | Starts the worker on the first call |
-| `version`, `check`, `explain`, `format` | as on `Sigil`, plus `call?: CallOptions`, returning promises | The ops, in the worker |
+| `version`, `check`, `explain`, `format`, `test` | as on `Sigil`, plus `call?: CallOptions`, returning promises | The ops, in the worker |
 | `compile` | `(files, options?: WorkerCompileOptions, call?: CallOptions) => Promise<WorkerPolicy>` | The `compile` op. `functions` names exports of the functions module |
 | `terminate` | `(reason?: Error) => void` | Stops the worker and fails the calls waiting on it |
 | `workerPolicy.eval` | `(input: I, options?: EvalOptions) => Promise<EvalResult>` | The `eval` op. Waits `timeoutMs` plus 500 ms before it terminates the worker |

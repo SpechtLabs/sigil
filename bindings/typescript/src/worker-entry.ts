@@ -46,6 +46,8 @@ function call(s: Sigil, { method, args }: CallMessage): unknown {
       return s.explain(...(args as Parameters<Sigil["explain"]>));
     case "format":
       return s.format(...(args as Parameters<Sigil["format"]>));
+    case "test":
+      return s.test(...(args as Parameters<Sigil["test"]>));
     case "compile": {
       const [files, options] = args as [Parameters<Sigil["compile"]>[0], WireCompileOptions | undefined];
       const policy = s.compile(files, { ...options, functions: pick(options?.functions ?? []) });

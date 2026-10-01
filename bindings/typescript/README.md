@@ -62,17 +62,19 @@ Everything on `Sigil` and `Policy` is synchronous. The work runs inside WebAssem
 | `policy.release()`, `using policy = ...` | | |
 | `sigil.explain(files, { policy? })` | `Explanation[]` | `sigil explain -o json` |
 | `sigil.format(source, { path? })` | the formatted source, or throws `SigilError` with diagnostics | `sigil fmt` |
+| `sigil.test(files, tests, { data?, run?, trustedFiles? })` | `TestResult[]` | `sigil test -o json` |
 
 `source` is a `URL` or URL string (`file:` URLs work on Node, Bun and Deno), a `Response` or a promise of one, the module's bytes, or a compiled `WebAssembly.Module`. The package exports the module as `@spechtlabs/sigil/sigil.wasm`: `import.meta.resolve` finds it on Node, Bun and Deno, and a bundler gives its URL (`import url from "@spechtlabs/sigil/sigil.wasm?url"` in Vite).
 
-Files are virtual: `{ path, source }`. Paths appear in diagnostics and positions exactly as the CLI prints them for the same relative paths. The kind file is one of the files, as it is among the CLI's paths.
+Files are virtual: `{ path, source }`. Paths appear in diagnostics and positions exactly as the CLI prints them for the same relative paths. The kind file is one of the files, as it is among the CLI's paths. `test` takes the test files apart from the policies, and `data` holds the files a case's `input_file` names, by their paths relative to the test file's: `checkout/testdata/owner.json` for `input_file: testdata/owner.json` in `checkout/alerts_test.yaml`. Host functions come from the test files' `stubs:`.
 
 `Diagnostic`, `EvalResult`, `Explanation` and the other records are exported types that match the CLI's JSON field for field.
 
 ### Errors
 
-- A `SigilError` has `message`, `help` (how to fix it, when known) and `diagnostics`. It's thrown for files that don't compile, a source that doesn't parse, an input that doesn't fit the kind, a `require` entry that can't hold (the CLI's configuration error), or a released policy.
+- A `SigilError` has `message`, `help` (how to fix it, when known) and `diagnostics`. It's thrown for files that don't compile, a source that doesn't parse, an input that doesn't fit the kind, a `require` entry that can't hold (the CLI's configuration error), a `test` call the CLI's command line couldn't make (no test files, a test file not named `*_test.yaml` or `*_test.yml`, a `run` that isn't a regular expression), or a released policy.
 - A failed evaluation doesn't throw. A runtime error, a conflict, a failing assert or a `timeoutMs` deadline returns a result whose `error` says why (`kind` is `runtime`, `conflict`, `assertion` or `canceled`), with the kind's fallback as the outcome, like the CLI's JSON.
+- A test file that can't run and a case that fails don't throw either. `test` returns them as results, one with `error` set and one with `passed: false`, like the CLI's JSON.
 - An instance can stop for good. That happens when Go's runtime panics or exits, when the module traps, or when an exception unwinds it mid-call, such as the stack overflow of a policy nested thousands deep. The call throws a `SigilStoppedError` (a `SigilError`) that quotes what the module wrote to standard error, and every later call throws the same error. Go can't resume a call it was unwound from, so reusing the instance would leak memory and fail somewhere unrelated. Detect it with `err instanceof SigilStoppedError` or `sigil.stopped` (undefined while the instance works), and load a new instance.
 
 ### Required policies
