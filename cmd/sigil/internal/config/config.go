@@ -5,6 +5,8 @@
 //
 //	kinds:
 //	  - ../vendor/deploy_approval.sigil
+//	trusted:
+//	  - platform/vocabulary
 //	require:
 //	  - policy: deploy.guardrails
 //	    trusted: [platform/deploy]
@@ -15,6 +17,8 @@
 //
 // kinds lists kind files that live outside the paths a command reads,
 // which every policy command loads as if they were named with --kind.
+// trusted lists files and directories read as trusted, as --trusted
+// reads them: no other document may take a name their documents define.
 // require lists the policies check enforces: each names a policy, the
 // files and directories to read it from, and the name patterns of the
 // policies it applies to. Paths are relative to the directory the file
@@ -55,6 +59,7 @@ var FileNames = []string{"sigil.yaml", "sigil.json", "sigil.toml", ".sigil.yaml"
 type Config struct {
 	Lints   map[string]lint.Level // the level of each lint the file names; the others keep their defaults
 	Kinds   []string              // kind files every policy command loads, resolved against the file's directory
+	Trusted []string              // files and directories read as trusted, resolved against the file's directory
 	Require []Require             // the policies check enforces, in the order the file lists them
 	File    string                // where it was read from; empty for the defaults
 }
@@ -119,8 +124,8 @@ func Parse(path string, src []byte) (*Config, humane.Error) {
 // require:. --require replaces the file's requirements rather than
 // adding to them, so a run can check one requirement on its own.
 // --policy without it keeps the file's requirements, since it only
-// narrows what check covers, and so does --trusted, which check rejects
-// without --require.
+// narrows what check covers, and so does --trusted, which adds trusted
+// paths without requiring anything.
 func (c *Config) Requirements(policies, trusted, roots []string) []Require {
 	if len(policies) == 0 {
 		return c.Require

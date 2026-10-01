@@ -11,23 +11,6 @@ import (
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 )
 
-// TestTrustedNeedsRequire checks that --trusted without --require is an
-// error: it can't replace sigil.yaml's require:, which would drop the
-// guardrails, and nothing it reads as trusted would be required.
-func TestTrustedNeedsRequire(t *testing.T) {
-	format := output.Text
-	var out bytes.Buffer
-	src := project.Sources{
-		Paths:   []string{filepath.Join("testdata", "lints", "teams")},
-		Trusted: []string{filepath.Join("testdata", "lints", "deploy")},
-		Kinds:   []string{filepath.Join("testdata", "deploy_approval.sigil")},
-	}
-	err := run(&out, &options{output: &format}, filepath.Join("testdata", "lints", "require_trusted.yaml"), src, nil, nil)
-	if err == nil || !strings.HasPrefix(err.Error(), "--trusted names where required policies come from") {
-		t.Errorf("run() = %v with output %q, want --trusted rejected without --require", err, out.String())
-	}
-}
-
 // TestRequiredOrigin checks that a requirement with trusted paths finds
 // its policy there, below that requirement's own paths: a team can't
 // replace the platform's guardrails with a policy of the same name.
