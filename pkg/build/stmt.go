@@ -221,14 +221,18 @@ func (r *renderer) stmts(b *body, indent int) {
 }
 
 // value prints x after a let's `=` or an assert's reason: on the same
-// line when it fits there unbroken, otherwise on a line of its own one
-// level deeper.
+// line when its first line fits there and it isn't an `and`, `or` or
+// `xor` chain that breaks, otherwise on a line of its own one level
+// deeper. A list that breaks opens on the same line.
 func (r *renderer) value(x ast.Expr, indent int) {
 	same := r.trial(func(q *printer) {
 		q.write(" ")
 		q.expr(x, top, indent+1)
 	})
-	if r.fits(same) {
+	first, _, broken := strings.Cut(same, "\n")
+	b, ok := x.(*ast.BinaryExpr)
+	chain := ok && breaks(b.Op) && broken
+	if !chain && r.fits(first) {
 		r.write(" ")
 	} else {
 		r.newline(indent + 1)

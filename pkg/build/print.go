@@ -297,7 +297,9 @@ func operands(op ast.Op, tail bool) (left, right slot) {
 	return slot{min: l, of: op}, slot{min: l + 1, tail: tail, of: op}
 }
 
-// level returns the precedence level of x's outermost operator.
+// level returns the precedence level of x's outermost operator. A
+// quantifier or filter is parenthesize's, since where it may stand
+// depends on more than its level.
 func level(x ast.Expr) int {
 	switch x := x.(type) {
 	case *ast.BinaryExpr:
@@ -307,8 +309,6 @@ func level(x ast.Expr) int {
 			return levelNot
 		}
 		return levelUnary
-	case *ast.QuantExpr, *ast.FilterExpr:
-		return levelNot
 	}
 	return levelPostfix
 }

@@ -54,8 +54,8 @@ type rendered struct {
 	spans []span
 }
 
-// hiding is a file system with some files left out: a base bundle whose
-// files a rendered document replaces.
+// hiding is a file system with some files left out of its directory
+// listings: a base bundle whose files a rendered document replaces.
 type hiding struct {
 	fsys fs.FS
 	hide map[string]bool
@@ -197,11 +197,9 @@ func (e *DriftError) Error() string {
 // Error returns the rendered diagnostics.
 func (e *CheckError) Error() string { return e.rendered }
 
-// Open opens name unless it's hidden.
+// Open opens name. A hidden file is left out of the listings, which is
+// all [bundle.Bundle.Load] goes by.
 func (h hiding) Open(name string) (fs.File, error) {
-	if h.hide[name] {
-		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
-	}
 	return h.fsys.Open(name)
 }
 

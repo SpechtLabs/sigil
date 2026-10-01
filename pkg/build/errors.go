@@ -61,3 +61,8 @@ func callSite(call string) Site {
 func (s Site) errorf(format string, args ...any) *Error {
 	return &Error{Site: s, Msg: fmt.Sprintf(format, args...)}
 }
+
+// at formats s as `freeze.go:31`, for a message that points at it.
+func (s Site) at() string {
+	return fmt.Sprintf("%s:%d", filepath.Base(s.File), s.Line)
+}

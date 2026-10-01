@@ -50,14 +50,14 @@ type Scope interface {
 // [*ModuleDoc] or a [*PolicyDoc].
 type TopScope interface {
 	Scope
-	topLevel()
+	topLevel() *body
 }
 
 // ParamScope is where a [Param] goes: a [*PolicyDoc]. Modules have no
 // params.
 type ParamScope interface {
 	TopScope
-	policyDoc()
+	params() *body
 }
 
 // DocOption configures [Module] and [Policy]: [WithPath] and
@@ -213,13 +213,23 @@ func Extern(name string) *ExternDoc {
 // it's in scope. In a [*Block], the let is scoped to that `when` body and
 // the bodies nested in it.
 func Let[T any](s Scope, name string, x Expr[T]) Expr[T] {
-	return Expr[T]{declareLet(callSite("build.Let"), s, name, x.n, false)}
+	st := callSite("build.Let")
+	var b *body
+	if s != nil {
+		b = s.scope()
+	}
+	return Expr[T]{declareLet(st, b, name, x.n, false)}
 }
 
 // Pub declares `pub let name = x` at the top level of a document, which
 // other documents can import with [Ref], and returns the let.
 func Pub[T any](s TopScope, name string, x Expr[T]) Expr[T] {
-	return Expr[T]{declareLet(callSite("build.Pub"), s, name, x.n, true)}
+	st := callSite("build.Pub")
+	var b *body
+	if s != nil {
+		b = s.topLevel()
+	}
+	return Expr[T]{declareLet(st, b, name, x.n, true)}
 }
 
 // Param declares `param name: type` in a policy and returns the param.
@@ -233,7 +243,7 @@ func Param[T any](p ParamScope, name string, opts ...ParamOption[T]) Expr[T] {
 	s := callSite("build.Param")
 	var b *body
 	if p != nil {
-		b = p.scope()
+		b = p.params()
 	}
 	if b == nil {
 		return Expr[T]{&errNode{s.errorf("the policy is nil")}}
@@ -390,9 +400,9 @@ func (e *ExternDoc) Name() string { return e.name }
 
 func (m *ModuleDoc[In]) built() *document    { return m.d }
 func (m *ModuleDoc[In]) document() *document { return m.d }
-func (m *ModuleDoc[In]) topLevel()           {}
+func (m *ModuleDoc[In]) scope() *body        { return m.topLevel() }
 
-func (m *ModuleDoc[In]) scope() *body {
+func (m *ModuleDoc[In]) topLevel() *body {
 	if m == nil {
 		return nil
 	}
@@ -401,11 +411,11 @@ func (m *ModuleDoc[In]) scope() *body {
 
 func (p *PolicyDoc[In]) built() *document    { return p.d }
 func (p *PolicyDoc[In]) document() *document { return p.d }
-func (p *PolicyDoc[In]) topLevel()           {}
-func (p *PolicyDoc[In]) policyDoc()          {}
 func (p *PolicyDoc[In]) invocable()          {}
+func (p *PolicyDoc[In]) scope() *body        { return p.topLevel() }
+func (p *PolicyDoc[In]) params() *body       { return p.topLevel() }
 
-func (p *PolicyDoc[In]) scope() *body {
+func (p *PolicyDoc[In]) topLevel() *body {
 	if p == nil {
 		return nil
 	}
@@ -470,7 +480,7 @@ func (d *document) declare(s Site, name string) {
 		return
 	}
 	if prev, ok := d.names[name]; ok {
-		d.errs = append(d.errs, s.errorf("%s is already declared at %s; every name in a document means one thing", name, prev))
+		d.errs = append(d.errs, s.errorf("%s is already declared at %s; every name in a document means one thing", name, prev.at()))
 		return
 	}
 	d.names[name] = s
@@ -490,12 +500,8 @@ func (d *document) pub(name string) (bool, []string) {
 	return found, names
 }
 
-// declareLet adds a let to s and returns the node that reads it.
-func declareLet(st Site, s Scope, name string, x node, pub bool) node {
-	var b *body
-	if s != nil {
-		b = s.scope()
-	}
+// declareLet adds a let to b and returns the node that reads it.
+func declareLet(st Site, b *body, name string, x node, pub bool) node {
 	if b == nil {
 		return &errNode{st.errorf("the scope is nil; pass the document or block the let belongs to")}
 	}
