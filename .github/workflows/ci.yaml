@@ -556,12 +556,14 @@ jobs:
   build:
     name: Build with GoReleaser
     runs-on: ubuntu-latest
+    # Only what GoReleaser builds from: the Go module, linted and tested, and
+    # the WebAssembly module, which it ships as a release asset. The bindings
+    # and examples don't feed it; release.yaml waits for this whole workflow,
+    # so they still gate a release.
     needs:
       - lint
       - test
-      - wasm
-      - typescript
-      - rust
+      - wasm-build
     # Fuzz and benchmark are skipped on release runs; a skipped need would skip
     # this job too, so only a failure or cancellation stops it.
     if: ${{ !cancelled() && !failure() }}
