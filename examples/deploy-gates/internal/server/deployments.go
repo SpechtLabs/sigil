@@ -139,6 +139,7 @@ func (s *Server) runDeploy(ctx context.Context, kind string, p *policy.Policy[de
 		zap.String("decision", res.Decision),
 		zap.String("reason", res.Reason),
 		zap.Duration("took", took),
+		zap.Reflect("input", newReplayInput(in)),
 	)
 	return resp, status, nil
 }
@@ -222,4 +223,35 @@ func tierList() string {
 		names[i] = string(t)
 	}
 	return strings.Join(names, ", ")
+}
+
+// replayInput is a deploy input as `sigilc eval` and the policy test files
+// read one: keyed by the kind's input names, with durations written as
+// Sigil duration strings rather than encoding/json's nanoseconds. The
+// deploy decision's log line carries it as `input`, so the line alone
+// reproduces the decision: save the field as input.json and run `sigilc
+// eval --input input.json --policy <team>.production policies`.
+type replayInput struct {
+	Release     replayRelease  `json:"release"`
+	Service     deploy.Service `json:"service"`
+	Actor       deploy.Actor   `json:"actor"`
+	Environment string         `json:"environment"`
+	Freeze      deploy.Freeze  `json:"freeze"`
+}
+
+// replayRelease is [deploy.Release] with its soak as a duration string.
+type replayRelease struct {
+	Soak   Duration `json:"soak"`
+	Hotfix bool     `json:"hotfix"`
+}
+
+// newReplayInput is in as the log line carries it.
+func newReplayInput(in deploy.Input) replayInput {
+	return replayInput{
+		Release:     replayRelease{Soak: Duration(in.Release.Soak), Hotfix: in.Release.Hotfix},
+		Service:     in.Service,
+		Actor:       in.Actor,
+		Environment: in.Environment,
+		Freeze:      in.Freeze,
+	}
 }

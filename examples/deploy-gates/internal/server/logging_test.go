@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +13,10 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/spechtlabs/sigil/cmd/sigil/command"
+
+	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/access"
+	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/deploy"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/freeze"
 )
 
@@ -152,4 +158,78 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 	core := zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&buf), zapcore.DebugLevel)
 	t.Cleanup(otelzap.ReplaceGlobals(otelzap.New(zap.New(core, zap.AddCaller()), otelzap.WithMinLevel(zapcore.DebugLevel))))
 	return &buf
+}
+
+// TestDecisionLogReplays takes the input field of each deploy decision's
+// log line, saves it as a file and evaluates it with the sigilc command
+// line, the deploy-gates kinds linked in, against the policies on disk: the
+// line alone reproduces the decision, the freeze the policy read included.
+func TestDecisionLogReplays(t *testing.T) {
+	tests := []struct {
+		name string
+		src  freeze.Source
+		edit func(r, actor map[string]any)
+		want string
+	}{
+		{name: "a frozen production", src: freeze.NewStatic("production"), want: "payments.production: deny(reason: change_freeze)"},
+		{name: "an unknown freeze", src: stubFreeze{Environments: []string{"staging"}, Unknown: true}, want: "payments.production: deny(reason: change_freeze)"},
+		{name: "nothing frozen", want: "payments.production: review(reason: service_owner)"},
+		{
+			name: "a short soak",
+			edit: func(r, _ map[string]any) { r["release"] = map[string]any{"soak": "1h30m", "hotfix": false} },
+			want: "payments.production: deny(reason: soak_too_short)",
+		},
+		{
+			name: "the on-call sre's approval",
+			edit: func(_, actor map[string]any) { actor["groups"] = []string{"payments-sre"} },
+			want: "payments.production: approve(reason: payments_sre)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newEnv(t, envOptions{deployLoaded: true, accessLoaded: true, freeze: tt.src})
+			logs := captureLogs(t)
+			do(env.srv.Handler(), http.MethodPost, "/api/v1/teams/payments/deployments", deployRequest(tt.edit))
+
+			var entry struct {
+				Input json.RawMessage `json:"input"`
+			}
+			for l := range strings.Lines(logs.String()) {
+				if strings.Contains(l, `"msg":"deploy decision"`) {
+					if err := json.Unmarshal([]byte(l), &entry); err != nil {
+						t.Fatalf("the log line isn't JSON: %v\n%s", err, l)
+					}
+				}
+			}
+			if entry.Input == nil {
+				t.Fatalf("no deploy decision logged with an input; logs:\n%s", logs)
+			}
+
+			var keys map[string]json.RawMessage
+			if err := json.Unmarshal(entry.Input, &keys); err != nil {
+				t.Fatal(err)
+			}
+			for _, in := range deploy.Kind.Contract().Model.Inputs {
+				if _, ok := keys[in.Name]; !ok {
+					t.Errorf("the logged input has no %s, which the kind declares", in.Name)
+				}
+			}
+
+			file := filepath.Join(t.TempDir(), "input.json")
+			if err := os.WriteFile(file, entry.Input, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cmd := command.NewCommand(command.WithKind(deploy.Kind), command.WithKind(access.Kind))
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs([]string{"eval", "--config", "../../policies/sigil.yaml", "--input", file, "--policy", "payments.production", "../../policies"})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("sigilc eval of the logged input: %v\n%s\ninput: %s", err, out.String(), entry.Input)
+			}
+			if !strings.Contains(out.String(), tt.want) {
+				t.Errorf("sigilc eval of the logged input decided\n%s\nwant %s; input: %s", out.String(), tt.want, entry.Input)
+			}
+		})
+	}
 }

@@ -26,7 +26,7 @@ func TestNewFreeze(t *testing.T) {
 	down.Close()
 
 	ofrep := func(url string) config.Config {
-		return config.Config{FreezeOFREPURL: url, FreezeFlag: "change-freeze", FreezeRefreshInterval: time.Second, FreezeMaxStaleness: time.Minute}
+		return config.Config{FreezeOFREPURL: url, FreezeFlag: "change-freeze", FreezeKnownEnvironments: []string{"production", "staging"}, FreezeRefreshInterval: time.Second, FreezeMaxStaleness: time.Minute}
 	}
 	tests := []struct {
 		name        string

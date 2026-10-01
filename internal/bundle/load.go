@@ -39,6 +39,22 @@ func (b *Bundle) Load(fsys fs.FS) humane.Error {
 	return nil
 }
 
+// Loads reports whether [Bundle.Load] reads a file at p, a slash-separated
+// path in an fs.FS: it ends in `.sigil` and none of its elements is one
+// Load skips. A tool that writes files for Load to read checks its paths
+// with it, since a skipped file isn't an error, only absent.
+func Loads(p string) bool {
+	if !strings.HasSuffix(p, ".sigil") {
+		return false
+	}
+	for elem := range strings.SplitSeq(p, "/") {
+		if skipped(elem) {
+			return false
+		}
+	}
+	return true
+}
+
 // walkFS collects the `.sigil` files under dir.
 func walkFS(fsys fs.FS, dir string) ([]string, humane.Error) {
 	entries, err := fs.ReadDir(fsys, dir)
@@ -47,7 +63,7 @@ func walkFS(fsys fs.FS, dir string) ([]string, humane.Error) {
 	}
 	var files []string
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".") {
+		if skipped(e.Name()) {
 			continue
 		}
 		p := path.Join(dir, e.Name())
@@ -67,4 +83,10 @@ func walkFS(fsys fs.FS, dir string) ([]string, humane.Error) {
 		}
 	}
 	return files, nil
+}
+
+// skipped reports whether Load leaves out the directory entry called name:
+// one whose name starts with `.`, such as kubelet's `..data`.
+func skipped(name string) bool {
+	return strings.HasPrefix(name, ".")
 }
