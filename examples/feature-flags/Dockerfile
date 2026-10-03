@@ -29,7 +29,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # The service. Keep the tag in lockstep with the rust pin in ../../.mise.toml.
 # trixie matches the runtime image's glibc, which the binary links against.
 # This stage runs on the target platform, so the binary is native to it.
-FROM rust:1.98.1-trixie AS build
+FROM rust:1.99.0-trixie AS build
 
 WORKDIR /src
 
