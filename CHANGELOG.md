@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.5](https://github.com/SpechtLabs/sigil/compare/v0.6.4...v0.6.5) (2026-10-03)
+
+
+### Bug Fixes
+
+* **deps:** update dependency @spechtlabs/sigil to v0.6.4 ([#135](https://github.com/SpechtLabs/sigil/issues/135)) ([166fc0c](https://github.com/SpechtLabs/sigil/commit/166fc0cabe8c16c2ae79038d18f46ddd5ffc5a3e))
+* **deps:** update rust crates ([#141](https://github.com/SpechtLabs/sigil/issues/141)) ([8c6b45f](https://github.com/SpechtLabs/sigil/commit/8c6b45fdc18f32734ef0c1b2136b387dd66f66ce))
+
 ## [0.6.4](https://github.com/SpechtLabs/sigil/compare/v0.6.3...v0.6.4) (2026-10-01)
 
 
