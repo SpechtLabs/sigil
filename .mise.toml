@@ -11,7 +11,7 @@ go = "1.27.1"
 # bindings/rust and examples/feature-flags. CI installs the minimal profile, so
 # the components the lint tasks need are listed. Keep in lockstep with the rust
 # images in examples/feature-flags/Dockerfile.
-rust = { version = "1.98.1", components = "rustfmt,clippy" }
+rust = { version = "1.99.0", components = "rustfmt,clippy" }
 "go:golang.org/x/perf/cmd/benchstat" = "v0.0.0-20260908200009-22c9c6c9d4da"
 "go:golang.org/x/tools/gopls" = "0.23.0"
 "go:github.com/go-delve/delve/cmd/dlv" = "1.27.2"
