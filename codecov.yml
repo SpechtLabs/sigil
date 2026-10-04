@@ -10,3 +10,10 @@ coverage:
     patch:
       default:
         target: 85%
+
+# Each upload carries a flag: go from go.yaml's unit tests, typescript and
+# rust from the binding jobs in wasm.yaml. A flag missing from a commit's
+# uploads keeps its last coverage rather than counting as none.
+flag_management:
+  default_rules:
+    carryforward: true

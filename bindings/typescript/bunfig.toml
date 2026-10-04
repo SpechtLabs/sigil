@@ -1,0 +1,9 @@
+# Every bun test run measures coverage of src/: a table in the terminal, and
+# coverage/lcov.info, which CI uploads to Codecov.
+[test]
+coverage = true
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+coverageSkipTestFiles = true
+# The tests' own helpers and fixtures, which aren't test files by name.
+coveragePathIgnorePatterns = ["test/**"]

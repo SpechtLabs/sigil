@@ -6,6 +6,9 @@ name: WebAssembly
 # on its own from the Actions tab.
 on:
   workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
   workflow_dispatch:
 
 permissions:
@@ -147,8 +150,22 @@ jobs:
       - name: Mark the module up to date
         run: touch dist/wasm/sigil.wasm
 
+      # bunfig.toml has bun test write coverage/lcov.info for src/, with paths
+      # relative to the package; Codecov matches them against the repository.
       - name: Test the TypeScript package
         run: mise run ts-test
+
+      - name: Point the coverage report at the repository root
+        run: perl -pi -e 's{^SF:}{SF:bindings/typescript/}' bindings/typescript/coverage/lcov.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: bindings/typescript/coverage/lcov.info
+          disable_search: true
+          flags: typescript
+          fail_ci_if_error: false
 
       # tsc type-checks the package again as it emits dist/.
       - name: Build the TypeScript package
@@ -174,8 +191,10 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/^rust = { version = "\([^"]*\)".*/\1/p' .mise.toml)"
+          components="$(sed -n 's/^rust = {.*components = "\([^"]*\)".*/\1/p' .mise.toml)"
           test -n "${version}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "components=${components}" >> "${GITHUB_OUTPUT}"
 
       - name: Cache the Rust toolchain
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -183,15 +202,15 @@ jobs:
           path: |
             ~/.rustup/toolchains/${{ steps.rust.outputs.version }}-*
             ~/.rustup/update-hashes/${{ steps.rust.outputs.version }}-*
-          key: rustup-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}
+          key: rustup-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}-${{ steps.rust.outputs.components }}
 
-      # MISE_TOOLS plus rust: a second mise cache, which main's runs save
-      # like the first.
+      # MISE_TOOLS plus rust and cargo-llvm-cov, for the coverage run: a mise
+      # cache of its own, which main's runs save like the first.
       - name: Set up mise
         uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
           version: ${{ env.MISE_VERSION }}
-          install_args: ${{ env.MISE_TOOLS }} rust
+          install_args: ${{ env.MISE_TOOLS }} rust aqua:taiki-e/cargo-llvm-cov
 
       # rust-cache keys on the toolchain and the lockfile, and drops the
       # crate's own build output before it saves, so the cache holds the
@@ -220,10 +239,24 @@ jobs:
       - name: Check formatting and lint the crate
         run: mise run rust-lint
 
-      # Also builds the docs with warnings as errors, so broken intra-doc
-      # links fail here.
-      - name: Test the crate
-        run: mise run rust-test
+      # The tests rust-test runs, with both feature sets, instrumented for
+      # coverage. It replaces rust-test here, so the tests run once.
+      - name: Test the crate with coverage
+        run: mise run rust-coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: bindings/rust/lcov.info
+          disable_search: true
+          flags: rust
+          fail_ci_if_error: false
+
+      # The rest of rust-test: the docs with warnings as errors, so broken
+      # intra-doc links fail here.
+      - name: Build the crate's docs
+        run: mise run rust-doc
 
       # What the release publishes to crates.io: the package with sigil.wasm
       # inside, built from the package alone.

@@ -9,9 +9,12 @@
 # together. The go directive (minimum language version) is bumped by hand.
 go = "1.27.1"
 # bindings/rust and examples/feature-flags. CI installs the minimal profile, so
-# the components the lint tasks need are listed. Keep in lockstep with the rust
+# the components the lint and coverage tasks need are listed. Keep in lockstep with the rust
 # images in examples/feature-flags/Dockerfile.
-rust = { version = "1.99.0", components = "rustfmt,clippy" }
+rust = { version = "1.99.0", components = "rustfmt,clippy,llvm-tools" }
+# Rust coverage for Codecov (see the rust-coverage task); it needs the
+# llvm-tools component above.
+"aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
 "go:golang.org/x/perf/cmd/benchstat" = "v0.0.0-20260908200009-22c9c6c9d4da"
 "go:golang.org/x/tools/gopls" = "0.23.0"
 "go:github.com/go-delve/delve/cmd/dlv" = "1.27.2"
@@ -312,9 +315,30 @@ dir = "bindings/rust"
 run = [
   "cargo test --locked",
   "cargo test --locked --all-features",
-  "cargo doc --no-deps --locked --all-features",
+  { task = "rust-doc" },
 ]
+
+[tasks.rust-doc]
+description = "Build the Rust crate's docs with every feature, warnings (broken intra-doc links included) as errors"
+depends = ["wasm-build"]
+dir = "bindings/rust"
+run = "cargo doc --no-deps --locked --all-features"
 env = { RUSTDOCFLAGS = "-D warnings" }
+
+# The tests rust-test runs, with both feature sets, instrumented by
+# cargo-llvm-cov and merged into one lcov report, which CI uploads to Codecov.
+# The instrumented build has a target directory of its own
+# (target/llvm-cov-target).
+[tasks.rust-coverage]
+description = "Run the Rust crate's tests, with default and with all features, under cargo-llvm-cov and write bindings/rust/lcov.info"
+depends = ["wasm-build"]
+dir = "bindings/rust"
+run = [
+  "cargo llvm-cov clean --workspace",
+  "cargo llvm-cov --no-report --locked",
+  "cargo llvm-cov --no-report --locked --all-features",
+  "cargo llvm-cov report --lcov --output-path lcov.info",
+]
 
 [tasks.rust-lint]
 description = "Check the Rust crate's formatting and run clippy with warnings as errors"

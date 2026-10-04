@@ -50,8 +50,10 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/^rust = { version = "\([^"]*\)".*/\1/p' .mise.toml)"
+          components="$(sed -n 's/^rust = {.*components = "\([^"]*\)".*/\1/p' .mise.toml)"
           test -n "${version}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "components=${components}" >> "${GITHUB_OUTPUT}"
 
       - name: Cache the Rust toolchain
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -59,7 +61,7 @@ jobs:
           path: |
             ~/.rustup/toolchains/${{ steps.rust.outputs.version }}-*
             ~/.rustup/update-hashes/${{ steps.rust.outputs.version }}-*
-          key: rustup-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}
+          key: rustup-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}-${{ steps.rust.outputs.components }}
 
       # Exactly as examples.yaml's feature-flags job sets up mise, so this
       # saves the mise cache that job restores.
