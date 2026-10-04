@@ -152,12 +152,13 @@ func push(ctx context.Context, p *pretty.Printer, o options, co corpusOptions, p
 
 // restore copies the corpus of targets from the remote's branch into the
 // cache before fuzz run fuzzes them, and returns the run header's Corpus
-// row. A failure doesn't stop the run, which then starts from the seeds
-// and whatever the cache has: it's printed as a warning.
-func restore(ctx context.Context, p *pretty.Printer, o options, root, remote string, targets []gotool.Target) string {
+// row and how many inputs it copied. A failure doesn't stop the run,
+// which then starts from the seeds and whatever the cache has: it's
+// printed as a warning.
+func restore(ctx context.Context, p *pretty.Printer, o options, root, remote string, targets []gotool.Target) (string, int) {
 	repo := corpus.Repo{Dir: root, Remote: remote}
 	if ok, err := repo.HasRemote(ctx); err != nil || !ok {
-		return "not restored, no remote " + remote
+		return "not restored, no remote " + remote, 0
 	}
 	n := 0
 	found, err := repo.Fetch(ctx)
@@ -171,11 +172,11 @@ func restore(ctx context.Context, p *pretty.Printer, o options, root, remote str
 	case err != nil:
 		_ = p.Warning("Can't restore the fuzzing corpus from "+repo.Display(), err.Error(),
 			"Fuzzing starts from the seeds and the inputs in the Go cache.")
-		return "not restored, see the warning above"
+		return "not restored, see the warning above", 0
 	case !found:
-		return remote + " has no " + corpus.Branch + " branch yet"
+		return remote + " has no " + corpus.Branch + " branch yet", 0
 	}
-	return fmt.Sprintf("%d new %s from %s", n, ui.Plural(n, "input", "inputs"), repo.Display())
+	return fmt.Sprintf("%d new %s from %s", n, ui.Plural(n, "input", "inputs"), repo.Display()), n
 }
 
 // corpusTargets returns what the corpus package needs to know about

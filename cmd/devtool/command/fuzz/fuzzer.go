@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"slices"
 	"strconv"
 	"time"
 
@@ -41,8 +42,11 @@ type fuzzer struct {
 	// fuzzFor is --time as a duration, for each target's progress; zero
 	// when it's an iteration count.
 	fuzzFor time.Duration
-	// rows are the summary's rows, one per target that ran.
-	rows [][]ui.Cell
+	// results is how each target that ran went, in order; head and
+	// restored complete them in results.json.
+	results  []targetResult
+	head     string
+	restored int
 }
 
 func newFuzzer(p *pretty.Printer, stdout io.Writer, root string, ro cmdflag.Run, targets []gotool.Target, res resultdir.Dir) *fuzzer {
@@ -72,7 +76,7 @@ func (f *fuzzer) all(ctx context.Context) humane.Error {
 		execs += s.execs
 		found += s.found
 		if err != nil {
-			_ = f.summarize("Fuzzing stopped at "+t.Name, err.Error())
+			_ = f.summarize()
 			return err
 		}
 	}
@@ -80,7 +84,7 @@ func (f *fuzzer) all(ctx context.Context) humane.Error {
 	n := len(f.targets)
 	title := fmt.Sprintf("Fuzzed %d %s in %s", n, ui.Plural(n, "target", "targets"), ui.Duration(f.steps.Elapsed()))
 	detail := fmt.Sprintf("%s execs, %d new interesting %s", ui.Count(float64(execs)), found, ui.Plural(int(found), "input", "inputs"))
-	if err := f.summarize(title, detail); err != nil {
+	if err := f.summarize(); err != nil {
 		return err
 	}
 	return f.p.Ok(title, detail, "Results in "+f.res.Display())
@@ -114,7 +118,7 @@ func (f *fuzzer) one(ctx context.Context, t gotool.Target, log io.Writer) (stats
 	s := pr.stats
 	switch {
 	case err == nil:
-		f.rows = append(f.rows, summaryRow(t, s, "passed"))
+		f.results = append(f.results, result(t, s, resultPassed))
 		return s, f.steps.Done(s.summary())
 	case ctx.Err() != nil:
 		return s, humane.Wrap(err, "interrupted", "run the fuzz target again")
@@ -126,12 +130,17 @@ func (f *fuzzer) one(ctx context.Context, t gotool.Target, log io.Writer) (stats
 // failed finishes a failed target's step, prints what go test said when
 // the status line hid it, and returns the error to show under it.
 func (f *fuzzer) failed(t gotool.Target, pr *progress, err error) humane.Error {
-	result := "failed"
+	r := result(t, pr.stats, resultFailed)
+	r.Replay = "go test -run '^$' -fuzz '^" + t.Name + "$' " + t.Dir
 	if pr.input != "" {
-		result = "found a failing input"
+		rerun := pr.rerun
+		if rerun == "" {
+			rerun = "go test -run=" + t.Name + "/" + path.Base(pr.input)
+		}
+		r.Result, r.Input, r.Replay = resultFound, path.Join(t.Dir, pr.input), rerun+" "+t.Dir
 	}
-	f.rows = append(f.rows, summaryRow(t, pr.stats, result))
-	if serr := f.steps.Failed(result); serr != nil {
+	f.results = append(f.results, r)
+	if serr := f.steps.Failed(r.Result); serr != nil {
 		return serr
 	}
 	if !f.ro.Verbose {
@@ -143,15 +152,11 @@ func (f *fuzzer) failed(t gotool.Target, pr *progress, err error) humane.Error {
 	if pr.input == "" {
 		return humane.New(fmt.Sprintf("fuzzing %s in %s failed: %v", t.Name, t.Dir, err),
 			"go test's output above says why",
-			"rerun it alone with: go test -run '^$' -fuzz '^"+t.Name+"$' "+t.Dir)
-	}
-	rerun := pr.rerun
-	if rerun == "" {
-		rerun = "go test -run=" + t.Name + "/" + path.Base(pr.input)
+			"rerun it alone with: "+r.Replay)
 	}
 	return humane.New(t.Name+" found a failing input",
-		"replay it with: "+rerun+" "+t.Dir,
-		"keep "+path.Join(t.Dir, pr.input)+" with the fix, so every go test run replays it")
+		"replay it with: "+r.Replay,
+		"keep "+r.Input+" with the fix, so every go test run replays it")
 }
 
 // progress returns how far into --time the target is, or zero when --time
@@ -164,16 +169,22 @@ func (f *fuzzer) progress(s stats) float64 {
 	return float64(elapsed) / float64(f.fuzzFor)
 }
 
-// summarize writes the Markdown summary CI adds to the job page.
-func (f *fuzzer) summarize(title, detail string) humane.Error {
-	return f.res.Write(resultdir.Summary, "# Go fuzzing\n\n"+title+". "+detail+".\n\n"+ui.Markdown(summaryColumns, f.rows))
+// summarize writes results.json, with the targets a failure stopped as
+// not run, and the Markdown summary CI adds to the job page.
+func (f *fuzzer) summarize() humane.Error {
+	run := runResults{Head: f.head, Time: f.ro.Time, Restored: f.restored, Targets: slices.Clone(f.results)}
+	for _, t := range f.targets[len(f.results):] {
+		run.Targets = append(run.Targets, result(t, stats{}, resultNotRun))
+	}
+	if err := f.res.WriteJSON(resultsFile, run); err != nil {
+		return err
+	}
+	return f.res.Write(resultdir.Summary, summaryMarkdown([]runResults{run}))
 }
 
-func summaryRow(t gotool.Target, s stats, result string) []ui.Cell {
-	return []ui.Cell{
-		{Text: t.Name}, {Text: t.Dir},
-		{Text: ui.Count(float64(s.execs))}, {Text: strconv.FormatInt(s.found, 10)}, {Text: result},
-	}
+// result is the start of a target's entry in results.json.
+func result(t gotool.Target, s stats, result string) targetResult {
+	return targetResult{Target: t.Name, Dir: t.Dir, Result: result, Execs: s.execs, NewInputs: s.found}
 }
 
 // summary describes a finished run: how much it tried and found.

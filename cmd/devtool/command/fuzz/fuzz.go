@@ -7,7 +7,8 @@
 // the first failure; go test saves the failing input under the package's
 // testdata/fuzz directory. `fuzz corpus pull` and `fuzz corpus push` move
 // the corpus between go test's cache and the branch. `fuzz list` shows what
-// `fuzz run` would fuzz, and with --packages -o json feeds CI's matrix.
+// `fuzz run` would fuzz, and with -o json feeds CI's matrix. `fuzz summary`
+// merges the results of a campaign's jobs into one Markdown summary.
 // `fuzz report` opens or comments on the GitHub issue for a failed
 // scheduled or manually dispatched campaign on main.
 package fuzz
@@ -54,8 +55,10 @@ Every flag can also be set with an environment variable: FUZZ_ followed by
 the flag's name in capitals, e.g. FUZZ_TIME=1m for --time 1m.`,
 	}
 	cmd.AddGroup(groupDev, groupCI)
-	run, list, corpus, report := newRunCommand(*o), newListCommand(*o), newCorpusCommand(*o), newReportCommand(*o)
-	run.GroupID, list.GroupID, corpus.GroupID, report.GroupID = groupDev.ID, groupDev.ID, groupDev.ID, groupCI.ID
-	cmd.AddCommand(run, list, corpus, report)
+	run, list, corpus := newRunCommand(*o), newListCommand(*o), newCorpusCommand(*o)
+	summary, report := newSummaryCommand(*o), newReportCommand(*o)
+	run.GroupID, list.GroupID, corpus.GroupID = groupDev.ID, groupDev.ID, groupDev.ID
+	summary.GroupID, report.GroupID = groupCI.ID, groupCI.ID
+	cmd.AddCommand(run, list, corpus, summary, report)
 	return cmd
 }
