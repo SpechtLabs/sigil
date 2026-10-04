@@ -26,7 +26,10 @@ type Plan struct {
 	Runs     string
 	CPU      int
 	Estimate string // how long the run should take; its row is left out when empty
-	Results  string // the results directory, as printed
+	// Corpus says where fuzzing starts from, e.g. "12 new inputs from
+	// origin/fuzz-corpus"; its row is left out when empty.
+	Corpus  string
+	Results string // the results directory, as printed
 }
 
 // Header prints the plan as a [pretty.Printer.KeyValues] block: in a box
@@ -56,6 +59,9 @@ func Header(p *pretty.Printer, plan Plan) humane.Error {
 	)
 	if plan.Estimate != "" {
 		rows = append(rows, pretty.KV{Key: "Estimate", Value: plan.Estimate})
+	}
+	if plan.Corpus != "" {
+		rows = append(rows, pretty.KV{Key: "Corpus", Value: plan.Corpus})
 	}
 	rows = append(rows,
 		pretty.KV{Key: "Go", Value: plan.Checkout.Go},

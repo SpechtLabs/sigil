@@ -52,10 +52,17 @@ type Func struct {
 // replaces the inherited environment when it isn't nil. A failure carries
 // the command's standard error.
 func Output(ctx context.Context, dir string, env []string, name string, args ...string) (string, humane.Error) {
+	return Pipe(ctx, dir, env, nil, name, args...)
+}
+
+// Pipe is [Output] with stdin as the command's standard input, for the git
+// commands that read their objects or paths from it.
+func Pipe(ctx context.Context, dir string, env []string, stdin io.Reader, name string, args ...string) (string, humane.Error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // running go, git and benchstat is what devtool is for
 	cmd.Dir = dir
 	cmd.Env = env
+	cmd.Stdin = stdin
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

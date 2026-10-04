@@ -86,8 +86,12 @@ description = "Run every Go benchmark once to check workload correctness"
 run = "go run ./cmd/devtool bench run --no-baseline --count 1 --time 1x"
 
 [tasks.fuzz]
-description = "Fuzz every target; --time (FUZZ_TIME) sets the time per target (default 10s)"
+description = "Fuzz every target, from the fuzz-corpus branch's inputs; --time (FUZZ_TIME) sets the time per target (default 10s)"
 run = "go run ./cmd/devtool fuzz run"
+
+[tasks.fuzz-push]
+description = "Push the inputs fuzzing found that the fuzz-corpus branch doesn't have yet"
+run = "go run ./cmd/devtool fuzz corpus push"
 
 # `mise run fmt` rewrites everything that has a canonical form; `mise run
 # lint` checks the same things without touching a file. The steps run in

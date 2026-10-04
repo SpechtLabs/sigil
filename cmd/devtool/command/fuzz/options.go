@@ -18,6 +18,10 @@ type options struct {
 	// root is the module whose targets are fuzzed; empty means the module
 	// containing the working directory.
 	root string
+	// fuzzCache is where the corpus commands read and write go test's fuzz
+	// cache; empty means $(go env GOCACHE)/fuzz. Tests set it so they leave
+	// the real cache alone.
+	fuzzCache string
 }
 
 // reportOptions configures `fuzz report`.
@@ -47,6 +51,12 @@ func defaultRunOptions() cmdflag.Run {
 // to the module containing the working directory.
 func WithRoot(dir string) Option {
 	return func(o *options) { o.root = dir }
+}
+
+// withFuzzCache sets the directory the corpus commands use as go test's
+// fuzz cache.
+func withFuzzCache(dir string) Option {
+	return func(o *options) { o.fuzzCache = dir }
 }
 
 // WithGetenv sets how the commands read their FUZZ_* variables and the
