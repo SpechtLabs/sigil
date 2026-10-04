@@ -258,6 +258,7 @@ func (p *printer) call(s *ast.CallStmt, indent int) {
 		return
 	}
 	p.write(s.Name.Name)
+	p.last = s.Name.End().Line
 	n := len(s.Args)
 	if s.Positional != nil {
 		n++
