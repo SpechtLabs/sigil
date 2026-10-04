@@ -41,11 +41,14 @@ const (
 )
 
 // machoSig is what Patch needs to know about a Mach-O: where its load
-// commands end, its CodeDirectories, and whether it's signed with an
-// identity. The zero value stands for a binary without a code signature.
+// commands end, where its code signature is, its CodeDirectories, and
+// whether it's signed with an identity. The zero value stands for a binary
+// without a code signature.
 type machoSig struct {
 	cds       []codeDirectory
 	headerEnd uint64
+	sigStart  uint64 // the code signature, as LC_CODE_SIGNATURE places it
+	sigEnd    uint64
 	signed    bool
 }
 
@@ -71,11 +74,16 @@ type hashKind struct {
 }
 
 // covers returns an error unless every CodeDirectory covers the area from
-// off to end, and the area keeps clear of the Mach-O's load commands,
-// which a payload must never overwrite.
+// off to end, and the area keeps clear of the Mach-O's load commands and
+// of its code signature, which a payload must never overwrite. A
+// CodeDirectory's pages end before the signature, but a signature without
+// one leaves only the second check to keep the area out of it.
 func (s *machoSig) covers(off, end uint64) error {
 	if off < s.headerEnd {
 		return malformed("the reserved area at %#x overlaps the Mach-O load commands", off)
+	}
+	if off < s.sigEnd && s.sigStart < end {
+		return malformed("the reserved area at %#x overlaps the code signature at %#x", off, s.sigStart)
 	}
 	for i := range s.cds {
 		if end > s.cds[i].codeLimit {
@@ -153,6 +161,7 @@ func (s *machoSig) read(exe []byte, off, size uint64) error {
 	if off > uint64(len(exe)) || size > uint64(len(exe))-off {
 		return malformed("the code signature runs past the end of the file")
 	}
+	s.sigStart, s.sigEnd = off, off+size
 	sb := exe[off : off+size]
 	be := binary.BigEndian
 	if len(sb) < superBlobHeader || be.Uint32(sb) != csMagicEmbeddedSignature {
