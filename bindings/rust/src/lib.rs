@@ -49,17 +49,27 @@
 //!
 //! # Features
 //!
-//! `bundled` (on by default) embeds `sigil.wasm` in the crate, see
-//! [`Module::bundled`]. Without it, load the module yourself with
-//! [`Module::from_file`] or [`Module::from_bytes`].
+//! - `bundled` (on by default) embeds `sigil.wasm` in the crate, see
+//!   [`Module::bundled`]. Without it, load the module yourself with
+//!   [`Module::from_file`] or [`Module::from_bytes`].
+//! - `precompiled` (implies `bundled`) compiles the bundled module for the
+//!   target at build time, so [`Module::bundled`] loads native code in
+//!   milliseconds instead of compiling for about 4 s of CPU at every start. It
+//!   makes the build longer and the binary larger, and falls back to compiling
+//!   when wasmtime refuses the artifact.
+//! - `tokio` adds `Pool::evaluate_async`, `Pool::compile_async` and
+//!   `Policy::eval_async`, which run the blocking calls on tokio's blocking pool.
+//!   Off by default: without it the crate has no tokio in its tree.
 
 mod duration;
+mod engine;
 mod error;
 mod module;
 mod pool;
 mod runtime;
 mod sigil;
 mod types;
+mod wasi;
 
 pub mod kind;
 

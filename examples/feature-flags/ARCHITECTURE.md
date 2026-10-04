@@ -8,7 +8,7 @@ Nothing is created when a module is imported, and there are no global singletons
 
 ```text
 src/main.rs            reads the environment, builds telemetry, installs the logger (the one
-                       process global, tracing's dispatcher), compiles the Sigil module,
+                       process global, tracing's dispatcher), loads the Sigil module,
                        then calls Service::new and Service::serve
   └─ src/service.rs    Service::new(config, module, metrics): the composition root proper.
                        Pure: no signals, no timers, no global logger. Tests call it directly.
@@ -32,16 +32,18 @@ POST /ofrep/v1/evaluate/flags/{key}
   api.rs         server span "http request" (continues the caller's traceparent); parse the body
   ofrep.rs       the OFREP context → the kind's User (targetingKey, plan, region, beta, attributes)
   engine.rs      span "evaluate flag"; bucket = SHA-256(flag, targetingKey) mod 100; killed = config
-                 spawn_blocking: bundle.pool.evaluate("flags.<key>", RolloutInput, deadline)
+                 pool.evaluate_async("flags.<key>", RolloutInput, deadline)
   (sigil crate)  a free instance runs the policy in wasmtime; the ABI's timeout_ms and, past a
                  grace period, epoch interruption bound it
   engine.rs      EvalResult → Verdict, or a Failure classified by kind
   ofrep.rs       Verdict → the OFREP answer (value, reason, variant, metadata)
 ```
 
-The pool's API blocks (it waits for a free instance, then for the evaluation), so it runs on tokio's blocking threads and never on the threads that accept connections. A bulk request evaluates every flag of one bundle concurrently with a `JoinSet`, so the pool's instances work in parallel and a reload during the request can't mix two bundle versions in one answer. A `Sigil` instance is `Send` but not `Sync`; the pool hands each caller one instance at a time.
+The pool's API blocks (it waits for a free instance, then for the evaluation), so the engine uses `Pool::evaluate_async` (the crate's `tokio` feature), which runs it on tokio's blocking threads and never on the threads that accept connections. A panic inside it comes back as an error, which counts as a failed evaluation of kind `internal`. A bulk request evaluates every flag of one bundle concurrently with a `JoinSet`, so the pool's instances work in parallel and a reload during the request can't mix two bundle versions in one answer. A `Sigil` instance is `Send` but not `Sync`; the pool hands each caller one instance at a time.
 
-Wasmtime-wasi starts a small runtime of its own when an instance is built, which is not allowed on a thread that is driving async tasks. Everything that builds instances (the startup, each reload, the tests' harness) therefore runs in `spawn_blocking`.
+## Startup
+
+The crate's `precompiled` feature compiles `sigil.wasm` to native code in `build.rs`, and `Module::bundled()` loads that: the service answers `/readyz` about 50 ms after it starts, where compiling the module at every start cost about 4.4 s of CPU time (0.4 to 1.4 s of wall time on 12 cores, more on a small container). The price is a longer `cargo build` and a binary about twice the size. Fuel metering (`FEATUREGATE_EVALUATION_FUEL`) isn't in the artifact, so enabling it compiles the module at startup. Building instances no longer touches a runtime of its own, so startup, reloads and tests build them wherever they are; reloads still run on `spawn_blocking` because they compile every flag in every instance.
 
 ## Two decisions, both closed
 
@@ -75,6 +77,7 @@ A policy decides whether a flag is on and with which variant; `policies/flags/fl
 ## Lifecycle details
 
 - A retired bundle's pool is torn down on a blocking thread (`store::Retired`): the last reference is often a request on a tokio worker, and releasing every policy in every instance blocks.
+- When a call kills an instance (the deadline, fuel), the pool rebuilds it on a background thread while serving with one fewer; `featuregate_pool_rebuilding` shows how many are in flight and `featuregate_pool_replacements_total` how many were replaced.
 - A reload thread that panics is a failed reload (counted, logged, last known good kept), not a dead poll task; a panic on an evaluation thread is a failed evaluation.
 - The policies directory is walked with symlinks followed only to places under its root, with a depth cap and a visited set, so a link or a cycle in a mount can't pull in other files or loop. A Kubernetes ConfigMap mount (`..data` and links through it) is read as is.
 - A kill-switch name no flag has fails startup; after a reload removes the flag, it is a warning and `featuregate_killed_flags_unmatched`.

@@ -42,12 +42,13 @@ The policies are the ones [Getting Started](/getting-started/share-rules/) build
 ## Add the crate
 
 ```sh
-cargo add spechtlabs-sigil
+cargo add spechtlabs-sigil --features tokio
 cargo add serde --features derive
 cargo add serde_json
+cargo add tokio --features macros,rt-multi-thread,time
 ```
 
-The library is named `sigil`, so the code says `use sigil::...`. The crate's version is the Sigil release it was built from, and it needs Rust 1.98 or later. The default feature `bundled` embeds the WebAssembly module, which ships inside the crate, so the build needs no Go. To load a module of your own instead, turn the feature off with `default-features = false` and use `Module::from_file`. Everything below ran on Rust 1.98.1 against Sigil 0.6.0 with wasmtime 49.
+The library is named `sigil`, so the code says `use sigil::...`. The crate's version is the Sigil release it was built from, and it needs Rust 1.98 or later. The default feature `bundled` embeds the WebAssembly module, which ships inside the crate, so the build needs no Go. To load a module of your own instead, turn the feature off with `default-features = false` and use `Module::from_file`. Two more features are off by default: `tokio`, which adds the async calls [the pool](#evaluate-in-parallel) uses (without it the crate has no tokio in its dependency tree, and the last `cargo add` is only for the pool's example), and `precompiled`, which [makes startup fast](#load-the-module). Everything below ran on Rust 1.98.1 with wasmtime 49.
 
 ## Define the kind
 
@@ -159,7 +160,22 @@ Load the module once, at startup, and make an instance from it:
 let sigil = Sigil::bundled()?;
 ```
 
-`Sigil::bundled` compiles the 11 MB module with wasmtime's compiler, which takes a few seconds, and starts the Go runtime in a fresh instance. A program with more than one instance compiles once and shares the result: `Module::bundled()` returns a `Module`, which is cheap to clone, and `Sigil::new(&module)` makes an instance from it in milliseconds. [Evaluate in parallel](#evaluate-in-parallel) does that.
+`Sigil::bundled` loads the 11 MB module and starts the Go runtime in a fresh instance. Loading means compiling it to native code with wasmtime's compiler, which costs about 4 s of CPU: 0.3 s of wall time on a 12-core laptop, a few seconds on the one or two CPUs of a container, at every start of the process. A program with more than one instance loads once and shares the result: `Module::bundled()` returns a `Module`, which is cheap to clone, and `Sigil::new(&module)` makes an instance from it in milliseconds. [Evaluate in parallel](#evaluate-in-parallel) does that.
+
+The cost matters for a CLI, a short job or a pod that restarts, and the `precompiled` feature removes it: `build.rs` compiles the module for the target during `cargo build`, embeds the native code, and `Module::bundled()` loads it instead of compiling. Turn it on in `Cargo.toml`:
+
+```toml
+spechtlabs-sigil = { version = "0.7", features = ["precompiled", "tokio"] }
+```
+
+A release build of a program that only calls `Module::bundled()` and `Sigil::new`, on a 12-core Apple M-series machine:
+
+| | Wall time | CPU time | Binary |
+| --- | --- | --- | --- |
+| default | 320 ms | 4.3 s | 23 MB |
+| `precompiled` | 6 ms | 20 ms | 45 MB |
+
+The price is a longer build, about 35 s for a release build of a small program on that machine because a build script compiles the module with Cranelift, and a binary that carries the native code next to the WebAssembly. If wasmtime refuses the artifact, or you ask for fuel metering, which the artifact isn't built for, `Module::bundled()` compiles as before and doesn't fail; `module.is_precompiled()` says which happened. For a module of your own, `module.precompile()` serializes a compiled module and the `unsafe` functions `Module::from_precompiled` and `from_precompiled_file` load it. They are `unsafe` because the bytes are machine code that runs as it is: only load what `precompile` wrote, from a place only you can write to. [The crate reference](/reference/wasm/#module-and-sigil) has the contract.
 
 An instance runs one call at a time, on the calling thread. A `Sigil` is `Send` and `Sync`, and concurrent calls on one wait for each other.
 
@@ -360,28 +376,25 @@ A collecting kind can grant a decision more than once, so read it with `match_al
 A host function answers what a policy can't compute itself. Alert labels are strings, so shared infrastructure that names every team an alert affects writes `affects="payments,checkout"`, and a policy needs to split it. Put the implementation in `src/host_functions.rs`:
 
 ```rust
-use serde_json::{Value, json};
-
 /// `fn split(string, string) -> list<string>`, for labels that hold a list.
-pub fn split(args: Vec<Value>) -> Result<Value, String> {
-    let (Some(s), Some(sep)) = (args.first().and_then(Value::as_str), args.get(1).and_then(Value::as_str)) else {
-        return Err("split takes two strings".into());
-    };
+pub fn split(s: String, sep: String) -> Result<Vec<String>, String> {
     if s.is_empty() {
-        return Ok(json!([]));
+        return Ok(vec![]);
     }
-    Ok(json!(s.split(sep).collect::<Vec<_>>()))
+    Ok(s.split(&sep).map(str::to_string).collect())
 }
 ```
 
-Declare the function in the kind with `FnDecl`, and bump the version, since every change to the kind does. In `src/kind.rs`, add `FnDecl` and `host_fn` to the `use sigil::...` line and the builder gets one call:
+It's a plain function over serde types: `host_fn_typed` below deserializes the arguments into `String` and `String` and serializes the `Vec<String>` it returns. A host function over the raw JSON values, `host_fn(|args: Vec<Value>| ..)`, is there for the ones that don't fit a type.
+
+Declare the function in the kind with `FnDecl`, and bump the version, since every change to the kind does. In `src/kind.rs`, add `FnDecl` and `host_fn_typed` to the `use sigil::...` line and the builder gets one call:
 
 ```rust
     let kind = Kind::builder("AlertRouting")
         .version(2)
         .input("alert", alert)
         .input("team", team)
-        .function("split", FnDecl::new([Type::string(), Type::string()], Type::list(Type::string())).implement(host_fn(split)))
+        .function("split", FnDecl::new([Type::string(), Type::string()], Type::list(Type::string())).implement(host_fn_typed(split)))
         .decisions([&page, &drop, &notify]) // order = precedence
         // rank_reasons and default_outcome as before
 ```
@@ -423,10 +436,18 @@ PaymentsReplicaLag     info     production   8m  → post to #checkout-alerts (r
 EdgeCertExpiring       info     production   1h  → post to #alerts (no rule covers it)
 ```
 
-- A host function is an `Arc<dyn Fn(Vec<Value>) -> Result<Value, String> + Send + Sync>`, and `host_fn` builds one from a closure. It runs synchronously, in the middle of the evaluation, on the thread that called `eval`, and it can't call back into the `Sigil` instance that's running it: that call fails with an error instead of deadlocking.
+- A host function is an `Arc<dyn Fn(Vec<Value>) -> Result<Value, String> + Send + Sync>`. `host_fn_typed` builds one from a closure or function of 0 to 4 arguments that deserializes each argument with serde and serializes the result, which must be a `Result<R, E>` with `E: Display`; `host_fn` builds one from a closure over the raw JSON values. It runs synchronously, in the middle of the evaluation, on the thread that called `eval`, and it can't call back into the `Sigil` instance that's running it: that call fails with an error instead of deadlocking.
 - Arguments and results take the JSON form of inputs: durations as strings like `"2h30m"`, timestamps as RFC 3339 strings, enum values as their names.
 - A function that returns `Err`, or panics, fails the evaluation with a runtime error that quotes the message: `host function split failed: label too long`. The panic never unwinds through the module.
+- A wrong number of arguments, or an argument of the wrong type, fails the evaluation with a runtime error that names the argument.
 - Like a Go host's, it must be pure and terminate. Epoch interruption can't stop native code while it runs; see [Bound a call](#bound-a-call).
+
+A function that takes an integer where the kind declares a string says so at once, naming the function and the argument:
+
+```text
+$ cargo run -q --release --bin typed-error
+checkout/alerts.sigil:10:46: host function split failed: argument 1: invalid type: string "payments,checkout", expected i64
+```
 
 To stand in for a function without running it, pass `stubs` in `CompileOptions`, in the format of a test file's [`stubs:`](/reference/test-files/#stubs). A stub replaces an implementation of the same name.
 
@@ -565,7 +586,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```text
 $ cargo run -q --release --bin limits
-killed after 493 ms: the call ran past its hard deadline of 300ms and was killed; the Sigil instance is stopped
+killed after 422 ms: the call ran past its hard deadline of 300ms and was killed; the Sigil instance is stopped
   help: raise the timeout, or look for a policy loop over a large input or a host function that blocks; build a new instance to go on
 stopped: true
 next call: the Sigil module stopped earlier: a call ran past its hard deadline and was killed
@@ -573,13 +594,13 @@ small alert with fuel: notify
 flood alert: out of fuel, stopped: true
 ```
 
-The wall time, 493 ms for a 300 ms deadline, includes encoding a 10 MB input and running the `split` host function on it before the module sees anything, and a deadline can't interrupt either: epoch interruption stops WebAssembly, not your Rust. A host function that may block needs its own I/O timeout, or the evaluation runs on `spawn_blocking` and the instance is abandoned when it hangs. The deadline is a bound on engine work, not on your code. The kill lands the moment execution is back in the module. A ticker thread advances the engine's clock every 2 ms, and only while a call with a deadline runs, so an idle process has no timer waking it.
+The wall time, 422 ms for a 300 ms deadline, includes encoding a 10 MB input and running the `split` host function on it before the module sees anything, and a deadline can't interrupt either: epoch interruption stops WebAssembly, not your Rust. A host function that may block needs its own I/O timeout, or the evaluation runs on `spawn_blocking` and the instance is abandoned when it hangs. The deadline is a bound on engine work, not on your code. The kill lands the moment execution is back in the module. A ticker thread advances the engine's clock every 2 ms, and only while a call with a deadline runs, so an idle process has no timer waking it.
 
 Two more bounds belong to the instance: `Limits::op_deadline` (60 s) is the hard deadline of every op without a timeout of its own, and `Limits::max_memory` caps linear memory. The module needs about 8 MiB to start; an input that needs more than the cap makes Go's runtime die with `fatal error: out of memory`, which stops the instance with that line in its error.
 
 ## Evaluate in parallel
 
-A `Sigil` runs one call at a time, so a service that evaluates in parallel runs several. `Pool` holds them, gives a free one to each call, and replaces one that stopped. The API blocks, so from async code call it on a blocking thread. Here's `src/bin/pool.rs` with tokio:
+A `Sigil` runs one call at a time, so a service that evaluates in parallel runs several. `Pool` holds them, gives a free one to each call, and rebuilds one that stopped. `Pool` is a cheap handle: clone it into every task. Its API blocks, so with the `tokio` feature `evaluate_async` waits for a free instance and evaluates on tokio's blocking pool, which keeps an async task from blocking a worker. Here's `src/bin/pool.rs`:
 
 ```rust
 use std::sync::Arc;
@@ -600,21 +621,23 @@ fn input(name: &str, affects: &str) -> Value {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let routing = Arc::new(alert_routing()?);
-    let module = Module::bundled()?; // compile once: it takes seconds
+    let module = Module::bundled()?; // load once, and share it
     let options = PoolOptions { size: 4, limits: Limits { grace: Duration::from_millis(200), ..Limits::default() }, acquire_timeout: None };
-    let pool = Arc::new(Pool::with_options(&module, options)?);
+    let pool = Pool::with_options(&module, options)?;
 
-    // The recipe runs once in every instance, and again in every replacement.
+    // The recipe runs once in every instance, and again in every rebuilt one.
     let kind = Arc::clone(&routing);
     pool.install("checkout", move |sigil| compile_team(sigil, &kind, "checkout"))?;
 
-    // 200 evaluations, from as many tasks as the runtime likes; each blocks a blocking thread.
+    // 200 evaluations from as many tasks as the runtime likes. `evaluate_async`
+    // waits for a free instance and evaluates on tokio's blocking pool.
+    let timeout = EvalOptions::timeout(Duration::from_millis(100));
     let mut tasks = Vec::new();
     for i in 0..200 {
-        let pool = Arc::clone(&pool);
-        tasks.push(tokio::task::spawn_blocking(move || {
+        let (pool, timeout) = (pool.clone(), timeout.clone());
+        tasks.push(tokio::spawn(async move {
             let affects = if i % 2 == 0 { "payments,checkout" } else { "search" };
-            pool.evaluate("checkout", &input("PaymentsReplicaLag", affects), &EvalOptions::timeout(Duration::from_millis(100)))
+            pool.evaluate_async("checkout", input("PaymentsReplicaLag", affects), timeout).await
         }));
     }
     let mut routine = 0;
@@ -625,16 +648,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("200 evaluations, {routine} routed to the team's channel");
     println!("{:?}", pool.stats());
 
-    // One call that outlives its deadline is killed. Its caller gets the error, the pool a fresh instance.
+    // One call that outlives its deadline is killed. Its caller gets the error at
+    // once, and the pool rebuilds the instance in the background.
     let flood = input("FleetWideFlood", &"team,".repeat(2_000_000));
-    let p = Arc::clone(&pool);
-    let err = tokio::task::spawn_blocking(move || p.evaluate("checkout", &flood, &EvalOptions::timeout(Duration::from_millis(100)))).await?.unwrap_err();
+    let err = pool.evaluate_async("checkout", flood, timeout).await.unwrap_err();
     println!("flood: {}", err.to_string().lines().next().unwrap_or_default());
     println!("{:?}", pool.stats());
 
-    let p = Arc::clone(&pool);
-    let res = tokio::task::spawn_blocking(move || p.evaluate("checkout", &input("PaymentsReplicaLag", "payments,checkout"), &EvalOptions::default())).await??;
+    // The other three instances serve meanwhile.
+    let res = pool.evaluate_async("checkout", input("PaymentsReplicaLag", "payments,checkout"), EvalOptions::default()).await?;
     println!("next alert: {} {}", res.decision.as_deref().unwrap_or("?"), res.reason.as_deref().unwrap_or("?"));
+    while pool.stats().rebuilding > 0 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    println!("{:?}", pool.stats());
     Ok(())
 }
 ```
@@ -642,18 +669,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```text
 $ cargo run -q --release --bin pool
 200 evaluations, 100 routed to the team's channel
-PoolStats { size: 4, idle: 4, installed: 1, replaced: 0 }
+PoolStats { size: 4, idle: 4, installed: 1, replaced: 0, rebuilding: 0 }
 flood: the call ran past its hard deadline of 300ms and was killed; the Sigil instance is stopped
-PoolStats { size: 4, idle: 4, installed: 1, replaced: 1 }
+PoolStats { size: 4, idle: 3, installed: 1, replaced: 1, rebuilding: 1 }
 next alert: notify routine
+PoolStats { size: 4, idle: 4, installed: 1, replaced: 1, rebuilding: 0 }
 ```
 
-- `install` takes a recipe that compiles the policy in an instance. It runs once in each instance and again in every replacement, so it's where `Kind::compile` goes. The first instance validates it: a recipe that fails leaves the pool as it was. `pool.compile(name, &files, options)` is `install` with `Sigil::compile`.
+- `install` takes a recipe that compiles the policy in an instance. It runs once in each instance and again in every rebuilt one, so it's where `Kind::compile` goes. The first instance validates it: a recipe that fails leaves the pool as it was. `pool.compile(name, &files, options)` is `install` with `Sigil::compile`.
 - A reload is another `install` under the same name. The other instances follow one at a time while the rest keep serving, so for a moment some evaluations see the old policy and some the new, never a half-installed one.
-- A call that stops its instance gets it replaced, with every policy compiled again, before `evaluate` returns. The error is that caller's, and `PoolStats::replaced` counts it.
+- A call that stops its instance gets its error at once. The pool rebuilds the instance on a thread of its own, instantiating the module and compiling every installed policy again, so the caller doesn't wait for the rebuild and the pool serves with one instance fewer meanwhile. The second `PoolStats` above, taken right after the kill, shows it: `idle: 3, rebuilding: 1`, and the third shows the instance back. A rebuild picks up an install or a remove that happens meanwhile before the instance returns, and retries with a growing pause if instantiating fails. `PoolStats::replaced` counts the instances replaced.
+- Dropping the last `Pool` handle lets a rebuild in flight finish its step and discard its instance.
 - `PoolOptions::acquire_timeout` bounds the wait for a free instance and fails with `Error::Busy`, so a saturated service sheds load instead of queueing.
 - Each instance holds its own copy of every policy and the module's memory, so size the pool for the cores the service has.
-- Called on an async worker thread directly, a pool or a `Sigil` still works, but the call blocks that thread, and the crate moves it to a thread of its own first because wasmtime's WASI can't block inside a runtime. `spawn_blocking` avoids both.
+
+Without the `tokio` feature the pool has the same API minus the `_async` calls. Hop to a blocking thread yourself, which is all `evaluate_async` does:
+
+```rust
+use std::sync::Arc;
+
+use alerting::kind::alert_routing;
+use alerting::team::compile_team;
+use serde_json::json;
+use sigil::{EvalOptions, Module, Pool};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let routing = Arc::new(alert_routing()?);
+    let pool = Arc::new(Pool::new(&Module::bundled()?, 2)?);
+    let kind = Arc::clone(&routing);
+    pool.install("checkout", move |sigil| compile_team(sigil, &kind, "checkout"))?;
+
+    let input = json!({
+        "alert": { "name": "PaymentsReplicaLag", "severity": "info", "labels": { "env": "production", "affects": "payments,checkout" }, "firing_for": "8m" },
+        "team": { "name": "checkout", "oncall": "checkout-primary", "channel": "#checkout-alerts" },
+    });
+    // Without the `tokio` feature: hop to a blocking thread yourself.
+    let pool = Arc::clone(&pool);
+    let result = tokio::task::spawn_blocking(move || pool.evaluate("checkout", &input, &EvalOptions::default())).await??;
+    println!("{} {}", result.decision.as_deref().unwrap_or("?"), result.reason.as_deref().unwrap_or("?"));
+    Ok(())
+}
+```
+
+```text
+$ cargo run -q --bin pool-blocking
+notify routine
+```
+
+Calling the blocking API straight from an async task works too, and blocks that worker for as long as the call takes.
 
 ## Next steps
 

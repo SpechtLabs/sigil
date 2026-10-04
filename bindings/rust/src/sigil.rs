@@ -117,9 +117,9 @@ impl Sigil {
         Ok(Self { shared, limits })
     }
 
-    /// Compiles the bundled module and instantiates it. That compile takes
-    /// seconds: for more than one instance, compile with [`Module::bundled`]
-    /// once and use [`Sigil::new`].
+    /// Loads the bundled module and instantiates it. Loading compiles it, about 4 s
+    /// of CPU, unless the `precompiled` feature is on: for more than one
+    /// instance, load with [`Module::bundled`] once and use [`Sigil::new`].
     #[cfg(feature = "bundled")]
     pub fn bundled() -> Result<Self, Error> {
         Self::new(&Module::bundled()?)
@@ -357,6 +357,24 @@ impl Policy {
         }
         let limits = CallLimits { deadline: self.limits.op_deadline, fuel: None };
         self.shared.with(|rt| rt.op::<Empty>("release", Request { handle: self.handle }, None, limits)).map(|_| ())
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl Policy {
+    /// [`Policy::eval_with`] on tokio's blocking pool, for a policy held in an
+    /// `Arc`: an async task never blocks a worker while the instance runs the
+    /// evaluation or another call holds it. The input is moved into the task.
+    ///
+    /// # Panics
+    ///
+    /// Never: a panic of the evaluation comes back as an [`Error::Sigil`].
+    pub async fn eval_async<I>(self: &Arc<Self>, input: I, options: EvalOptions) -> Result<EvalResult, Error>
+    where
+        I: Serialize + Send + 'static,
+    {
+        let policy = Arc::clone(self);
+        crate::pool::joined(tokio::task::spawn_blocking(move || policy.eval_with(&input, &options)).await)
     }
 }
 

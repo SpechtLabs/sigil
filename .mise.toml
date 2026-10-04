@@ -304,17 +304,27 @@ dir = "bindings/rust"
 run = "cargo build --locked"
 
 [tasks.rust-test]
-description = "Test the Rust crate against the WebAssembly module and the sigil CLI"
+description = "Test the Rust crate against the WebAssembly module and the sigil CLI, with default and with all features"
 depends = ["wasm-build"]
 dir = "bindings/rust"
-run = ["cargo test --locked", "cargo doc --no-deps --locked"]
+# Default features compile the module at run time; --all-features adds the
+# precompiled module and the tokio API.
+run = [
+  "cargo test --locked",
+  "cargo test --locked --all-features",
+  "cargo doc --no-deps --locked --all-features",
+]
 env = { RUSTDOCFLAGS = "-D warnings" }
 
 [tasks.rust-lint]
 description = "Check the Rust crate's formatting and run clippy with warnings as errors"
 depends = ["wasm-build"]
 dir = "bindings/rust"
-run = ["cargo fmt --check", "cargo clippy --all-targets --locked -- -D warnings"]
+run = [
+  "cargo fmt --check",
+  "cargo clippy --all-targets --locked -- -D warnings",
+  "cargo clippy --all-targets --locked --all-features -- -D warnings",
+]
 
 # What the release publishes to crates.io: the package with sigil.wasm copied
 # into module/, so the crate installs without Go. cargo package then builds

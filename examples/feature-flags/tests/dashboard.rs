@@ -37,6 +37,8 @@ const CONTRACT: &[(&str, &[&str])] = &[
     ("featuregate_flags_loaded", &[]),
     ("featuregate_killed_flags_unmatched", &[]),
     ("featuregate_pool_replacements_total", &[]),
+    ("featuregate_pool_rebuilding", &[]),
+    ("featuregate_module_precompiled", &[]),
     ("featuregate_http_requests_total", &["method", "route", "status"]),
     ("featuregate_http_request_duration_seconds", &["method", "route"]),
     ("featuregate_http_requests_in_flight", &[]),

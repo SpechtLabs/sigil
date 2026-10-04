@@ -29,6 +29,8 @@ pub struct Metrics {
     pub http_duration: HistogramVec,
     pub http_in_flight: IntGauge,
     pub ready: IntGauge,
+    pub module_precompiled: IntGauge,
+    pub pool_rebuilding: IntGauge,
 }
 
 impl Metrics {
@@ -84,6 +86,14 @@ impl Metrics {
         )
         .unwrap();
         let http_in_flight = IntGauge::new("featuregate_http_requests_in_flight", "HTTP requests being served").unwrap();
+        let pool_rebuilding = IntGauge::new(
+            "featuregate_pool_rebuilding",
+            "Pool instances being rebuilt after a kill or trap; the pool serves with that many fewer meanwhile",
+        )
+        .unwrap();
+        let module_precompiled =
+            IntGauge::new("featuregate_module_precompiled", "1 when the Sigil module loaded precompiled, 0 when this start compiled it")
+                .unwrap();
         let ready = IntGauge::new("featuregate_ready", "1 while /readyz answers 200").unwrap();
         let build_info =
             IntGaugeVec::new(Opts::new("featuregate_build_info", "1, labelled with the running version"), &["version"]).unwrap();
@@ -102,6 +112,8 @@ impl Metrics {
             Box::new(http_duration.clone()),
             Box::new(http_in_flight.clone()),
             Box::new(ready.clone()),
+            Box::new(module_precompiled.clone()),
+            Box::new(pool_rebuilding.clone()),
             Box::new(build_info),
         ];
         // Process metrics (CPU, memory, file descriptors) read /proc, so Linux only.
@@ -124,6 +136,8 @@ impl Metrics {
             http_duration,
             http_in_flight,
             ready,
+            module_precompiled,
+            pool_rebuilding,
         }
     }
 
@@ -171,6 +185,8 @@ mod tests {
             "featuregate_http_request_duration_seconds_bucket",
             "featuregate_http_requests_in_flight 0",
             "featuregate_ready 0",
+            "featuregate_module_precompiled 0",
+            "featuregate_pool_rebuilding 0",
             "featuregate_build_info{version=\"1.2.3\"} 1",
         ] {
             assert!(text.contains(name), "missing {name} in:\n{text}");

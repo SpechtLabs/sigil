@@ -101,3 +101,13 @@ async fn the_method_label_is_a_fixed_set() {
     assert_eq!(metric(&m, "featuregate_http_requests_total{method=\"OTHER\",route=\"-\",status=\"404\"}"), Some(3.0));
     assert!(!m.contains("PROPFIND") && !m.contains("MKCOL") && !m.contains("BREW"), "{m}");
 }
+
+#[tokio::test]
+async fn the_module_gauge_says_whether_it_loaded_precompiled() {
+    let h = harness(&[]).await;
+    let want = f64::from(u8::from(common::module().is_precompiled()));
+    assert_eq!(metric(&h.metrics().await, "featuregate_module_precompiled"), Some(want));
+    // Fuel metering isn't in the precompiled artifact, so that module compiles.
+    let fuel = harness(&[("FEATUREGATE_EVALUATION_FUEL", "1000000")]).await;
+    assert_eq!(metric(&fuel.metrics().await, "featuregate_module_precompiled"), Some(0.0));
+}

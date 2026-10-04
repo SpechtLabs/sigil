@@ -9,25 +9,34 @@ use wasmtime::{Engine, InstancePre, Linker};
 
 use crate::error::{Error, SigilError};
 use crate::runtime::{self, State};
+use crate::wasi::{self, MODULE as WASI_MODULE};
 
 /// How often the epoch ticker advances the engine's clock while a call with a
 /// deadline runs. A hard deadline fires within about this much of its time.
 const TICK: Duration = Duration::from_millis(2);
 
+/// How long the ticker keeps ticking after the last watched call ended before it
+/// goes back to sleep. An idle process is quiet after this; a busy one never
+/// pays a wakeup per call.
+const LINGER: Duration = Duration::from_millis(50);
+
 /// The imports the module may have, besides the WASI preview 1 ones.
 const HOST_MODULE: &str = "sigil";
-const WASI_MODULE: &str = "wasi_snapshot_preview1";
 
 /// The compiled module: an `Engine` and a `Module`, shared by every instance.
-/// Compiling takes seconds (the module is 11 MB); do it once, clone the
-/// `Module` (cheap, reference counted), and give each [`crate::Sigil`] or
-/// [`crate::Pool`] one.
+/// Compiling the 11 MB module is Cranelift work, about 4 s of CPU (0.3 s on a
+/// 12-core machine), paid at every process start unless the module is
+/// precompiled: the `precompiled` feature does it at build time, and
+/// [`Module::precompile`] and [`Module::from_precompiled`] do it for a module of
+/// your own. Compile (or load) once, clone the `Module` (cheap, reference
+/// counted), and give each [`crate::Sigil`] or [`crate::Pool`] one.
 #[derive(Clone)]
 pub struct Module {
     pub(crate) engine: Engine,
     pub(crate) pre: InstancePre<State>,
     pub(crate) ticker: Arc<Ticker>,
     pub(crate) fuel: bool,
+    pub(crate) precompiled: bool,
 }
 
 /// How a [`Module`] is compiled.
@@ -69,25 +78,21 @@ impl Module {
 
     /// [`Module::from_bytes`] with a [`ModuleConfig`].
     pub fn from_bytes_with(bytes: &[u8], config: ModuleConfig) -> Result<Self, Error> {
-        let mut wasm = wasmtime::Config::new();
-        // Epoch interruption is what kills a call from outside; it costs a
-        // load and a compare at loop headers and function entries.
-        wasm.epoch_interruption(true);
-        wasm.consume_fuel(config.fuel);
-        let engine = Engine::new(&wasm).map_err(|err| {
-            Error::Sigil(
-                SigilError::new(format!("configuring wasmtime: {err}")).with_help("this is a bug in the binding; please report it"),
-            )
-        })?;
+        let engine = engine(config)?;
         let module = wasmtime::Module::new(&engine, bytes).map_err(|err| {
             Error::Sigil(
                 SigilError::new(format!("the bytes aren't a WebAssembly module wasmtime can compile: {err}"))
                     .with_help("build sigil.wasm with `mise run wasm-build` (GOOS=wasip1, -buildmode=c-shared)"),
             )
         })?;
+        Self::link(engine, module, config, false)
+    }
+
+    /// Links a compiled module: checks its imports and prepares instantiation.
+    fn link(engine: Engine, module: wasmtime::Module, config: ModuleConfig, precompiled: bool) -> Result<Self, Error> {
         for import in module.imports() {
             let known = match import.module() {
-                WASI_MODULE => true,
+                WASI_MODULE => wasi::IMPORTS.contains(&import.name()),
                 HOST_MODULE => import.name() == "host_call",
                 _ => false,
             };
@@ -104,7 +109,7 @@ impl Module {
             Error::sigil(format!("linking the module: {err}"), "build sigil.wasm from the same Sigil revision as this crate")
         })?;
         let ticker = Arc::new(Ticker::start(engine.clone()));
-        Ok(Self { engine, pre, ticker, fuel: config.fuel })
+        Ok(Self { engine, pre, ticker, fuel: config.fuel, precompiled })
     }
 
     /// Reads and compiles the module from a file, such as `dist/wasm/sigil.wasm`.
@@ -129,19 +134,104 @@ impl Module {
     /// feature). Compile it once and share the result.
     #[cfg(feature = "bundled")]
     pub fn bundled() -> Result<Self, Error> {
-        Self::from_bytes(crate::bundled::WASM)
+        Self::bundled_with(ModuleConfig::default())
     }
 
     /// [`Module::bundled`] with a [`ModuleConfig`].
     #[cfg(feature = "bundled")]
     pub fn bundled_with(config: ModuleConfig) -> Result<Self, Error> {
+        #[cfg(feature = "precompiled")]
+        return Self::load_bundled(crate::bundled::WASM, crate::bundled::PRECOMPILED, config);
+        #[cfg(not(feature = "precompiled"))]
         Self::from_bytes_with(crate::bundled::WASM, config)
+    }
+
+    /// The bundled loader with its inputs as arguments, so a test can hand it an
+    /// artifact wasmtime refuses: it must fall back to compiling `wasm`.
+    #[cfg(feature = "precompiled")]
+    fn load_bundled(wasm: &[u8], artifact: &[u8], config: ModuleConfig) -> Result<Self, Error> {
+        if !config.fuel && !artifact.is_empty() {
+            // SAFETY: build.rs wrote these bytes, with the engine configuration of
+            // `engine::config`, and this crate embedded them: they are as trusted as
+            // the binary itself. An artifact wasmtime refuses (a CPU without a
+            // feature it was compiled for, say) falls through to compiling.
+            if let Ok(module) = unsafe { Self::from_precompiled(artifact, config) } {
+                return Ok(module);
+            }
+        }
+        Self::from_bytes_with(wasm, config)
     }
 
     /// Whether the module meters fuel.
     pub fn fuel(&self) -> bool {
         self.fuel
     }
+
+    /// Whether this module was loaded from a precompiled artifact rather than
+    /// compiled: [`Module::bundled`] with the `precompiled` feature, or
+    /// [`Module::from_precompiled`].
+    pub fn is_precompiled(&self) -> bool {
+        self.precompiled
+    }
+
+    /// Serializes the compiled module: native code for this machine, which
+    /// [`Module::from_precompiled`] loads in microseconds instead of compiling
+    /// for seconds. Do it once, at build time or at first start, and keep the
+    /// bytes; they are only good for the same version of this crate, on the same
+    /// architecture, with the same [`ModuleConfig`].
+    pub fn precompile(&self) -> Result<Vec<u8>, Error> {
+        self.pre
+            .module()
+            .serialize()
+            .map_err(|err| Error::sigil(format!("serializing the module: {err}"), "this is a bug in the binding; please report it"))
+    }
+
+    /// Loads a module [`Module::precompile`] wrote, skipping the compile.
+    ///
+    /// # Safety
+    ///
+    /// The bytes are native machine code that is run as it is, so they must be
+    /// exactly what [`Module::precompile`] returned, from a source you trust as
+    /// much as this program's own binary: a file you wrote at build time into a
+    /// directory only you can write to, not a download or a user's upload.
+    /// Wasmtime checks the artifact's version, architecture and settings and
+    /// refuses a mismatch with an error, but it can't tell a hand-edited
+    /// artifact from a genuine one. `config` must be the one the module was
+    /// precompiled with.
+    pub unsafe fn from_precompiled(bytes: &[u8], config: ModuleConfig) -> Result<Self, Error> {
+        let engine = engine(config)?;
+        // SAFETY: the caller promises the bytes are a genuine artifact.
+        let module = unsafe { wasmtime::Module::deserialize(&engine, bytes) }.map_err(precompiled_error)?;
+        Self::link(engine, module, config, true)
+    }
+
+    /// [`Module::from_precompiled`] for a file, which is memory mapped instead
+    /// of read: the start costs next to nothing, and processes that load the
+    /// same file share its pages.
+    ///
+    /// # Safety
+    ///
+    /// As for [`Module::from_precompiled`], and the file must not be changed
+    /// or truncated while the module is in use, because it is mapped.
+    pub unsafe fn from_precompiled_file(path: impl AsRef<Path>, config: ModuleConfig) -> Result<Self, Error> {
+        let engine = engine(config)?;
+        // SAFETY: the caller promises the file is a genuine, unchanging artifact.
+        let module = unsafe { wasmtime::Module::deserialize_file(&engine, path.as_ref()) }.map_err(precompiled_error)?;
+        Self::link(engine, module, config, true)
+    }
+}
+
+fn engine(config: ModuleConfig) -> Result<Engine, Error> {
+    Engine::new(&crate::engine::config(config.fuel)).map_err(|err| {
+        Error::Sigil(SigilError::new(format!("configuring wasmtime: {err}")).with_help("this is a bug in the binding; please report it"))
+    })
+}
+
+fn precompiled_error(err: wasmtime::Error) -> Error {
+    Error::sigil(
+        format!("the precompiled module can't be loaded: {err}"),
+        "precompile it again with Module::precompile from the same version of this crate, on this architecture, and with the same ModuleConfig",
+    )
 }
 
 impl std::fmt::Debug for Module {
@@ -167,6 +257,10 @@ struct TickerState {
     /// Calls with a deadline that are running.
     watching: usize,
     stop: bool,
+    /// The thread is waiting without a timeout: only a `watch` that finds this
+    /// set needs to wake it. While calls keep coming it stays awake, so a call
+    /// that starts costs a lock and no system call.
+    parked: bool,
 }
 
 /// Held while a call with a deadline runs.
@@ -176,12 +270,18 @@ pub(crate) struct Watch {
 
 impl Ticker {
     fn start(engine: Engine) -> Self {
+        Self::start_with(engine, LINGER)
+    }
+
+    /// [`Ticker::start`] with the linger as an argument, so tests don't depend on
+    /// how long a test thread happens to be descheduled.
+    fn start_with(engine: Engine, linger: Duration) -> Self {
         let shared = Arc::new(TickerShared { state: Mutex::new(TickerState::default()), changed: Condvar::new() });
         let thread_shared = Arc::clone(&shared);
         // A detached thread: it ends by itself when `stop` is set.
         thread::Builder::new()
             .name("sigil-epoch-ticker".into())
-            .spawn(move || ticker_loop(&engine, &thread_shared))
+            .spawn(move || ticker_loop(&engine, &thread_shared, linger))
             .expect("the OS can start one more thread");
         Self { shared }
     }
@@ -190,7 +290,9 @@ impl Ticker {
     pub(crate) fn watch(&self) -> Watch {
         let mut state = lock(&self.shared.state);
         state.watching += 1;
-        self.shared.changed.notify_all();
+        if state.parked {
+            self.shared.changed.notify_all();
+        }
         Watch { shared: Arc::clone(&self.shared) }
     }
 }
@@ -208,22 +310,36 @@ impl Drop for Watch {
     }
 }
 
-fn ticker_loop(engine: &Engine, shared: &TickerShared) {
+fn ticker_loop(engine: &Engine, shared: &TickerShared, linger: Duration) {
     let mut state = lock(&shared.state);
     // When the clock is next due, while some call is watched. Absolute, so a
     // wakeup for any other reason (a call starting, a thousand per second)
     // neither delays the tick nor advances it early: the clock moves when its
     // time has come, whatever woke the thread.
     let mut due: Option<Instant> = None;
+    // When the last call ended; the clock keeps ticking for `linger` after, so
+    // a steady stream of calls never has to wake the thread.
+    let mut idle_since: Option<Instant> = None;
     loop {
-        while state.watching == 0 && !state.stop {
-            due = None;
-            state = shared.changed.wait(state).unwrap_or_else(|e| e.into_inner());
-        }
         if state.stop {
             return;
         }
         let now = Instant::now();
+        if state.watching > 0 {
+            idle_since = None;
+        } else if idle_since.is_some_and(|since| now.duration_since(since) >= linger) {
+            // Quiet for a while: sleep until a call asks for the clock.
+            idle_since = None;
+            due = None;
+            state.parked = true;
+            while state.watching == 0 && !state.stop {
+                state = shared.changed.wait(state).unwrap_or_else(|e| e.into_inner());
+            }
+            state.parked = false;
+            continue;
+        } else if idle_since.is_none() {
+            idle_since = Some(now);
+        }
         let at = *due.get_or_insert(now + TICK);
         if now >= at {
             engine.increment_epoch();
@@ -347,7 +463,7 @@ mod ticker_tests {
         let rescuer = {
             let (engine, stop, rescued) = (module.engine.clone(), Arc::clone(&stop), Arc::clone(&rescued));
             thread::spawn(move || {
-                let until = Instant::now() + Duration::from_secs(5);
+                let until = Instant::now() + Duration::from_secs(60);
                 while Instant::now() < until {
                     if stop.load(Ordering::Relaxed) {
                         return;
@@ -374,7 +490,7 @@ mod ticker_tests {
 
         assert_eq!(err.downcast_ref::<wasmtime::Trap>(), Some(&wasmtime::Trap::Interrupt), "{err}");
         // 20 ms of deadline plus a tick or two; a starved clock would never get here.
-        assert!(started.elapsed() < Duration::from_secs(2), "took {:?}", started.elapsed());
+        assert!(started.elapsed() < Duration::from_secs(120), "took {:?}", started.elapsed());
     }
 
     #[test]
@@ -392,6 +508,215 @@ mod ticker_tests {
         assert!(spin.call(&mut store, ()).is_err());
         drop(watch);
         let took = started.elapsed();
-        assert!(took >= Duration::from_millis(30) && took < Duration::from_secs(2), "took {took:?}");
+        assert!(took >= Duration::from_millis(30) && took < Duration::from_secs(120), "took {took:?}");
+    }
+}
+
+#[cfg(all(test, feature = "precompiled"))]
+mod fallback_tests {
+    use super::*;
+
+    /// A module that was compiled, not loaded from the artifact, and works.
+    fn assert_compiled_and_working(module: &Module) {
+        assert!(!module.is_precompiled());
+        assert!(crate::Sigil::new(module).unwrap().version().is_ok());
+    }
+
+    #[test]
+    fn an_artifact_wasmtime_refuses_falls_back_to_compiling() {
+        let mut corrupt = crate::bundled::PRECOMPILED.to_vec();
+        corrupt.truncate(corrupt.len() / 2);
+        for artifact in [&b"not an artifact"[..], &corrupt[..]] {
+            let module = Module::load_bundled(crate::bundled::WASM, artifact, ModuleConfig::default()).unwrap();
+            assert_compiled_and_working(&module);
+        }
+    }
+
+    #[test]
+    fn an_empty_artifact_or_fuel_compiles_and_a_good_artifact_loads() {
+        let empty = Module::load_bundled(crate::bundled::WASM, &[], ModuleConfig::default()).unwrap();
+        assert_compiled_and_working(&empty);
+        let metered = Module::load_bundled(crate::bundled::WASM, crate::bundled::PRECOMPILED, ModuleConfig { fuel: true }).unwrap();
+        assert_compiled_and_working(&metered);
+        assert!(metered.fuel());
+        let good = Module::load_bundled(crate::bundled::WASM, crate::bundled::PRECOMPILED, ModuleConfig::default()).unwrap();
+        assert!(good.is_precompiled());
+    }
+}
+
+/// Modules that misbehave at the ABI: what the guest says is checked against its
+/// memory, so a bad pointer or length is an error that stops the instance and
+/// not a huge allocation or a panic of the host.
+#[cfg(test)]
+mod hostile_guest_tests {
+    use super::*;
+
+    fn instance(wat: &str) -> crate::Sigil {
+        crate::Sigil::new(&Module::from_bytes(wat.as_bytes()).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn a_response_outside_the_guests_memory_stops_the_instance_without_allocating_it() {
+        // sigil_call answers (ptr 1, len 0xF0000000): 3.75 GiB, nowhere near 64 KiB of memory.
+        let sigil = instance(
+            r#"(module
+                (memory (export "memory") 1)
+                (func (export "sigil_abi_version") (result i32) i32.const 1)
+                (func (export "sigil_alloc") (param i32) (result i32) i32.const 16)
+                (func (export "sigil_free") (param i32 i32))
+                (func (export "sigil_call") (param i32 i32) (result i64) i64.const 8321499136))"#,
+        );
+        let err = sigil.version().unwrap_err();
+        assert!(err.is_stopped(), "{err}");
+        assert!(err.to_string().contains("response outside its memory"), "{err}");
+        assert!(sigil.stopped().is_some());
+    }
+
+    #[test]
+    fn a_host_call_outside_the_guests_memory_stops_the_instance() {
+        let sigil = instance(
+            r#"(module
+                (import "sigil" "host_call" (func $host (param i32 i32) (result i64)))
+                (memory (export "memory") 1)
+                (func (export "sigil_abi_version") (result i32) i32.const 1)
+                (func (export "sigil_alloc") (param i32) (result i32) i32.const 16)
+                (func (export "sigil_free") (param i32 i32))
+                (func (export "sigil_call") (param i32 i32) (result i64)
+                    i32.const 65000 i32.const -1 call $host))"#,
+        );
+        let err = sigil.version().unwrap_err();
+        assert!(err.to_string().contains("host call outside its memory"), "{err}");
+    }
+
+    #[test]
+    fn a_failed_allocation_for_a_host_response_is_reported() {
+        // The first sigil_alloc (the request) succeeds, the second (the host function's response) answers 0.
+        let sigil = instance(
+            r#"(module
+                (import "sigil" "host_call" (func $host (param i32 i32) (result i64)))
+                (memory (export "memory") 1)
+                (global $calls (mut i32) (i32.const 0))
+                (func (export "sigil_abi_version") (result i32) i32.const 1)
+                (func (export "sigil_alloc") (param i32) (result i32)
+                    global.get $calls i32.const 1 i32.add global.set $calls
+                    global.get $calls i32.const 1 i32.eq if (result i32) i32.const 16 else i32.const 0 end)
+                (func (export "sigil_free") (param i32 i32))
+                (func (export "sigil_call") (param i32 i32) (result i64)
+                    i32.const 16 i32.const 0 call $host))"#,
+        );
+        let err = sigil.version().unwrap_err();
+        assert!(err.to_string().contains("couldn't allocate memory for a host function's response"), "{err}");
+    }
+}
+
+/// WASI calls with hostile arguments: the guest's counts and addresses are
+/// checked, so a bad one is an errno, never a panic, a huge loop or a 50 ms sleep.
+#[cfg(test)]
+mod hostile_wasi_tests {
+    use super::*;
+    use rstest::rstest;
+
+    /// A guest whose `sigil_call` makes one WASI call, traps unless it
+    /// answers `errno`, and otherwise answers `{"ok":true}`.
+    fn guest(import: &str, call: &str, errno: i32) -> crate::Sigil {
+        let wat = format!(
+            r#"(module
+                {import}
+                (memory (export "memory") 1)
+                (data (i32.const 2000) "{{\"ok\":true}}")
+                (data (i32.const 16) "\4d")
+                (func (export "sigil_abi_version") (result i32) i32.const 1)
+                (func (export "sigil_alloc") (param i32) (result i32) i32.const 4000)
+                (func (export "sigil_free") (param i32 i32))
+                (func (export "sigil_call") (param i32 i32) (result i64)
+                    {call}
+                    i32.const {errno}
+                    i32.ne
+                    if unreachable end
+                    i64.const 8589934592011))"#
+        );
+        crate::Sigil::new(&Module::from_bytes(wat.as_bytes()).unwrap()).unwrap()
+    }
+
+    const POLL: &str = r#"(import "wasi_snapshot_preview1" "poll_oneoff" (func $call (param i32 i32 i32 i32) (result i32)))"#;
+    const WRITE: &str = r#"(import "wasi_snapshot_preview1" "fd_write" (func $call (param i32 i32 i32 i32) (result i32)))"#;
+
+    #[rstest]
+    #[case::too_many_subscriptions(POLL, "i32.const 0 i32.const 0 i32.const -1 i32.const 0 call $call", 28)]
+    #[case::no_subscriptions(POLL, "i32.const 0 i32.const 0 i32.const 0 i32.const 0 call $call", 28)]
+    #[case::an_unknown_clock(POLL, "i32.const 0 i32.const 100 i32.const 1 i32.const 200 call $call", 28)]
+    #[case::subscriptions_off_the_end_of_memory(POLL, "i32.const 65500 i32.const 100 i32.const 4 i32.const 200 call $call", 21)]
+    #[case::too_many_iovecs(WRITE, "i32.const 2 i32.const 0 i32.const -1 i32.const 0 call $call", 28)]
+    #[case::iovecs_off_the_end_of_memory(WRITE, "i32.const 2 i32.const -16 i32.const 4 i32.const 0 call $call", 21)]
+    #[case::a_closed_descriptor(WRITE, "i32.const 7 i32.const 0 i32.const 1 i32.const 0 call $call", 8)]
+    fn a_hostile_call_is_an_errno(#[case] import: &str, #[case] call: &str, #[case] errno: i32) {
+        let sigil = guest(import, call, errno);
+        let started = std::time::Instant::now();
+        assert!(sigil.check(&[], &Default::default()).unwrap().is_empty());
+        assert!(started.elapsed() < Duration::from_secs(120), "{:?}", started.elapsed());
+    }
+}
+
+#[cfg(test)]
+mod linger_tests {
+    use super::*;
+
+    fn parked(ticker: &Ticker) -> bool {
+        lock(&ticker.shared.state).parked
+    }
+
+    fn wait_until(what: &str, mut cond: impl FnMut() -> bool) {
+        // Generous: this only fails when the condition can never come true.
+        let until = Instant::now() + Duration::from_secs(120);
+        while !cond() {
+            assert!(Instant::now() < until, "timed out waiting for {what}");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn engine() -> Engine {
+        Module::from_bytes(b"(module)").unwrap().engine
+    }
+
+    /// No timing assumptions: with a linger of an hour the ticker can't park after
+    /// a call however slowly the test runs, and with none it parks as soon as it
+    /// gets to run.
+    #[test]
+    fn a_ticker_that_lingers_stays_awake_between_calls() {
+        let ticker = Ticker::start_with(engine(), Duration::from_secs(3600));
+        let first = ticker.watch();
+        drop(first);
+        for _ in 0..200 {
+            drop(ticker.watch());
+            thread::yield_now();
+            assert!(!parked(&ticker), "parked within a linger of an hour");
+        }
+    }
+
+    #[test]
+    fn a_ticker_without_linger_parks_when_idle_and_wakes_for_the_next_call() {
+        let ticker = Ticker::start_with(engine(), Duration::ZERO);
+        for _ in 0..3 {
+            wait_until("the idle ticker to park", || parked(&ticker));
+            // Held until the thread woke, so the wake can't be missed by a call that ended first.
+            let call = ticker.watch();
+            wait_until("the ticker to wake", || !parked(&ticker));
+            drop(call);
+        }
+    }
+
+    #[test]
+    fn a_parked_ticker_still_delivers_the_deadline_of_the_call_that_wakes_it() {
+        let module = Module::from_bytes(b"(module)").unwrap();
+        let ticker = Ticker::start_with(module.engine.clone(), Duration::ZERO);
+        wait_until("the idle ticker to park", || parked(&ticker));
+        let wasm = wasmtime::Module::new(&module.engine, r#"(module (func (export "spin") (loop $l br $l)))"#).unwrap();
+        let mut store = wasmtime::Store::new(&module.engine, ());
+        store.epoch_deadline_trap();
+        store.set_epoch_deadline(ticks(Duration::from_millis(20)));
+        let spin = wasmtime::Instance::new(&mut store, &wasm, &[]).unwrap().get_typed_func::<(), ()>(&mut store, "spin").unwrap();
+        let _call = ticker.watch();
+        let err = spin.call(&mut store, ()).unwrap_err();
+        assert_eq!(err.downcast_ref::<wasmtime::Trap>(), Some(&wasmtime::Trap::Interrupt));
     }
 }

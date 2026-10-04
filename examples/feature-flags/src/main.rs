@@ -84,16 +84,13 @@ async fn run(config: Config) -> Result<(), String> {
     });
 
     let metrics = Metrics::new(&config.version);
-    // Compiling the module takes seconds and the first bundle compiles every
-    // flag in every instance: both block, so neither runs on a runtime thread.
+    // Startup runs before anything is served, so blocking here costs nothing: the
+    // module loads precompiled in milliseconds (it compiles, taking seconds of CPU,
+    // only when fuel metering is on), and the first bundle compiles every flag in
+    // every instance.
     let addr = config.bind_addr();
-    let service = tokio::task::spawn_blocking(move || {
-        let module =
-            sigil::Module::bundled_with(sigil::ModuleConfig { fuel: config.evaluation_fuel.is_some() }).map_err(|e| e.to_string())?;
-        Service::new(config, module, metrics)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    let module = sigil::Module::bundled_with(sigil::ModuleConfig { fuel: config.evaluation_fuel.is_some() }).map_err(|e| e.to_string())?;
+    let service = Service::new(config, module, metrics)?;
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .map_err(|e| format!("can't listen on {addr}: {e}\n  help: set FEATUREGATE_ADDR to a free address, like :8080"))?;

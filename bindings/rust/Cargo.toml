@@ -23,17 +23,34 @@ default = ["bundled"]
 # reads it from $SIGIL_WASM, module/sigil.wasm (in the published package) or
 # ../../dist/wasm/sigil.wasm (mise run wasm-build, in the repository).
 bundled = []
+# Async variants that run the blocking calls on tokio's blocking pool:
+# Pool::evaluate_async, Pool::compile_async and Policy::eval_async. Off by
+# default so a synchronous host's dependency tree has no tokio.
+tokio = ["dep:tokio"]
+# Precompiles the bundled module for the target at build time, so
+# Module::bundled() loads native code in milliseconds instead of compiling
+# 11 MB of WebAssembly with Cranelift at every start (seconds of CPU). Costs a
+# longer build, which runs Cranelift once, and a larger binary, which embeds the
+# native code as well. Falls back to compiling when wasmtime refuses the
+# artifact, or with fuel metering on.
+precompiled = ["bundled", "dep:wasmtime"]
 
 [dependencies]
+tokio = { version = "1.53.2", optional = true, default-features = false, features = ["rt"] }
+getrandom = "0.4.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 thiserror = "2.0.21"
-tokio = { version = "1.53.2", default-features = false, features = ["io-util", "rt"] }
 unicode-general-category = "1.1.0"
 # Only what the crate uses: compile with Cranelift, run, epoch interruption and fuel.
 # Not the defaults: GC, components, profiling and the on-disk cache are dead weight here.
 wasmtime = { version = "49.0.2", default-features = false, features = ["cranelift", "runtime", "std", "parallel-compilation"] }
-wasmtime-wasi = { version = "49.0.2", default-features = false, features = ["p1"] }
+
+[build-dependencies]
+# The same wasmtime, under another name so the feature above can make it
+# optional. build.rs runs its compiler with the engine configuration of
+# src/engine.rs.
+wasmtime = { version = "49.0.2", optional = true, default-features = false, features = ["cranelift", "std", "parallel-compilation"] }
 
 [dev-dependencies]
 # Text format for the tiny modules the unit tests assemble.
@@ -64,6 +81,10 @@ required-features = ["bundled"]
 
 [[test]]
 name = "async_runtime"
+required-features = ["bundled"]
+
+[[test]]
+name = "precompile"
 required-features = ["bundled"]
 
 # Every test binary compiles sigil.wasm with Cranelift once, and a Cranelift
