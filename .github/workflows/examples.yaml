@@ -78,6 +78,20 @@ jobs:
           install_args: ${{ env.MISE_TOOLS }}
           working_directory: examples/deploy-gates
 
+      # Restored only: cache-warm.yaml saves it on main, as this workflow never
+      # runs there. go.yaml's lint job explains the key; the example builds
+      # against the root module through its replace directive, so both
+      # modules' go.sum count.
+      - name: Restore Go modules and build output
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: go-deploy-gates-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'examples/deploy-gates/go.mod', 'examples/deploy-gates/go.sum') }}
+          restore-keys: go-deploy-gates-${{ runner.os }}-
+
       # Same key as go.yaml's lint job: custom-gcl is built from the root
       # config and lints every module.
       - name: Restore custom-gcl cache
@@ -171,6 +185,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # See wasm.yaml's rust job.
+      - name: Read the pinned Rust version
+        id: rust
+        working-directory: .
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^rust = { version = "\([^"]*\)".*/\1/p' .mise.toml)"
+          test -n "${version}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Cache the Rust toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.rustup/toolchains/${{ steps.rust.outputs.version }}-*
+            ~/.rustup/update-hashes/${{ steps.rust.outputs.version }}-*
+          key: rustup-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}
+
       # MISE_TOOLS plus rust and k6, which only this example's .mise.toml
       # pins, hence the working directory. cache-warm.yaml sets up mise the
       # same way, so main saves this cache too.
@@ -210,6 +242,15 @@ jobs:
   # repository root, so CI builds every image the same way and runs nothing
   # in it. The images build sigil.wasm and the service themselves, so these
   # run alongside the example jobs rather than after them.
+  #
+  # Two caches, both saved on main by cache-warm.yaml and only read here:
+  # BuildKit's layer cache, which keeps the layers that download and install
+  # dependencies, and the Dockerfiles' cache mounts (Go's module and build
+  # caches, bun's, cargo's registry and target directory), which
+  # buildkit-cache-dance carries between runs. A pull request that changes
+  # source code invalidates the layers that compile it, but those layers then
+  # build against compiled dependencies. The mounts' key is what they hold:
+  # the Dockerfile and every lockfile the image builds from.
   images:
     name: Docker image (${{ matrix.example }})
     runs-on: ubuntu-latest
@@ -224,5 +265,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Outside the checkout: deploy-gates' build context is the whole
+      # repository.
+      - name: Restore the cache mounts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/docker-cache
+          key: docker-${{ matrix.example }}-${{ hashFiles(format('examples/{0}/Dockerfile', matrix.example), 'go.sum', 'bindings/rust/Cargo.lock', 'bindings/typescript/bun.lock', format('examples/{0}/go.sum', matrix.example), format('examples/{0}/Cargo.lock', matrix.example), format('examples/{0}/bun.lock', matrix.example)) }}
+          restore-keys: docker-${{ matrix.example }}-
+
+      # Nothing saves the mounts here, so nothing is extracted afterwards.
+      - name: Put the cache mounts into BuildKit
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          cache-dir: ${{ runner.temp }}/docker-cache
+          dockerfile: examples/${{ matrix.example }}/Dockerfile
+          skip-extraction: true
+
       - name: Build the image
-        run: docker build -f examples/${{ matrix.example }}/Dockerfile .
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: examples/${{ matrix.example }}/Dockerfile
+          push: false
+          cache-from: type=gha,scope=${{ matrix.example }}

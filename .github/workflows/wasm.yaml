@@ -165,6 +165,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # mise installs Rust with the runner's rustup, which keeps the toolchain
+      # in ~/.rustup, outside mise's cache, and downloads it again on every
+      # run without this. The key is the version .mise.toml pins. Every job
+      # that installs Rust restores the toolchain the same way.
+      - name: Read the pinned Rust version
+        id: rust
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^rust = { version = "\([^"]*\)".*/\1/p' .mise.toml)"
+          test -n "${version}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Cache the Rust toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.rustup/toolchains/${{ steps.rust.outputs.version }}-*
+            ~/.rustup/update-hashes/${{ steps.rust.outputs.version }}-*
+          key: rustup-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}
+
       # MISE_TOOLS plus rust: a second mise cache, which main's runs save
       # like the first.
       - name: Set up mise

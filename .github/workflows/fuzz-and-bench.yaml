@@ -39,6 +39,18 @@ jobs:
           version: ${{ env.MISE_VERSION }}
           install_args: ${{ env.MISE_TOOLS }}
 
+      # Restored only: cache-warm.yaml saves it on main, as this workflow never
+      # runs there. go.yaml's lint job explains the key. Fuzzing builds its
+      # own instrumented test binaries, so it keys a cache of its own.
+      - name: Restore Go modules and build output
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-fuzz-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-fuzz-${{ runner.os }}-
+
       - name: Fuzz every target
         timeout-minutes: 5
         run: mise run fuzz
@@ -84,6 +96,17 @@ jobs:
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: ${{ env.MISE_TOOLS }}
+
+      # Restored only, like the fuzz job's. Both revisions build against
+      # mostly the same dependencies, which is what the cache holds.
+      - name: Restore Go modules and build output
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-bench-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-bench-${{ runner.os }}-
 
       # Build both revisions first, then alternate sample order on this one
       # runner. The current benchmark files and fixtures run against both.
