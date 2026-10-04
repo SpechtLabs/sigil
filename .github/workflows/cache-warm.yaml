@@ -53,7 +53,8 @@ jobs:
           components="$(sed -n 's/^rust = {.*components = "\([^"]*\)".*/\1/p' .mise.toml)"
           test -n "${version}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
-          echo "components=${components}" >> "${GITHUB_OUTPUT}"
+          # A cache key can't hold commas.
+          echo "components=${components//,/-}" >> "${GITHUB_OUTPUT}"
 
       - name: Cache the Rust toolchain
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
