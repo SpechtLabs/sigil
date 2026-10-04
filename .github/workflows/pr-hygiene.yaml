@@ -9,7 +9,7 @@ on:
     types: [opened, reopened, edited, synchronize]
 
 env:
-  # mise itself, pinned; ci.yaml explains why.
+  # mise itself, pinned; go.yaml explains why.
   # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
   MISE_VERSION: 2026.9.18
 

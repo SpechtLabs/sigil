@@ -1,0 +1,131 @@
+name: Fuzz and benchmarks
+
+# A short fuzz of every target, and the benchmark regression gate. Only pull
+# requests run them (through ci.yaml), besides runs from the Actions tab:
+# every commit on main lands through a pull request whose run already fuzzed
+# it and benchmarked it against its base, which on main is HEAD^ again. The
+# long fuzz runs weekly in fuzz.yaml.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# See go.yaml for all three.
+env:
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
+  MISE_VERSION: 2026.9.18
+  MISE_TOOLS: go golangci-lint yamllint actionlint shellcheck goreleaser bun node go:golang.org/x/perf/cmd/benchstat
+
+jobs:
+  fuzz:
+    name: Fuzz smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # devtool reads each fuzz run flag from FUZZ_<FLAG>.
+    env:
+      FUZZ_TIME: 5s
+      FUZZ_TIMEOUT: 1m
+      FUZZ_CPU: "2"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ env.MISE_TOOLS }}
+
+      # Restored only: cache-warm.yaml saves it on main, as this workflow never
+      # runs there. go.yaml's lint job explains the key. Fuzzing builds its
+      # own instrumented test binaries, so it keys a cache of its own.
+      - name: Restore Go modules and build output
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-fuzz-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-fuzz-${{ runner.os }}-
+
+      - name: Fuzz every target
+        timeout-minutes: 5
+        run: mise run fuzz
+
+      - name: Publish results in job summary
+        if: always()
+        run: |
+          if test -f fuzz-results/summary.md; then
+            cat fuzz-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep the log and failing inputs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-regressions
+          path: |
+            fuzz-results/
+            **/testdata/fuzz/**
+          if-no-files-found: ignore
+
+  # The regression gate's own tests run in go.yaml's unit test job, which
+  # installs benchstat with the rest of MISE_TOOLS.
+  benchmark:
+    name: Benchmark regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # devtool reads each bench run flag from BENCH_<FLAG>. Pull requests
+      # compare the tested merge result with its base; runs from the Actions
+      # tab compare the checked-out commit with its parent.
+      BENCH_BASELINE: ${{ github.event.pull_request.base.sha || 'HEAD^' }}
+      BENCH_COUNT: "10"
+      BENCH_TIME: 200ms
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ env.MISE_TOOLS }}
+
+      # Restored only, like the fuzz job's. Both revisions build against
+      # mostly the same dependencies, which is what the cache holds.
+      - name: Restore Go modules and build output
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-bench-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-bench-${{ runner.os }}-
+
+      # Build both revisions first, then alternate sample order on this one
+      # runner. The current benchmark files and fixtures run against both.
+      - name: Compare performance with base
+        run: mise run bench
+
+      - name: Publish comparison in job summary
+        if: always()
+        run: |
+          if test -f benchmark-results/summary.md; then
+            cat benchmark-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Benchmark comparison did not complete; inspect the run logs and artifacts.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep benchmark measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmarks
+          path: benchmark-results/
+          if-no-files-found: warn

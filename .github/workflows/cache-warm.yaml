@@ -1,0 +1,315 @@
+name: Cache warming
+
+# A pull request's run restores caches from main and saves none of its own,
+# so whatever main's runs never save, every pull request builds from scratch.
+# go.yaml and wasm.yaml run on main, through release.yaml, and save theirs.
+# examples.yaml and fuzz-and-bench.yaml don't, so this builds what their jobs
+# compile, without running any of it, and saves the caches they restore.
+#
+# Every cache here is keyed on the dependencies it holds, like go.yaml's, so
+# each job first looks its cache up without downloading it and stops there
+# when it exists. Only a change to a lockfile, a go.sum, a toolchain or a
+# Dockerfile makes a job build anything. It doesn't gate the release.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One warm-up at a time, and of the pushes waiting behind it only the newest.
+# Cancelling instead could starve a long warm-up during a burst of merges.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+# See go.yaml for all three.
+env:
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
+  MISE_VERSION: 2026.9.18
+  MISE_TOOLS: go golangci-lint yamllint actionlint shellcheck goreleaser bun node go:golang.org/x/perf/cmd/benchstat
+
+jobs:
+  feature-flags:
+    name: feature-flags dependencies
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/feature-flags
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # See wasm.yaml's rust job.
+      - name: Read the pinned Rust version
+        id: rust
+        working-directory: .
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^rust = { version = "\([^"]*\)".*/\1/p' .mise.toml)"
+          test -n "${version}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Cache the Rust toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.rustup/toolchains/${{ steps.rust.outputs.version }}-*
+            ~/.rustup/update-hashes/${{ steps.rust.outputs.version }}-*
+          key: rustup-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}
+
+      # Exactly as examples.yaml's feature-flags job sets up mise, so this
+      # saves the mise cache that job restores.
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ env.MISE_TOOLS }} rust k6
+          working_directory: examples/feature-flags
+
+      # rust-cache keys on the toolchain mise just set up, so the lookup comes
+      # after it. It downloads nothing and saves nothing.
+      - name: Look up the cargo cache
+        id: lookup
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: examples/feature-flags
+          shared-key: feature-flags
+          cache-bin: false
+          lookup-only: true
+          save-if: false
+
+      - name: Restore and save the cargo cache
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: examples/feature-flags
+          shared-key: feature-flags
+          cache-bin: false
+
+      # The crate embeds sigil.wasm, so building it needs the module. This
+      # only restores wasm.yaml's Go cache, which main's runs keep current.
+      - name: Restore Go modules and build output
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-wasm-build-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-wasm-build-${{ runner.os }}-
+
+      - name: Build the WebAssembly module
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: mise run wasm
+
+      # What the example's check task compiles: clippy over every target,
+      # the tests, and the release build.
+      - name: Build the dependencies
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: |
+          cargo clippy --locked --all-targets
+          cargo test --locked --no-run
+          cargo build --locked --release
+
+  deploy-gates:
+    name: deploy-gates Go build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/deploy-gates
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The key examples.yaml's deploy-gates job restores.
+      - name: Look up the Go cache
+        id: lookup
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: go-deploy-gates-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'examples/deploy-gates/go.mod', 'examples/deploy-gates/go.sum') }}
+          lookup-only: true
+
+      - name: Set up mise
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ env.MISE_TOOLS }}
+          working_directory: examples/deploy-gates
+
+      - name: Restore and save the Go cache
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: go-deploy-gates-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'examples/deploy-gates/go.mod', 'examples/deploy-gates/go.sum') }}
+          restore-keys: go-deploy-gates-${{ runner.os }}-
+
+      - name: Restore custom-gcl cache
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: custom-gcl
+          key: custom-gcl-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.custom-gcl.yml', '.mise.toml') }}
+
+      # What the deploy-gates job compiles: the lint, the tests with the race
+      # detector and the e2e vet, and sigilc for the policy check. No test
+      # runs. The lint task builds custom-gcl when the restore missed it.
+      - name: Build what the deploy-gates job compiles
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: |
+          if test -f ../../custom-gcl; then chmod +x ../../custom-gcl; fi
+          mise run lint
+          go test -race -run '^$' ./...
+          go vet -tags e2e ./test/e2e/...
+          go build -o /dev/null ./cmd/sigilc
+
+  fuzz:
+    name: Fuzz build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The key fuzz-and-bench.yaml's fuzz job restores.
+      - name: Look up the Go cache
+        id: lookup
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-fuzz-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          lookup-only: true
+
+      - name: Set up mise
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ env.MISE_TOOLS }}
+
+      - name: Restore and save the Go cache
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-fuzz-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-fuzz-${{ runner.os }}-
+
+      # One iteration per target: enough to build every instrumented test
+      # binary, which is what the cache keeps.
+      - name: Build every fuzz target
+        if: steps.lookup.outputs.cache-hit != 'true'
+        env:
+          FUZZ_TIME: 1x
+        run: mise run fuzz
+
+  benchmark:
+    name: Benchmark build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The key fuzz-and-bench.yaml's benchmark job restores.
+      - name: Look up the Go cache
+        id: lookup
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-bench-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          lookup-only: true
+
+      - name: Set up mise
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ env.MISE_TOOLS }}
+
+      - name: Restore and save the Go cache
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-bench-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-bench-${{ runner.os }}-
+
+      # Every benchmark once, which builds what the regression gate measures.
+      - name: Build every benchmark
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: mise run bench-smoke
+
+  # See examples.yaml's images job, which reads both caches this writes.
+  images:
+    name: Docker image (${{ matrix.example }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - alert-routing
+          - deploy-gates
+          - feature-flags
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Look up the cache mounts
+        id: lookup
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/docker-cache
+          key: docker-${{ matrix.example }}-${{ hashFiles(format('examples/{0}/Dockerfile', matrix.example), 'go.sum', 'bindings/rust/Cargo.lock', 'bindings/typescript/bun.lock', format('examples/{0}/go.sum', matrix.example), format('examples/{0}/Cargo.lock', matrix.example), format('examples/{0}/bun.lock', matrix.example)) }}
+          lookup-only: true
+
+      - name: Set up Docker Buildx
+        id: buildx
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Restore and save the cache mounts
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/docker-cache
+          key: docker-${{ matrix.example }}-${{ hashFiles(format('examples/{0}/Dockerfile', matrix.example), 'go.sum', 'bindings/rust/Cargo.lock', 'bindings/typescript/bun.lock', format('examples/{0}/go.sum', matrix.example), format('examples/{0}/Cargo.lock', matrix.example), format('examples/{0}/bun.lock', matrix.example)) }}
+          restore-keys: docker-${{ matrix.example }}-
+
+      # Puts the mounts into BuildKit before the build and, in its post step,
+      # takes them out again for the cache step above to save.
+      - name: Carry the cache mounts through BuildKit
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          cache-dir: ${{ runner.temp }}/docker-cache
+          dockerfile: examples/${{ matrix.example }}/Dockerfile
+
+      - name: Build the image
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: examples/${{ matrix.example }}/Dockerfile
+          push: false
+          cache-from: type=gha,scope=${{ matrix.example }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.example }}
