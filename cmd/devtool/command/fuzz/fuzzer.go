@@ -132,6 +132,7 @@ func (f *fuzzer) one(ctx context.Context, t gotool.Target, log io.Writer) (stats
 func (f *fuzzer) failed(t gotool.Target, pr *progress, err error) humane.Error {
 	r := result(t, pr.stats, resultFailed)
 	r.Replay = "go test -run '^$' -fuzz '^" + t.Name + "$' " + t.Dir
+	r.Message = failureMessage(withoutProgress(pr.output()))
 	if pr.input != "" {
 		rerun := pr.rerun
 		if rerun == "" {

@@ -14,6 +14,7 @@ func TestSummaryMarkdown(t *testing.T) {
 	found := targetResult{
 		Target: "FuzzPatch", Dir: "./internal/stamp", Result: resultFound, Execs: 15_600_000, NewInputs: 106,
 		Input: "internal/stamp/testdata/fuzz/FuzzPatch/5a2f", Replay: "go test -run=FuzzPatch/5a2f ./internal/stamp",
+		Message: "fuzz_test.go:40: damaged",
 	}
 	crashed := targetResult{Target: "FuzzB", Dir: "./b", Result: resultFailed, Replay: "go test -run '^$' -fuzz '^FuzzB$' ./b"}
 	passed := targetResult{Target: "FuzzA", Dir: "./a", Result: resultPassed, Execs: 2_000_000, NewInputs: 12}
@@ -40,9 +41,10 @@ func TestSummaryMarkdown(t *testing.T) {
 			},
 			want: "# Go fuzzing\n\n**1 of 4 targets passed** · 60m per target · 17.6M execs · 118 new inputs · started from 7 corpus inputs\n\n" +
 				"## Failures\n\n" +
-				"**FuzzPatch** in `./internal/stamp` found a failing input, saved as `internal/stamp/testdata/fuzz/FuzzPatch/5a2f`. Replay it with:\n\n" +
-				"```sh\ngo test -run=FuzzPatch/5a2f ./internal/stamp\n```\n\n" +
-				"**FuzzB** in `./b` failed. Rerun it with:\n\n```sh\ngo test -run '^$' -fuzz '^FuzzB$' ./b\n```\n\n" +
+				"**FuzzPatch** in `./internal/stamp` found a failing input, saved as `internal/stamp/testdata/fuzz/FuzzPatch/5a2f`.\n\n" +
+				"```text\nfuzz_test.go:40: damaged\n```\n\n" +
+				"Replay it with:\n\n```sh\ngo test -run=FuzzPatch/5a2f ./internal/stamp\n```\n\n" +
+				"**FuzzB** in `./b` failed.\n\nRerun it with:\n\n```sh\ngo test -run '^$' -fuzz '^FuzzB$' ./b\n```\n\n" +
 				"## Targets\n\n" +
 				"| FUZZ TARGET | PACKAGE | EXECS | NEW INPUTS | RESULT |\n| --- | --- | ---: | ---: | --- |\n" +
 				"| FuzzPatch | ./internal/stamp | 15.6M | 106 | ✗ found a failing input |\n" +
@@ -145,5 +147,43 @@ func TestRunRecordsResults(t *testing.T) {
 	summary, err := os.ReadFile(filepath.Join(results, "summary.md"))
 	if err != nil || !strings.Contains(string(summary), "**0 of 3 targets passed**") || !strings.Contains(string(summary), "## Failures") {
 		t.Errorf("summary.md = %q, %v", summary, err)
+	}
+}
+
+func TestFailureMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		out  string
+		want string
+	}{
+		{
+			name: "a failed check, under the innermost header",
+			out: "fuzz: elapsed: 3s\n--- FAIL: FuzzPatch (44.5s)\n    --- FAIL: FuzzPatch (0.00s)\n" +
+				"        fuzz_test.go:40: Verify() after Patch() = damaged\n            and more\n    \n" +
+				"    Failing input written to testdata/fuzz/FuzzPatch/5a2f\n    To re-run:\n    go test -run=FuzzPatch/5a2f\nFAIL\nexit status 1\n",
+			want: "fuzz_test.go:40: Verify() after Patch() = damaged\n    and more",
+		},
+		{
+			name: "a panic keeps its stack",
+			out:  "--- FAIL: FuzzX (0.10s)\n    testing.go:1591: panic: boom\n        goroutine 7 [running]:\n        x.go:3\nFAIL\tm/x\t0.2s\n",
+			want: "testing.go:1591: panic: boom\n    goroutine 7 [running]:\n    x.go:3",
+		},
+		{
+			name: "a build failure is the output's end",
+			out:  "# m/x\n./x.go:3:1: syntax error\nFAIL\tm/x [build failed]\n",
+			want: "# m/x\n./x.go:3:1: syntax error\nFAIL\tm/x [build failed]",
+		},
+		{
+			name: "a long message is cut short",
+			out:  "--- FAIL: FuzzX (0.10s)\n" + strings.Repeat("    line\n", 40) + "FAIL\n",
+			want: strings.Repeat("line\n", failureLines) + "…",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := failureMessage(tt.out); got != tt.want {
+				t.Errorf("failureMessage() =\n%q\nwant\n%q", got, tt.want)
+			}
+		})
 	}
 }

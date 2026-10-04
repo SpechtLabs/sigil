@@ -100,7 +100,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: fuzz-${{ strategy.job-index }}
+          # fuzz-<target>-<index>: the failure report links each failing
+          # target to its own artifact by the name.
+          name: fuzz-${{ matrix.target.name }}-${{ strategy.job-index }}
           path: |
             fuzz-results/
             **/testdata/fuzz/**
@@ -197,8 +199,12 @@ jobs:
       (needs.targets.result == 'failure' || needs.fuzz.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # actions and checks: the run's jobs, artifacts and the annotations
+    # that say why a job failed without results.
     permissions:
       contents: read
+      actions: read
+      checks: read
       issues: write
     steps:
       - name: Checkout repository
@@ -212,8 +218,8 @@ jobs:
           version: ${{ env.MISE_VERSION }}
           install_args: go
 
-      # The same summary the summary job publishes, for the issue. A setup
-      # failure leaves no results, and the issue goes out without it.
+      # Every target's results, for the issue. A setup failure leaves none,
+      # and the issue says what the failed jobs' annotations say instead.
       - name: Collect every job's results
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
@@ -227,13 +233,9 @@ jobs:
           TARGETS_RESULT: ${{ needs.targets.result }}
           JOBS_RESULT: ${{ needs.fuzz.result }}
           DURATION: ${{ inputs.duration || '60m' }}
-        run: |
-          summary=()
-          if go run ./cmd/devtool fuzz summary results > fuzz-summary.md; then
-            summary=(--summary fuzz-summary.md)
-          fi
-          go run ./cmd/devtool fuzz report \
-            --targets-result "$TARGETS_RESULT" \
-            --fuzz-result "$JOBS_RESULT" \
-            --time "$DURATION" \
-            "${summary[@]}"
+        run: >-
+          go run ./cmd/devtool fuzz report
+          --targets-result "$TARGETS_RESULT"
+          --fuzz-result "$JOBS_RESULT"
+          --time "$DURATION"
+          --results results
