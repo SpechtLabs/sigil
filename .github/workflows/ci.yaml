@@ -37,6 +37,8 @@ jobs:
   wasm:
     name: WebAssembly
     uses: ./.github/workflows/wasm.yaml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   examples:
     name: Examples

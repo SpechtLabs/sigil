@@ -53,6 +53,8 @@ jobs:
   wasm:
     name: WebAssembly
     uses: ./.github/workflows/wasm.yaml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     concurrency:
       group: ${{ github.workflow }}-gate-wasm-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
       cancel-in-progress: ${{ github.event_name == 'push' }}
@@ -275,8 +277,10 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/^rust = { version = "\([^"]*\)".*/\1/p' .mise.toml)"
+          components="$(sed -n 's/^rust = {.*components = "\([^"]*\)".*/\1/p' .mise.toml)"
           test -n "${version}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "components=${components}" >> "${GITHUB_OUTPUT}"
 
       - name: Cache the Rust toolchain
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -284,7 +288,7 @@ jobs:
           path: |
             ~/.rustup/toolchains/${{ steps.rust.outputs.version }}-*
             ~/.rustup/update-hashes/${{ steps.rust.outputs.version }}-*
-          key: rustup-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}
+          key: rustup-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}-${{ steps.rust.outputs.components }}
 
       - name: Set up mise
         uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1

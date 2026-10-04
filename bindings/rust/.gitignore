@@ -2,3 +2,5 @@
 # The release copies sigil.wasm here for the published package (mise run
 # rust-package); the repository build reads dist/wasm/ instead.
 /module/
+# The lcov report mise run rust-coverage writes for Codecov.
+/lcov.info
