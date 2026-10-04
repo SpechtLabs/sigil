@@ -51,6 +51,9 @@ jobs:
           key: go-fuzz-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
           restore-keys: go-fuzz-${{ runner.os }}-
 
+      # fuzz run first restores the inputs on the fuzz-corpus branch, which
+      # the extended fuzzing workflow keeps growing, so even five seconds a
+      # target start from what every earlier campaign found.
       - name: Fuzz every target
         timeout-minutes: 5
         run: mise run fuzz

@@ -112,6 +112,12 @@ linters:
         text: "^pkgnaming:"
         path: ^internal/types/
 
+      # corpus is singular; the check takes its final s for a plural.
+      - linters:
+          - golint-sl
+        text: "^pkgnaming:"
+        path: ^cmd/devtool/internal/corpus/
+
       # The checker's and the compiler's rule methods take AST nodes the
       # parser guarantees are non-nil, the policy package's helpers take
       # outcomes the evaluator guarantees, and the tooling (the decoder,
