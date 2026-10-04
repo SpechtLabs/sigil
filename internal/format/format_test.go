@@ -124,6 +124,16 @@ func TestSource(t *testing.T) {
 			want: "policy a: K@1\n\nlet a = 1    // one\nlet bbb = 22 // two\n\nlet c = 3 // three\n",
 		},
 		{
+			name: "a comment after a call's opening paren trails it",
+			src:  "policy a: K@1\nwhen x {\n  q( // why\n    a: 1,\n  )\n}\n",
+			want: "policy a: K@1\n\nwhen x {\n  q( // why\n    a: 1,\n  )\n}\n",
+		},
+		{
+			name: "a comment after the paren of a call on the rule's line trails it",
+			src:  "policy a: K@1\nwhen x { deny(// why\nreason: a) }\n",
+			want: "policy a: K@1\n\nwhen x {\n  deny( // why\n    reason: a,\n  )\n}\n",
+		},
+		{
 			name: "a one-line rule with two statements is expanded",
 			src:  "policy a: K@1\nwhen x { deny(reason: a) deny(reason: b) }\n",
 			want: "policy a: K@1\n\nwhen x {\n  deny(reason: a)\n  deny(reason: b)\n}\n",
