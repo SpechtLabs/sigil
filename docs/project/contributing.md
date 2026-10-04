@@ -39,7 +39,7 @@ The benchmark and fuzz tasks run `devtool`, the repository's own tooling CLI in 
 | `-v`, `--verbose` | Print go test's output instead of a status line | The same |
 | `--results` | Where results go (`benchmark-results/`) | Where results go (`fuzz-results/`) |
 
-`bench run` adds `-b`, `--baseline` to compare with a revision, `--no-baseline` to measure only the checkout even when `BENCH_BASELINE` is set, `--count` for the samples per revision (10) and `--benchstat` for the benchstat binary. `fuzz report` is for CI only: the extended fuzzing workflow uses it to open or update the failure issue. The `list` commands share `--filter`, `--packages` and `-o text|json|yaml`. Every flag can also be set with an environment variable, `BENCH_` or `FUZZ_` followed by its name in capitals: `BENCH_BASELINE=main`, `FUZZ_TIME=1m`.
+`bench run` adds `-b`, `--baseline` to compare with a revision, `--no-baseline` to measure only the checkout even when `BENCH_BASELINE` is set, `--count` for the samples per revision (10) and `--benchstat` for the benchstat binary. `fuzz run` adds `--no-restore` and `--remote`, described under [Share the corpus](#share-the-corpus), and `fuzz corpus pull` and `fuzz corpus push` move the corpus between the Go cache and the `fuzz-corpus` branch. `fuzz report` is for CI only: the extended fuzzing workflow uses it to open or update the failure issue. The `list` commands share `--filter`, `--packages` and `-o text|json|yaml`. Every flag can also be set with an environment variable, `BENCH_` or `FUZZ_` followed by its name in capitals: `BENCH_BASELINE=main`, `FUZZ_TIME=1m`.
 
 Both `run` commands look alike too. A box shows what the run is about to do, then each step (a round of samples, or a fuzz target) gets a numbered status line on a terminal and a ✓ line once it's done. The run ends with a verdict line that says where the results are. Each results directory holds go test's raw output, a `summary.md` that CI adds to the job page and a `metadata.json` with the commit and Go version. Ctrl-C stops a run cleanly.
 
@@ -140,9 +140,26 @@ For an hour per target:
 FUZZ_TIME=60m FUZZ_TIMEOUT=90m mise run fuzz
 ```
 
+### Share the corpus
+
+Fuzzing keeps the inputs that reached new code, the corpus, and starts the next run from them, so a target explores further the longer it has been fuzzed in total. `go test` keeps them in its cache, under `$(go env GOCACHE)/fuzz`, where they stay on one machine. The `fuzz-corpus` branch holds them for everyone: one file per input, under the package's directory and the target's name, such as `internal/eval/FuzzEvalExpr/<hash>`. It shares no history with the code.
+
+`fuzz run` restores the corpus before it fuzzes. It fetches the branch from `origin` and copies the selected targets' inputs into the cache, and the box at the start of the run says how many were new. `--remote` (`FUZZ_REMOTE`) fetches from another remote, such as `upstream` in a fork, and `--no-restore` (`FUZZ_NO_RESTORE`) skips the step. A remote without the branch, or a fetch that fails, doesn't stop the run: it starts from the seeds and the cache instead, with a warning when the fetch failed.
+
+After a long local campaign, push what it found:
+
+```sh
+mise run fuzz-push
+
+# Or only some packages, the same way fuzz run selects them.
+mise run devtool -- fuzz corpus push ./internal/parser
+```
+
+`fuzz corpus push` commits the inputs the branch doesn't have yet as one commit and pushes it; with nothing new it pushes nothing. `fuzz corpus pull` restores without fuzzing. Neither touches the working tree, the index or the checked-out branch: they work on git's object database directly. Inputs are named by their content's hash and only ever added, so pushes from several machines and CI never conflict. A push that another one beats is rebuilt on top of it and retried.
+
 The Fuzz and benchmarks workflow, which CI runs on every pull request, runs short smoke tests: five seconds per target, two workers and a one-minute timeout per test process. The fuzz step has a five-minute limit; its whole job, including tool setup, has a ten-minute limit. With the current 24 targets, mutation time totals about two minutes, plus compilation and seed replay. Local `mise run fuzz` and `mise run check` retain the ten-second default.
 
-The Extended fuzzing workflow runs on `main` every Monday at 02:17 UTC, with an hour per target. Manual runs must also select `main` and can choose one, ten or sixty minutes per target. It discovers packages automatically, runs packages in parallel, caches interesting inputs and uploads logs and regression inputs. Elapsed wall time and aggregate target time are different measurements.
+The Extended fuzzing workflow runs on `main` every Monday at 02:17 UTC, with an hour per target. Manual runs must also select `main` and can choose one, ten or sixty minutes per target. It discovers packages automatically, runs packages in parallel, starts each from the `fuzz-corpus` branch and uploads logs and regression inputs. Afterwards a separate job, the only one allowed to push, collects every job's corpus and pushes the new inputs to the branch. The smoke tests on pull requests restore the corpus too, so they replay every input earlier campaigns found. Elapsed wall time and aggregate target time are different measurements.
 
 A failed extended campaign opens a GitHub issue with the tested commit, duration, job results, and links to the run logs and artifacts. Further failures add comments to the existing open issue; after it is closed, a later failure opens a new issue. Discovery and setup failures and job timeouts are reported too. Successful or cancelled campaigns do not create reports unless a job failed. Only the reporting job has permission to write issues; PR smoke tests retain their failures as artifacts.
 
@@ -171,7 +188,7 @@ Go writes a minimized failure to `<package>/testdata/fuzz/<target>/<hash>` and p
 go test ./internal/parser -run 'FuzzParseExpr/<hash>'
 ```
 
-Keep a real failure in that directory with its fix. Ordinary `go test` then replays it. Add an explanatory unit test when the behavior needs a clearer specification. Interesting non-failing inputs live under `$(go env GOCACHE)/fuzz`; they are a search cache, not checked-in regressions. CI artifacts retain failures from hosted runs so they can be reproduced locally.
+Keep a real failure in that directory with its fix. Ordinary `go test` then replays it. Add an explanatory unit test when the behavior needs a clearer specification. Interesting non-failing inputs live under `$(go env GOCACHE)/fuzz` and on the `fuzz-corpus` branch; they are where the search starts, not checked-in regressions. CI artifacts retain failures from hosted runs so they can be reproduced locally.
 
 ## Record a campaign
 
