@@ -98,6 +98,8 @@ func TestPatch(t *testing.T) {
 			binary.LittleEndian.PutUint32(b[20:], synthAreaOff+100)
 		}},
 		{name: "an area past the signed code", build: macho(machoSpec{cds: sha256CD, cms: synthCMSNone, areaOff: synthLimit - 100}), size: 200, data: []byte{}, want: stamp.ErrMalformed},
+		// No CodeDirectory's code limit stands between the area and the signature.
+		{name: "an area overlapping a signature without CodeDirectories", build: macho(machoSpec{cms: 0, areaOff: synthLimit - 100}), size: 110, data: []byte{}, want: stamp.ErrMalformed},
 
 		// Formats Patch refuses.
 		{
