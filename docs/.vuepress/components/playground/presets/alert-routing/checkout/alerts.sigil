@@ -1,0 +1,23 @@
+policy checkout.alerts: AlertRouting@1
+
+let pre_production = alert.labels["env"] in ["staging", "dev"]
+
+when not pre_production and alert.severity == critical {
+  page(reason: critical_alert, target: team.oncall)
+}
+
+when not pre_production and alert.severity == warning {
+  when alert.firing_for >= 30m {
+    page(reason: sustained, target: team.oncall)
+  }
+
+  notify(reason: routine, channel: team.channel)
+}
+
+when pre_production {
+  drop(reason: not_production)
+}
+
+when alert.name in ["CheckoutCanaryLatency"] {
+  drop(reason: muted)
+}

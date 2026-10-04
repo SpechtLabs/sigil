@@ -100,5 +100,6 @@ function validate(v: unknown): Workspace {
     stubs: isString(o.stubs) ? o.stubs : "",
     policy: isString(o.policy) ? o.policy : "",
     mode: modes.some((m) => m.id === o.mode) ? (o.mode as Workspace["mode"]) : "evaluate",
+    run: isString(o.run) ? o.run : "",
   };
 }

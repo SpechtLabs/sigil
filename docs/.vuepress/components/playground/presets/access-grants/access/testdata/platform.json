@@ -1,0 +1,9 @@
+{
+  "actor": {
+    "name": "margaret",
+    "groups": ["platform"],
+    "clearance": "standard"
+  },
+  "team": "payments",
+  "environment": "production"
+}

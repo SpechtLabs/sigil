@@ -1,6 +1,6 @@
-// The CodeMirror setup the playground's editors share, and the two kinds of
-// marks it puts on a file: diagnostics from check, and the rules that fired
-// in the last run.
+// The CodeMirror setup the playground's editors share, and the marks it
+// puts on files: diagnostics from check and the rules that fired in the last
+// run on Sigil files, and each case's result on test files.
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { json } from "@codemirror/lang-json";
@@ -19,6 +19,7 @@ import {
   highlightActiveLineGutter,
   keymap,
   lineNumbers,
+  WidgetType,
 } from "@codemirror/view";
 import type { Diagnostic } from "@spechtlabs/sigil/worker";
 import { highlighting, sigilSupport } from "./language.js";
@@ -85,6 +86,126 @@ const firedGutter = gutter({
   markers: (view) => view.state.field(firedField).markers,
 });
 
+/** A test case's result, at the line its `- name:` is on. */
+export interface CaseMark {
+  line: number;
+  passed: boolean;
+  name: string;
+  /** How it failed: the failures, or why it couldn't run. */
+  messages: string[];
+}
+
+/** What the last test run says about one test file. */
+export interface TestMarks {
+  cases: CaseMark[];
+  /** Why none of the file's cases ran. */
+  error?: string;
+}
+
+const setCases = StateEffect.define<TestMarks>();
+
+class CaseMarker extends GutterMarker {
+  constructor(readonly mark: CaseMark) {
+    super();
+  }
+
+  override eq(other: CaseMarker): boolean {
+    return other.mark.passed === this.mark.passed && other.mark.name === this.mark.name;
+  }
+
+  override toDOM(): Node {
+    const el = document.createElement("span");
+    el.className = this.mark.passed ? "pg-case-mark pg-case-mark--pass" : "pg-case-mark pg-case-mark--fail";
+    el.textContent = this.mark.passed ? "✓" : "✗";
+    el.title = `${this.mark.name}: ${this.mark.passed ? "passed" : "failed"}`;
+    return el;
+  }
+}
+
+// How a failed case, or a file that couldn't run, reads in the editor: a
+// note under the case, or above the file's first line.
+class NoteWidget extends WidgetType {
+  constructor(
+    readonly title: string,
+    readonly messages: string[],
+  ) {
+    super();
+  }
+
+  override eq(other: NoteWidget): boolean {
+    return other.title === this.title && other.messages.join("\n") === this.messages.join("\n");
+  }
+
+  override toDOM(): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "pg-case-note";
+    const title = el.appendChild(document.createElement("div"));
+    title.className = "pg-case-note__title";
+    title.textContent = this.title;
+    for (const m of this.messages) {
+      const line = el.appendChild(document.createElement("div"));
+      line.className = "pg-case-note__message";
+      line.textContent = m;
+    }
+    return el;
+  }
+}
+
+interface Cases {
+  decorations: DecorationSet;
+  markers: RangeSet<GutterMarker>;
+}
+
+const casesField = StateField.define<Cases>({
+  create: () => ({ decorations: Decoration.none, markers: RangeSet.empty }),
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(setCases)) return caseMarks(tr.state.doc, e.value);
+    if (!tr.docChanged) return value;
+    return { decorations: value.decorations.map(tr.changes), markers: value.markers.map(tr.changes) };
+  },
+  provide: (f) => EditorView.decorations.from(f, (v) => v.decorations),
+});
+
+function caseMarks(doc: Text, marks: TestMarks): Cases {
+  const decorations = [];
+  const markers = [];
+  if (marks.error !== undefined) {
+    const widget = new NoteWidget("This file's cases can't run", [marks.error]);
+    decorations.push(Decoration.widget({ widget, block: true, side: -1 }).range(0));
+  }
+  for (const c of [...marks.cases].sort((a, b) => a.line - b.line)) {
+    if (c.line < 1 || c.line > doc.lines) continue;
+    const from = doc.line(c.line).from;
+    markers.push(new CaseMarker(c).range(from));
+    if (c.passed) continue;
+    decorations.push(Decoration.line({ class: "pg-case-failed" }).range(from));
+    const widget = new NoteWidget(c.messages.length > 1 ? `${c.messages.length} differences` : "Failed", c.messages);
+    decorations.push(Decoration.widget({ widget, block: true, side: 1 }).range(doc.line(caseEnd(doc, c.line)).to));
+  }
+  return { decorations: Decoration.set(decorations, true), markers: RangeSet.of(markers, true) };
+}
+
+// The last line of the case that starts on a line: the lines after it that
+// are indented deeper than its `-`, without trailing blanks and comments.
+function caseEnd(doc: Text, start: number): number {
+  const indent = (text: string) => text.length - text.trimStart().length;
+  const dash = indent(doc.line(start).text);
+  let end = start;
+  for (let n = start + 1; n <= doc.lines; n++) {
+    const text = doc.line(n).text;
+    const trimmed = text.trim();
+    if (trimmed === "" || trimmed.startsWith("#")) continue;
+    if (indent(text) <= dash) break;
+    end = n;
+  }
+  return end;
+}
+
+const casesGutter = gutter({
+  class: "pg-case-gutter",
+  markers: (view) => view.state.field(casesField).markers,
+});
+
 const base: Extension = [
   lineNumbers(),
   highlightActiveLineGutter(),
@@ -105,7 +226,12 @@ export function sigilState(source: string, extra: Extension): EditorState {
   return EditorState.create({ doc: source, extensions: [base, sigilSupport, lintGutter(), firedField, firedGutter, extra] });
 }
 
-/** The state of the input or stubs editor. */
+/** The state of a test file's editor. */
+export function testState(source: string, extra: Extension): EditorState {
+  return EditorState.create({ doc: source, extensions: [base, yaml(), casesField, casesGutter, extra] });
+}
+
+/** The state of a data file's editor, or of the input or stubs editor. */
 export function documentState(source: string, lang: "yaml" | "json", extra: Extension): EditorState {
   return EditorState.create({ doc: source, extensions: [base, lang === "json" ? json() : yaml(), extra] });
 }
@@ -118,6 +244,11 @@ export function looksLikeJson(source: string): boolean {
 /** The transaction that replaces a file's fired-rule marks. */
 export function firedSpec(fired: FiredLine[]): TransactionSpec {
   return { effects: setFired.of(fired) };
+}
+
+/** The transaction that replaces a test file's case marks. */
+export function casesSpec(marks: TestMarks): TransactionSpec {
+  return { effects: setCases.of(marks) };
 }
 
 /** The transaction that replaces a file's diagnostics with check's. */

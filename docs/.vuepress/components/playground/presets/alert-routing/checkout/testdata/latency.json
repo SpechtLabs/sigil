@@ -1,0 +1,9 @@
+{
+  "alert": {
+    "name": "CheckoutLatencyHigh",
+    "severity": "warning",
+    "labels": { "env": "production" },
+    "firing_for": "45m"
+  },
+  "team": { "name": "checkout", "oncall": "checkout-primary", "channel": "#checkout-alerts" }
+}

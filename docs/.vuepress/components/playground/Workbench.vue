@@ -1,5 +1,5 @@
 <template>
-  <div class="pg" @keydown="onKeydown">
+  <div class="pg">
     <p class="pg-visually-hidden" aria-live="polite">{{ announcement }}</p>
     <div class="pg-bar">
       <div class="pg-bar__group">
@@ -10,24 +10,23 @@
             <option v-for="p in presets" :key="p.id" :value="p.id">{{ p.label }}</option>
           </select>
         </label>
-        <label class="pg-field">
+        <div class="pg-modes" role="radiogroup" aria-label="Mode">
+          <label v-for="m in modes" :key="m.id" :class="{ 'pg-modes--active': ws.mode === m.id }" :title="modeHelp[m.id]">
+            <input v-model="ws.mode" type="radio" name="pg-mode" :value="m.id" />{{ m.label }}
+          </label>
+        </div>
+        <label v-show="ws.mode === 'evaluate'" class="pg-field">
           <span class="pg-field__label">Policy</span>
           <select v-model="ws.policy" class="pg-select pg-mono" :disabled="policies.length < 2">
             <option v-if="policies.length === 0" value="">none defined</option>
             <option v-for="p in policies" :key="p" :value="p">{{ p }}</option>
           </select>
         </label>
-        <div v-if="modes.length > 1" class="pg-modes" role="radiogroup" aria-label="Mode">
-          <label v-for="m in modes" :key="m.id" :class="{ 'pg-modes--active': ws.mode === m.id }">
-            <input v-model="ws.mode" type="radio" name="pg-mode" :value="m.id" />{{ m.label }}
-          </label>
-        </div>
       </div>
       <div class="pg-bar__group">
-        <button type="button" class="pg-btn" :disabled="!engine" title="Format the open file as sigil fmt does" @click="formatActive">Format</button>
         <button type="button" class="pg-btn" :title="shareHelp" @click="share">{{ shareLabel }}</button>
-        <button type="button" class="pg-btn pg-btn--run" :disabled="!engine || running" :title="runHelp" @click="runNow">
-          {{ running ? 'Running' : 'Run' }}
+        <button type="button" class="pg-btn pg-btn--run" :disabled="!engine || running" :title="modeHelp[ws.mode]" @click="runNow">
+          {{ running ? 'Running' : ws.mode === 'test' ? 'Run tests' : 'Run' }}
           <kbd class="pg-kbd">{{ modKey }} Enter</kbd>
         </button>
       </div>
@@ -43,21 +42,27 @@
 
     <div class="pg-grid">
       <section class="pg-pane pg-pane--files" aria-label="Files">
-        <FileTabs
-          ref="tabs"
-          :files="ws.files"
-          :active="active"
-          :marks="tabMarks"
-          @select="openFile"
-          @add="addFile"
-          @rename="renameFile"
-          @remove="removeFile"
-        />
-        <div ref="fileHost" class="pg-editor pg-editor--files" />
+        <div class="pg-files">
+          <FileTree ref="tree" class="pg-files__tree" :files="ws.files" :active="active" :marks="fileMarks" @select="openFile" @add="addFile" />
+          <div class="pg-files__main">
+            <FileBar
+              ref="fileBar"
+              :path="active"
+              :files="ws.files"
+              :formattable="activeKind === 'sigil'"
+              :can-format="engine !== undefined"
+              :deletable="ws.files.length > 1"
+              @format="formatActive"
+              @rename="(to) => renameFile(active, to)"
+              @remove="removeFile(active)"
+            />
+            <div ref="fileHost" class="pg-editor pg-editor--files" />
+          </div>
+        </div>
         <ProblemList :diagnostics="diagnostics" :ready="engine !== undefined" @reveal="revealDiagnostic" />
       </section>
 
-      <div class="pg-column">
+      <div v-show="ws.mode === 'evaluate'" class="pg-column">
         <section class="pg-pane pg-pane--docs" aria-label="Input and stubs">
           <div class="pg-subtabs" role="tablist" aria-label="Input and stubs">
             <button
@@ -99,15 +104,7 @@
           <div :class="['pg-result', { 'pg-result--stale': stale, 'pg-result--running': running }]">
             <EngineStatus v-if="!engine" :progress="progress" :failed="engineError" @retry="startEngine" />
             <template v-else-if="lastRun">
-              <div v-if="lastRun.failure && resultView === 'outcome'" class="pg-failure pg-failure--blocking">
-                <div class="pg-failure__title">{{ lastRun.failure.title }}</div>
-                <div class="pg-failure__message">{{ lastRun.failure.message }}</div>
-                <div v-if="lastRun.failure.help" class="pg-help">{{ lastRun.failure.help }}</div>
-                <button v-if="lastRun.failure.pane" type="button" class="pg-link" @click="revealDoc(lastRun.failure)">
-                  Show it in the {{ lastRun.failure.pane }}
-                </button>
-                <span v-else-if="lastRun.failure.diagnostics?.length" class="pg-dim">The problems list shows where.</span>
-              </div>
+              <FailureNote v-if="lastRun.failure && resultView === 'outcome'" :failure="lastRun.failure" @show="revealDoc" />
               <OutcomeView
                 v-if="resultView === 'outcome' && lastRun.result"
                 :result="lastRun.result"
@@ -121,6 +118,42 @@
           </div>
         </section>
       </div>
+
+      <section v-show="ws.mode === 'test'" class="pg-pane pg-pane--tests" aria-label="Test results">
+        <div class="pg-testbar">
+          <label class="pg-filter">
+            <span class="pg-filter__label">Cases matching</span>
+            <input
+              v-model="ws.run"
+              class="pg-filter__input pg-mono"
+              placeholder="every case"
+              spellcheck="false"
+              autocomplete="off"
+              aria-describedby="pg-filter-help"
+              @keydown.enter.prevent="runNow"
+            />
+          </label>
+          <span id="pg-filter-help" class="pg-visually-hidden">A regular expression matched against case names, like sigil test --run.</span>
+          <span v-if="lastTests && staleTests" class="pg-stale">
+            edited since this run
+            <button type="button" class="pg-link" :disabled="!engine || running" @click="runNow">Run again</button>
+          </span>
+        </div>
+        <div :class="['pg-result', { 'pg-result--stale': staleTests, 'pg-result--running': running }]">
+          <EngineStatus v-if="!engine" :progress="progress" :failed="engineError" @retry="startEngine" />
+          <div v-else-if="testCount === 0" class="pg-empty">
+            <Seal class="pg-empty__seal" hue="brand" :progress="0" />
+            <div class="pg-empty__title">No test files yet</div>
+            <p class="pg-empty__text">A test file is YAML named like <span class="pg-mono">checkout/alerts_test.yaml</span>, next to the policy it tests. Its cases give an input and the decision they expect.</p>
+            <button type="button" class="pg-btn" @click="addTestFile">New test file</button>
+          </div>
+          <template v-else-if="lastTests">
+            <FailureNote v-if="lastTests.failure" :failure="lastTests.failure" />
+            <TestResults v-if="lastTests.results" :results="lastTests.results" :run-id="testRunId" :filter="ws.run.trim()" @reveal="revealLine" />
+          </template>
+          <p v-else class="pg-quiet">Run the tests to see each case.</p>
+        </div>
+      </section>
     </div>
   </div>
 </template>
@@ -128,42 +161,63 @@
 <script setup lang="ts">
 // The playground itself, rendered only in the browser. It keeps the
 // workspace, drives the CodeMirror editors, and talks to the engine in its
-// worker: check as you type, compile, evaluate and explain on Run.
-import { Compartment, EditorState, Prec, type Extension } from '@codemirror/state'
+// worker: check as you type; compile, evaluate and explain on Run in
+// Evaluate mode; run the test files in Test mode.
+import { Compartment, EditorState, Prec, type Extension, type TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
-import { SigilError, SigilStoppedError, SigilTimeoutError, type Diagnostic, type EvalResult, type Explanation, type SigilWorker, type SourceFile } from '@spechtlabs/sigil/worker'
+import {
+  SigilError,
+  SigilStoppedError,
+  SigilTimeoutError,
+  type Diagnostic,
+  type EvalResult,
+  type Explanation,
+  type SigilWorker,
+  type SourceFile,
+  type TestResult,
+} from '@spechtlabs/sigil/worker'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import EngineStatus from './EngineStatus.vue'
 import ExplainView from './ExplainView.vue'
-import FileTabs from './FileTabs.vue'
+import FailureNote from './FailureNote.vue'
+import FileBar from './FileBar.vue'
+import FileTree from './FileTree.vue'
 import OutcomeView from './OutcomeView.vue'
 import ProblemList from './ProblemList.vue'
+import Seal from './Seal.vue'
+import TestResults from './TestResults.vue'
 import { DocumentError, parseInput, parseStubs } from './documents.js'
-import { diagnosticsSpec, documentState, firedSpec, looksLikeJson, reveal, sigilState, type FiredLine } from './editor.js'
+import {
+  casesSpec,
+  diagnosticsSpec,
+  documentState,
+  firedSpec,
+  looksLikeJson,
+  reveal,
+  sigilState,
+  testState,
+  type FiredLine,
+  type TestMarks,
+} from './editor.js'
 import { loadEngine, type Progress } from './engine.js'
 import { presets, presetWorkspace } from './presets.js'
-import { constructor } from './present.js'
+import { constructor, type Failure, type FileMarks } from './present.js'
 import { isShared, readFragment, shareFragment } from './share.js'
-import { definitions, freshPath, modes, parsePosition, policyNames, type Workspace } from './workspace.js'
+import { definitions, dirOf, fileKind, filesOf, freshPath, modes, parsePosition, policyNames, type FileKind, type Workspace } from './workspace.js'
 // The styles come with this chunk and go in when it loads: the site
 // bundles every stylesheet into one, which would put them on every page.
 import styles from './playground.css?inline'
 
 type DocPane = 'input' | 'stubs'
 
-interface Failure {
-  title: string
-  message: string
-  help?: string
-  diagnostics?: Diagnostic[]
-  /** The pane the failure is in, for a document that doesn't parse. */
-  pane?: DocPane
-  line?: number
-}
-
 interface Run {
   result?: EvalResult
   explanation?: Explanation
+  failure?: Failure
+}
+
+interface TestRun {
+  results?: TestResult[]
   failure?: Failure
 }
 
@@ -180,11 +234,16 @@ if (!document.getElementById('pg-styles')) {
 }
 
 const CHECK_DELAY_MS = 300
+const FILTER_DELAY_MS = 400
 const EVAL_TIMEOUT_MS = 2_000
 
 const shareHelp =
-  'Copy a link that holds the whole workspace: the files, the input, the stubs and the policy. It lives in the link itself; nothing is stored on a server.'
-const runHelp = 'Evaluate the policy against the input: its decision, every candidate the rules produced, and the rules that fired'
+  'Copy a link that holds the whole workspace: the files, the input, the stubs, the policy and the mode. It lives in the link itself; nothing is stored on a server.'
+// What each mode does, on its segment of the switch and on the Run button.
+const modeHelp: Record<Workspace['mode'], string> = {
+  evaluate: 'Evaluate the policy against the input: its decision, every candidate the rules produced, and the rules that fired',
+  test: 'Run the test files, the ones named *_test.yaml, and mark every case passed or failed, with what it got instead',
+}
 
 const docPanes: { id: DocPane; label: string }[] = [
   { id: 'input', label: 'Input' },
@@ -209,15 +268,20 @@ const diagnostics = shallowRef<Diagnostic[]>([])
 const lastRun = shallowRef<Run>()
 const fired = shallowRef<Record<string, FiredLine[]>>({})
 const runId = ref(0)
-const running = ref(false)
 const stale = ref(false)
+const lastTests = shallowRef<TestRun>()
+const testMarks = shallowRef<Record<string, TestMarks>>({})
+const testRunId = ref(0)
+const staleTests = ref(false)
+const running = ref(false)
 const notice = ref<Notice>()
 const shareLabel = ref('Share')
 // One line for screen readers after each run; the result pane itself is
 // too much to read out.
 const announcement = ref('')
 
-const tabs = ref<InstanceType<typeof FileTabs>>()
+const tree = ref<InstanceType<typeof FileTree>>()
+const fileBar = ref<InstanceType<typeof FileBar>>()
 const fileHost = ref<HTMLElement>()
 const docHost = ref<HTMLElement>()
 
@@ -232,6 +296,7 @@ const fileLabel = new Compartment()
 let loadedSnapshot = ''
 let checkTimer: ReturnType<typeof setTimeout> | undefined
 let checkSeq = 0
+let filterTimer: ReturnType<typeof setTimeout> | undefined
 let shareTimer: ReturnType<typeof setTimeout> | undefined
 // Bumped when the workspace is replaced, so a run that started before
 // doesn't show its result over the new one.
@@ -242,6 +307,8 @@ let rerun = false
 const modKey = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'
 
 const policies = computed(() => policyNames(ws.files))
+const activeKind = computed(() => fileKind(active.value))
+const testCount = computed(() => ws.files.filter((f) => fileKind(f.path) === 'test').length)
 
 const stubCount = computed(() => {
   try {
@@ -251,9 +318,19 @@ const stubCount = computed(() => {
   }
 })
 
-const tabMarks = computed(() => {
-  const marks: Record<string, { errors: number; warnings: number; fired: boolean }> = {}
-  for (const f of ws.files) marks[f.path] = { errors: 0, warnings: 0, fired: (fired.value[f.path]?.length ?? 0) > 0 }
+const fileMarks = computed(() => {
+  const marks: Record<string, FileMarks> = {}
+  for (const f of ws.files) {
+    const t = testMarks.value[f.path]
+    marks[f.path] = {
+      errors: 0,
+      warnings: 0,
+      fired: (fired.value[f.path]?.length ?? 0) > 0,
+      passed: t?.cases.filter((c) => c.passed).length ?? 0,
+      failed: t?.cases.filter((c) => !c.passed).length ?? 0,
+      suiteError: t?.error !== undefined,
+    }
+  }
   for (const d of diagnostics.value) {
     const m = d.file === undefined ? undefined : marks[d.file]
     if (m) m[d.severity === 'error' ? 'errors' : 'warnings']++
@@ -266,9 +343,28 @@ watch(policies, (names) => {
   if (!names.includes(ws.policy)) ws.policy = names[0] ?? ''
 })
 
+// Switching modes runs the new one, unless its results are current.
+watch(
+  () => ws.mode,
+  (mode) => {
+    const current = mode === 'test' ? lastTests.value !== undefined && !staleTests.value : lastRun.value !== undefined && !stale.value
+    if (!current) void runNow()
+  },
+)
+
+// Narrowing the cases runs them again, once typing pauses.
+watch(
+  () => ws.run,
+  () => {
+    clearTimeout(filterTimer)
+    if (ws.mode === 'test') filterTimer = setTimeout(() => void runNow(), FILTER_DELAY_MS)
+  },
+)
+
 onMounted(async () => {
   createEditors()
   window.addEventListener('hashchange', onHashChange)
+  window.addEventListener('keydown', onKeydown)
   if (isShared(location.hash)) await restore(location.hash)
   else loadedSnapshot = snapshot()
   void startEngine()
@@ -276,7 +372,9 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('hashchange', onHashChange)
+  window.removeEventListener('keydown', onKeydown)
   clearTimeout(checkTimer)
+  clearTimeout(filterTimer)
   clearTimeout(shareTimer)
   fileView?.destroy()
   docView?.destroy()
@@ -302,7 +400,7 @@ async function checkNow(retry = true): Promise<void> {
   const seq = ++checkSeq
   let found: Diagnostic[]
   try {
-    found = await sigil.check(files())
+    found = await sigil.check(filesOf(ws.files, 'sigil'))
   } catch (err) {
     // A worker replaced after another call timed out or stopped fails the
     // calls waiting on it; that says nothing about the files, so check
@@ -327,29 +425,36 @@ function scheduleCheck(): void {
 async function runNow(): Promise<void> {
   const sigil = engine.value
   if (sigil === undefined) return
+  clearTimeout(filterTimer)
   if (running.value) {
     rerun = true
     return
   }
   running.value = true
   try {
+    // A run asked for meanwhile, by an edit of the filter, a new workspace
+    // or a switch of mode, runs next, in the mode current by then.
     do {
       rerun = false
-      const started = generation
-      const ran = runSnapshot()
-      const run: Run = {}
-      await evaluate(sigil, run)
-      // A workspace replaced mid-run asked for a run of its own.
-      if (started !== generation) continue
-      lastRun.value = run
-      announcement.value = summaryOf(run)
-      showFired(run.result ? firedLines(run.result) : {})
-      runId.value++
-      stale.value = runSnapshot() !== ran
+      if (ws.mode === 'test') await runTests(sigil)
+      else await runPolicy(sigil)
     } while (rerun)
   } finally {
     running.value = false
   }
+}
+
+async function runPolicy(sigil: SigilWorker): Promise<void> {
+  const started = generation
+  const ran = runSnapshot()
+  const run: Run = {}
+  await evaluate(sigil, run)
+  if (started !== generation) return
+  lastRun.value = run
+  announcement.value = summaryOf(run)
+  showFired(run.result ? firedLines(run.result) : {})
+  runId.value++
+  stale.value = runSnapshot() !== ran
 }
 
 async function evaluate(sigil: SigilWorker, run: Run): Promise<void> {
@@ -366,7 +471,7 @@ async function evaluate(sigil: SigilWorker, run: Run): Promise<void> {
   }
   let policy
   try {
-    policy = await sigil.compile(files(), { policy: ws.policy || undefined, stubs })
+    policy = await sigil.compile(filesOf(ws.files, 'sigil'), { policy: ws.policy || undefined, stubs })
   } catch (err) {
     run.failure = failureOf(err, "The files don't compile")
     return
@@ -381,6 +486,28 @@ async function evaluate(sigil: SigilWorker, run: Run): Promise<void> {
   }
 }
 
+async function runTests(sigil: SigilWorker): Promise<void> {
+  const started = generation
+  const ran = testSnapshot()
+  const run: TestRun = {}
+  try {
+    if (testCount.value > 0) {
+      run.results = await sigil.test(filesOf(ws.files, 'sigil'), filesOf(ws.files, 'test'), {
+        data: filesOf(ws.files, 'data'),
+        run: ws.run.trim() || undefined,
+      })
+    }
+  } catch (err) {
+    run.failure = failureOf(err, "The tests can't run")
+  }
+  if (started !== generation) return
+  lastTests.value = run
+  announcement.value = testSummaryOf(run)
+  showCases(run.results ?? [])
+  testRunId.value++
+  staleTests.value = testSnapshot() !== ran
+}
+
 // A run in one sentence: the decision and its reason, what was collected,
 // or why there's no result.
 function summaryOf(run: Run): string {
@@ -389,6 +516,19 @@ function summaryOf(run: Run): string {
   const failed = r.error ? `The evaluation failed with a ${r.error.kind} error. ` : ''
   if (r.collect) return `${failed}${r.policy} collected ${r.outcome.length} decision${r.outcome.length === 1 ? '' : 's'}.`
   return `${failed}${r.policy}: ${r.decision}, reason ${r.reason}.`
+}
+
+// A test run in one sentence: how many cases passed, and the files that
+// can't run.
+function testSummaryOf(run: TestRun): string {
+  if (run.failure) return `${run.failure.title}.`
+  const results = run.results ?? []
+  const cases = results.flatMap((s) => s.cases)
+  const passed = cases.filter((c) => c.passed).length
+  const broken = results.filter((s) => s.error !== undefined).length
+  const parts = [`${passed} of ${cases.length} cases passed`]
+  if (broken > 0) parts.push(`${broken} test file${broken === 1 ? '' : 's'} can't run`)
+  return `${parts.join(', ')}.`
 }
 
 function failureOf(err: unknown, title: string): Failure {
@@ -418,16 +558,29 @@ async function formatActive(): Promise<void> {
 
 function showDiagnostics(found: Diagnostic[]): void {
   diagnostics.value = found
-  updateStates((path, state) => diagnosticsSpec(state, found.filter((d) => d.file === path)))
+  updateStates('sigil', (path, state) => diagnosticsSpec(state, found.filter((d) => d.file === path)))
 }
 
 function showFired(lines: Record<string, FiredLine[]>): void {
   fired.value = lines
-  updateStates((path) => firedSpec(lines[path] ?? []))
+  updateStates('sigil', (path) => firedSpec(lines[path] ?? []))
 }
 
-function updateStates(spec: (path: string, state: EditorState) => Parameters<EditorState['update']>[0]): void {
+function showCases(results: TestResult[]): void {
+  const marks: Record<string, TestMarks> = {}
+  for (const s of results) {
+    marks[s.file] = {
+      error: s.error,
+      cases: s.cases.map((c) => ({ line: c.line, passed: c.passed, name: c.name, messages: c.error ? [c.error] : (c.failures ?? []) })),
+    }
+  }
+  testMarks.value = marks
+  updateStates('test', (path) => casesSpec(marks[path] ?? { cases: [] }))
+}
+
+function updateStates(kind: FileKind, spec: (path: string, state: EditorState) => TransactionSpec): void {
   for (const [path, state] of fileStates) {
+    if (fileKind(path) !== kind) continue
     if (path === active.value && fileView) fileView.dispatch(spec(path, fileView.state))
     else fileStates.set(path, state.update(spec(path, state)).state)
   }
@@ -462,24 +615,32 @@ function createEditors(): void {
   docView = new EditorView({ parent: docHost.value, state: inputState })
 }
 
+// A file's editor state, made the first time it's opened, with the marks
+// the last check and runs left on it.
 function fileState(path: string): EditorState {
   let state = fileStates.get(path)
-  if (state === undefined) {
-    const source = ws.files.find((f) => f.path === path)?.source ?? ''
-    state = sigilState(source, [
-      runKeymap,
-      fileLabel.of(labelOf(path)),
-      EditorView.updateListener.of((u) => {
-        if (u.view !== fileView || u.startState === u.state) return
-        fileStates.set(active.value, u.state)
-        if (u.docChanged) onFileEdited(u.state.doc.toString())
-      }),
-    ])
-    // A file opened after a run or a check gets their marks too.
+  if (state !== undefined) return state
+  const source = ws.files.find((f) => f.path === path)?.source ?? ''
+  const extra = [
+    runKeymap,
+    fileLabel.of(labelOf(path)),
+    EditorView.updateListener.of((u) => {
+      if (u.view !== fileView || u.startState === u.state) return
+      fileStates.set(active.value, u.state)
+      if (u.docChanged) onFileEdited(u.state.doc.toString())
+    }),
+  ]
+  const kind = fileKind(path)
+  if (kind === 'sigil') {
+    state = sigilState(source, extra)
     state = state.update(firedSpec(fired.value[path] ?? [])).state
     state = state.update(diagnosticsSpec(state, diagnostics.value.filter((d) => d.file === path))).state
-    fileStates.set(path, state)
+  } else if (kind === 'test') {
+    state = testState(source, extra).update(casesSpec(testMarks.value[path] ?? { cases: [] })).state
+  } else {
+    state = documentState(source, path.endsWith('.json') ? 'json' : 'yaml', extra)
   }
+  fileStates.set(path, state)
   return state
 }
 
@@ -510,7 +671,7 @@ function docExtensions(pane: DocPane): Extension {
         stubsState = u.state
         ws.stubs = text
       }
-      markStale()
+      if (lastRun.value) stale.value = true
     }),
   ]
 }
@@ -531,13 +692,17 @@ function onFileEdited(source: string): void {
   const file = ws.files.find((f) => f.path === active.value)
   if (file) file.source = source
   markStale()
-  scheduleCheck()
+  if (activeKind.value === 'sigil') scheduleCheck()
 }
 
+// Files feed both modes, so an edit makes both results stale.
 function markStale(): void {
   if (lastRun.value) stale.value = true
+  if (lastTests.value) staleTests.value = true
 }
 
+// Cmd/Ctrl+Enter runs from anywhere on the page; the editors handle it
+// themselves first.
 function onKeydown(e: KeyboardEvent): void {
   if (e.defaultPrevented || e.key !== 'Enter' || !(e.metaKey || e.ctrlKey)) return
   e.preventDefault()
@@ -548,6 +713,7 @@ function onKeydown(e: KeyboardEvent): void {
 
 function openFile(path: string): void {
   if (fileView === undefined || !ws.files.some((f) => f.path === path)) return
+  tree.value?.expand(path)
   if (path !== active.value) {
     fileStates.set(active.value, fileView.state)
     active.value = path
@@ -562,27 +728,52 @@ function openDoc(pane: DocPane): void {
 }
 
 function addFile(): void {
-  const path = freshPath(ws.files)
+  const path = freshPath(ws.files, 'sigil', dirOf(active.value))
   ws.files.push({ path, source: '' })
   openFile(path)
-  void tabs.value?.startRename(path)
+  void fileBar.value?.start()
+}
+
+// A test file for the selected policy, next to the file that defines it.
+function addTestFile(): void {
+  const home = definitions(ws.files).get(ws.policy) ?? active.value
+  const named = home.replace(/\.sigil$/, '_test.yaml')
+  const path = ws.files.some((f) => f.path === named) ? freshPath(ws.files, 'test', dirOf(home)) : named
+  ws.files.push({ path, source: `policy: ${ws.policy || policies.value[0] || ''}\ncases: []\n` })
+  openFile(path)
+  markStale()
+  void runNow()
 }
 
 function renameFile(from: string, to: string): void {
   const file = ws.files.find((f) => f.path === from)
   if (file === undefined) return
-  file.path = to
-  const label = fileLabel.reconfigure(labelOf(to))
-  if (from === active.value) {
+  if (fileKind(from) !== fileKind(to)) {
+    // A file that changes kind needs another editor: a new state, with the
+    // source but without the undo history.
+    file.path = to
     fileStates.delete(from)
-    active.value = to
-    fileView?.dispatch({ effects: label })
+    if (from === active.value) {
+      active.value = to
+      fileView?.setState(fileState(to))
+    }
   } else {
-    const state = fileStates.get(from)
-    fileStates.delete(from)
-    if (state) fileStates.set(to, state.update({ effects: label }).state)
+    file.path = to
+    const label = fileLabel.reconfigure(labelOf(to))
+    if (from === active.value) {
+      fileStates.delete(from)
+      active.value = to
+      fileView?.dispatch({ effects: label })
+    } else {
+      const state = fileStates.get(from)
+      fileStates.delete(from)
+      if (state) fileStates.set(to, state.update({ effects: label }).state)
+    }
   }
+  tree.value?.expand(to)
+  markStale()
   scheduleCheck()
+  fileView?.focus()
 }
 
 function removeFile(path: string): void {
@@ -624,14 +815,16 @@ function revealPosition(position: string): void {
     if (m === null || file === undefined) return
     p = { file, line: Number(m[2]), column: 1 }
   }
-  openFile(p.file)
-  if (fileView && active.value === p.file) reveal(fileView, p.line, p.column)
+  revealLine(p.file, p.line, p.column)
+}
+
+function revealLine(file: string, line: number, column = 1): void {
+  openFile(file)
+  if (fileView && active.value === file) reveal(fileView, line, column)
 }
 
 function revealDiagnostic(d: Diagnostic): void {
-  if (d.file === undefined) return
-  openFile(d.file)
-  if (fileView && active.value === d.file) reveal(fileView, d.line ?? 1, d.column ?? 1)
+  if (d.file !== undefined) revealLine(d.file, d.line ?? 1, d.column ?? 1)
 }
 
 function revealDoc(f: Failure): void {
@@ -642,26 +835,29 @@ function revealDoc(f: Failure): void {
 
 // The workspace as a whole: presets and shared links
 
-function files(): SourceFile[] {
-  return ws.files.map((f) => ({ path: f.path, source: f.source }))
-}
-
 // What a run reads, to tell whether its result still matches the files.
 function runSnapshot(): string {
   return JSON.stringify({ files: ws.files, input: ws.input, stubs: ws.stubs, policy: ws.policy })
 }
 
+function testSnapshot(): string {
+  return JSON.stringify({ files: ws.files, run: ws.run.trim() })
+}
+
 function snapshot(): string {
-  return JSON.stringify({ files: files(), input: ws.input, stubs: ws.stubs })
+  return JSON.stringify({ files: ws.files, input: ws.input, stubs: ws.stubs })
 }
 
 function setWorkspace(next: Workspace): void {
   generation++
   // The old marks go first, so the new files' editors start without them.
   lastRun.value = undefined
+  lastTests.value = undefined
   stale.value = false
+  staleTests.value = false
   diagnostics.value = []
   fired.value = {}
+  testMarks.value = {}
   Object.assign(ws, next)
   fileStates.clear()
   active.value = primaryFile(next)
@@ -687,11 +883,11 @@ function choosePreset(select: HTMLSelectElement): void {
   }
   presetId.value = id
   if (isShared(location.hash)) history.replaceState(history.state, '', location.pathname + location.search)
-  setWorkspace(presetWorkspace(id))
+  setWorkspace({ ...presetWorkspace(id), mode: ws.mode })
 }
 
 async function share(): Promise<void> {
-  const fragment = await shareFragment({ ...ws, files: files() })
+  const fragment = await shareFragment({ ...ws, files: ws.files.map((f) => ({ path: f.path, source: f.source })) })
   history.replaceState(history.state, '', fragment)
   loadedSnapshot = snapshot()
   try {
@@ -725,7 +921,7 @@ function onHashChange(): void {
 
 /** The file to open first: the one that defines the selected policy. */
 function primaryFile(w: Workspace): string {
-  return definitions(w.files).get(w.policy) ?? w.files[0]?.path ?? ''
+  return definitions(w.files).get(w.policy) ?? filesOf(w.files, 'sigil')[0]?.path ?? w.files[0]?.path ?? ''
 }
 
 function messageOf(err: unknown): string {
