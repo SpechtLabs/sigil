@@ -8,12 +8,26 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 )
 
 func TestReport(t *testing.T) {
+	summaries := t.TempDir()
+	short := filepath.Join(summaries, "short.md")
+	long := filepath.Join(summaries, "long.md")
+	for file, content := range map[string]string{
+		short: "# Go fuzzing\n\n**32 of 33 targets passed**\n\n## Failures\n\n**FuzzPatch** failed.\n",
+		long:  "# Go fuzzing\n\n" + strings.Repeat("| FuzzX | ./x | 1 | 0 | ✓ passed |\n", 3000),
+	} {
+		if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	tests := []struct {
 		name string
 		env  map[string]string
@@ -121,6 +135,19 @@ func TestReport(t *testing.T) {
 			wantErr:    "403 Forbidden",
 		},
 		{
+			name:      "the campaign's summary goes into the issue, a level down",
+			args:      []string{"--summary", short},
+			wantCalls: []string{"GET /repos/example/sigil/issues?state=open&per_page=100", "POST /repos/example/sigil/issues"},
+			wantBody:  []string{"Keep the input\nwith its fix so ordinary tests replay it.\n\n## Go fuzzing", "**32 of 33 targets passed**", "### Failures"},
+		},
+		{
+			name:      "a summary too long for an issue is cut short",
+			args:      []string{"--summary", long},
+			wantCalls: []string{"GET /repos/example/sigil/issues?state=open&per_page=100", "POST /repos/example/sigil/issues"},
+			wantBody:  []string{"| ✓ passed |\n\n_The summary is cut short here; the [run's summary page](https://github.com/example/sigil/actions/runs/123) has all of it._"},
+		},
+		{name: "a missing summary file fails before calling GitHub", args: []string{"--summary", filepath.Join(summaries, "missing.md")}, wantErr: "can't read the summary"},
+		{
 			name:    "skipped runs need no details",
 			args:    []string{"--time="},
 			env:     map[string]string{"GITHUB_REF": "refs/heads/feature"},
@@ -160,6 +187,9 @@ func TestReport(t *testing.T) {
 			}
 			if got, want := strings.Join(gh.calls, "\n"), strings.Join(tt.wantCalls, "\n"); got != want {
 				t.Errorf("calls:\n%s\nwant:\n%s", got, want)
+			}
+			if len(gh.body) > maxBody {
+				t.Errorf("issue body is %d bytes, GitHub takes at most %d", len(gh.body), maxBody)
 			}
 			for _, text := range tt.wantBody {
 				if !strings.Contains(gh.body, text) {
