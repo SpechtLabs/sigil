@@ -82,10 +82,17 @@ jobs:
             echo "::notice::main has moved to $tip since this run started at ${{ github.sha }}; leaving release-please to that run."
           fi
 
+      # GitHub doesn't start workflows for what GITHUB_TOKEN does: a release
+      # pull request it opens or updates gets a CI run that waits for
+      # approval. RELEASE_PLEASE_TOKEN, a fine-grained personal access token
+      # with read and write access to this repository's contents, pull
+      # requests and issues, makes the pull request an ordinary one whose CI
+      # runs. Without the secret, release-please falls back to GITHUB_TOKEN.
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release-please
         if: steps.still-current.outputs.current == 'true'
         with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
 
