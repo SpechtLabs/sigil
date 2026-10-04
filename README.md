@@ -5,6 +5,7 @@ A small, statically typed policy language for Go hosts.
 ![Status: hardening](https://img.shields.io/badge/status-hardening-yellow)
 ![Language: Go](https://img.shields.io/badge/host-Go-00ADD8?logo=go&logoColor=white)
 [![Go Reference](https://pkg.go.dev/badge/github.com/spechtlabs/sigil.svg)](https://pkg.go.dev/github.com/spechtlabs/sigil)
+[![codecov](https://codecov.io/gh/SpechtLabs/sigil/graph/badge.svg?token=SSPVPzObye)](https://codecov.io/gh/SpechtLabs/sigil)
 
 **Documentation:** [sigil.specht-labs.de](https://sigil.specht-labs.de/) &nbsp;·&nbsp; **Where it stands:** [roadmap](./roadmap.yml) and [open questions](./docs/project/open-questions.md)
 
@@ -226,6 +227,10 @@ The roadmap lives in [`roadmap.yml`](./roadmap.yml) in the [roadmap-md](https://
 ## Contributing
 
 Run `mise run test` for the race-enabled test suite, `mise run fuzz` for ten seconds of mutation fuzzing per target, and `mise run check` for the repository checks. Use `mise run bench -- --baseline main` to compare performance with a base revision. CI fails statistically significant regressions above 10% in time or allocations. See [Contributing](./docs/project/contributing.md) for targeted runs, regression inputs and benchmark workloads.
+
+Coverage per package, from the CI test run; each ring is a directory level, sized by lines and colored by coverage:
+
+[![Coverage sunburst](https://codecov.io/gh/SpechtLabs/sigil/graphs/sunburst.svg?token=SSPVPzObye)](https://codecov.io/gh/SpechtLabs/sigil)
 
 Bug reports and design challenges are both welcome: a policy that reads badly, an error message that doesn't point at the fix, a semantic corner the [reference](./docs/reference/policy-files.md) doesn't cover, or an answer to one of the [open questions](./docs/project/open-questions.md). Open an [issue](https://github.com/SpechtLabs/sigil/issues), ideally with the policy and input that show the problem, or send a pull request. Contributions are accepted under the project's license, as section 5 of the Apache License describes.
 
