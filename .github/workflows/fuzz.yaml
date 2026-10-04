@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
-      packages: ${{ steps.discover.outputs.packages }}
+      targets: ${{ steps.discover.outputs.targets }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,20 +45,26 @@ jobs:
           version: ${{ env.MISE_VERSION }}
           install_args: go
 
-      - name: Discover packages with fuzz targets
+      # One job per target, not per package: a package's targets would
+      # otherwise run one after the other, and the campaign take as long as
+      # the package with the most of them. Jobs beyond the account's limit
+      # on concurrent jobs queue until one finishes.
+      - name: Discover fuzz targets
         id: discover
         run: |
-          packages=$(go run ./cmd/devtool fuzz list --packages -o json)
-          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+          targets=$(go run ./cmd/devtool fuzz list -o json)
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
   fuzz:
+    name: fuzz ${{ matrix.target.name }}
     needs: targets
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    # One target's FUZZ_TIMEOUT, plus setup and building its package.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        package: ${{ fromJSON(needs.targets.outputs.packages) }}
+        target: ${{ fromJSON(needs.targets.outputs.targets) }}
     # devtool reads each fuzz run flag from FUZZ_<FLAG>.
     env:
       FUZZ_TIME: ${{ inputs.duration || '60m' }}
@@ -78,14 +84,15 @@ jobs:
         id: cache
         run: echo "path=$(go env GOCACHE)/fuzz" >> "$GITHUB_OUTPUT"
 
-      # fuzz run starts by restoring the package's inputs from the
+      # fuzz run starts by restoring the target's inputs from the
       # fuzz-corpus branch, which this job only reads; the corpus job below
       # pushes what it adds. --verbose keeps go test's output in the job log
       # too; fuzz-results/ holds it with the summary and the tested commit.
-      - name: Fuzz package
+      - name: Fuzz target
         env:
-          PACKAGE: ${{ matrix.package }}
-        run: go run ./cmd/devtool fuzz run --verbose "$PACKAGE"
+          PACKAGE: ${{ matrix.target.package }}
+          TARGET: ${{ matrix.target.name }}
+        run: go run ./cmd/devtool fuzz run --verbose --filter "^${TARGET}\$" "$PACKAGE"
 
       - name: Publish results in job summary
         if: always()
