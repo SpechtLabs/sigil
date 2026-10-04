@@ -32,8 +32,16 @@ type metadata struct {
 	Targets  []string `json:"targets"`
 }
 
+// restoreOptions are fuzz run's own flags, besides the ones every run
+// command takes.
+type restoreOptions struct {
+	skip   bool   // --no-restore
+	remote string // --remote
+}
+
 func newRunCommand(o options) *cobra.Command {
 	ro := defaultRunOptions()
+	rs := restoreOptions{remote: defaultRemote}
 
 	cmd := &cobra.Command{
 		Use:   "run [PACKAGE...]",
@@ -41,6 +49,10 @@ func newRunCommand(o options) *cobra.Command {
 		Long: `Fuzzes each fuzz target in the packages (every one by default, or those the
 PACKAGE patterns select) with go test -fuzz for --time, one after the other,
 and stops at the first failure.
+
+Before it starts, it copies the targets' inputs from the remote's fuzz-corpus
+branch into go test's cache, so fuzzing picks up where earlier runs left off;
+--no-restore skips that. fuzz corpus push shares what the run found.
 
 On a terminal, each target gets a status line with go test's progress and the
 time left, and a line once it's done; --verbose prints go test's output
@@ -57,15 +69,17 @@ devtool fuzz run --time 1m ./internal/parser
 devtool fuzz run --filter FuzzParseExpr --time 24h ./internal/parser`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(cmd.Context(), pretty.New(cmd.OutOrStdout()), cmd.OutOrStdout(), o, ro, args)
+			return run(cmd.Context(), pretty.New(cmd.OutOrStdout()), cmd.OutOrStdout(), o, ro, rs, args)
 		},
 	}
 	ro.Register(cmd, names)
+	cmd.Flags().BoolVar(&rs.skip, "no-restore", false, "Don't restore the inputs on the fuzz-corpus branch before fuzzing")
+	cmd.Flags().StringVar(&rs.remote, "remote", rs.remote, "Remote whose fuzz-corpus branch to restore the inputs from")
 	gotool.BindEnv(cmd, envPrefix, o.getenv)
 	return cmd
 }
 
-func run(ctx context.Context, p *pretty.Printer, stdout io.Writer, o options, ro cmdflag.Run, patterns []string) humane.Error {
+func run(ctx context.Context, p *pretty.Printer, stdout io.Writer, o options, ro cmdflag.Run, rs restoreOptions, patterns []string) humane.Error {
 	root, targets, err := discover(ctx, o, patterns, ro.Filter)
 	if err != nil {
 		return err
@@ -88,7 +102,12 @@ func run(ctx context.Context, p *pretty.Printer, stdout io.Writer, o options, ro
 	if err = res.WriteJSON(resultdir.Metadata, meta); err != nil {
 		return err
 	}
-	if err = ui.Header(p, plan(ro, meta, targets, checkout, res)); err != nil {
+	pl := plan(ro, meta, targets, checkout, res)
+	pl.Corpus = "not restored, --no-restore"
+	if !rs.skip {
+		pl.Corpus = restore(ctx, p, o, root, rs.remote, targets)
+	}
+	if err = ui.Header(p, pl); err != nil {
 		return err
 	}
 

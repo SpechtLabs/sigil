@@ -1,9 +1,12 @@
 // Package fuzz implements `devtool fuzz`: fuzzing every Go fuzz target one
-// at a time, listing them, and reporting a failed extended campaign.
+// at a time, listing them, sharing the inputs fuzzing found, and reporting
+// a failed extended campaign.
 //
-// `fuzz run` runs go test -fuzz on each target for --time, one after the
-// other, and stops at the first failure; go test saves the failing input
-// under the package's testdata/fuzz directory. `fuzz list` shows what
+// `fuzz run` restores the corpus from the fuzz-corpus branch, then runs go
+// test -fuzz on each target for --time, one after the other, and stops at
+// the first failure; go test saves the failing input under the package's
+// testdata/fuzz directory. `fuzz corpus pull` and `fuzz corpus push` move
+// the corpus between go test's cache and the branch. `fuzz list` shows what
 // `fuzz run` would fuzz, and with --packages -o json feeds CI's matrix.
 // `fuzz report` opens or comments on the GitHub issue for a failed
 // scheduled or manually dispatched campaign on main.
@@ -43,15 +46,16 @@ func NewCommand(opts ...Option) *cobra.Command {
 		Use:   "fuzz",
 		Short: "Run the Go fuzz targets",
 		Long: `Every Fuzz function in the module is a fuzz target. fuzz run fuzzes them one
-at a time, fuzz list shows what it would run, and fuzz report files the issue
-for a failed extended campaign in CI.
+at a time, starting from the inputs on the fuzz-corpus branch, fuzz corpus
+shares the inputs a run found, fuzz list shows what it would run, and fuzz
+report files the issue for a failed extended campaign in CI.
 
 Every flag can also be set with an environment variable: FUZZ_ followed by
 the flag's name in capitals, e.g. FUZZ_TIME=1m for --time 1m.`,
 	}
 	cmd.AddGroup(groupDev, groupCI)
-	run, list, report := newRunCommand(*o), newListCommand(*o), newReportCommand(*o)
-	run.GroupID, list.GroupID, report.GroupID = groupDev.ID, groupDev.ID, groupCI.ID
-	cmd.AddCommand(run, list, report)
+	run, list, corpus, report := newRunCommand(*o), newListCommand(*o), newCorpusCommand(*o), newReportCommand(*o)
+	run.GroupID, list.GroupID, corpus.GroupID, report.GroupID = groupDev.ID, groupDev.ID, groupDev.ID, groupCI.ID
+	cmd.AddCommand(run, list, corpus, report)
 	return cmd
 }
