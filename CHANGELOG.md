@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.7.0](https://github.com/SpechtLabs/sigil/compare/v0.6.4...v0.7.0) (2026-10-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **rust:** precompiled module, background pool rebuilds, no wasmtime-wasi, typed host functions ([#149](https://github.com/SpechtLabs/sigil/issues/149))
+
+### Features
+
+* **build:** write Sigil modules and policies in Go, served as trusted vocabulary ([#132](https://github.com/SpechtLabs/sigil/issues/132)) ([e08ffc8](https://github.com/SpechtLabs/sigil/commit/e08ffc8553814949e7c71ea3145c1ccefff69708))
+* **docs:** run test files in the playground ([#128](https://github.com/SpechtLabs/sigil/issues/128)) ([39a51c3](https://github.com/SpechtLabs/sigil/commit/39a51c3b4e77fa70d160f1c14296effe38d2ad2f))
+* **rust:** precompiled module, background pool rebuilds, no wasmtime-wasi, typed host functions ([#149](https://github.com/SpechtLabs/sigil/issues/149)) ([9222be3](https://github.com/SpechtLabs/sigil/commit/9222be39e06903a15fdb5cae2f381dac3aea1031))
+
+
+### Bug Fixes
+
+* **deps:** update dependency @spechtlabs/sigil to v0.6.4 ([#135](https://github.com/SpechtLabs/sigil/issues/135)) ([166fc0c](https://github.com/SpechtLabs/sigil/commit/166fc0cabe8c16c2ae79038d18f46ddd5ffc5a3e))
+* **deps:** update rust crates ([#141](https://github.com/SpechtLabs/sigil/issues/141)) ([8c6b45f](https://github.com/SpechtLabs/sigil/commit/8c6b45fdc18f32734ef0c1b2136b387dd66f66ce))
+
 ## [0.6.4](https://github.com/SpechtLabs/sigil/compare/v0.6.3...v0.6.4) (2026-10-01)
 
 
