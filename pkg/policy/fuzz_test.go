@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -15,6 +17,18 @@ import (
 func FuzzCompileEval(f *testing.F) {
 	for _, src := range []string{"", "policy p: DeployApproval@1", "policy p: DeployApproval@1\nwhen release.hotfix { approve(reason: a) }", "policy p: DeployApproval@1\nassert(\"named\", service.name != \"\")\nreview(reason: a, approvers: service.owners)", "module m: DeployApproval@1\npub let ok = release.hotfix\n---\npolicy p: DeployApproval@1\nuse m.{ok}\nwhen ok { approve(reason: a) }"} {
 		f.Add(src, "production", true)
+	}
+	// The golden bundles: most are of policy p, in the kind Deploy is.
+	files, err := filepath.Glob("testdata/*.sigil")
+	if err != nil {
+		f.Fatal(err)
+	}
+	for _, file := range files {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			f.Fatal(err)
+		}
+		f.Add(string(src), "production", false)
 	}
 	f.Fuzz(func(t *testing.T, src, env string, hotfix bool) {
 		p, err := Deploy.Compile(src, "p")

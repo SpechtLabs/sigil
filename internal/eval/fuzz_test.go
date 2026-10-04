@@ -5,8 +5,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/spechtlabs/sigil/internal/ast"
 	"github.com/spechtlabs/sigil/internal/check"
 	"github.com/spechtlabs/sigil/internal/constant"
+	"github.com/spechtlabs/sigil/internal/diag"
 	"github.com/spechtlabs/sigil/internal/eval"
 	"github.com/spechtlabs/sigil/internal/gokind"
 	"github.com/spechtlabs/sigil/internal/parser"
@@ -21,7 +23,8 @@ func FuzzEvalExpr(f *testing.F) {
 	if errs != nil {
 		f.Fatal(errs)
 	}
-	for _, src := range []string{"count + 1", "ratio - 0.5", "release.soak >= 1h", "release.parent?.author.name ?? \"nobody\"", "[1, 2][count]", "all x in service.counts: x > count", "filter x in service.counts: x > count", "actor.roles any in [\"admin\"]", `service.labels has "team"`, `service.name matches "a.*"`, `service.name like "*api"`, "[[]] in [[[]]]", "true or [1][9] == 0"} {
+	for _, src := range []string{"count + 1", "ratio - 0.5", "release.soak >= 1h", "release.parent?.author.name ?? \"nobody\"", "[1, 2][count]", "all x in service.counts: x > count", "filter x in service.counts: x > count", "actor.roles any in [\"admin\"]", `service.labels has "team"`, `service.name matches "a.*"`, `service.name like "*api"`, "[[]] in [[[]]]", "true or [1][9] == 0",
+		"-(1h - 90m) + 1ms", "0.1 + 0.2 - -0.0", "[-9223372036854775807 - 1]", `{"a": [1.5 - 0.25, -2.5]}`, "{1: 2h, -3: 0ms}", `[["x"], []]`} {
 		f.Add(src, int64(0))
 	}
 	f.Fuzz(func(t *testing.T, src string, n int64) {
@@ -49,7 +52,17 @@ func FuzzEvalExpr(f *testing.F) {
 		if first == nil && !reflect.DeepEqual(b.Canonical(typ, v), b.Canonical(typ, w)) {
 			t.Fatal("evaluation is not repeatable")
 		}
+		sameAsConstant(t, x, typ, b.Canonical(typ, v), first)
 	})
+}
+
+// sameAsConstant checks that an expression constant folding accepts, as
+// for a kind's defaults, evaluates at run time to the same value.
+func sameAsConstant(t *testing.T, x ast.Expr, typ types.Type, got any, err *diag.Error) { //nolint:emptyinterface // canonical values are dynamically typed
+	t.Helper()
+	if want, cerr := constant.Eval(x, typ); cerr == nil && (err != nil || !reflect.DeepEqual(got, want)) {
+		t.Fatalf("%s: runtime = %#v, %v; constant = %#v", ast.Sprint(x), got, err, want)
+	}
 }
 
 // Both evaluation paths must implement the same checked integer arithmetic.
@@ -151,12 +164,14 @@ func FuzzEvalCollections(f *testing.F) {
 }
 
 // FuzzEvalEnum evaluates enum expressions over host values that may lie
-// outside their enum: evaluation never panics, and it fails or succeeds
-// the same way twice.
+// outside their enum: evaluation never panics, it fails or succeeds the
+// same way twice, and a constant, such as `Tier.critical`, evaluates to
+// the value constant folding gives it.
 func FuzzEvalEnum(f *testing.F) {
 	k, b := accountsKind(f)
 	for _, src := range []string{"account.tier == critical", "critical in account.tiers", "account.limits has standard", "next(account.tier) == standard",
-		"{critical: 1}[account.tier] == 1", "(account.backup ?? internal) != standard", "any x in account.tiers: {internal: true} has x", "account.plan == basic"} {
+		"{critical: 1}[account.tier] == 1", "(account.backup ?? internal) != standard", "any x in account.tiers: {internal: true} has x", "account.plan == basic",
+		"Tier.internal", "{critical: [Plan.basic, Plan.standard]}", "[critical, (Tier.standard)]"} {
 		f.Add(src, "critical")
 		f.Add(src, "")
 	}
@@ -187,5 +202,6 @@ func FuzzEvalEnum(f *testing.F) {
 		if first == nil && !reflect.DeepEqual(b.Canonical(typ, v), b.Canonical(typ, w)) {
 			t.Fatal("evaluation is not repeatable")
 		}
+		sameAsConstant(t, x, typ, b.Canonical(typ, v), first)
 	})
 }
