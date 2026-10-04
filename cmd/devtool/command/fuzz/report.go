@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"text/template"
 
@@ -97,6 +98,7 @@ GH_TOKEN or GITHUB_TOKEN needs permission to write issues.`,
 	f.StringVar(&ro.targets, "targets-result", "", "Result of the target discovery job")
 	f.StringVar(&ro.fuzz, "fuzz-result", "", "Result of the fuzz jobs")
 	f.StringVar(&ro.time, "time", "", "Time per fuzz target the campaign requested")
+	f.StringVar(&ro.summary, "summary", "", "Markdown file from fuzz summary to add to the issue")
 	for _, name := range []string{"targets-result", "fuzz-result", "time"} {
 		_ = cmd.MarkFlagRequired(name)
 	}
@@ -115,6 +117,9 @@ func report(ctx context.Context, p *pretty.Printer, o options, ro reportOptions)
 	var body bytes.Buffer
 	if err := reportBody.Execute(&body, c); err != nil {
 		return humane.Wrap(err, "can't render the issue body", "this is a bug in devtool")
+	}
+	if err := appendSummary(&body, ro.summary, c); err != nil {
+		return err
 	}
 
 	gh := github{client: o.client, api: c.APIURL, token: c.Token}
@@ -273,6 +278,30 @@ func (g github) do(ctx context.Context, method, url string, body []byte) (*http.
 			"check that the token may read and write issues")
 	}
 	return resp, nil
+}
+
+// maxBody is how long an issue or comment body may be: GitHub refuses
+// longer ones.
+const maxBody = 65536
+
+// appendSummary adds the campaign's summary from file to an issue body,
+// with the headings one level down, under the body's own text. It cuts the
+// summary short, at a line, rather than have GitHub refuse the body.
+func appendSummary(body *bytes.Buffer, file string, c campaign) humane.Error {
+	if file == "" {
+		return nil
+	}
+	b, err := os.ReadFile(file) //nolint:gosec // the summary file the workflow passed
+	if err != nil {
+		return humane.Wrap(err, "can't read the summary "+file, "pass --summary the file fuzz summary wrote, or leave it out")
+	}
+	summary := strings.ReplaceAll("\n"+string(b), "\n#", "\n##")
+	cut := fmt.Sprintf("\n\n_The summary is cut short here; the [run's summary page](%s/actions/runs/%s) has all of it._\n", c.RepoURL, c.RunID)
+	if room := maxBody - body.Len() - len(cut); len(summary) > room {
+		summary = summary[:max(0, strings.LastIndex(summary[:max(0, room)], "\n"))] + cut
+	}
+	body.WriteString(summary)
+	return nil
 }
 
 // nextPage returns the rel="next" URL of a Link header, or "".

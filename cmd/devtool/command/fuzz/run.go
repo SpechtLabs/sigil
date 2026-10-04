@@ -84,7 +84,7 @@ func run(ctx context.Context, p *pretty.Printer, stdout io.Writer, o options, ro
 	if err != nil {
 		return err
 	}
-	res, err := resultdir.Reset(root, ro.Results, logFile)
+	res, err := resultdir.Reset(root, ro.Results, logFile, resultsFile)
 	if err != nil {
 		return err
 	}
@@ -104,14 +104,16 @@ func run(ctx context.Context, p *pretty.Printer, stdout io.Writer, o options, ro
 	}
 	pl := plan(ro, meta, targets, checkout, res)
 	pl.Corpus = "not restored, --no-restore"
+	restored := 0
 	if !rs.skip {
-		pl.Corpus = restore(ctx, p, o, root, rs.remote, targets)
+		pl.Corpus, restored = restore(ctx, p, o, root, rs.remote, targets)
 	}
 	if err = ui.Header(p, pl); err != nil {
 		return err
 	}
 
 	f := newFuzzer(p, stdout, root, ro, targets, res)
+	f.head, f.restored = checkout.Head, restored
 	err = f.all(ctx)
 	_ = f.steps.Clear()
 	if err != nil && ctx.Err() != nil {

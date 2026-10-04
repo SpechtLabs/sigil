@@ -94,13 +94,8 @@ jobs:
           TARGET: ${{ matrix.target.name }}
         run: go run ./cmd/devtool fuzz run --verbose --filter "^${TARGET}\$" "$PACKAGE"
 
-      - name: Publish results in job summary
-        if: always()
-        run: |
-          if test -f fuzz-results/summary.md; then
-            cat fuzz-results/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-
+      # The summary job publishes every target's results at once, from
+      # these artifacts; fuzz-results/results.json is what it reads.
       - name: Keep logs and regression inputs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -164,6 +159,35 @@ jobs:
             echo "No fuzz job uploaded a corpus."
           fi
 
+  summary:
+    name: Summarize the campaign
+    needs: [targets, fuzz]
+    # Every fuzz job's results, whatever its result; there are none only
+    # when discovery failed and no fuzz job ran.
+    if: always() && needs.targets.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: go
+
+      - name: Collect every job's results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: fuzz-*
+          path: results
+
+      - name: Publish one summary of every target
+        run: go run ./cmd/devtool fuzz summary results >> "$GITHUB_STEP_SUMMARY"
+
   report:
     name: Report failed campaign
     needs: [targets, fuzz]
@@ -188,14 +212,28 @@ jobs:
           version: ${{ env.MISE_VERSION }}
           install_args: go
 
+      # The same summary the summary job publishes, for the issue. A setup
+      # failure leaves no results, and the issue goes out without it.
+      - name: Collect every job's results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          pattern: fuzz-*
+          path: results
+
       - name: Open or update failure issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGETS_RESULT: ${{ needs.targets.result }}
           JOBS_RESULT: ${{ needs.fuzz.result }}
           DURATION: ${{ inputs.duration || '60m' }}
-        run: >-
-          go run ./cmd/devtool fuzz report
-          --targets-result "$TARGETS_RESULT"
-          --fuzz-result "$JOBS_RESULT"
-          --time "$DURATION"
+        run: |
+          summary=()
+          if go run ./cmd/devtool fuzz summary results > fuzz-summary.md; then
+            summary=(--summary fuzz-summary.md)
+          fi
+          go run ./cmd/devtool fuzz report \
+            --targets-result "$TARGETS_RESULT" \
+            --fuzz-result "$JOBS_RESULT" \
+            --time "$DURATION" \
+            "${summary[@]}"
