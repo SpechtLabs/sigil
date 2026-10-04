@@ -31,6 +31,84 @@ where
     Arc::new(f)
 }
 
+/// A typed host function: a closure over deserializable arguments that returns
+/// a serializable result or an error message, of 0 to 4 arguments. Built with
+/// [`host_fn_typed`]; implemented for the closures themselves, which is why
+/// you never name it.
+///
+/// The `Args` parameter is a marker, the tuple of the argument types, so one
+/// function can be implemented for every arity.
+pub trait TypedHostFn<Args>: Send + Sync + 'static {
+    /// Decodes `args`, calls the closure and encodes its result.
+    fn call(&self, args: Vec<Value>) -> Result<Value, String>;
+}
+
+/// Wraps a typed closure as a [`HostFunction`]: the arguments are deserialized
+/// with serde into the closure's parameter types and the result is serialized,
+/// so the closure reads like the function it declares:
+///
+/// ```
+/// use sigil::host_fn_typed;
+///
+/// let split = host_fn_typed(|s: String, sep: String| -> Result<Vec<String>, String> {
+///     Ok(s.split(&sep).map(str::to_string).collect())
+/// });
+/// # let _ = split;
+/// ```
+///
+/// A call with the wrong number of arguments, or an argument of the wrong type,
+/// fails the call with an error message that says which: `expected 2 arguments,
+/// got 1` or `argument 2: invalid type: integer `5`, expected a string`. That
+/// message is all this adapter returns; the engine turns it into the failed
+/// evaluation's runtime error, [`crate::EvalFailure::message`], by adding the
+/// policy position and the function: `checkout/alerts.sigil:10:46: host function
+/// split failed: argument 2: invalid type: integer `5`, expected a string`.
+/// The closure returns `Result<R, E>` with `E: Display`.
+pub fn host_fn_typed<Args, F>(f: F) -> HostFunction
+where
+    F: TypedHostFn<Args>,
+    Args: 'static,
+{
+    Arc::new(move |args| f.call(args))
+}
+
+fn decode<T: serde::de::DeserializeOwned>(value: Value, position: usize) -> Result<T, String> {
+    serde_json::from_value(value).map_err(|err| format!("argument {position}: {err}"))
+}
+
+macro_rules! typed_host_fn {
+    ($count:expr; $($arg:ident),*) => {
+        impl<Func, Ret, Err, $($arg),*> TypedHostFn<($($arg,)*)> for Func
+        where
+            Func: Fn($($arg),*) -> Result<Ret, Err> + Send + Sync + 'static,
+            Ret: Serialize,
+            Err: std::fmt::Display,
+            $($arg: serde::de::DeserializeOwned,)*
+        {
+            #[allow(non_snake_case, unused_mut, unused_variables, unused_assignments)]
+            fn call(&self, args: Vec<Value>) -> Result<Value, String> {
+                if args.len() != $count {
+                    return Err(format!("expected {} argument{}, got {}", $count, if $count == 1 { "" } else { "s" }, args.len()));
+                }
+                let mut args = args.into_iter();
+                let mut position = 0;
+                $(
+                    position += 1;
+                    let $arg = decode::<$arg>(args.next().expect("the count was checked"), position)?;
+                )*
+                let result = self($($arg),*).map_err(|err| err.to_string())?;
+                serde_json::to_value(result).map_err(|err| format!("the result can't be encoded as JSON: {err}"))
+            }
+        }
+    };
+}
+
+typed_host_fn!(0;);
+typed_host_fn!(1; A1);
+typed_host_fn!(2; A1, A2);
+typed_host_fn!(3; A1, A2, A3);
+typed_host_fn!(4; A1, A2, A3, A4);
+
 /// One virtual file. Paths appear in diagnostics and positions exactly as the
 /// CLI prints them for the same relative path.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -474,7 +552,69 @@ fn is_false(b: &bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use serde_json::json;
+
+    fn call<Args: 'static>(f: impl TypedHostFn<Args>, args: Vec<Value>) -> Result<Value, String> {
+        host_fn_typed(f)(args)
+    }
+
+    #[test]
+    fn typed_host_functions_decode_their_arguments_and_encode_the_result() {
+        assert_eq!(call(|| -> Result<u32, String> { Ok(7) }, vec![]), Ok(json!(7)));
+        assert_eq!(call(|a: String| -> Result<String, String> { Ok(a.to_uppercase()) }, vec![json!("x")]), Ok(json!("X")));
+        assert_eq!(call(|a: i64, b: i64| -> Result<i64, String> { Ok(a + b) }, vec![json!(1), json!(2)]), Ok(json!(3)));
+        assert_eq!(
+            call(
+                |a: bool, b: Vec<u8>, c: Option<String>| -> Result<usize, String> {
+                    Ok(b.len() + usize::from(a) + c.map_or(0, |c| c.len()))
+                },
+                vec![json!(true), json!([1, 2]), json!("ab")]
+            ),
+            Ok(json!(5))
+        );
+        assert_eq!(
+            call(
+                |a: String, b: String, c: String, d: String| -> Result<String, String> { Ok(format!("{a}{b}{c}{d}")) },
+                vec![json!("a"), json!("b"), json!("c"), json!("d")]
+            ),
+            Ok(json!("abcd"))
+        );
+        assert_eq!(call(|v: Value| -> Result<Value, std::convert::Infallible> { Ok(v) }, vec![json!({"k": [1]})]), Ok(json!({"k": [1]})));
+    }
+
+    #[rstest]
+    #[case(vec![], "expected 1 argument, got 0")]
+    #[case(vec![json!("a"), json!("b")], "expected 1 argument, got 2")]
+    #[case(vec![json!(5)], "argument 1: invalid type: integer `5`, expected a string")]
+    #[case(vec![json!(null)], "argument 1: invalid type: null, expected a string")]
+    fn a_wrong_arity_or_type_names_the_argument(#[case] args: Vec<Value>, #[case] want: &str) {
+        assert_eq!(call(|s: String| -> Result<String, String> { Ok(s) }, args), Err(want.to_string()));
+    }
+
+    #[test]
+    fn a_later_argument_is_named_by_position_and_zero_arguments_say_so() {
+        let err = call(|_: String, _: u8| -> Result<(), String> { Ok(()) }, vec![json!("a"), json!(300)]).unwrap_err();
+        assert!(err.starts_with("argument 2: "), "{err}");
+        assert_eq!(call(|| -> Result<(), String> { Ok(()) }, vec![json!(1)]), Err("expected 0 arguments, got 1".into()));
+        assert_eq!(call(|_: u8, _: u8| -> Result<(), String> { Ok(()) }, vec![json!(1)]), Err("expected 2 arguments, got 1".into()));
+    }
+
+    #[test]
+    fn an_error_is_its_display_and_an_unserializable_result_is_reported() {
+        assert_eq!(
+            call(|| -> Result<(), std::fmt::Error> { Err(std::fmt::Error) }, vec![]),
+            Err("an error occurred when formatting an argument".into())
+        );
+        struct NoJson;
+        impl Serialize for NoJson {
+            fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+                Err(serde::ser::Error::custom("nope"))
+            }
+        }
+        let err = call(|| -> Result<NoJson, String> { Ok(NoJson) }, vec![]).unwrap_err();
+        assert!(err.contains("can't be encoded as JSON: nope"), "{err}");
+    }
 
     #[test]
     fn a_diagnostic_renders_on_one_line() {

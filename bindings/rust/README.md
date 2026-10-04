@@ -4,7 +4,7 @@ Sigil for Rust: the Go engine compiled to WebAssembly and run on [wasmtime](http
 
 The module is the stock `sigil` CLI's engine without a filesystem or a terminal. For the same files and input, its answers are the CLI's `-o json` records: the test suite compares them field for field. Regexes, Unicode comparison, duration arithmetic and integer overflow all behave exactly as they do in Go, because it is the same Go code.
 
-What Rust adds over the other hosts is control from outside. A runaway evaluation, a slow host function or a loop in the engine is killed with wasmtime's epoch interruption, without a worker thread, and a [`Pool`](#parallelism-and-the-pool) replaces the instance it killed.
+What Rust adds over the other hosts is control from outside. Runaway engine work is stopped with wasmtime's epoch interruption, without a worker thread, and a [`Pool`](#parallelism-and-the-pool) rebuilds the instance it stopped in the background. A host function that blocks in native code is stopped only once it returns; see [Deadlines](#deadlines-and-cost-bounds).
 
 ## Install
 
@@ -15,6 +15,41 @@ cargo add spechtlabs-sigil
 and `use sigil::...`: the library is named `sigil`. The crate is versioned with Sigil: `spechtlabs-sigil` 0.7.0 runs the engine of Sigil 0.7.0.
 
 The default feature `bundled` embeds `sigil.wasm` in the crate. The package ships the module in `module/sigil.wasm` (the release builds it from the tag and copies it there before `cargo publish`), so installing the crate needs no Go. `build.rs` reads `$SIGIL_WASM` first, so a build can swap in another module, and in a checkout of the repository it falls back to `../../dist/wasm/sigil.wasm`, which `mise run wasm-build` writes. Without the feature, load the module yourself with `Module::from_file` or `Module::from_bytes`.
+
+### Features
+
+| Feature | Default | Does |
+| --- | --- | --- |
+| `bundled` | on | Embeds `sigil.wasm`: `Module::bundled()`, `Sigil::bundled()` |
+| `precompiled` | off | Implies `bundled`. Compiles the module for the target at build time, so `Module::bundled()` loads native code instead of compiling it at every start; see [Startup](#startup) |
+| `tokio` | off | `Pool::evaluate_async`, `Pool::compile_async` and `Policy::eval_async`, which run the blocking calls on tokio's blocking pool. Without it the crate has no tokio in its dependency tree |
+
+## Startup
+
+Loading the module means compiling 11 MB of WebAssembly to native code with Cranelift. Measured on an Apple M-series machine with 12 cores, in a release build, `Module::bundled()` plus `Sigil::new` take:
+
+| | Wall time | CPU time |
+| --- | --- | --- |
+| default | 320 ms | 4.3 s |
+| `precompiled` | 6 ms | 20 ms |
+
+On a container with one or two CPUs the default is the CPU time, a few seconds at every process start, which hurts a CLI, a short job or a pod that restarts. The `precompiled` feature moves that work to `cargo build`: `build.rs` compiles the module for `$TARGET` with the same engine configuration the runtime uses, embeds the native code, and `Module::bundled()` loads it. The price is a longer build (about 35 s for a release build of a small program on that machine, with `cargo build`'s own compile time) and a larger binary (45 MB instead of 23 MB: it embeds the native code as well as the WebAssembly). `build.rs` compiles the module in a build script, which Cargo builds without optimization unless the package's `[profile.release.build-override]` says otherwise.
+
+How the artifact is made, precisely: the build script has its own copy of wasmtime as a build dependency, with the cargo features `cranelift`, `std` and `parallel-compilation`; the library has the same plus `runtime`, which is code for running a module, not for compiling one, so the compiled code doesn't differ. The engine configuration comes from one function, `src/engine.rs`, which the build script includes and the runtime calls: epoch interruption on and fuel off, so the artifact fits `ModuleConfig::default()`. When the build's target is the host, wasmtime detects the CPU as the runtime's engine does, so the artifact uses the same instructions a JIT would; for a cross build, which names its target, it is built for that architecture's baseline. Wasmtime still checks version, architecture and settings when it loads the artifact. It falls back to compiling, without an error, when wasmtime refuses it, and `Module::is_precompiled()` tells which happened. It also compiles when you ask for fuel metering, which the artifact isn't built for.
+
+For a module you load yourself, `Module::precompile()` serializes a compiled module, and `Module::from_precompiled(bytes, config)` or `Module::from_precompiled_file(path, config)` loads it without compiling. Both loaders are `unsafe`: the bytes are machine code that runs as it is, so they must come from `precompile` of the same version of this crate, from a source as trusted as your own binary, such as a file your build wrote into a directory only you can write to. Wasmtime refuses an artifact of another version, architecture or `ModuleConfig`, but can't tell a tampered one from a genuine one. `from_precompiled_file` maps the file, so it must not change while the module is in use. The crate has no cache directory of its own: where to keep the artifact, and when to rebuild it, is yours to decide.
+
+```rust
+use sigil::{Module, ModuleConfig};
+
+// At build time, or at the first start: compile once and keep the artifact.
+let module = Module::from_file("dist/wasm/sigil.wasm")?;
+std::fs::write(path, module.precompile()?)?;
+
+// At every start: map it instead of compiling.
+// SAFETY: the file is what `precompile` wrote, in a directory only this program writes.
+let module = unsafe { Module::from_precompiled_file(path, ModuleConfig::default())? };
+```
 
 ## Build from the repository
 
@@ -33,8 +68,7 @@ The tests build the `sigil` CLI and run the Go kind generator with `go`, to comp
 ## Example
 
 ```rust
-use serde_json::json;
-use sigil::{CompileOptions, EvalOptions, Sigil, SourceFile, host_fn};
+use sigil::{CompileOptions, EvalOptions, Sigil, SourceFile, host_fn_typed};
 use std::time::Duration;
 
 let sigil = Sigil::bundled()?;
@@ -51,9 +85,8 @@ let policy = sigil.compile(
     &files,
     CompileOptions {
         policy: Some("payments.production".into()),
-        functions: [("split".to_string(), host_fn(|args| {
-            let (Some(s), Some(sep)) = (args[0].as_str(), args[1].as_str()) else { return Err("split takes two strings".into()) };
-            Ok(json!(s.split(sep).collect::<Vec<_>>()))
+        functions: [("split".to_string(), host_fn_typed(|s: String, sep: String| -> Result<Vec<String>, String> {
+            Ok(s.split(&sep).map(str::to_string).collect())
         }))].into(),
         ..Default::default()
     },
@@ -69,6 +102,8 @@ println!("{:?} {:?} {:?}", result.decision, result.reason, result.payload);
 | Call | Returns | Like |
 | --- | --- | --- |
 | `Module::bundled()`, `from_file(path)`, `from_bytes(&[u8])` | `Module`, compiled once and cheap to clone | |
+| `module.precompile()` | the compiled module as bytes | |
+| `unsafe Module::from_precompiled(&[u8], ModuleConfig)`, `from_precompiled_file(path, ModuleConfig)` | `Module`, loaded without compiling; see [Startup](#startup) | |
 | `Sigil::new(&Module)`, `Sigil::bundled()` | `Sigil`, one instance | |
 | `sigil.version()` | `VersionInfo` | `sigil version -o json` |
 | `sigil.check(&files, &CheckOptions)` | `Vec<Diagnostic>`, errors and warnings | `sigil check -o json` |
@@ -79,6 +114,7 @@ println!("{:?} {:?} {:?}", result.decision, result.reason, result.payload);
 | `policy.eval(&input)`, `eval_with(&input, &EvalOptions)` | `EvalResult` | `sigil eval -o json` |
 | `policy.explain()` | `Explanation` | |
 | `policy.release()` | frees the handle; dropping a `Policy` does it too | |
+| `policy.eval_async(input, options)` | `tokio` feature: `eval_with` on the blocking pool, for an `Arc<Policy>` | |
 | `sigil.stopped()` | `Option<StoppedError>` | |
 
 The record types (`Diagnostic`, `EvalResult`, `EvalEntry`, `EvalFailure`, `FailedAssert`, `Explanation`, `ExplainEntry`, `TestResult`, `TestCaseResult`, `VersionInfo`) implement `Serialize` and `Deserialize` and match the CLI's JSON field for field. A field the CLI leaves out when it's empty is an `Option` or an empty `Vec`.
@@ -99,7 +135,16 @@ A `Policy` holds its instance alive, so it may outlive the `Sigil` it came from,
 
 ### Host functions
 
-A host function is an `Arc<dyn Fn(Vec<Value>) -> Result<Value, String> + Send + Sync>`; `host_fn` builds one from a closure. Arguments are the Sigil ones as JSON: durations as `1h30m`, timestamps as RFC 3339 strings, enum values as their names, structs as objects. An `Err` fails the policy's call with a runtime error that quotes the message, and so does a panic, which is caught so it never unwinds through the module. `stubs` replace an implementation of the same name, as a test file's `stubs:` do.
+A host function is an `Arc<dyn Fn(Vec<Value>) -> Result<Value, String> + Send + Sync>`. Build one with `host_fn_typed`, from a closure whose parameters and result are serde types, or with `host_fn`, from a closure over the raw JSON values:
+
+```rust
+use sigil::{host_fn, host_fn_typed};
+
+let typed = host_fn_typed(|s: String, sep: String| -> Result<Vec<String>, String> { Ok(s.split(&sep).map(str::to_string).collect()) });
+let raw = host_fn(|args| Ok(args[0].clone()));
+```
+
+`host_fn_typed` takes closures of 0 to 4 arguments that return `Result<R, E>` with `R: Serialize` and `E: Display`. A call with the wrong number of arguments, or an argument of the wrong type, fails with the message `expected 2 arguments, got 1` or `argument 2: invalid type: integer `5`, expected a string`, which the engine reports as the evaluation's runtime error with the policy position and the function in front: `checkout/alerts.sigil:10:46: host function split failed: argument 2: invalid type: integer `5`, expected a string` (`EvalFailure::message`). Arguments are the Sigil ones as JSON: durations as `1h30m`, timestamps as RFC 3339 strings, enum values as their names, structs as objects. An `Err` fails the policy's call with a runtime error that quotes the message, and so does a panic, which is caught so it never unwinds through the module. `stubs` replace an implementation of the same name, as a test file's `stubs:` do.
 
 A host function runs synchronously, on the thread that called `eval`. Epoch interruption can't stop native code: a function that blocks holds the call until it returns, and the deadline bites at the next instruction of the module. Give a function that may block its own timeout.
 
@@ -138,8 +183,8 @@ Optionally, **fuel**: compile the module with `ModuleConfig { fuel: true }` and 
 use sigil::{CompileOptions, EvalOptions, Module, Pool};
 use std::sync::Arc;
 
-let module = Module::bundled()?;           // compile once: it takes seconds
-let pool = Arc::new(Pool::new(&module, 4)?);
+let module = Module::bundled()?;           // load once, and share it
+let pool = Pool::new(&module, 4)?;             // a cheap handle: clone it to share it
 pool.compile("checkout", &files, CompileOptions { policy: Some("checkout.alerts".into()), ..Default::default() })?;
 
 let result = pool.evaluate("checkout", &input, &EvalOptions::timeout(std::time::Duration::from_millis(50)))?;
@@ -147,23 +192,34 @@ let result = pool.evaluate("checkout", &input, &EvalOptions::timeout(std::time::
 
 | Call | Does |
 | --- | --- |
-| `Pool::new(&Module, size)`, `Pool::with_options(&Module, PoolOptions)` | builds `size` instances |
-| `pool.install(name, recipe)` | `recipe: Fn(&Sigil) -> Result<Policy, Error>` runs once in each instance, and again in every replacement; use it with `Kind::compile` |
+| `Pool::new(&Module, size)`, `Pool::with_options(&Module, PoolOptions)` | builds `size` instances. `Pool` is `Clone`: the handles share one pool |
+| `pool.install(name, recipe)` | `recipe: Fn(&Sigil) -> Result<Policy, Error>` runs once in each instance, and again in every rebuilt one; use it with `Kind::compile` |
 | `pool.compile(name, &files, CompileOptions)` | `install` with `Sigil::compile` |
 | `pool.remove(name)`, `pool.names()` | |
 | `pool.evaluate(name, &input, &EvalOptions)` | evaluates on a free instance, waiting for one |
 | `pool.explain(name)`, `pool.with_policy(name, f)` | a free instance's policy |
-| `pool.stats()` | `PoolStats { size, idle, installed, replaced }` |
+| `pool.evaluate_async(name, input, EvalOptions)`, `compile_async(name, files, options)` | `tokio` feature: the same on tokio's blocking pool |
+| `pool.stats()` | `PoolStats { size, idle, installed, replaced, rebuilding }` |
 
 - An install validates on the first instance, so a recipe that fails leaves the pool as it was. The other instances follow one at a time while the rest serve: for a moment some evaluations see the old policy and some the new, never a half-installed one.
-- A call that stops its instance (an `Error::Timeout`, `OutOfFuel` or `Stopped`) gets the instance replaced before `evaluate` returns, with every policy compiled again. The error is that caller's, and the next call runs on a fresh instance. `PoolStats::replaced` counts them.
+- A call that stops its instance (an `Error::Timeout`, `OutOfFuel` or `Stopped`) returns its error at once. A background thread rebuilds the instance, instantiating the module and compiling every installed policy again, while the pool serves with one instance fewer: `PoolStats::rebuilding` counts those, `replaced` counts every instance replaced so far. A rebuild retries with a growing pause when instantiating fails, picks up an install or a remove that happens meanwhile before the instance returns to service, and ends when the last `Pool` handle is dropped (a rebuild in flight finishes its step and discards its instance).
 - `PoolOptions::acquire_timeout` bounds the wait for a free instance and fails with `Error::Busy`, so a saturated service sheds load instead of queueing forever.
-- The API blocks. Called directly on a Tokio worker thread it still works, because the crate moves the call to a thread of its own (wasmtime-wasi can't block inside a runtime), but it blocks that worker and costs a thread spawn. From async code, call it on a blocking thread:
+- The API blocks. With the `tokio` feature, `evaluate_async` waits for a free instance and evaluates on tokio's blocking pool, so an async task never blocks a worker:
 
 ```rust
-let pool = Arc::clone(&pool);
+let result = pool.evaluate_async("checkout", input, EvalOptions::default()).await?;
+```
+
+  A panic in the blocking task (a host function's is caught inside and fails the evaluation, so this is the input's `Serialize`, say) comes back as an `Error::Sigil`; the async calls never unwind into the caller, so they need no task of their own to survive one. The instance that was leased is rebuilt.
+
+  Without the feature, hop to a blocking thread yourself, which is all `evaluate_async` does:
+
+```rust
+let pool = pool.clone();
 let result = tokio::task::spawn_blocking(move || pool.evaluate("checkout", &input, &Default::default())).await??;
 ```
+
+  Calling the blocking API straight from a task also works, and blocks that worker for as long as the call takes.
 
 Each instance holds its own copy of every policy and the module's memory, so size the pool for the cores the service has.
 
@@ -238,7 +294,9 @@ for granted in admin.match_all::<Ttl>(&result)? { /* collecting kinds: every ent
 - required policies: omitted, gated, redefined, out of bounds, and a path in both lists
 - deadlines: the ABI's timeout, epoch kills (engine loop, slow host function), fuel, out-of-memory
 - stopped instances: every later call repeats the error, and dropping their policies is quiet
-- the pool: parallel evaluation, rolling installs, replacement after a kill, saturation
+- the pool: parallel evaluation, rolling installs, background rebuilds after a kill (including an install or remove during one, and dropping the pool during one), saturation, the async calls
+- startup: precompiled modules load and decide the same, mismatched artifacts are refused
+- typed host functions, and the WASI shim's bounds checks
 - no memory growth over 10,000 evaluations
 - kind builder parity with Go's `Kind.Schema` for six kinds, and every builder error
 

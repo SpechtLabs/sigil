@@ -51,7 +51,7 @@ Every evaluation through the module encodes the input as JSON, decodes it into t
 
 Go compiled to WebAssembly runs several times slower than native Go, and that, more than JSON, is what a host outside Go pays. A few tens of microseconds per decision is small next to the network request or the queue message that usually triggers it, and the example service already spends far more on HTTP and telemetry than on evaluating. A binary encoding would shrink the JSON share, but not the WebAssembly one, so it waits for a host that needs it.
 
-Loading the module costs more: about 33 ms to compile 11 MB of WebAssembly and start the Go runtime. A service does it once, at startup, and a page does it once per worker.
+Loading the module costs more: about 33 ms to compile 11 MB of WebAssembly and start the Go runtime. A service does it once, at startup, and a page does it once per worker. The Rust crate compiles it with Cranelift, about 4 s of CPU (0.3 s of wall time on 12 cores), and its `precompiled` feature moves that to build time, which brings the load down to milliseconds.
 
 ## Why the module enforces its own deadline
 

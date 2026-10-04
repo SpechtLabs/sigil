@@ -28,7 +28,7 @@ async fn start(dir: &std::path::Path, interval: &str) -> Running {
     ];
     let config = Config::from_lookup(|n| env.iter().find(|(k, _)| *k == n).map(|(_, v)| (*v).to_owned())).unwrap();
     let metrics = Metrics::new("test");
-    let service = tokio::task::spawn_blocking(move || Service::new(config, common::module(), metrics)).await.unwrap().unwrap();
+    let service = Service::new(config, common::module(), metrics).unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let (stop, stopped) = oneshot::channel();

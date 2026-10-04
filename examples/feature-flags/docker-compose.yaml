@@ -49,8 +49,9 @@ services:
     # what `up --wait` and the e2e suite wait for.
     healthcheck:
       test: ["CMD", "/usr/local/bin/featuregate", "healthcheck"]
-      # Startup compiles the engine and every flag in every pool instance.
-      start_period: 30s
+      # The engine is precompiled into the binary, so startup is a flag compile
+      # per pool instance: well under a second, with room for a slow host.
+      start_period: 10s
       interval: 5s
       timeout: 3s
       retries: 12

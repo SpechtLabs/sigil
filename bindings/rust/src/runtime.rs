@@ -13,42 +13,34 @@
 //! module frees once it has read it.
 
 use std::collections::HashMap;
-use std::io;
 use std::panic::{self, AssertUnwindSafe};
-use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::task::{Context, Poll};
 use std::thread::ThreadId;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use tokio::io::AsyncWrite;
 use wasmtime::{Caller, Extern, Instance, Linker, Memory, Store, StoreLimits, StoreLimitsBuilder, Trap, TypedFunc};
-use wasmtime_wasi::cli::{IsTerminal, StdoutStream};
-use wasmtime_wasi::p1::{self, WasiP1Ctx};
-use wasmtime_wasi::{I32Exit, WasiCtxBuilder};
 
 use crate::error::{Error, SigilError, StoppedError};
 use crate::module::{Limits, Module, Ticker, ticks};
 use crate::types::{Diagnostic, HostFunction};
+use crate::wasi::{self, Exit, Stderr};
 
 /// The ABI version this crate speaks.
 pub const ABI_VERSION: i32 = 1;
-
-/// How much of the module's standard error a stopped instance's error quotes:
-/// its first bytes, and its last.
-const STDERR_HEAD: usize = 1024;
-const STDERR_TAIL: usize = 3072;
 
 /// The deadline of a call without one: far enough not to fire.
 const FOREVER: u64 = u64::MAX / 4;
 
 /// What the store carries.
 pub(crate) struct State {
-    wasi: WasiP1Ctx,
     limits: StoreLimits,
+    /// What the module wrote to standard error.
+    pub(crate) stderr: Stderr,
+    /// The monotonic clock's zero.
+    pub(crate) started: Instant,
     /// The host functions of the policy being evaluated; set around each eval.
     functions: Option<Arc<HashMap<String, HostFunction>>>,
 }
@@ -69,7 +61,7 @@ pub(crate) struct Runtime {
     call: TypedFunc<(i32, i32), i64>,
     ticker: Arc<Ticker>,
     fuel: bool,
-    stderr: Tail,
+    stderr: Stderr,
     stopped: Arc<OnceLock<StoppedError>>,
     /// The thread a call runs on, while it runs: a host function that calls back
     /// into its own instance is told apart from another thread waiting its turn.
@@ -104,7 +96,7 @@ struct Request<'a, T: Serialize> {
 
 /// Declares the module's imports: WASI preview 1 and `sigil.host_call`.
 pub(crate) fn add_imports(linker: &mut Linker<State>) -> Result<(), Error> {
-    p1::add_to_linker_sync(linker, |state: &mut State| &mut state.wasi).map_err(linking)?;
+    wasi::add_to_linker(linker).map_err(linking)?;
     linker.func_wrap("sigil", "host_call", host_call).map_err(linking)?;
     Ok(())
 }
@@ -116,18 +108,12 @@ fn linking(err: wasmtime::Error) -> Error {
 impl Runtime {
     /// Instantiates the module and initializes the Go runtime.
     pub(crate) fn new(module: &Module, limits: &Limits) -> Result<Self, Error> {
-        off_runtime(|| Self::build(module, limits))
-    }
-
-    fn build(module: &Module, limits: &Limits) -> Result<Self, Error> {
-        let stderr = Tail::default();
-        let mut wasi = WasiCtxBuilder::new();
-        wasi.stderr(stderr.clone());
+        let stderr = Stderr::default();
         let mut memory = StoreLimitsBuilder::new().trap_on_grow_failure(false);
         if let Some(max) = limits.max_memory {
             memory = memory.memory_size(max);
         }
-        let state = State { wasi: wasi.build_p1(), limits: memory.build(), functions: None };
+        let state = State { limits: memory.build(), functions: None, stderr: stderr.clone(), started: Instant::now() };
         let mut store = Store::new(&module.engine, state);
         store.limiter(|s| &mut s.limits);
         store.epoch_deadline_trap();
@@ -263,12 +249,12 @@ impl Runtime {
         let _watch = limits.deadline.map(|_| self.ticker.watch());
 
         let owner = Arc::clone(&self.owner);
-        let outcome = off_runtime(|| {
+        let outcome = {
             *owner.lock().unwrap_or_else(|e| e.into_inner()) = Some(std::thread::current().id());
             let outcome = self.call_guarded(request, len);
             *owner.lock().unwrap_or_else(|e| e.into_inner()) = None;
             outcome
-        });
+        };
         match outcome {
             Ok(Ok(response)) => Ok(response),
             Ok(Err(error)) => Err(error),
@@ -293,8 +279,11 @@ impl Runtime {
         let packed = self.call.call(&mut self.store, (ptr, len))?;
         self.free.call(&mut self.store, (ptr, len))?;
         let (rptr, rlen) = unpack(packed);
-        let mut response = vec![0u8; rlen as usize];
-        self.memory.read(&self.store, rptr as usize, &mut response)?;
+        // The length comes from the guest: check it against its memory before
+        // allocating, so a bad response is an error and not a 4 GiB allocation.
+        let response = slice(self.memory.data(&self.store), rptr, rlen)
+            .ok_or_else(|| wasmtime::Error::msg("the module returned a response outside its memory"))?
+            .to_vec();
         self.free.call(&mut self.store, (rptr as i32, rlen as i32))?;
         Ok(Ok(response))
     }
@@ -336,8 +325,10 @@ impl Runtime {
 fn host_call(mut caller: Caller<'_, State>, ptr: i32, len: i32) -> wasmtime::Result<i64> {
     let memory =
         caller.get_export("memory").and_then(Extern::into_memory).ok_or_else(|| wasmtime::Error::msg("the module has no memory"))?;
-    let mut request = vec![0u8; len as u32 as usize];
-    memory.read(&caller, ptr as u32 as usize, &mut request)?;
+    // Guest-controlled: bounds-check before copying.
+    let request = slice(memory.data(&caller), ptr as u32, len as u32)
+        .ok_or_else(|| wasmtime::Error::msg("the module sent a host call outside its memory"))?
+        .to_vec();
 
     let response = match run_host_function(caller.data().functions.as_deref(), &request) {
         Ok(result) => serde_json::json!({ "result": result }),
@@ -352,6 +343,9 @@ fn host_call(mut caller: Caller<'_, State>, ptr: i32, len: i32) -> wasmtime::Res
         .typed::<i32, i32>(&caller)?;
     let rlen = i32::try_from(response.len()).map_err(|_| wasmtime::Error::msg("a host function's response is too large"))?;
     let rptr = alloc.call(&mut caller, rlen)?;
+    if rptr == 0 && rlen > 0 {
+        return Err(wasmtime::Error::msg("the module couldn't allocate memory for a host function's response"));
+    }
     memory.write(&mut caller, rptr as u32 as usize, &response)?;
     Ok(pack(rptr as u32, rlen as u32))
 }
@@ -379,6 +373,12 @@ fn run_host_function(functions: Option<&HashMap<String, HostFunction>>, request:
     }
 }
 
+/// `len` bytes at `ptr` of `data`, if they are inside it.
+fn slice(data: &[u8], ptr: u32, len: u32) -> Option<&[u8]> {
+    let start = ptr as usize;
+    data.get(start..start.checked_add(len as usize)?)
+}
+
 fn pack(ptr: u32, len: u32) -> i64 {
     ((u64::from(ptr) << 32) | u64::from(len)) as i64
 }
@@ -397,95 +397,13 @@ fn bad_response(err: &serde_json::Error) -> Error {
 
 /// Why the module stopped, for the error's message.
 fn describe(err: &wasmtime::Error) -> String {
-    if let Some(exit) = err.downcast_ref::<I32Exit>() {
+    if let Some(exit) = err.downcast_ref::<Exit>() {
         return format!("it exited with code {}", exit.0);
     }
     if let Some(trap) = err.downcast_ref::<Trap>() {
         return format!("it trapped: {trap}");
     }
     format!("{err:#}")
-}
-
-/// What the module wrote to standard error, which the Go runtime does when
-/// it's badly wrong: a stopped instance's error quotes it. The first lines (the
-/// fatal error itself) and the last (where it happened) are kept; the middle
-/// of a long goroutine dump is not.
-#[derive(Clone, Default)]
-struct Tail(Arc<Mutex<TailBuf>>);
-
-#[derive(Default)]
-struct TailBuf {
-    head: Vec<u8>,
-    tail: Vec<u8>,
-    elided: bool,
-}
-
-impl Tail {
-    fn contents(&self) -> Vec<u8> {
-        let buf = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        let mut out = buf.head.clone();
-        if buf.elided {
-            out.extend_from_slice(b"\n[...]\n");
-        }
-        out.extend_from_slice(&buf.tail);
-        out
-    }
-}
-
-impl IsTerminal for Tail {
-    fn is_terminal(&self) -> bool {
-        false
-    }
-}
-
-impl StdoutStream for Tail {
-    fn async_stream(&self) -> Box<dyn AsyncWrite + Send + Sync> {
-        Box::new(self.clone())
-    }
-}
-
-impl AsyncWrite for Tail {
-    fn poll_write(self: Pin<&mut Self>, _: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
-        let mut kept = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        let room = STDERR_HEAD.saturating_sub(kept.head.len());
-        let (head, rest) = buf.split_at(room.min(buf.len()));
-        kept.head.extend_from_slice(head);
-        kept.tail.extend_from_slice(rest);
-        let excess = kept.tail.len().saturating_sub(STDERR_TAIL);
-        if excess > 0 {
-            kept.tail.drain(..excess);
-            kept.elided = true;
-        }
-        Poll::Ready(Ok(buf.len()))
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-}
-
-/// Runs `f` where wasmtime's WASI can block: off a Tokio worker thread.
-///
-/// wasmtime-wasi's synchronous preview 1 drives its async implementation with
-/// `Handle::block_on`, which panics on a thread that runs async tasks ("Cannot
-/// start a runtime from within a runtime"). A host that calls this crate from
-/// async code, by mistake or on purpose, would get that panic from deep inside
-/// the module's first system call. Inside a runtime the call moves to a scoped
-/// thread, which has no runtime and so takes wasmtime's own: it costs a thread
-/// spawn (tens of microseconds) and still blocks the caller, so async code
-/// should call on a blocking thread, see [`crate::Pool`].
-pub(crate) fn off_runtime<T: Send>(f: impl FnOnce() -> T + Send) -> T {
-    if tokio::runtime::Handle::try_current().is_err() {
-        return f();
-    }
-    std::thread::scope(|scope| match scope.spawn(f).join() {
-        Ok(value) => value,
-        Err(panic) => std::panic::resume_unwind(panic),
-    })
 }
 
 #[cfg(test)]
@@ -500,27 +418,6 @@ mod tests {
     #[case(u32::MAX, u32::MAX)]
     fn packs_and_unpacks_an_address_and_a_length(#[case] ptr: u32, #[case] len: u32) {
         assert_eq!(unpack(pack(ptr, len)), (ptr, len));
-    }
-
-    fn write(tail: &Tail, bytes: &[u8]) {
-        let mut tail = tail.clone();
-        let waker = std::task::Waker::noop();
-        let mut cx = Context::from_waker(waker);
-        assert!(matches!(Pin::new(&mut tail).poll_write(&mut cx, bytes), Poll::Ready(Ok(n)) if n == bytes.len()));
-    }
-
-    #[test]
-    fn standard_error_keeps_its_first_and_last_bytes() {
-        let tail = Tail::default();
-        write(&tail, b"fatal error: out of memory\n");
-        assert_eq!(tail.contents(), b"fatal error: out of memory\n");
-        write(&tail, &vec![b'x'; 10_000]);
-        write(&tail, b"\nmain.main()\n");
-        let shown = String::from_utf8(tail.contents()).unwrap();
-        assert!(shown.starts_with("fatal error: out of memory\n"), "{shown:.40}");
-        assert!(shown.contains("\n[...]\n"));
-        assert!(shown.ends_with("\nmain.main()\n"));
-        assert!(shown.len() <= STDERR_HEAD + STDERR_TAIL + 16, "{}", shown.len());
     }
 
     #[test]

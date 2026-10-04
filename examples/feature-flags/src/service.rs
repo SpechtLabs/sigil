@@ -28,6 +28,16 @@ impl Service {
     /// Loads the first policy bundle and wires the engine. Blocking: it
     /// compiles every flag in every pool instance. An error says what to fix.
     pub fn new(config: Config, module: Module, metrics: Metrics) -> Result<Self, String> {
+        let precompiled = module.is_precompiled();
+        metrics.module_precompiled.set(i64::from(precompiled));
+        if precompiled {
+            tracing::info!("the Sigil module loaded precompiled");
+        } else {
+            tracing::warn!(
+                fuel = config.evaluation_fuel.is_some(),
+                "the Sigil module was compiled at startup, about 4 s of CPU time at every start; build the crate with the precompiled feature (and leave FEATUREGATE_EVALUATION_FUEL unset) to load it in milliseconds"
+            );
+        }
         let source = config.policies.clone().map_or(Source::Embedded, Source::Directory);
         let store = Store::open(module, source, config.workers, config.evaluation_timeout)?;
         let store = Arc::new(store);

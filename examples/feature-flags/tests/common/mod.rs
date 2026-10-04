@@ -44,12 +44,10 @@ pub async fn harness(env: &[(&str, &str)]) -> Harness {
     try_harness(env).await.expect("the service starts")
 }
 
-/// Like [`harness`], with the startup error for a bundle that doesn't load. Sigil
-/// instances are built on a blocking thread: wasmtime-wasi starts its own
-/// runtime and can't do that on an async one.
+/// Like [`harness`], with the startup error for a bundle that doesn't load.
 pub async fn try_harness(env: &[(&str, &str)]) -> Result<Harness, String> {
     let env: Vec<(String, String)> = env.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect();
-    tokio::task::spawn_blocking(move || build(&env)).await.unwrap()
+    build(&env)
 }
 
 fn build(env: &[(String, String)]) -> Result<Harness, String> {

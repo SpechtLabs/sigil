@@ -27,7 +27,7 @@ mise run demo    # sends every request of requests/cases.json and checks each an
 
 The tasks in [`.mise.toml`](./.mise.toml) run in `examples/feature-flags/`; from the repository root, use `mise run -C examples/feature-flags <task>`. The image builds `sigil.wasm` and the crate itself, so `up` needs nothing on the host but Docker. The stack publishes the same host ports as the other examples, so run one stack at a time. The dashboard is at <http://localhost:3000/d/featuregate>.
 
-Without Docker, `mise run dev` serves featuregate on `localhost:8080` with the sample flags, reloading edits to `policies/flags/` every two seconds, and logs in a readable format without exporting telemetry. Starting takes several seconds: wasmtime compiles the 11 MB module, then every flag compiles in every pool instance.
+Without Docker, `mise run dev` serves featuregate on `localhost:8080` with the sample flags, reloading edits to `policies/flags/` every two seconds, and logs in a readable format without exporting telemetry. Starting takes tens of milliseconds: the crate's `precompiled` feature compiles the 11 MB module to native code at build time, so startup loads it instead of compiling it (seconds of CPU at every start otherwise), and then every flag compiles in every pool instance. The price is a longer `cargo build` and a larger binary.
 
 | Task | What it does |
 | --- | --- |
@@ -189,8 +189,10 @@ The store reads every `*.sigil` file under the directory (skipping names that st
   | `featuregate_reloads_total` | `result`: `loaded`, `unchanged`, `failed` |
   | `featuregate_loaded_info` | `source`, `digest`; 1 for the bundle serving |
   | `featuregate_flags_loaded`, `featuregate_ready` | |
+  | `featuregate_module_precompiled` | 1 when the Sigil module loaded precompiled, 0 when each start compiles it (fuel metering, or a build without the feature) |
   | `featuregate_killed_flags_unmatched` | kill-switch names no loaded flag has; alert on above 0 |
   | `featuregate_pool_replacements_total` | instances replaced after a kill or trap |
+  | `featuregate_pool_rebuilding` | instances being rebuilt in the background after a kill; the pool serves with that many fewer meanwhile |
   | `featuregate_http_requests_total` | `method` (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS or OTHER), `route`, `status` |
   | `featuregate_http_request_duration_seconds` | `method`, `route` |
   | `featuregate_http_requests_in_flight`, `featuregate_build_info{version}` | |

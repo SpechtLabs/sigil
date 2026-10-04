@@ -207,6 +207,8 @@ async fn readyz(State(app): State<AppState>) -> Response {
 }
 
 async fn metrics(State(app): State<AppState>) -> Response {
+    // Rebuilds happen on the pool's own threads, so the gauge is read when scraped.
+    app.metrics.pool_rebuilding.set(app.engine.store().current().pool.stats().rebuilding as i64);
     ([(header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")], app.metrics.render()).into_response()
 }
 

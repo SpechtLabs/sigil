@@ -693,3 +693,49 @@ fn eval_results_survive_a_json_round_trip() {
     let back: EvalResult = serde_json::from_value(as_json(&result)).unwrap();
     assert_eq!(back, result);
 }
+
+mod typed_host_functions {
+    use super::*;
+    use sigil::host_fn_typed;
+
+    fn sre() -> Value {
+        json(&deploy_gates().join("teams/payments/testdata/sre.json"))
+    }
+
+    fn compile_with(s: &sigil::Sigil, function: sigil::HostFunction) -> sigil::Policy {
+        let files = sigil_files(&deploy_gates());
+        s.compile(&files, CompileOptions { functions: [("split".to_string(), function)].into(), ..compile_opts("payments.production") })
+            .unwrap()
+    }
+
+    #[test]
+    fn a_typed_split_gives_the_untyped_ones_answers() {
+        let s = sigil();
+        let typed = compile_with(
+            &s,
+            host_fn_typed(|text: String, sep: String| -> Result<Vec<String>, String> {
+                Ok(text.split(&sep).map(str::to_string).collect())
+            }),
+        );
+        let untyped = compile_with(&s, split());
+        assert_eq!(typed.eval(&sre()).unwrap(), untyped.eval(&sre()).unwrap());
+    }
+
+    #[test]
+    fn a_wrong_argument_type_fails_the_evaluation_naming_the_function_and_argument() {
+        let s = sigil();
+        let policy =
+            compile_with(&s, host_fn_typed(|count: i64, _sep: String| -> Result<Vec<String>, String> { Ok(vec![count.to_string()]) }));
+        let error = policy.eval(&sre()).unwrap().error.unwrap();
+        assert_eq!(error.kind, FailureKind::Runtime);
+        assert!(error.message.contains("host function split failed: argument 1: invalid type: string"), "{}", error.message);
+    }
+
+    #[test]
+    fn a_wrong_arity_fails_the_evaluation_naming_the_function() {
+        let s = sigil();
+        let policy = compile_with(&s, host_fn_typed(|_text: String| -> Result<Vec<String>, String> { Ok(vec![]) }));
+        let error = policy.eval(&sre()).unwrap().error.unwrap();
+        assert!(error.message.contains("host function split failed: expected 1 argument, got 2"), "{}", error.message);
+    }
+}

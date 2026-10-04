@@ -529,6 +529,12 @@ SigilError: invalid duration "90 minutes"
 
 `spechtlabs-sigil` loads the module on wasmtime and speaks its ABI. The library is named `sigil`. It needs Rust 1.98 or later, and the `bundled` feature (on by default) embeds the module the package ships, or the one `$SIGIL_WASM` names.
 
+| Feature | Default | Does |
+| --- | --- | --- |
+| `bundled` | on | Embeds the module: `Module::bundled`, `Sigil::bundled` |
+| `precompiled` | off | Implies `bundled`. Compiles the module for the target at build time, and `Module::bundled` loads that native code instead of compiling. Costs a longer build and a larger binary |
+| `tokio` | off | `Pool::evaluate_async`, `Pool::compile_async` and `Policy::eval_async`. Without it the crate has no tokio in its dependency tree |
+
 | Item | Holds |
 | --- | --- |
 | `Module`, `ModuleConfig`, `Limits` | The compiled module, how it's compiled, and the bounds of an instance |
@@ -545,10 +551,14 @@ To embed Sigil in Rust step by step, see [Embed Sigil in Rust](/guides/embed-rus
 
 | Member | Signature | Does |
 | --- | --- | --- |
-| `Module::bundled` | `() -> Result<Module, Error>` | Compiles the bundled module. Takes seconds; do it once |
+| `Module::bundled` | `() -> Result<Module, Error>` | Loads the bundled module: compiles it (about 4 s of CPU) or, with `precompiled`, loads the precompiled native code (milliseconds). Do it once |
 | `Module::from_file` | `(path) -> Result<Module, Error>` | Compiles the module at a path |
 | `Module::from_bytes` | `(&[u8]) -> Result<Module, Error>` | Compiles the module's bytes |
 | `Module::bundled_with`, `from_file_with`, `from_bytes_with` | `(.., ModuleConfig) -> Result<Module, Error>` | The same, with fuel metering on or off |
+| `module.precompile` | `() -> Result<Vec<u8>, Error>` | Serializes the compiled module: native code for this machine, version and `ModuleConfig` |
+| `Module::from_precompiled` | `unsafe (&[u8], ModuleConfig) -> Result<Module, Error>` | Loads what `precompile` returned, without compiling |
+| `Module::from_precompiled_file` | `unsafe (path, ModuleConfig) -> Result<Module, Error>` | The same from a file, memory mapped |
+| `module.is_precompiled` | `() -> bool` | Whether the module was loaded from a precompiled artifact |
 | `Sigil::new` | `(&Module) -> Result<Sigil, Error>` | Instantiates the module and starts the Go runtime |
 | `Sigil::with_limits` | `(&Module, Limits) -> Result<Sigil, Error>` | The same, with [limits](#limits-and-options) |
 | `Sigil::bundled` | `() -> Result<Sigil, Error>` | `Module::bundled`, then `Sigil::new` |
@@ -563,7 +573,8 @@ To embed Sigil in Rust step by step, see [Embed Sigil in Rust](/guides/embed-rus
 
 - `Module` is cheap to clone. `Sigil`, `Policy`, `Pool` and `Module` are `Send` and `Sync`.
 - An instance runs one call at a time: concurrent calls on one wait for each other. A host function that calls back into the instance that runs it fails with an error.
-- The wasmtime-wasi layer can't block inside a Tokio runtime, so a call made on a runtime's worker thread runs on a thread of its own. Call from `spawn_blocking` instead.
+- Called on an async runtime's worker thread, a call blocks that worker. Use the `tokio` feature's async variants, or `spawn_blocking`.
+- The two `from_precompiled` loaders are `unsafe`: the bytes are machine code that runs as it is. They must be what `precompile` returned for the same crate version, architecture and `ModuleConfig`, from a source as trusted as the program's own binary. Wasmtime refuses an artifact of another version, architecture or settings with an error, but can't tell a tampered one from a genuine one. `from_precompiled_file` maps the file, which must not change while the module is in use.
 
 ### `Policy`
 
@@ -574,6 +585,7 @@ To embed Sigil in Rust step by step, see [Embed Sigil in Rust](/guides/embed-rus
 | `policy.handle` | `() -> u32` | The module's handle |
 | `policy.eval` | `(&I) -> Result<EvalResult, Error>` | The [`eval`](#eval) op, with no timeout. `I: Serialize + ?Sized` |
 | `policy.eval_with` | `(&I, &EvalOptions) -> Result<EvalResult, Error>` | The same, with a timeout, a grace period and fuel |
+| `policy.eval_async` | `(self: &Arc<Policy>, I, EvalOptions) -> Result<EvalResult, Error>` | `tokio` feature: `eval_with` on tokio's blocking pool; async |
 | `policy.explain` | `() -> Result<Explanation, Error>` | The [`explain`](#explain) op on the handle |
 | `policy.release` | `(self) -> Result<(), Error>` | The [`release`](#release) op. Dropping a `Policy` releases it too |
 
@@ -597,7 +609,7 @@ A `Policy` keeps its instance alive, so it may outlive the `Sigil` it came from.
 | `op_deadline` | `Limits` | The hard deadline of ops without a timeout, and of an evaluation without one. Default 60 s; `None` for none |
 | `max_memory` | `Limits` | The most linear memory an instance may grow to, in bytes. Default 4 GiB. The module needs about 8 MiB to start |
 
-`HostFunction` is `Arc<dyn Fn(Vec<Value>) -> Result<Value, String> + Send + Sync>`, and `host_fn(closure)` builds one. A host function runs on the calling thread, inside `eval`. An `Err` or a panic fails the call with a runtime error that quotes the message.
+`HostFunction` is `Arc<dyn Fn(Vec<Value>) -> Result<Value, String> + Send + Sync>`. `host_fn(closure)` builds one from a closure over the raw JSON values, and `host_fn_typed(closure)` from a closure of 0 to 4 arguments that deserializes each argument with serde and serializes the result: `host_fn_typed(|s: String, sep: String| -> Result<Vec<String>, String> { .. })`. The closure returns `Result<R, E>` with `R: Serialize` and `E: Display`. A wrong number of arguments or an argument of the wrong type fails the call with a runtime error that names the argument. A host function runs on the calling thread, inside `eval`. An `Err` or a panic fails the call with a runtime error that quotes the message.
 
 ### Hard deadlines and fuel
 
@@ -624,7 +636,9 @@ A `Policy` keeps its instance alive, so it may outlive the `Sigil` it came from.
 | `pool.evaluate` | `(name, &I, &EvalOptions) -> Result<EvalResult, Error>` | Evaluates on a free instance, waiting for one |
 | `pool.explain` | `(name) -> Result<Explanation, Error>` | The [`explain`](#explain) op on a free instance's policy |
 | `pool.with_policy` | `(name, FnOnce(&Policy) -> Result<T, Error>) -> Result<T, Error>` | Runs a closure with a free instance's policy |
-| `pool.stats` | `() -> PoolStats` | `size`, `idle`, `installed`, `replaced` |
+| `pool.evaluate_async` | `(name, I, EvalOptions) -> Result<EvalResult, Error>` | `tokio` feature: `evaluate` on tokio's blocking pool. `I: Serialize + Send + 'static`; async |
+| `pool.compile_async` | `(name, Vec<SourceFile>, CompileOptions) -> Result<(), Error>` | `tokio` feature: `compile` on tokio's blocking pool; async |
+| `pool.stats` | `() -> PoolStats` | `size`, `idle`, `installed`, `replaced`, `rebuilding` |
 
 | `PoolOptions` field | Is |
 | --- | --- |
@@ -632,9 +646,10 @@ A `Policy` keeps its instance alive, so it may outlive the `Sigil` it came from.
 | `limits` | The [`Limits`](#limits-and-options) of every instance |
 | `acquire_timeout` | How long a call waits for a free instance before `Error::Busy`. `None` waits forever |
 
-- An error that stops an instance gets it replaced by a fresh one, with every policy compiled again, before `evaluate` returns.
+- `Pool` is `Clone`: the handles share one pool.
+- An error that stops an instance is returned to its caller at once. A background thread rebuilds the instance, instantiating the module and compiling every installed policy again, and the pool serves with one instance fewer meanwhile (`PoolStats::rebuilding`). A rebuild picks up an install or a remove that happens meanwhile before the instance returns to service, retries with a growing pause when instantiating fails, and ends when the last handle is dropped.
 - An install reaches the instances one at a time while the rest serve.
-- The API blocks; from async code, call it on `tokio::task::spawn_blocking`.
+- The API blocks; from async code, use `evaluate_async` with the `tokio` feature, or call it on `tokio::task::spawn_blocking`.
 
 ### Errors
 

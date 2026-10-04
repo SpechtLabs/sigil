@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use sigil::{Error, EvalOptions, EvalResult, FailureKind};
+use sigil::{Error, EvalOptions, EvalResult, FailureKind, Pool};
 use tokio::task::JoinSet;
 use tracing::field::Empty;
 use tracing::{Instrument, Span};
@@ -87,14 +87,15 @@ impl Engine {
         };
         let options = EvalOptions { timeout: Some(self.timeout), grace: Some(GRACE), fuel: self.fuel };
         let started = Instant::now();
-        let run_span = span.clone();
+        let pool: Pool = (*bundle.pool).clone();
         let policy = info.policy.clone();
-        // The pool blocks for a free instance and then for the evaluation, so
-        // it runs on a blocking thread; the span goes along into it.
-        let joined = tokio::task::spawn_blocking(move || run_span.in_scope(|| bundle.pool.evaluate(&policy, &input, &options))).await;
+        // The pool's async call waits for a free instance and evaluates on tokio's
+        // blocking pool. A panic in it comes back as an error, which `read` counts as
+        // `internal`: a failed evaluation like any other.
+        let outcome = pool.evaluate_async(policy, input, options).await;
         self.metrics.evaluation_duration.with_label_values(&[&info.key]).observe(started.elapsed().as_secs_f64());
 
-        let evaluation = match joined.map_err(from_join).and_then(read) {
+        let evaluation = match read(outcome) {
             Ok(verdict) => {
                 self.metrics.evaluations.with_label_values(&[&info.key, verdict.decision(), verdict.reason()]).inc();
                 let evaluation = ofrep::evaluation(&info.key, &info.policy, &info.spec, &verdict);
@@ -141,13 +142,6 @@ pub struct Failure {
     pub detail: String,
     /// The pool replaced the instance the call stopped.
     pub replaced: bool,
-}
-
-/// A panic on the evaluation thread is a failed evaluation like any other: the
-/// flag answers off, and the panic is logged and counted instead of taking the
-/// request down.
-fn from_join(e: tokio::task::JoinError) -> Failure {
-    Failure { kind: "internal", detail: format!("the evaluation thread failed: {e}"), replaced: false }
 }
 
 /// Reads an evaluation's outcome, which is either a decision or a failure.
