@@ -84,18 +84,24 @@ func FuzzDecodeInput(f *testing.F) {
 	})
 }
 
+// roundTripPayload is the payload FuzzGoKindRoundTrip's kinds decide. The
+// count and text defaults vary per input, so SetDefault replaces these
+// after Build rather than each input writing its own into the tags: a
+// payload type per input is one reflect.StructOf would keep for the life
+// of the fuzz worker, which then grows until it runs out of memory.
+type roundTripPayload struct {
+	Count int64  `policy:"count,default=0"`
+	Text  string `policy:"text,default=\"\""`
+	Level Tier   `policy:"level,default=standard"`
+}
+
 func FuzzGoKindRoundTrip(f *testing.F) {
 	f.Add(int64(0), "", false)
 	f.Add(int64(-9223372036854775808), "\"\n世界", true)
 	f.Fuzz(func(t *testing.T, n int64, s string, all bool) {
-		payload := reflect.StructOf([]reflect.StructField{
-			{Name: "Count", Type: reflect.TypeFor[int64](), Tag: reflect.StructTag(`policy:` + constant.Format("count,default="+constant.Format(n)))},
-			{Name: "Text", Type: reflect.TypeFor[string](), Tag: reflect.StructTag(`policy:` + constant.Format("text,default="+constant.Format(s)))},
-			{Name: "Level", Type: reflect.TypeFor[Tier](), Tag: `policy:"level,default=standard"`},
-		})
 		opts := gokind.Options{Name: "Generated", Version: 2, Accepts: new(1), Input: reflect.TypeFor[struct{}](), Collect: all,
 			Enums:     []gokind.Enum{{Type: reflect.TypeFor[Tier](), Values: []string{"critical", "standard"}}},
-			Decisions: []gokind.Decision{{Name: "allow", Payload: payload, Reasons: []string{"ok"}}},
+			Decisions: []gokind.Decision{{Name: "allow", Payload: reflect.TypeFor[roundTripPayload](), Reasons: []string{"ok"}}},
 			Default:   &gokind.Default{Decision: "allow", Reason: "ok"},
 		}
 		if !all {
@@ -106,6 +112,19 @@ func FuzzGoKindRoundTrip(f *testing.F) {
 		k, _, errs := gokind.Build(opts)
 		if errs != nil {
 			t.Fatal(errs)
+		}
+		// The defaults the tags `policy:"count,default=<n>"` and
+		// `policy:"text,default=<s>"` would give.
+		allow := k.Decision("allow")
+		for name, want := range map[string]any{"count": n, "text": s} {
+			field := allow.Field(name)
+			src := constant.Format(want)
+			if derrs := gokind.SetDefault(field, "allow", src); derrs != nil {
+				t.Fatalf("default=%s doesn't parse: %v", src, derrs)
+			}
+			if !reflect.DeepEqual(field.Default, want) {
+				t.Fatalf("default=%s is %#v, want %#v", src, field.Default, want)
+			}
 		}
 		again, errs := check.LoadKind("export.sigil", []byte(k.Source()))
 		if errs != nil {
