@@ -65,12 +65,31 @@ func FuzzParseExpr(f *testing.F) {
 		printed := ast.Sprint(x)
 		y, errs := parser.ParseExpr("printed.sigil", []byte(printed))
 		if errs != nil {
+			// Sprint wraps every operator in parentheses, which nest a level
+			// of their own, so a tree more than half MaxNesting deep may print
+			// past the limit, though nothing else may stop it parsing.
+			if 2*exprDepth(x) > parser.MaxNesting && len(errs) == 1 && strings.Contains(errs[0].Msg, "levels deep") {
+				return
+			}
 			t.Fatalf("printed expression %q does not parse: %v", printed, errs)
 		}
 		if !reflect.DeepEqual(exprShape(x), exprShape(y)) {
 			t.Fatalf("printing changed expression structure: %q -> %q", src, printed)
 		}
 	})
+}
+
+// exprDepth returns how many levels the tree under x nests, x included.
+func exprDepth(x ast.Expr) int {
+	deepest := 0
+	ast.Inspect(x, func(n ast.Expr) bool {
+		if n == x {
+			return true
+		}
+		deepest = max(deepest, exprDepth(n))
+		return false // exprDepth(n) went below n
+	})
+	return 1 + deepest
 }
 
 // Preorder node kinds, arities, operators and leaf values describe the tree
