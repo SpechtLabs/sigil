@@ -29,7 +29,7 @@ type reportOptions struct {
 	targets string
 	fuzz    string
 	time    string
-	summary string // a Markdown file fuzz summary wrote, or empty
+	results string // where the fuzz jobs' artifacts were downloaded, or empty
 }
 
 func defaultOptions() *options {

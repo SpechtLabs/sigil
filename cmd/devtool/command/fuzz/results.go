@@ -35,9 +35,11 @@ type targetResult struct {
 	NewInputs int64  `json:"new_inputs"`
 	// Input is the failing input go test saved, relative to the module
 	// root; Replay is the command that replays it, or that reruns a target
-	// that failed without one.
-	Input  string `json:"input,omitempty"`
-	Replay string `json:"replay,omitempty"`
+	// that failed without one; Message is what go test said about the
+	// failure.
+	Input   string `json:"input,omitempty"`
+	Replay  string `json:"replay,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // failed reports whether the target failed, with or without an input.
@@ -129,7 +131,17 @@ func summaryMarkdown(runs []runResults) string {
 		b.WriteString("## Targets\n\n")
 	}
 
-	// Failures first, then the rest in the order they ran.
+	b.WriteString(targetTable(runs))
+	return b.String()
+}
+
+// targetTable renders every target of runs as a Markdown table, failures
+// first, then the rest in the order they ran.
+func targetTable(runs []runResults) string {
+	var all []targetResult
+	for _, r := range runs {
+		all = append(all, r.Targets...)
+	}
 	slices.SortStableFunc(all, func(a, b targetResult) int {
 		switch {
 		case a.failed() == b.failed():
@@ -146,17 +158,87 @@ func summaryMarkdown(runs []runResults) string {
 			{Text: ui.Count(float64(t.Execs))}, {Text: fmt.Sprint(t.NewInputs)}, {Text: resultMark(t.Result) + " " + t.Result},
 		})
 	}
-	b.WriteString(ui.Markdown(summaryColumns, rows))
+	return ui.Markdown(summaryColumns, rows)
+}
+
+// failureMarkdown describes a failed target: what go test said, and how
+// to replay it. links, when there are any, follow it, e.g. to its job.
+func failureMarkdown(t targetResult, links ...string) string {
+	var b strings.Builder
+	if t.Input != "" {
+		fmt.Fprintf(&b, "**%s** in `%s` found a failing input, saved as `%s`.\n\n", t.Target, t.Dir, t.Input)
+	} else {
+		fmt.Fprintf(&b, "**%s** in `%s` failed.\n\n", t.Target, t.Dir)
+	}
+	if t.Message != "" {
+		b.WriteString("```text\n" + t.Message + "\n```\n\n")
+	}
+	verb := "Rerun"
+	if t.Input != "" {
+		verb = "Replay"
+	}
+	b.WriteString(verb + " it with:\n\n```sh\n" + t.Replay + "\n```\n\n")
+	if len(links) > 0 {
+		b.WriteString(strings.Join(links, " · ") + "\n\n")
+	}
 	return b.String()
 }
 
-// failureMarkdown describes a failed target and how to replay it.
-func failureMarkdown(t targetResult) string {
-	what := fmt.Sprintf("**%s** in `%s` failed. Rerun it with:", t.Target, t.Dir)
-	if t.Input != "" {
-		what = fmt.Sprintf("**%s** in `%s` found a failing input, saved as `%s`. Replay it with:", t.Target, t.Dir, t.Input)
+// failureLines is how many lines of go test's output a failure's message
+// keeps.
+const failureLines = 30
+
+// failureMessage returns what go test said about a failure: the lines
+// under the innermost --- FAIL header, up to where it says it saved the
+// input, without their common indentation. Without a header, as when the
+// package doesn't build, it's the output's last lines.
+func failureMessage(out string) string {
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	start := -1
+	for i, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), "--- FAIL:") {
+			start = i
+		}
 	}
-	return what + "\n\n```sh\n" + t.Replay + "\n```\n\n"
+	var msg []string
+	if start < 0 {
+		msg = lines[max(0, len(lines)-failureLines):]
+	} else {
+		for _, l := range lines[start+1:] {
+			t := strings.TrimSpace(l)
+			if strings.HasPrefix(t, "Failing input written to") || t == "FAIL" || strings.HasPrefix(t, "FAIL\t") || strings.HasPrefix(t, "exit status") {
+				break
+			}
+			msg = append(msg, l)
+		}
+	}
+	for len(msg) > 0 && strings.TrimSpace(msg[len(msg)-1]) == "" {
+		msg = msg[:len(msg)-1]
+	}
+	if len(msg) > failureLines {
+		return dedent(msg[:failureLines]) + "\n…"
+	}
+	return dedent(msg)
+}
+
+// dedent joins lines without the indentation they all share.
+func dedent(lines []string) string {
+	indent := -1
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		if n := len(l) - len(strings.TrimLeft(l, " \t")); indent < 0 || n < indent {
+			indent = n
+		}
+	}
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		if len(l) >= max(indent, 0) {
+			out[i] = l[max(indent, 0):]
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // resultMark is the symbol before a result in the table.
