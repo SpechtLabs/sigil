@@ -28,6 +28,9 @@ on:
 # tools it never runs.
 env:
   MISE_TASK_RUN_AUTO_INSTALL: "false"
+  # mise itself, pinned; ci.yaml explains why.
+  # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
+  MISE_VERSION: 2026.9.18
 
 permissions:
   contents: read
@@ -50,6 +53,7 @@ jobs:
       - name: Set up mise
         uses: jdx/mise-action@94c60b39bc2d90ab2f9bab27f38d3cc4812c1834 # v5.1.0
         with:
+          version: ${{ env.MISE_VERSION }}
           install_args: node markdownlint-cli2 yamllint
 
       - name: Lint docs
@@ -65,6 +69,7 @@ jobs:
       - name: Set up mise
         uses: jdx/mise-action@94c60b39bc2d90ab2f9bab27f38d3cc4812c1834 # v5.1.0
         with:
+          version: ${{ env.MISE_VERSION }}
           # docs-build renders roadmap.yml before building the site.
           install_args: bun github:SierraSoftworks/roadmap
 

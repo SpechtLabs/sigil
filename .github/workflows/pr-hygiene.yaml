@@ -8,6 +8,11 @@ on:
   pull_request_target:
     types: [opened, reopened, edited, synchronize]
 
+env:
+  # mise itself, pinned; ci.yaml explains why.
+  # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
+  MISE_VERSION: 2026.9.18
+
 jobs:
   pr-title:
     name: Validate PR title
@@ -67,6 +72,7 @@ jobs:
       - name: Set up mise
         uses: jdx/mise-action@94c60b39bc2d90ab2f9bab27f38d3cc4812c1834 # v5.1.0
         with:
+          version: ${{ env.MISE_VERSION }}
           install_args: bun
 
       - name: Install release-please
