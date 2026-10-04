@@ -137,7 +137,7 @@ func TestSaveRetriesOnTopOfAConcurrentPush(t *testing.T) {
 		"  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\n" +
 		"  git -C '" + bob.Dir + "' push -q origin " + bobs + ":refs/heads/" + Branch + "\nfi\n"
 	hooks := filepath.Join(alice.Dir, ".git", "hooks")
-	if werr := os.WriteFile(filepath.Join(hooks, "pre-push"), []byte(hook), 0o700); werr != nil { //nolint:gosec // a hook must be executable
+	if werr := os.WriteFile(filepath.Join(hooks, "pre-push"), []byte(hook), 0o700); werr != nil {
 		t.Fatal(werr)
 	}
 
@@ -175,7 +175,7 @@ func TestErrors(t *testing.T) {
 	}
 
 	// A push the remote refuses every time gives up with advice.
-	if err := os.WriteFile(filepath.Join(r.Dir, ".git", "hooks", "pre-push"), []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil { //nolint:gosec // a hook must be executable
+	if err := os.WriteFile(filepath.Join(r.Dir, ".git", "hooks", "pre-push"), []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	_, err := r.Save(t.Context(), cacheDir(t, map[string]string{"example.com/m/a/FuzzA/1": "one"}), []Target{fuzzA}, "test")

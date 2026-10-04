@@ -126,7 +126,7 @@ func (r Repo) Restore(ctx context.Context, cache string, targets []Target) (int,
 	for i, dest := range dests {
 		content, berr := readBlob(blobs, ids[i])
 		if berr != nil {
-			return i, humane.Wrap(berr, "can't read the corpus from "+r.Ref(), "fetch it again with devtool fuzz corpus pull")
+			return i, berr
 		}
 		if werr := writeInput(dest, content); werr != nil {
 			return i, werr
@@ -175,64 +175,19 @@ func (r Repo) commit(ctx context.Context, src string, targets []Target, from str
 			return "", 0, err
 		}
 	}
-
-	var files, paths []string
-	withNew := 0
-	for _, t := range targets {
-		have := map[string]bool{}
-		for _, e := range tree[t.branchPath()] {
-			have[e.name] = true
-		}
-		names, lerr := inputs(filepath.Join(src, t.cachePath()))
-		if lerr != nil {
-			return "", 0, lerr
-		}
-		before := len(files)
-		for _, name := range names {
-			if !have[name] {
-				files = append(files, filepath.Join(src, t.cachePath(), name))
-				paths = append(paths, path.Join(t.branchPath(), name))
-			}
-		}
-		if len(files) > before {
-			withNew++
-		}
-	}
-	if len(files) == 0 {
-		return "", 0, nil
-	}
-
-	ids, err := r.git(ctx, nil, strings.NewReader(strings.Join(files, "\n")+"\n"), "hash-object", "-w", "--stdin-paths")
-	if err != nil {
+	add, err := missing(tree, src, targets)
+	if err != nil || len(add.files) == 0 {
 		return "", 0, err
 	}
-	var index strings.Builder
-	for i, id := range strings.Fields(ids) {
-		index.WriteString("100644 " + id + "\t" + paths[i] + "\n")
-	}
-
-	tmp, terr := os.MkdirTemp("", "devtool-corpus-")
-	if terr != nil {
-		return "", 0, humane.Wrap(terr, "can't create a temporary index", "check that the temporary directory is writable")
-	}
-	defer func() { _ = os.RemoveAll(tmp) }()
-	env := append(os.Environ(), "GIT_INDEX_FILE="+filepath.Join(tmp, "index"))
-	if found {
-		if _, err = r.git(ctx, env, nil, "read-tree", r.Ref()); err != nil {
-			return "", 0, err
-		}
-	}
-	if _, err = r.git(ctx, env, strings.NewReader(index.String()), "update-index", "--add", "--index-info"); err != nil {
-		return "", 0, err
-	}
-	treeID, err := r.git(ctx, env, nil, "write-tree")
+	treeID, err := r.writeTree(ctx, found, add)
 	if err != nil {
 		return "", 0, err
 	}
 
+	n := len(add.files)
 	msg := fmt.Sprintf("Add %d %s to %d fuzz %s\n\nFrom %s.\n",
-		len(files), plural(len(files), "input", "inputs"), withNew, plural(withNew, "target", "targets"), from)
-	args := []string{"commit-tree", strings.TrimSpace(treeID), "-m", msg}
+		n, plural(n, "input", "inputs"), add.targets, plural(add.targets, "target", "targets"), from)
+	args := []string{"commit-tree", treeID, "-m", msg}
 	if found {
 		args = append(args, "-p", r.Ref())
 	}
@@ -240,7 +195,74 @@ func (r Repo) commit(ctx context.Context, src string, targets []Target, from str
 	if err != nil {
 		return "", 0, err
 	}
-	return strings.TrimSpace(commit), len(files), nil
+	return strings.TrimSpace(commit), n, nil
+}
+
+// additions are the inputs a commit adds: each file in the source
+// directory, the path it gets on the branch, and how many targets they're
+// for.
+type additions struct {
+	files, paths []string
+	targets      int
+}
+
+// missing returns the inputs of targets in src that tree, the branch's
+// inputs by directory, doesn't have.
+func missing(tree map[string][]entry, src string, targets []Target) (additions, humane.Error) {
+	var add additions
+	for _, t := range targets {
+		have := map[string]bool{}
+		for _, e := range tree[t.branchPath()] {
+			have[e.name] = true
+		}
+		names, err := inputs(filepath.Join(src, t.cachePath()))
+		if err != nil {
+			return additions{}, err
+		}
+		before := len(add.files)
+		for _, name := range names {
+			if !have[name] {
+				add.files = append(add.files, filepath.Join(src, t.cachePath(), name))
+				add.paths = append(add.paths, path.Join(t.branchPath(), name))
+			}
+		}
+		if len(add.files) > before {
+			add.targets++
+		}
+	}
+	return add, nil
+}
+
+// writeTree writes the inputs into the object database and returns the
+// tree of the fetched branch, or of nothing when the remote has none, with
+// them added. It builds the tree in a temporary index, so the checkout's
+// own stays as it is.
+func (r Repo) writeTree(ctx context.Context, found bool, add additions) (string, humane.Error) {
+	ids, err := r.git(ctx, nil, strings.NewReader(strings.Join(add.files, "\n")+"\n"), "hash-object", "-w", "--stdin-paths")
+	if err != nil {
+		return "", err
+	}
+	var index strings.Builder
+	for i, id := range strings.Fields(ids) {
+		index.WriteString("100644 " + id + "\t" + add.paths[i] + "\n")
+	}
+
+	tmp, terr := os.MkdirTemp("", "devtool-corpus-")
+	if terr != nil {
+		return "", humane.Wrap(terr, "can't create a temporary index", "check that the temporary directory is writable")
+	}
+	defer func() { _ = os.RemoveAll(tmp) }()
+	env := append(os.Environ(), "GIT_INDEX_FILE="+filepath.Join(tmp, "index"))
+	if found {
+		if _, err = r.git(ctx, env, nil, "read-tree", r.Ref()); err != nil {
+			return "", err
+		}
+	}
+	if _, err = r.git(ctx, env, strings.NewReader(index.String()), "update-index", "--add", "--index-info"); err != nil {
+		return "", err
+	}
+	treeID, err := r.git(ctx, env, nil, "write-tree")
+	return strings.TrimSpace(treeID), err
 }
 
 // entry is an input on the branch: its file name and its blob.
@@ -297,22 +319,23 @@ func inputs(dir string) ([]string, humane.Error) {
 
 // readBlob reads the next object `git cat-file --batch` printed, which
 // must be the blob id.
-func readBlob(r *bufio.Reader, id string) ([]byte, error) {
+func readBlob(r *bufio.Reader, id string) ([]byte, humane.Error) {
+	advice := "fetch the corpus again with devtool fuzz corpus pull"
 	header, err := r.ReadString('\n')
 	if err != nil {
-		return nil, err
+		return nil, humane.Wrap(err, "git cat-file stopped before object "+id, advice)
 	}
 	fields := strings.Fields(header)
 	if len(fields) != 3 || fields[0] != id || fields[1] != "blob" {
-		return nil, fmt.Errorf("git cat-file printed %q for object %s", strings.TrimSpace(header), id)
+		return nil, humane.New(fmt.Sprintf("git cat-file printed %q for object %s", strings.TrimSpace(header), id), advice)
 	}
 	size, err := strconv.Atoi(fields[2])
 	if err != nil {
-		return nil, err
+		return nil, humane.Wrap(err, "git cat-file printed an invalid size for object "+id, advice)
 	}
 	content := make([]byte, size+1) // and the newline after it
 	if _, err = io.ReadFull(r, content); err != nil {
-		return nil, err
+		return nil, humane.Wrap(err, "git cat-file cut object "+id+" short", advice)
 	}
 	return bytes.Clone(content[:size]), nil
 }
