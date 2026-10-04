@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1](https://github.com/SpechtLabs/sigil/compare/v0.7.0...v0.7.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **deps:** update dependency @spechtlabs/sigil to v0.7.0 ([#154](https://github.com/SpechtLabs/sigil/issues/154)) ([f2958d5](https://github.com/SpechtLabs/sigil/commit/f2958d57450c08a07fc583d81a9456884ed1b8d3))
+* **deps:** update docs dependencies (major) ([#99](https://github.com/SpechtLabs/sigil/issues/99)) ([7446bab](https://github.com/SpechtLabs/sigil/commit/7446bab95b47c7f21b5346395fef7fb9c8c98e69))
+
 ## [0.7.0](https://github.com/SpechtLabs/sigil/compare/v0.6.4...v0.7.0) (2026-10-04)
 
 
