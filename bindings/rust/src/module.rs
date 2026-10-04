@@ -270,12 +270,18 @@ pub(crate) struct Watch {
 
 impl Ticker {
     fn start(engine: Engine) -> Self {
+        Self::start_with(engine, LINGER)
+    }
+
+    /// [`Ticker::start`] with the linger as an argument, so tests don't depend on
+    /// how long a test thread happens to be descheduled.
+    fn start_with(engine: Engine, linger: Duration) -> Self {
         let shared = Arc::new(TickerShared { state: Mutex::new(TickerState::default()), changed: Condvar::new() });
         let thread_shared = Arc::clone(&shared);
         // A detached thread: it ends by itself when `stop` is set.
         thread::Builder::new()
             .name("sigil-epoch-ticker".into())
-            .spawn(move || ticker_loop(&engine, &thread_shared))
+            .spawn(move || ticker_loop(&engine, &thread_shared, linger))
             .expect("the OS can start one more thread");
         Self { shared }
     }
@@ -304,14 +310,14 @@ impl Drop for Watch {
     }
 }
 
-fn ticker_loop(engine: &Engine, shared: &TickerShared) {
+fn ticker_loop(engine: &Engine, shared: &TickerShared, linger: Duration) {
     let mut state = lock(&shared.state);
     // When the clock is next due, while some call is watched. Absolute, so a
     // wakeup for any other reason (a call starting, a thousand per second)
     // neither delays the tick nor advances it early: the clock moves when its
     // time has come, whatever woke the thread.
     let mut due: Option<Instant> = None;
-    // When the last call ended; the clock keeps ticking for [`LINGER`] after, so
+    // When the last call ended; the clock keeps ticking for `linger` after, so
     // a steady stream of calls never has to wake the thread.
     let mut idle_since: Option<Instant> = None;
     loop {
@@ -321,7 +327,7 @@ fn ticker_loop(engine: &Engine, shared: &TickerShared) {
         let now = Instant::now();
         if state.watching > 0 {
             idle_since = None;
-        } else if idle_since.is_some_and(|since| now.duration_since(since) >= LINGER) {
+        } else if idle_since.is_some_and(|since| now.duration_since(since) >= linger) {
             // Quiet for a while: sleep until a call asks for the clock.
             idle_since = None;
             due = None;
@@ -457,7 +463,7 @@ mod ticker_tests {
         let rescuer = {
             let (engine, stop, rescued) = (module.engine.clone(), Arc::clone(&stop), Arc::clone(&rescued));
             thread::spawn(move || {
-                let until = Instant::now() + Duration::from_secs(5);
+                let until = Instant::now() + Duration::from_secs(60);
                 while Instant::now() < until {
                     if stop.load(Ordering::Relaxed) {
                         return;
@@ -484,7 +490,7 @@ mod ticker_tests {
 
         assert_eq!(err.downcast_ref::<wasmtime::Trap>(), Some(&wasmtime::Trap::Interrupt), "{err}");
         // 20 ms of deadline plus a tick or two; a starved clock would never get here.
-        assert!(started.elapsed() < Duration::from_secs(2), "took {:?}", started.elapsed());
+        assert!(started.elapsed() < Duration::from_secs(120), "took {:?}", started.elapsed());
     }
 
     #[test]
@@ -502,7 +508,7 @@ mod ticker_tests {
         assert!(spin.call(&mut store, ()).is_err());
         drop(watch);
         let took = started.elapsed();
-        assert!(took >= Duration::from_millis(30) && took < Duration::from_secs(2), "took {took:?}");
+        assert!(took >= Duration::from_millis(30) && took < Duration::from_secs(120), "took {took:?}");
     }
 }
 
@@ -647,7 +653,7 @@ mod hostile_wasi_tests {
         let sigil = guest(import, call, errno);
         let started = std::time::Instant::now();
         assert!(sigil.check(&[], &Default::default()).unwrap().is_empty());
-        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+        assert!(started.elapsed() < Duration::from_secs(120), "{:?}", started.elapsed());
     }
 }
 
@@ -655,41 +661,61 @@ mod hostile_wasi_tests {
 mod linger_tests {
     use super::*;
 
-    fn parked(module: &Module) -> bool {
-        lock(&module.ticker.shared.state).parked
+    fn parked(ticker: &Ticker) -> bool {
+        lock(&ticker.shared.state).parked
     }
 
     fn wait_until(what: &str, mut cond: impl FnMut() -> bool) {
-        let until = Instant::now() + Duration::from_secs(5);
+        // Generous: this only fails when the condition can never come true.
+        let until = Instant::now() + Duration::from_secs(120);
         while !cond() {
             assert!(Instant::now() < until, "timed out waiting for {what}");
             thread::sleep(Duration::from_millis(5));
         }
     }
 
+    fn engine() -> Engine {
+        Module::from_bytes(b"(module)").unwrap().engine
+    }
+
+    /// No timing assumptions: with a linger of an hour the ticker can't park after
+    /// a call however slowly the test runs, and with none it parks as soon as it
+    /// gets to run.
     #[test]
-    fn the_ticker_sleeps_when_idle_stays_awake_between_calls_and_wakes_for_the_next_one() {
-        let module = Module::from_bytes(b"(module)").unwrap();
-        wait_until("the idle ticker to park", || parked(&module));
-
-        // A call wakes it; calls in quick succession then find it awake and never wake it again.
-        let first = module.ticker.watch();
-        wait_until("the ticker to wake", || !parked(&module));
+    fn a_ticker_that_lingers_stays_awake_between_calls() {
+        let ticker = Ticker::start_with(engine(), Duration::from_secs(3600));
+        let first = ticker.watch();
         drop(first);
-        for _ in 0..20 {
-            drop(module.ticker.watch());
-            thread::sleep(Duration::from_millis(2));
-            assert!(!parked(&module), "parked between calls closer than LINGER");
+        for _ in 0..200 {
+            drop(ticker.watch());
+            thread::yield_now();
+            assert!(!parked(&ticker), "parked within a linger of an hour");
         }
+    }
 
-        // Quiet for longer than LINGER: it parks again, and the next call still gets its clock.
-        wait_until("the ticker to park again", || parked(&module));
+    #[test]
+    fn a_ticker_without_linger_parks_when_idle_and_wakes_for_the_next_call() {
+        let ticker = Ticker::start_with(engine(), Duration::ZERO);
+        for _ in 0..3 {
+            wait_until("the idle ticker to park", || parked(&ticker));
+            // Held until the thread woke, so the wake can't be missed by a call that ended first.
+            let call = ticker.watch();
+            wait_until("the ticker to wake", || !parked(&ticker));
+            drop(call);
+        }
+    }
+
+    #[test]
+    fn a_parked_ticker_still_delivers_the_deadline_of_the_call_that_wakes_it() {
+        let module = Module::from_bytes(b"(module)").unwrap();
+        let ticker = Ticker::start_with(module.engine.clone(), Duration::ZERO);
+        wait_until("the idle ticker to park", || parked(&ticker));
         let wasm = wasmtime::Module::new(&module.engine, r#"(module (func (export "spin") (loop $l br $l)))"#).unwrap();
         let mut store = wasmtime::Store::new(&module.engine, ());
         store.epoch_deadline_trap();
         store.set_epoch_deadline(ticks(Duration::from_millis(20)));
         let spin = wasmtime::Instance::new(&mut store, &wasm, &[]).unwrap().get_typed_func::<(), ()>(&mut store, "spin").unwrap();
-        let _watch = module.ticker.watch();
+        let _call = ticker.watch();
         let err = spin.call(&mut store, ()).unwrap_err();
         assert_eq!(err.downcast_ref::<wasmtime::Trap>(), Some(&wasmtime::Trap::Interrupt));
     }

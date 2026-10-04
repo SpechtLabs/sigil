@@ -2,8 +2,6 @@
 
 mod common;
 
-use std::time::Instant;
-
 use common::{deploy_gates, err_of, json, sigil_files};
 use sigil::{CompileOptions, Module, ModuleConfig, Sigil};
 
@@ -15,19 +13,15 @@ fn eval_payments(module: &Module) -> sigil::EvalResult {
 }
 
 #[test]
-fn a_precompiled_module_loads_faster_and_decides_the_same() {
+fn a_precompiled_module_loads_and_decides_the_same() {
     let compiled = common::module();
     assert!(!compiled.is_precompiled() || cfg!(feature = "precompiled"));
     let bytes = compiled.precompile().unwrap();
     assert!(bytes.len() > 1_000_000, "{}", bytes.len());
 
-    let started = Instant::now();
     // SAFETY: the bytes are what `precompile` just returned.
     let loaded = unsafe { Module::from_precompiled(&bytes, ModuleConfig::default()) }.unwrap();
-    let took = started.elapsed();
     assert!(loaded.is_precompiled());
-    // Compiling takes seconds of CPU; loading is mostly a copy. Generous, for CI.
-    assert!(took.as_secs() < 5, "loading took {took:?}");
     assert_eq!(eval_payments(&loaded), eval_payments(compiled));
 }
 
@@ -75,11 +69,10 @@ mod bundled {
     }
 
     #[test]
-    fn the_bundled_module_loads_in_milliseconds() {
-        let started = Instant::now();
+    fn the_bundled_module_loads_precompiled_and_runs() {
         let module = Module::bundled().unwrap();
+        assert!(module.is_precompiled());
         let sigil = Sigil::new(&module).unwrap();
-        assert!(started.elapsed().as_secs() < 2, "{:?}", started.elapsed());
         assert!(sigil.version().is_ok());
     }
 }

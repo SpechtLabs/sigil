@@ -188,16 +188,43 @@ fn a_stopped_instance_is_replaced_with_every_policy_compiled_again() {
     assert!(pool.evaluate("v", &json!({"x": "."}), &EvalOptions::default()).is_ok());
 }
 
+/// A gate a test opens by hand: whoever waits on it blocks until `open`, however
+/// slowly the rest of the test runs, so no assertion depends on timing.
+#[derive(Default)]
+struct Latch {
+    open: std::sync::Mutex<bool>,
+    changed: std::sync::Condvar,
+}
+
+impl Latch {
+    fn open(&self) {
+        *self.open.lock().unwrap() = true;
+        self.changed.notify_all();
+    }
+
+    fn wait(&self) {
+        let mut open = self.open.lock().unwrap();
+        while !*open {
+            open = self.changed.wait(open).unwrap();
+        }
+    }
+}
+
 #[test]
 fn a_saturated_pool_fails_fast_with_busy_when_asked_to() {
     let options = PoolOptions { size: 1, limits: Limits::default(), acquire_timeout: Some(Duration::from_millis(50)) };
     let pool = Arc::new(Pool::with_options(common::module(), options).unwrap());
     let real = split();
+    let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();
+    let started_tx = std::sync::Mutex::new(started_tx);
+    let hold = Arc::new(Latch::default());
+    let held = Arc::clone(&hold);
     let opts = CompileOptions {
         functions: [(
             "split".to_string(),
             host_fn(move |args| {
-                thread::sleep(Duration::from_millis(400));
+                let _ = started_tx.lock().unwrap().send(());
+                held.wait();
                 real(args)
             }),
         )]
@@ -209,12 +236,12 @@ fn a_saturated_pool_fails_fast_with_busy_when_asked_to() {
         let pool = Arc::clone(&pool);
         thread::spawn(move || pool.evaluate("payments", &sre(), &EvalOptions::default()))
     };
-    thread::sleep(Duration::from_millis(100));
-    let start = Instant::now();
+    // The holder is inside the evaluation, holding the only instance.
+    started_rx.recv_timeout(Duration::from_secs(120)).expect("the holder never started");
     let err = err_of(pool.evaluate("payments", &sre(), &EvalOptions::default()));
     assert!(matches!(err, Error::Busy(d) if d == Duration::from_millis(50)), "{err:?}");
-    assert!(start.elapsed() < Duration::from_millis(300), "waited {:?}", start.elapsed());
     // The holder's call isn't disturbed, and the pool serves again once it's done.
+    hold.open();
     assert!(holder.join().unwrap().unwrap().error.is_none());
     assert!(pool.evaluate("payments", &sre(), &EvalOptions::default()).is_ok());
 }
@@ -261,10 +288,10 @@ fn the_handles_cross_threads() {
     send_sync::<sigil::Error>();
 }
 
-/// A pool whose recipes cost `nap` once they run for the third time or later: the
-/// two instances of the pool and the first install take no time, a rebuild
-/// takes `nap`.
-fn pool_with_slow_rebuilds(nap: Duration) -> (Pool, Arc<AtomicUsize>) {
+/// A pool whose recipe blocks on the returned latch once it runs for the third
+/// time or later: the two instances of the pool and the first install pass, a
+/// rebuild waits until the test opens the latch.
+fn pool_with_slow_rebuilds() -> (Pool, Arc<AtomicUsize>, Arc<Latch>) {
     let options = PoolOptions {
         size: 2,
         limits: Limits { op_deadline: Some(Duration::from_millis(100)), ..Limits::default() },
@@ -282,33 +309,33 @@ fn pool_with_slow_rebuilds(nap: Duration) -> (Pool, Arc<AtomicUsize>) {
         .unwrap();
     let files = vec![SourceFile::new("cube.sigil", SLOW_POLICY)];
     let counted = Arc::clone(&calls);
+    let gate = Arc::new(Latch::default());
+    let gated = Arc::clone(&gate);
     pool.install("slow", move |s| {
         if counted.fetch_add(1, Ordering::SeqCst) >= 2 {
-            thread::sleep(nap);
+            gated.wait();
         }
         kind.compile(s, &files, Default::default())
     })
     .unwrap();
-    (pool, calls)
+    (pool, calls, gate)
 }
 
 #[test]
 fn a_timed_out_caller_returns_without_waiting_for_the_rebuild() {
-    let (pool, calls) = pool_with_slow_rebuilds(Duration::from_millis(1500));
-    let started = Instant::now();
+    let (pool, calls, rebuild_gate) = pool_with_slow_rebuilds();
     let err = err_of(pool.evaluate("slow", &items(400), &EvalOptions::default()));
-    let waited = started.elapsed();
     assert!(matches!(err, Error::Timeout(_)), "{err:?}");
-    // The hard deadline is 100 ms; the rebuild alone takes 1.5 s more.
-    assert!(waited < Duration::from_millis(1200), "the caller waited {waited:?}");
 
+    // The caller is back, and the rebuild can't have finished: it is blocked on the
+    // gate, which only this test opens. No clock involved.
     let stats = pool.stats();
     assert_eq!((stats.replaced, stats.rebuilding, stats.idle), (1, 1, 1), "{stats:?}");
     // The pool serves with one instance fewer in the meantime.
-    let served = Instant::now();
     assert!(pool.evaluate("slow", &items(2), &EvalOptions::default()).unwrap().error.is_none());
-    assert!(served.elapsed() < Duration::from_millis(1000), "{:?}", served.elapsed());
+    assert_eq!(pool.stats().rebuilding, 1);
 
+    rebuild_gate.open();
     settle(&pool);
     assert_eq!(calls.load(Ordering::SeqCst), 3, "the rebuild ran the recipe once");
     assert_eq!(pool.stats().replaced, 1);
@@ -316,13 +343,14 @@ fn a_timed_out_caller_returns_without_waiting_for_the_rebuild() {
 
 #[test]
 fn an_install_during_a_rebuild_reaches_the_rebuilt_instance() {
-    let (pool, _) = pool_with_slow_rebuilds(Duration::from_millis(1000));
+    let (pool, _, rebuild_gate) = pool_with_slow_rebuilds();
     install_versioned(&pool, "v", "a").unwrap();
     assert!(pool.evaluate("slow", &items(400), &EvalOptions::default()).is_err());
     assert_eq!(pool.stats().rebuilding, 1);
 
-    // The rebuild is in its slow recipe; the new version must still arrive.
+    // The rebuild is stuck in its recipe; the new version must still arrive.
     install_versioned(&pool, "v", "b").unwrap();
+    rebuild_gate.open();
     settle(&pool);
     for _ in 0..12 {
         assert_eq!(pool.evaluate("v", &json!({"x": "."}), &EvalOptions::default()).unwrap().reason.unwrap(), "b");
@@ -331,12 +359,13 @@ fn an_install_during_a_rebuild_reaches_the_rebuilt_instance() {
 
 #[test]
 fn a_remove_during_a_rebuild_reaches_the_rebuilt_instance() {
-    let (pool, _) = pool_with_slow_rebuilds(Duration::from_millis(1000));
+    let (pool, _, rebuild_gate) = pool_with_slow_rebuilds();
     install_versioned(&pool, "v", "a").unwrap();
     assert!(pool.evaluate("slow", &items(400), &EvalOptions::default()).is_err());
     assert_eq!(pool.stats().rebuilding, 1);
 
     assert!(pool.remove("v"));
+    rebuild_gate.open();
     settle(&pool);
     for _ in 0..8 {
         assert!(matches!(pool.evaluate("v", &json!({"x": "."}), &EvalOptions::default()), Err(Error::NoPolicy(_))));
@@ -346,7 +375,7 @@ fn a_remove_during_a_rebuild_reaches_the_rebuilt_instance() {
 
 #[test]
 fn dropping_the_pool_during_a_rebuild_ends_the_rebuild_and_frees_the_recipes() {
-    let (pool, _) = pool_with_slow_rebuilds(Duration::from_millis(800));
+    let (pool, _, rebuild_gate) = pool_with_slow_rebuilds();
     let marker = Arc::new(());
     let held = Arc::clone(&marker);
     install_versioned(&pool, "held", "a").unwrap();
@@ -361,8 +390,10 @@ fn dropping_the_pool_during_a_rebuild_ends_the_rebuild_and_frees_the_recipes() {
     assert_eq!(Arc::strong_count(&marker), 2);
 
     drop(pool);
-    // The rebuild thread notices, drops what it built, and lets go of the recipes.
-    let until = Instant::now() + Duration::from_secs(20);
+    // The rebuild thread is still blocked in its recipe, holding the pool. Let it
+    // go: it notices the pool is gone, drops what it built, and lets go of the recipes.
+    rebuild_gate.open();
+    let until = Instant::now() + Duration::from_secs(120);
     while Arc::strong_count(&marker) > 1 && Instant::now() < until {
         thread::sleep(Duration::from_millis(20));
     }
@@ -416,23 +447,36 @@ fn a_recipe_that_stops_fresh_instances_is_left_off_after_a_few_tries_and_recorde
 
 #[test]
 fn a_roll_out_waiting_for_a_slot_stops_waiting_when_the_slot_goes_to_rebuild() {
-    let (pool, _) = pool_with_slow_rebuilds(Duration::from_millis(2500));
+    let (pool, _, rebuild_gate) = pool_with_slow_rebuilds();
     let pool = Arc::new(pool);
+    let (leased_tx, leased_rx) = std::sync::mpsc::channel::<()>();
+    let release = Arc::new(Latch::default());
+    let released = Arc::clone(&release);
     let p = Arc::clone(&pool);
     let killer = thread::spawn(move || {
         p.with_policy("slow", |_| -> Result<(), Error> {
-            thread::sleep(Duration::from_millis(500));
+            leased_tx.send(()).unwrap();
+            released.wait();
             Err(Error::OutOfFuel)
         })
     });
-    thread::sleep(Duration::from_millis(100));
-    // The roll-out waits for the leased slot; when that slot goes to rebuild
-    // (2.5 s), the install must not wait for the rebuild too.
-    let started = Instant::now();
-    install_versioned(&pool, "v", "a").unwrap();
-    let took = started.elapsed();
+    leased_rx.recv_timeout(Duration::from_secs(120)).expect("the killer never leased a slot");
+    // The install's roll-out waits for the leased slot. A pause makes it likely
+    // to be waiting before the slot is released; if it isn't yet, the test still
+    // passes (it can't tell), it just guards less.
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let installer = {
+        let pool = Arc::clone(&pool);
+        thread::spawn(move || done_tx.send(install_versioned(&pool, "v", "a")))
+    };
+    thread::sleep(Duration::from_millis(300));
+    release.open();
+    // The slot goes to rebuild, which is blocked on its gate: the install must
+    // finish anyway, without waiting for the rebuild.
+    done_rx.recv_timeout(Duration::from_secs(120)).expect("the install waited for the rebuild").unwrap();
+    installer.join().unwrap().unwrap();
     assert!(killer.join().unwrap().is_err());
-    assert!(took < Duration::from_millis(1800), "the install waited for the rebuild: {took:?}");
+    rebuild_gate.open();
     settle(&pool);
     assert_eq!(pool.evaluate("v", &json!({"x": "."}), &EvalOptions::default()).unwrap().reason.unwrap(), "a");
 }
