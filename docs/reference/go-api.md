@@ -13,7 +13,7 @@ Every exported symbol of the Go packages `policy`, `policytest` and `cli`: its s
 | `policytest` | `github.com/spechtlabs/sigil/pkg/policytest` | Running test files from `go test`; see [Package policytest](#package-policytest)    |
 | `cli`        | `github.com/spechtlabs/sigil/pkg/cli`        | The `sigil` command line in a host binary; see [Package cli](#package-cli)          |
 
-The API is pre-1.0, so names and signatures can still change. To embed Sigil step by step, see [Embed Sigil in a Go service](/guides/embed-go/). [The example service](/guides/example-service/) uses all three packages.
+The API is pre-1.0, so names and signatures can still change. To embed Sigil step by step, see [Embed Sigil in a Go service](/guides/embed-go/). [The example service](/guides/example-service/) uses all three packages. Package `build`, which writes modules and policies in Go, has its own page: [Go builder](/reference/go-builder/).
 
 ## Kinds
 
@@ -346,15 +346,16 @@ var policies embed.FS
 p, err := Deploy.Load(policies, "payments.production", policy.Require("deploy.guardrails"))
 ```
 
-| Fails when                                                   | Error                                                                                                                                                           |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A document doesn't parse, type-check or compile              | `*CompileError`                                                                                                                                                 |
-| A name is defined twice                                      | `*CompileError`                                                                                                                                                 |
-| A document is for another kind                               | `*CompileError`: `document is for kind AccessGrant, not DeployApproval`                                                                                         |
-| A kind document with the kind's name differs from `Schema()` | `*CompileError`: `kind document DeployApproval doesn't match the host's kind`; see [Kind documents in a bundle](/reference/bundles/#kind-documents-in-a-bundle) |
-| The root is a module                                         | `*CompileError`: `deploy.common is a module, not a policy`                                                                                                      |
-| A `Params` value or a `Require` doesn't hold                 | `*CompileError`; see [Load options](#load-options)                                                                                                              |
-| `fsys` can't be read (`Load` only)                           | The error from reading `fsys`                                                                                                                                   |
+| Fails when                                                              | Error                                                                                                                                                           |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A document doesn't parse, type-check or compile                         | `*CompileError`                                                                                                                                                 |
+| A name is defined twice                                                 | `*CompileError`                                                                                                                                                 |
+| A document is for another kind                                          | `*CompileError`: `document is for kind AccessGrant, not DeployApproval`                                                                                         |
+| A kind document with the kind's name differs from `Schema()`            | `*CompileError`: `kind document DeployApproval doesn't match the host's kind`; see [Kind documents in a bundle](/reference/bundles/#kind-documents-in-a-bundle) |
+| The root is a module                                                    | `*CompileError`: `deploy.common is a module, not a policy`                                                                                                      |
+| A `Params` value or a `Require` doesn't hold                            | `*CompileError`; see [Load options](#load-options)                                                                                                              |
+| `fsys` can't be read (`Load` only)                                      | The error from reading `fsys`                                                                                                                                   |
+| A trusted source is nil, can't be read, or holds no policies or modules | `the trusted source passed to Trusted holds no policies or modules`, or `... is nil`, or `... couldn't be read` with the error from reading it                  |
 
 ### Compile errors
 
@@ -407,6 +408,7 @@ type LoadOption interface{ /* unexported methods */ }
 type Params map[string]any
 
 func Require(name string, opts ...RequireOption) LoadOption
+func Trusted(fsys fs.FS) LoadOption
 
 type RequireOption interface{ /* unexported methods */ }
 
@@ -418,8 +420,9 @@ func From(fsys fs.FS) RequireOption
 | `Params{...}`        | Binds the root policy's params from Go                                                     |
 | `Require(name, ...)` | Requires the root policy to invoke the named policy unconditionally                        |
 | `From(fsys)`         | Inside `Require`: takes the required policy, and everything it uses, from a trusted source |
+| `Trusted(fsys)`      | Adds a trusted source without requiring a policy from it                                   |
 
-`LoadOption` is implemented by `Params` and `Require`; `RequireOption` only by `From`.
+`LoadOption` is implemented by `Params`, `Require` and `Trusted`; `RequireOption` only by `From`.
 
 #### `Params`
 
@@ -451,6 +454,7 @@ p, err := Deploy.Load(policies, "deploy.gate",
 
 - Names the trusted source a required policy must come from. The loader reads it as its own bundle, separate from the one passed to `Load`.
 - Several `Require` options may name the same source, which is then read once.
+- A nil source, or one that holds no policy or module, fails the load.
 - The rules for what resolves where, which names are reserved and when two sources are the same are in [Trusted sources](/reference/bundles/#trusted-sources).
 
 ```go
@@ -459,6 +463,35 @@ p, err := Deploy.Load(policy.MapFS(cm.Data), "payments.production",
 ```
 
 Why `From` exists: [Why required policies need a trusted source](/understanding/bundles/#why-required-policies-need-a-trusted-source).
+
+#### `Trusted`
+
+- Adds a trusted source, such as the vocabulary modules a platform ships, without requiring any policy from it.
+- Reads the source into the same trusted bundle as the sources `From` names. Its documents resolve before the bundle's, and a document in the bundle passed to `Load` that defines one of their names is a compile error.
+- Every document in the source is checked, so a broken one fails the load even when no policy uses it.
+- A nil source, or one that holds no policy or module, fails the load, since it would protect nothing. That catches an `fs.Sub` of the wrong directory, a source with only a README, and files under a directory whose name starts with `.`, which the loader skips: `the trusted source passed to Trusted holds no policies or modules`.
+- Repeat it to add several sources. A source that `Trusted` or `From` already names is read once.
+- A document in the bundle passed to `Load` that's a byte-for-byte copy of a trusted one is left out, so the trusted source may be a directory of the bundle's own `fs.FS`. A copy that differs is a compile error.
+- A `Require` without `From` whose policy a trusted source defines takes it from there, as `From` would.
+- The rules for what resolves where are in [Trusted sources](/reference/bundles/#trusted-sources). `sigil check --trusted` and the configuration file's [`trusted`](/reference/config/#keys) key make the same check.
+
+```go
+//go:embed vocabulary
+var vocabularyFS embed.FS
+
+p, err := Deploy.Load(policy.MapFS(cm.Data), "payments.production",
+	policy.Trusted(vocabularyFS))
+```
+
+A repository that holds the platform's directory and the teams' can pass the whole repository as the bundle and the platform's directory as the trusted source:
+
+```go
+platform, err := fs.Sub(repo, "platform")
+// ...
+p, err := Deploy.Load(repo, "payments.production", policy.Trusted(platform))
+```
+
+The CLI reads a file under both a path and a `--trusted` path as trusted only, so the same layout works there; a copy of a trusted document at another path is an error in the CLI.
 
 ## Evaluating
 
@@ -798,7 +831,7 @@ Every exported identifier of package `policy`:
 | [`DecisionRef`, `OutcomeRef`, `Outcome`](#decisions-and-reasons)                                                                                                                                                                   | Any `Decision[T]`; a decision or one of its reasons; one reason                                                      |
 | [`None`](#decisions-and-reasons)                                                                                                                                                                                                   | The payload of a decision that carries only a reason                                                                 |
 | [`Matched[T]`](#typed-matching)                                                                                                                                                                                                    | One entry `MatchAll` returns                                                                                         |
-| [`LoadOption`, `Params`, `Require`, `RequireOption`, `From`](#load-options)                                                                                                                                                        | Options for `Load` and `Compile`                                                                                     |
+| [`LoadOption`, `Params`, `Require`, `RequireOption`, `From`, `Trusted`](#load-options)                                                                                                                                                        | Options for `Load` and `Compile`                                                                                     |
 | [`MapFS(files) fs.FS`](#mapfs)                                                                                                                                                                                                     | A map of file names to contents as an `fs.FS`                                                                        |
 | [`Policy[In].Eval`, `.Name`](#evaluating)                                                                                                                                                                                          | Evaluating a compiled policy, and its name                                                                           |
 | [`Result`, `Entry`, `Trace`, `Candidate`, `Condition`](#result)                                                                                                                                                                    | What an evaluation produced and why                                                                                  |

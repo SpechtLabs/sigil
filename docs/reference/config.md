@@ -5,7 +5,7 @@ createTime: 2026/09/30 12:00:00
 permalink: /reference/config/
 ---
 
-The configuration file a policy repository keeps at its root: the kind files the policy commands load, the policies [`sigil check`](/reference/cli/#sigil-check) requires, and the level of each [lint](/reference/lints/). It's written in YAML, JSON or TOML, with the same keys in each. The first line of each example attaches the [schema](#schema).
+The configuration file a policy repository keeps at its root: the kind files the policy commands load, the paths they read as trusted, the policies [`sigil check`](/reference/cli/#sigil-check) requires, and the level of each [lint](/reference/lints/). It's written in YAML, JSON or TOML, with the same keys in each. The first line of each example attaches the [schema](#schema).
 
 ::: tabs#format
 
@@ -15,6 +15,7 @@ The configuration file a policy repository keeps at its root: the kind files the
 # yaml-language-server: $schema=https://sigil.specht-labs.de/schema/config.json
 kinds:
   - ../vendor/deploy_approval.sigil
+trusted: [platform/vocabulary]
 require:
   - policy: deploy.guardrails
     trusted: [platform/deploy]
@@ -32,6 +33,7 @@ lints:
 {
   "$schema": "https://sigil.specht-labs.de/schema/config.json",
   "kinds": ["../vendor/deploy_approval.sigil"],
+  "trusted": ["platform/vocabulary"],
   "require": [
     {"policy": "deploy.guardrails", "trusted": ["platform/deploy"], "roots": ["payments.*", "checkout.*"]},
     {"policy": "access.guardrails", "trusted": ["platform/access"], "roots": ["access.main"]}
@@ -45,6 +47,7 @@ lints:
 ```toml
 #:schema https://sigil.specht-labs.de/schema/config.json
 kinds = ["../vendor/deploy_approval.sigil"]
+trusted = ["platform/vocabulary"]
 
 [[require]]
 policy = "deploy.guardrails"
@@ -73,7 +76,7 @@ gated-deny = "error"
 - `check`, `eval`, `explain` and `test` look for the file under all six names in the working directory, then in each parent, and use the one in the nearest directory that has one.
 - Two of them in the same directory are an error.
 - `--config` names a file instead, anywhere and under any name. Its extension picks the format: `.yaml` or `.yml`, `.json`, or `.toml`. Any other extension is an error.
-- Without a file, there are no extra kind files and no requirements, and every lint keeps its default.
+- Without a file, there are no extra kind files, trusted paths or requirements, and every lint keeps its default.
 - Paths in the file are relative to the directory it's in, wherever the command runs. An absolute path is used as it is.
 - JSON is strict JSON: no comments and no trailing commas.
 
@@ -122,6 +125,7 @@ Every key is optional, and the file holds no others. A TOML `require` entry is a
 | Key | Holds |
 | --- | --- |
 | `kinds` | Kind files outside the paths a command reads. A list, or a single path |
+| `trusted` | Files and directories every policy command reads as trusted, as `--trusted` does. A list, or a single path |
 | `require` | The policies `sigil check` enforces, one entry each |
 | `lints` | A map from lint name to level: `off`, `warn` or `error` |
 | `$schema` | The [schema](#schema) the file follows, for editors. The tools ignore it |
@@ -131,6 +135,24 @@ Every key is optional, and the file holds no others. A TOML `require` entry is a
 - Every policy command loads them as if they were named with `--kind`, after the ones `--kind` names. See [Kinds](/reference/cli/#kinds).
 - Listing every kind file of the repository lets a command run on one directory of it, such as `sigil check teams/payments`. A kind file that is also among the paths is read once, and counted once.
 - A kind file that doesn't exist fails the command, naming the configuration file.
+
+`trusted`:
+
+- `check` reads them as it reads [`--trusted`](/reference/cli/#sigil-check), and as the host's [`policy.Trusted`](/reference/go-api/#trusted) reads a source: their documents resolve first, and a document anywhere else that defines one of their names is an error. Nothing is required of them.
+- `--trusted` adds to them for one run.
+- They don't say where a required policy must come from; an entry's own `trusted` does.
+- `eval`, `explain` and `test` read them too, as trusted sources, apart from files among their paths.
+- A path that doesn't exist, or holds no `.sigil` file, fails the command, naming the configuration file:
+
+```text
+Error: sigil.yaml: the trusted path platform/vocabulary can't be read
+
+What you can do
+  • trusted lists files and directories relative to sigil.yaml
+
+Caused by
+  • stat platform/vocabulary: no such file or directory
+```
 
 `require` entries:
 
@@ -146,11 +168,11 @@ Every key is optional, and the file holds no others. A TOML `require` entry is a
 - With `trusted`, the required policy must be defined below this entry's `trusted` paths, where the host reads it. One defined anywhere else, among the paths or below another entry's `trusted`, is an error at the entry.
 - A required policy applies only to roots of its own kind, so one file can hold the requirements of several kinds.
 - A policy can be required once.
-- A `trusted` path that doesn't exist is an error at the entry.
+- A `trusted` path that doesn't exist, or holds no `.sigil` file, is an error at the entry.
 - When the command reads the directory the configuration file is in, or one above it, every entry must apply: a required policy no document defines, a `roots` pattern that matches nothing, and `roots` that match no policy of the required policy's kind are errors at the entry.
 - When it reads only part of that directory, such as one team's, `roots` pick among the policies it read, and an entry without `trusted` whose policy isn't among them is skipped.
 - `eval`, `explain` and `test` read the `trusted` paths too, as trusted sources, apart from files among their paths, so a policy in the directory they read finds the required policies it uses.
-- `--require` on the command line replaces `require` for that run. `--trusted` without `--require` is an error, since a requirement's trusted paths belong in its entry. `--policy` keeps it, and narrows each entry's `roots`, or its default roots, to the policies it matches; an entry whose roots it leaves out is skipped, and a `roots` pattern matching nothing is then no error.
+- `--require` on the command line replaces `require` for that run, its policies coming from the `--trusted` paths when there are any. `--trusted` alone keeps `require` and adds trusted paths, as the top-level `trusted` does. `--policy` keeps `require`, and narrows each entry's `roots`, or its default roots, to the policies it matches; an entry whose roots it leaves out is skipped, and a `roots` pattern matching nothing is then no error.
 
 `lints`:
 

@@ -40,6 +40,7 @@ export const navbar = defineNavbarConfig([
           { text: "Handle failed evaluations", link: "/guides/handle-errors", icon: "mdi:alert-circle-outline" },
           { text: "Policies in a ConfigMap", link: "/guides/configmaps", icon: "mdi:kubernetes" },
           { text: "Build a host binary", link: "/guides/host-binary", icon: "mdi:console" },
+          { text: "Build policies in Go", link: "/guides/build-policies-in-go", icon: "mdi:code-braces-box" },
           { text: "Evolve a kind safely", link: "/guides/evolve-a-kind", icon: "mdi:source-branch" },
           { text: "The example service", link: "/guides/example-service", icon: "mdi:rocket-launch-outline" },
         ],
@@ -70,6 +71,7 @@ export const navbar = defineNavbarConfig([
       { text: "Halting by construction", link: "/understanding/halting", icon: "mdi:timer-sand-complete" },
       { text: "Composition without templating", link: "/understanding/composition", icon: "mdi:layers-triple" },
       { text: "Bundles and trust", link: "/understanding/bundles", icon: "mdi:package-variant-closed" },
+      { text: "Facts, vocabulary and rules", link: "/understanding/facts-vocabulary-rules", icon: "mdi:layers-outline" },
       { text: "One engine for every host", link: "/understanding/one-engine", icon: "mdi:cube-outline" },
       { text: "How compile works", link: "/understanding/compile", icon: "mdi:package-variant-closed-check" },
     ],
@@ -106,6 +108,7 @@ export const navbar = defineNavbarConfig([
         text: "Go host",
         items: [
           { text: "Go API", link: "/reference/go-api", icon: "mdi:language-go" },
+          { text: "Go builder", link: "/reference/go-builder", icon: "mdi:hammer-wrench" },
           { text: "Performance", link: "/reference/performance", icon: "mdi:speedometer" },
         ],
       },

@@ -1,4 +1,4 @@
-kind DeployApproval version 1
+kind DeployApproval version 2
 
 enum Tier: critical | standard | internal
 
@@ -21,15 +21,21 @@ type Actor {
   regions: list<string>
 }
 
+type Freeze {
+  environments: list<string>
+  unknown: bool
+}
+
 input release: Release
 input service: Service
 input actor: Actor
 input environment: string
+input freeze: Freeze
 
 fn split(string, string) -> list<string>
 
 decision deny {
-  reason: not_eligible | soak_too_short | no_rule_matched
+  reason: not_eligible | change_freeze | soak_too_short | no_rule_matched
 }
 
 decision review {
@@ -44,7 +50,7 @@ decision approve {
 
 collect one
 precedence deny > review > approve
-precedence deny: not_eligible > soak_too_short > no_rule_matched
+precedence deny: not_eligible > change_freeze > soak_too_short > no_rule_matched
 precedence approve: release_manager > payments_sre
 
 default deny(reason: no_rule_matched)

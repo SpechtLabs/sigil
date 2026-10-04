@@ -7,6 +7,7 @@ import (
 
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/access"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/deploy"
+	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/freeze"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/store"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/telemetry"
 )
@@ -26,6 +27,18 @@ func WithStore(st *store.Store[deploy.Input]) Option {
 func WithAccessStore(st *store.Store[access.Input]) Option {
 	return func(s *Server) {
 		s.access = st
+	}
+}
+
+// WithFreeze sets where the change freeze comes from. The deployments handler
+// asks src once per request and puts its answer into the deploy input,
+// overwriting anything decoded, so a client can never claim an unfrozen
+// environment. Without it, or with a nil src, nothing is frozen.
+func WithFreeze(src freeze.Source) Option {
+	return func(s *Server) {
+		if src != nil {
+			s.freeze = src
+		}
 	}
 }
 

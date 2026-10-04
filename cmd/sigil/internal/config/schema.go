@@ -43,7 +43,7 @@ const schemaKey = "$schema"
 // The keys a configuration and each of its require entries hold, in the
 // order messages list them.
 var (
-	topKeys     = []string{keyKinds, keyRequire, keyLints}
+	topKeys     = []string{keyKinds, keyTrusted, keyRequire, keyLints}
 	requireKeys = []string{keyPolicy, keyTrusted, keyRoots}
 )
 
@@ -72,6 +72,8 @@ func (p *parser) config(root *yaml.Node) (*Config, humane.Error) {
 		switch key {
 		case keyKinds:
 			c.Kinds, err = p.paths(n, keyKinds, "a kind file")
+		case keyTrusted:
+			c.Trusted, err = p.paths(n, keyTrusted, "a file or directory")
 		case keyRequire:
 			c.Require, err = p.require(n)
 		case keyLints:

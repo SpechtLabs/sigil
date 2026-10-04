@@ -17,6 +17,7 @@ import (
 
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/access"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/deploy"
+	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/freeze"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/server"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/store"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/telemetry"
@@ -54,6 +55,7 @@ type envConfig struct {
 	copyAccess        bool
 	skipLoad          bool
 	evaluationTimeout time.Duration
+	freeze            freeze.Source
 }
 
 type envOption func(*envConfig)
@@ -75,6 +77,11 @@ func withCopiedAccess() envOption {
 // default, so a spec can run a stage out of time without waiting a second.
 func withEvaluationTimeout(d time.Duration) envOption {
 	return func(c *envConfig) { c.evaluationTimeout = d }
+}
+
+// withFreeze serves the change freeze src answers, instead of nothing frozen.
+func withFreeze(src freeze.Source) envOption {
+	return func(c *envConfig) { c.freeze = src }
 }
 
 // unloaded builds the env without loading either bundle, the state a pod is
@@ -143,6 +150,7 @@ func newEnv(opts ...envOption) *env {
 		server.WithMetrics(e.metrics),
 		server.WithTracerProvider(tp),
 		server.WithEvaluationTimeout(cfg.evaluationTimeout),
+		server.WithFreeze(cfg.freeze),
 	)
 	Expect(herr).To(Succeed())
 
@@ -287,6 +295,14 @@ func (c *fakeClock) Now() time.Time {
 // Tick hands out the one channel Tick sends on, whatever the interval.
 func (c *fakeClock) Tick(time.Duration) (<-chan time.Time, func()) {
 	return c.ticks, func() {}
+}
+
+// advance moves the clock on by d, past a staleness bound for example.
+func (c *fakeClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.now = c.now.Add(d)
 }
 
 // tick fires one poll. It blocks until the watch loop receives it, so when

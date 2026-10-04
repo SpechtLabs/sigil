@@ -12,6 +12,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/deploy"
+	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/freeze"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/server"
 )
 
@@ -748,4 +750,135 @@ func slowToDecide(r, actor map[string]any) {
 	}
 	regions[n-1] = "z"
 	actor["regions"] = regions
+}
+
+// stubFreeze is a freeze source that always answers with itself.
+type stubFreeze deploy.Freeze
+
+func (s stubFreeze) Freeze() deploy.Freeze { return deploy.Freeze(s) }
+
+// TestFreeze checks that the deploy policy reads the freeze the server's
+// source answers, never one the client sends, and that the response, the
+// evaluation span and the decision carry it.
+func TestFreeze(t *testing.T) {
+	tests := []struct {
+		name       string
+		src        freeze.Source
+		env        envOptions
+		edit       func(r, actor map[string]any)
+		wantStatus int
+		wantReason string
+		// wantFreeze is the response's freeze block as JSON, "" for none.
+		wantFreeze string
+	}{
+		{
+			name:       "nothing frozen without a source",
+			wantStatus: http.StatusAccepted,
+			wantReason: "service_owner",
+			wantFreeze: `{"environments":[],"unknown":false}`,
+		},
+		{
+			name:       "a frozen production denies the deploy",
+			src:        freeze.NewStatic("production"),
+			wantStatus: http.StatusForbidden,
+			wantReason: "change_freeze",
+			wantFreeze: `{"environments":["production"],"unknown":false}`,
+		},
+		{
+			name:       "a frozen staging leaves a production deploy alone",
+			src:        freeze.NewStatic("staging"),
+			wantStatus: http.StatusAccepted,
+			wantReason: "service_owner",
+			wantFreeze: `{"environments":["staging"],"unknown":false}`,
+		},
+		{
+			name:       "an unknown freeze denies the deploy, failing closed",
+			src:        stubFreeze{Environments: []string{}, Unknown: true},
+			wantStatus: http.StatusForbidden,
+			wantReason: "change_freeze",
+			wantFreeze: `{"environments":[],"unknown":true}`,
+		},
+		{
+			name:       "the freeze outranks the short soak",
+			src:        freeze.NewStatic("production"),
+			edit:       func(r, _ map[string]any) { r["release"] = map[string]any{"soak": "1h", "hotfix": false} },
+			wantStatus: http.StatusForbidden,
+			wantReason: "change_freeze",
+			wantFreeze: `{"environments":["production"],"unknown":false}`,
+		},
+		{
+			name:       "a failed deploy stage still reports the freeze it read",
+			src:        freeze.NewStatic("production"),
+			env:        envOptions{deployLoaded: true, accessLoaded: true, teamOverrides: map[string]string{"checkout/production.sigil": assertedCheckout}},
+			edit:       func(r, actor map[string]any) { checkoutOwner(r, actor); r["service"].(map[string]any)["name"] = "" },
+			wantStatus: http.StatusUnprocessableEntity,
+			wantReason: "no_rule_matched",
+			wantFreeze: `{"environments":["production"],"unknown":false}`,
+		},
+		{
+			name:       "a failed access stage reports no freeze",
+			src:        freeze.NewStatic("production"),
+			edit:       func(_, actor map[string]any) { actor["name"] = "" },
+			wantStatus: http.StatusUnprocessableEntity,
+			wantReason: "no_rule_matched",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := tt.env
+			if !opts.deployLoaded {
+				opts = loaded
+			}
+			opts.freeze = tt.src
+			env := newEnv(t, opts)
+			team := "payments"
+			if opts.teamOverrides != nil {
+				team = "checkout"
+			}
+			rec := do(env.srv.Handler(), http.MethodPost, "/api/v1/teams/"+team+"/deployments", deployRequest(tt.edit))
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d; body %s", rec.Code, tt.wantStatus, rec.Body)
+			}
+			var resp server.DecisionResponse
+			decode(t, rec, &resp)
+			if resp.Reason != tt.wantReason {
+				t.Errorf("reason = %s, want %s", resp.Reason, tt.wantReason)
+			}
+
+			span, evaluated := findSpan(env.spans.GetSpans(), "deploygate.evaluate")
+			if tt.wantFreeze == "" {
+				if resp.Freeze != nil || evaluated {
+					t.Errorf("freeze = %+v, evaluated %v; want neither when the deploy stage never ran", resp.Freeze, evaluated)
+				}
+				return
+			}
+			assertJSON(t, resp.Freeze, tt.wantFreeze)
+			if !evaluated {
+				t.Fatal("no deploygate.evaluate span")
+			}
+			attrs := map[attribute.Key]attribute.Value{}
+			for _, kv := range span.Attributes {
+				attrs[kv.Key] = kv.Value
+			}
+			envs, unknown := attrs["sigil.freeze.environments"], attrs["sigil.freeze.unknown"]
+			if !slices.Equal(envs.AsStringSlice(), resp.Freeze.Environments) || unknown.Type() != attribute.BOOL || unknown.AsBool() != resp.Freeze.Unknown {
+				t.Errorf("span freeze = %v, %v; want the response's %+v", envs.AsStringSlice(), unknown, *resp.Freeze)
+			}
+		})
+	}
+}
+
+// TestFreezeFromTheClient checks that a request can't carry a freeze: the
+// field is unknown, so the request is refused before any policy runs.
+func TestFreezeFromTheClient(t *testing.T) {
+	env := newEnv(t, loaded)
+	rec := do(env.srv.Handler(), http.MethodPost, "/api/v1/teams/payments/deployments", deployRequest(func(r, _ map[string]any) {
+		r["freeze"] = map[string]any{"environments": []string{}, "unknown": false}
+	}))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `unknown field \"freeze\"`) {
+		t.Fatalf("status = %d, body %s; want 400 naming the unknown field freeze", rec.Code, rec.Body)
+	}
+	if _, evaluated := findSpan(env.spans.GetSpans(), "deploygate.evaluate"); evaluated {
+		t.Error("the deploy policy ran on a request that claimed a freeze")
+	}
 }

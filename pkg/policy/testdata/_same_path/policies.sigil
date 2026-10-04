@@ -1,0 +1,5 @@
+// The platform's vocabulary, in a ConfigMap keyed policies.sigil, with a
+// typo on its third line.
+module deploy.vocabulary: DeployApproval@1
+
+pub let is_hotfix = release.hotfx

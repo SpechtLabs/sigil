@@ -1,0 +1,21 @@
+{
+  "release": {"soak": "48h", "hotfix": false},
+  "service": {
+    "name": "cart",
+    "tier": "critical",
+    "owners": ["checkout"],
+    "labels": {
+      "app.kubernetes.io/managed-by": "argocd",
+      "platform.example.com/lifecycle": "ga",
+      "regions": "eu,us"
+    }
+  },
+  "actor": {
+    "name": "grace",
+    "teams": ["platform"],
+    "roles": ["deployer", "release_manager"],
+    "regions": ["eu", "us"]
+  },
+  "environment": "production",
+  "freeze": {"environments": ["production"], "unknown": false}
+}

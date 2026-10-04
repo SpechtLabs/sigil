@@ -286,9 +286,9 @@ sigil check [PATH...] [flags]
 | --- | --- | --- |
 | `-k`, `--kind` | none | Kind file the inputs don't hold. Repeatable. See [Kinds](#kinds) |
 | `--require` | none | Policy every root must invoke unconditionally. Repeatable |
-| `--trusted` | none | File or directory to read the `--require` policies from, as `policy.From` does. Needs `--require`. Repeatable |
+| `--trusted` | none | File or directory read as trusted, as `policy.Trusted` reads a source: no other document may define a name it defines, and the `--require` policies must come from it. Repeatable |
 | `-p`, `--policy` | every policy | Name or pattern of the policies to check, with what they use; the roots for `--require`. Repeatable |
-| `--config` | the nearest [configuration file](/reference/config/#finding-the-file) | File with the [kind files, requirements and lint levels](/reference/config/), in YAML, JSON or TOML by its extension |
+| `--config` | the nearest [configuration file](/reference/config/#finding-the-file) | File with the [kind files, trusted paths, requirements and lint levels](/reference/config/), in YAML, JSON or TOML by its extension |
 
 - Needs host function signatures from the kind file, not their implementations.
 - Checks every document in the bundle and compiles every policy, including ones no policy imports. Documents of several kinds are checked in one run, and the kind documents among the inputs are checked too.
@@ -313,18 +313,32 @@ What you can do
   • the bundle defines: deploy.guardrails, deploy.production, payments.production
 ```
 
-Requirements come from the `require` key of [the configuration file](/reference/config/), one entry per required policy with its trusted paths and roots, or from `--require`, `--trusted` and `--policy`. `--require` replaces `require` for that run. `--trusted` goes with `--require`, and without it is an error, since it would otherwise replace `require` and drop its guardrails. `--policy` keeps `require` and narrows each entry's roots to the policies it matches, so `check --policy 'payments.*'` still requires the guardrails of `payments.production`; an entry whose roots `--policy` leaves out is skipped. The flags:
+Requirements come from the `require` key of [the configuration file](/reference/config/), one entry per required policy with its trusted paths and roots, or from `--require`, `--trusted` and `--policy`. `--require` replaces `require` for that run. `--trusted` adds to the file's `trusted` and keeps `require`, so on its own it requires nothing. `--policy` keeps `require` and narrows each entry's roots to the policies it matches, so `check --policy 'payments.*'` still requires the guardrails of `payments.production`; an entry whose roots `--policy` leaves out is skipped. The flags:
 
 - `--require` makes the check a host makes with [`policy.Require`](/reference/go-api/#require): every root policy must invoke the named policy unconditionally, through top-level invocations only. Repeat it to require several.
-- `--trusted` does what [`policy.From`](/reference/go-api/#from) does: required policies, and everything they import and invoke, are read from those paths, and the bundle may not define any name they define. With `--require`, each required policy must be defined below them. Trusted directories are always read recursively.
+- `--trusted` does what [`policy.Trusted`](/reference/go-api/#trusted) does: the documents under those paths resolve first, and no other document may define a name they define. Trusted directories are always read recursively. A `--trusted` path that holds no `.sigil` file is an error, since it would protect nothing: `--trusted platform/vocabulary holds no .sigil files`.
+- With `--require`, `--trusted` also does what [`policy.From`](/reference/go-api/#from) does: each required policy must be defined below the `--trusted` paths, and everything it imports and invokes resolves there first.
 - A file under a trusted path is read as trusted only, even when a path argument also holds it, so `--trusted deploy/ .` reads `deploy/` once.
 - The policies `--policy` matches are the roots of every `--require`. Without it, the roots are the bundle's policies that no other policy invokes, apart from the required ones.
 - A required policy applies to the roots of its own kind. A `--require` name no document defines applies to every root, which then fails for not invoking it; in the configuration file, it's an error at the entry.
-- With `--trusted`, the trusted documents aren't part of the bundle, so they're never roots.
+- Trusted documents, from `--trusted` or the configuration file, aren't part of the bundle, so they're never roots.
 
 ```text
 sigil check --require deploy.guardrails --trusted deploy/ \
   --policy 'payments.*' deploy_approval.sigil payments/
+```
+
+A team's module that takes the name of one under `--trusted`, with no policy required:
+
+```text
+$ sigil check --trusted platform/ .
+payments/common.sigil:1:8 (deploy.common): error: module deploy.common is defined twice
+  |
+1 | module deploy.common: DeployApproval@1
+  |        ^^^^^^^^^^^^^
+  = help: the name belongs to the trusted source, defined at platform/deploy/common.sigil:1:1; documents resolve by name, so each name has one definition
+
+✗ checked 4 files, 1 error
 ```
 
 To run it in CI, see [Check policies in CI](/guides/ci/#check).
@@ -715,7 +729,7 @@ The same directory without `--policy`, whose deploy policies call `split`:
 
 ```text
 $ sigil compile --out gate
-Error: the bundle needs host functions this binary doesn't implement, so nothing was compiled: DeployApproval@1 declares split
+Error: the bundle needs host functions this binary doesn't implement, so nothing was compiled: DeployApproval@2 declares split
 
 What you can do
   • build a host binary with cli.Main(cli.WithKind(...)) from the pkg/cli package, which links the kind and its functions in, and compile with its compile command

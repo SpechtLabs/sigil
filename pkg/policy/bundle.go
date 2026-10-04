@@ -46,7 +46,7 @@ func (k *Kind[In]) compileError(b *bundle.Bundle, errs diag.ErrorList) *CompileE
 		e.Diagnostics = append(e.Diagnostics, Diagnostic{
 			Message:  d.Msg,
 			Help:     d.Help,
-			Position: position(d.File, b.DocumentAt(d.File, d.Pos), d.Pos),
+			Position: position(d.File, b.DocumentOf(d), d.Pos),
 			End:      position(d.File, "", d.End),
 		})
 	}

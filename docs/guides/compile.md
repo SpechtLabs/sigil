@@ -115,7 +115,7 @@ The deploy policies call `split`, a host function of `DeployApproval`. The stock
 
 ```text
 $ sigil compile --out deploy-gate --policy payments.production
-Error: the bundle needs host functions this binary doesn't implement, so nothing was compiled: DeployApproval@1 declares split
+Error: the bundle needs host functions this binary doesn't implement, so nothing was compiled: DeployApproval@2 declares split
 
 What you can do
   • build a host binary with cli.Main(cli.WithKind(...)) from the pkg/cli package, which links the kind and its functions in, and compile with its compile command
@@ -125,7 +125,7 @@ Compile with a host binary instead. Every binary built with `cli.Main` has the `
 
 ```text
 $ sigilc compile --out deploy-gate --policy payments.production
-✓ compiled payments.production from 5 files into deploy-gate (sha256:f2d5dd9e09fc…)
+✓ compiled payments.production from 6 files into deploy-gate (sha256:2be6baffa018…)
 $ ./deploy-gate eval --input teams/payments/testdata/owner.json
 payments.production: review(reason: service_owner)
   approvers = ["payments-leads", "security-leads"]

@@ -174,7 +174,7 @@ func TestMoved(t *testing.T) {
 func TestDeployGates(t *testing.T) {
 	exe := built(t)
 	tmp := t.TempDir()
-	refused := step{name: "gates_refused", bin: "sigil", dir: gates, args: []string{"compile", "--out", "$TMP/gates", "--config", "policies/sigil.yaml", "policies"}, want: "DeployApproval@1 declares split", mask: true}
+	refused := step{name: "gates_refused", bin: "sigil", dir: gates, args: []string{"compile", "--out", "$TMP/gates", "--config", "policies/sigil.yaml", "policies"}, want: "DeployApproval@2 declares split", mask: true}
 	refused.run(t, map[string]string{"sigil": exe}, tmp)
 	if _, err := os.Stat(filepath.Join(tmp, "gates")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a refused compile wrote %s: %v", filepath.Join(tmp, "gates"), err)
@@ -216,7 +216,7 @@ func TestHostBinary(t *testing.T) {
 	bins := map[string]string{"gates": bin}
 	payments := "policies/teams/payments/testdata/"
 	steps := []step{
-		{name: "host_test", bin: "gates", dir: gates, args: []string{"test", "policies"}, want: "42 cases passed"},
+		{name: "host_test", bin: "gates", dir: gates, args: []string{"test", "policies"}, want: "49 cases passed"},
 		{name: "host_cleared", bin: "gates", dir: gates, args: []string{"eval", "-p", "payments.production", "-i", payments + "owner.json"}, want: "review(reason: service_owner)"},
 		{name: "host_uncleared", bin: "gates", dir: gates, args: []string{"eval", "-p", "payments.production", "-i", payments + "uncleared-region.json"}, want: "deny(reason: no_rule_matched)"},
 		{name: "host_access", bin: "gates", dir: gates, args: []string{"eval", "-p", "access.main", "-i", "requests/access-member.json"}, want: "reader(reason: team_member)"},

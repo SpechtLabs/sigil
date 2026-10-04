@@ -1,0 +1,3 @@
+module access.handwritten: Access@2
+
+pub let weekend = now == now

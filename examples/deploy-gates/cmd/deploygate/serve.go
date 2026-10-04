@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -13,11 +14,13 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/access"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/config"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/deploy"
+	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/freeze"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/server"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/store"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/telemetry"
@@ -69,6 +72,9 @@ func serve(ctx context.Context, cfg config.Config) (err error) {
 	var wg sync.WaitGroup
 	wg.Go(func() { svc.deploy.Watch(ctx, cfg.ReloadInterval, deployHUP) })
 	wg.Go(func() { svc.access.Watch(ctx, cfg.ReloadInterval, accessHUP) })
+	if svc.ofrep != nil {
+		wg.Go(func() { svc.ofrep.Run(ctx) })
+	}
 	defer wg.Wait()
 
 	serr := svc.server.Serve(ctx)
@@ -76,11 +82,13 @@ func serve(ctx context.Context, cfg config.Config) (err error) {
 	return serr
 }
 
-// service is what start builds: both policy stores and the server that
-// evaluates against them.
+// service is what start builds: both policy stores, the change freeze's
+// OFREP source when one is configured, and the server that evaluates
+// against them.
 type service struct {
 	deploy *store.Store[deploy.Input]
 	access *store.Store[access.Input]
+	ofrep  *freeze.OFREP
 	server *server.Server
 }
 
@@ -124,7 +132,14 @@ func start(ctx context.Context, cfg config.Config) (*service, humane.Error) {
 			"fix the access policies, or point --access-policies at a directory that loads")
 	}
 
+	src, herr := svc.newFreeze(ctx, cfg)
+	if herr != nil {
+		span.SetStatus(codes.Error, "building the freeze source failed")
+		return nil, herr
+	}
+
 	srv, herr := server.New(
+		server.WithFreeze(src),
 		server.WithStore(svc.deploy),
 		server.WithAccessStore(svc.access),
 		server.WithMetrics(metrics),
@@ -146,8 +161,42 @@ func start(ctx context.Context, cfg config.Config) (*service, humane.Error) {
 		zap.String("access_policies", accessSource),
 		zap.Duration("reload_interval", cfg.ReloadInterval),
 		zap.Duration("evaluation_timeout", cfg.EvaluationTimeout),
+		zap.String("freeze", freezeName(cfg)),
 	)
 	return svc, nil
+}
+
+// newFreeze builds the change freeze's source: a fixed list, or an OFREP
+// source, which it keeps for serve to refresh in the background and asks
+// once now. A flag service that doesn't answer yet doesn't stop the start:
+// the freeze is unknown until it does, so every deploy is denied as frozen
+// meanwhile, and the log says why.
+func (svc *service) newFreeze(ctx context.Context, cfg config.Config) (freeze.Source, humane.Error) {
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("deploygate.freeze", freezeName(cfg)))
+	if cfg.FreezeOFREPURL == "" {
+		return freeze.NewStatic(cfg.FreezeEnvironments...), nil
+	}
+	src, herr := freeze.NewOFREP(cfg.FreezeOFREPURL, cfg.FreezeOptions()...)
+	if herr != nil {
+		return nil, herr
+	}
+	if rerr := src.Refresh(ctx); rerr != nil {
+		telemetry.FromContext(ctx).WarnContext(ctx, "the change freeze is unknown until the flag service answers, every deploy is denied as frozen meanwhile",
+			zap.String("freeze", freezeName(cfg)), zap.Error(rerr), zap.Strings("advice", rerr.Advice()))
+	}
+	svc.ofrep = src
+	return src, nil
+}
+
+// freezeName names where the change freeze comes from, for the startup log.
+func freezeName(cfg config.Config) string {
+	if cfg.FreezeOFREPURL != "" {
+		return "ofrep " + cfg.FreezeOFREPURL + " flag " + cfg.FreezeFlag
+	}
+	if len(cfg.FreezeEnvironments) == 0 {
+		return "none"
+	}
+	return "static " + strings.Join(cfg.FreezeEnvironments, ",")
 }
 
 // sourceName names a bundle's source the way the store does.
