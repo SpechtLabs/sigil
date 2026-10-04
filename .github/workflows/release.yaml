@@ -18,32 +18,51 @@ permissions:
   pull-requests: write
 
 env:
-  # mise itself, pinned; ci.yaml explains why.
+  # mise itself, pinned; go.yaml explains why.
   # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
   MISE_VERSION: 2026.9.18
 
 # Never cancel a release half-way: that can leave a tag published with no
 # artifacts. Pushes key on the SHA so each commit gets its own run; repairs key
-# on the tag so two repairs of the same tag cannot race.
+# on the tag so two repairs of the same tag cannot race. Only the gate jobs
+# below cancel anything, and only each other.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
   cancel-in-progress: false
 
 jobs:
-  ci:
-    name: CI
-    uses: ./.github/workflows/ci.yaml
-    with:
-      skip-fuzz-and-bench: true
-      skip-examples: true
+  # The gate: what the release builds and publishes, the Go module (go.yaml)
+  # and the WebAssembly module with its two packages (wasm.yaml). The
+  # examples, fuzzing and benchmarks ran on the pull request; ci.yaml has all
+  # of it.
+  #
+  # A push to main that lands while an older push is still in its gate
+  # cancels that gate: the older run then skips release-please, which would
+  # only find that main has moved on. Each gate job has a group of its own, so
+  # the two don't cancel each other, and nothing after the gate is in one, so
+  # a run that got past its gate publishes to the end. Repairs never cancel.
+  go:
+    name: Go
+    uses: ./.github/workflows/go.yaml
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    concurrency:
+      group: ${{ github.workflow }}-gate-go-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'push' }}
+
+  wasm:
+    name: WebAssembly
+    uses: ./.github/workflows/wasm.yaml
+    concurrency:
+      group: ${{ github.workflow }}-gate-wasm-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'push' }}
 
   release-please:
     name: Release Please
     runs-on: ubuntu-latest
     needs:
-      - ci
+      - go
+      - wasm
     if: github.event_name == 'push'
     steps:
       # Renovate automerges in quick succession. A run whose commit is no longer
@@ -78,11 +97,13 @@ jobs:
     name: GoReleaser Build & Publish
     runs-on: ubuntu-latest
     needs:
-      - ci
+      - go
+      - wasm
       - release-please
     if: >-
       always() &&
-      needs.ci.result == 'success' &&
+      needs.go.result == 'success' &&
+      needs.wasm.result == 'success' &&
       (
         (github.event_name == 'push' && needs.release-please.outputs.release_created == 'true') ||
         github.event_name == 'workflow_dispatch'
@@ -280,7 +301,7 @@ jobs:
 
       # Packaging builds the crate, and its dependencies, from the package
       # alone. The CI run this release waited for saved them compiled for this
-      # Cargo.lock under this key (see the rust job in ci.yaml).
+      # Cargo.lock under this key (see the rust job in wasm.yaml).
       - name: Restore cargo registry and dependencies
         if: steps.check.outputs.publish == 'true'
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2

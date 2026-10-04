@@ -1,0 +1,94 @@
+name: Cache warming
+
+# A pull request's run restores caches from main and saves none of its own,
+# so whatever main's runs never save, every pull request builds from scratch.
+# go.yaml and wasm.yaml run on main, through release.yaml, and save theirs.
+# The examples don't, and the feature-flags example's Rust dependencies take
+# over ten minutes to build cold, so this builds them on main whenever their
+# cache is missing: after a Cargo.lock or toolchain change. It doesn't gate
+# the release.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The newest commit on main supersedes a warm-up still in flight.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+# See go.yaml for all three.
+env:
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
+  MISE_VERSION: 2026.9.18
+  MISE_TOOLS: go golangci-lint yamllint actionlint shellcheck goreleaser bun node go:golang.org/x/perf/cmd/benchstat
+
+jobs:
+  feature-flags:
+    name: feature-flags dependencies
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/feature-flags
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Exactly as examples.yaml's feature-flags job sets up mise, so this
+      # saves the mise cache that job restores.
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ env.MISE_TOOLS }} rust k6
+          working_directory: examples/feature-flags
+
+      # Checks for the cache examples.yaml's feature-flags job restores,
+      # without downloading it. It saves nothing.
+      - name: Look up the cargo cache
+        id: lookup
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: examples/feature-flags
+          shared-key: feature-flags
+          cache-bin: false
+          lookup-only: true
+          save-if: false
+
+      - name: Restore and save the cargo cache
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: examples/feature-flags
+          shared-key: feature-flags
+          cache-bin: false
+
+      # The crate embeds sigil.wasm, so building it needs the module. This
+      # only restores wasm.yaml's Go cache, which main's runs keep current.
+      - name: Restore Go modules and build output
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-wasm-build-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-wasm-build-${{ runner.os }}-
+
+      - name: Build the WebAssembly module
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: mise run wasm
+
+      # What the example's check task compiles: clippy over every target,
+      # the tests, and the release build. Nothing runs.
+      - name: Build the dependencies
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: |
+          cargo clippy --locked --all-targets
+          cargo test --locked --no-run
+          cargo build --locked --release

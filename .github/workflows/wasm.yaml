@@ -1,0 +1,211 @@
+name: WebAssembly
+
+# The WebAssembly module and the two packages around it, the TypeScript
+# package and the Rust crate. ci.yaml calls it for pull requests, release.yaml
+# gates every release on it (the release publishes both packages), and it runs
+# on its own from the Actions tab.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# See go.yaml for all three.
+env:
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
+  MISE_VERSION: 2026.9.18
+  MISE_TOOLS: go golangci-lint yamllint actionlint shellcheck goreleaser bun node go:golang.org/x/perf/cmd/benchstat
+
+jobs:
+  # The module (cmd/sigil-wasm), built once for every job here that loads it:
+  # its own tests, the TypeScript package and the Rust crate all test this one
+  # file.
+  wasm-build:
+    name: Module
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ env.MISE_TOOLS }}
+
+      # See go.yaml's lint job.
+      - name: Cache Go modules and build output
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-wasm-build-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-wasm-build-${{ runner.os }}-
+
+      - name: Build the module
+        run: mise run wasm-build
+
+      - name: Keep the module for the jobs that load it
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sigil-wasm
+          path: dist/wasm/sigil.wasm
+          if-no-files-found: error
+          retention-days: 1
+
+  # The module's end-to-end tests are a Go module of their own,
+  # cmd/sigil-wasm/test, which go.yaml's lint and test jobs stop at, and its
+  # glue only builds for wasip1, so this job lints both and drives the module
+  # through its ABI.
+  #
+  # Every job that downloads the module touches it afterwards: the checkout
+  # left its sources newer than whatever time the artifact kept, and a module
+  # newer than its sources is one the wasm-build task skips.
+  wasm:
+    name: Module tests
+    runs-on: ubuntu-latest
+    needs: wasm-build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ env.MISE_TOOLS }}
+
+      # See go.yaml's lint job. The test module has a go.sum of its own.
+      - name: Cache Go modules and build output
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: go-wasm-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'cmd/sigil-wasm/test/go.sum') }}
+          restore-keys: go-wasm-${{ runner.os }}-
+
+      - name: Download the WebAssembly module
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sigil-wasm
+          path: dist/wasm
+
+      - name: Mark the module up to date
+        run: touch dist/wasm/sigil.wasm
+
+      # Same key as go.yaml's lint job: custom-gcl is built from the root
+      # config and lints every module.
+      - name: Restore custom-gcl cache
+        id: custom-gcl-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: custom-gcl
+          key: custom-gcl-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.custom-gcl.yml', '.mise.toml') }}
+
+      - name: Lint the module's glue and its tests
+        if: steps.custom-gcl-cache.outputs.cache-hit != 'true'
+        run: mise run wasm-lint
+
+      - name: Lint the module's glue and its tests with cached custom-gcl
+        if: steps.custom-gcl-cache.outputs.cache-hit == 'true'
+        run: |
+          chmod +x ./custom-gcl
+          GOOS=wasip1 GOARCH=wasm ./custom-gcl run ./cmd/sigil-wasm/... ./internal/engine/...
+          cd cmd/sigil-wasm/test && ../../../custom-gcl run --config ../../../.golangci.yaml ./...
+
+      - name: Test the module through its ABI
+        run: mise run wasm-test
+
+  # bindings/typescript loads the module, and its tests compare records with
+  # the sigil CLI, so the job needs go as well as bun.
+  typescript:
+    name: TypeScript package
+    runs-on: ubuntu-latest
+    needs: wasm-build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ env.MISE_TOOLS }}
+
+      # See the wasm job.
+      - name: Download the WebAssembly module
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sigil-wasm
+          path: dist/wasm
+
+      - name: Mark the module up to date
+        run: touch dist/wasm/sigil.wasm
+
+      - name: Test the TypeScript package
+        run: mise run ts-test
+
+      # tsc type-checks the package again as it emits dist/.
+      - name: Build the TypeScript package
+        run: mise run ts-build
+
+  # bindings/rust embeds the module, and its tests compare records with the
+  # sigil CLI and kind files with Go's generator, so the job needs go as well
+  # as rust.
+  rust:
+    name: Rust crate
+    runs-on: ubuntu-latest
+    needs: wasm-build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # MISE_TOOLS plus rust: a second mise cache, which main's runs save
+      # like the first.
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ env.MISE_TOOLS }} rust
+
+      # rust-cache keys on the toolchain and the lockfile, and drops the
+      # crate's own build output before it saves, so the cache holds the
+      # registry and the compiled dependencies. Only main's run saves; pull
+      # requests restore it. ~/.cargo/bin holds mise's rustup proxies, not
+      # anything cargo installed, so it stays out.
+      - name: Cache cargo registry and dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: bindings/rust
+          # release.yaml's crates job restores this cache by the same key.
+          shared-key: bindings-rust
+          cache-bin: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # See the wasm job.
+      - name: Download the WebAssembly module
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sigil-wasm
+          path: dist/wasm
+
+      - name: Mark the module up to date
+        run: touch dist/wasm/sigil.wasm
+
+      - name: Check formatting and lint the crate
+        run: mise run rust-lint
+
+      # Also builds the docs with warnings as errors, so broken intra-doc
+      # links fail here.
+      - name: Test the crate
+        run: mise run rust-test
+
+      # What the release publishes to crates.io: the package with sigil.wasm
+      # inside, built from the package alone.
+      - name: Package the crate
+        run: mise run rust-package

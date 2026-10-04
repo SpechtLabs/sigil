@@ -99,7 +99,7 @@ k6 writes its report under `examples/deploy-gates/results/`, and the deploygate 
 
 ### CI regression gate
 
-The **Benchmark regressions** job compares a PR's tested merge result with the PR base commit. Release and manual runs compare the checked-out commit with its parent. Both revisions run on the same runner and Go version, with ten samples of at least 200 ms per workload. All binaries compile before measurement; the order alternates between base-first and head-first samples.
+The **Benchmark regressions** job, in the Fuzz and benchmarks workflow that CI runs on every pull request, compares a PR's tested merge result with the PR base commit. Manual runs of that workflow compare the checked-out commit with its parent. Both revisions run on the same runner and Go version, with ten samples of at least 200 ms per workload. All binaries compile before measurement; the order alternates between base-first and head-first samples.
 
 CI copies the current `*_bench_test.go` files and `internal/benchtest` fixtures onto the base snapshot, so both revisions execute the same workloads. A benchmark the base doesn't declare is new and can't exist there: the comparison leaves it out of the base, runs it on the head only and lists it as not compared, so it can't fail the gate. Its helpers belong in an ordinary `_test.go` file, which isn't copied. When the current fixtures don't build or run on the base, as after a change to the Sigil syntax they're written in, that package's base runs its own `internal/benchtest` instead, and the output says so; each revision then measures its own version of the workloads. Setup that depends on an API a change touches, such as building a kind with its options, belongs in a `*_benchsetup_test.go` file next to the benchmarks, like `pkg/policy/policy_benchsetup_test.go`. The comparison leaves those files with their revision: the base keeps its own copy and takes the checkout's only when it has none, so an API change edits only the setup file and both sides still run the same workloads. Otherwise adapt the benchmark to a shared API, or choose a compatible baseline for a local comparison.
 
@@ -140,7 +140,7 @@ For an hour per target:
 FUZZ_TIME=60m FUZZ_TIMEOUT=90m mise run fuzz
 ```
 
-The CI workflow runs short smoke tests on pull requests: five seconds per target, two workers and a one-minute timeout per test process. The fuzz step has a five-minute limit; its whole job, including tool setup, has a ten-minute limit. With the current 24 targets, mutation time totals about two minutes, plus compilation and seed replay. Local `mise run fuzz` and `mise run check` retain the ten-second default.
+The Fuzz and benchmarks workflow, which CI runs on every pull request, runs short smoke tests: five seconds per target, two workers and a one-minute timeout per test process. The fuzz step has a five-minute limit; its whole job, including tool setup, has a ten-minute limit. With the current 24 targets, mutation time totals about two minutes, plus compilation and seed replay. Local `mise run fuzz` and `mise run check` retain the ten-second default.
 
 The Extended fuzzing workflow runs on `main` every Monday at 02:17 UTC, with an hour per target. Manual runs must also select `main` and can choose one, ten or sixty minutes per target. It discovers packages automatically, runs packages in parallel, caches interesting inputs and uploads logs and regression inputs. Elapsed wall time and aggregate target time are different measurements.
 
