@@ -602,9 +602,9 @@ mise run sigilc test policies
 
 ```text
 ok    policies/access/main_test.yaml  17 cases
-ok    policies/teams/checkout/production_test.yaml  9 cases
-ok    policies/teams/payments/production_test.yaml  16 cases
-✓ 42 cases passed in 3 files
+ok    policies/teams/checkout/production_test.yaml  10 cases
+ok    policies/teams/payments/production_test.yaml  22 cases
+✓ 49 cases passed in 3 files
 ```
 
 Flatten a team policy into the rules it adds up to, with each invocation's conditions pushed into the rules and every param replaced by its value. `--policy` takes the name the document declares, `payments.production`, not a file path:
