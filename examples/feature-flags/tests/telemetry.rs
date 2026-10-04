@@ -156,9 +156,14 @@ async fn log_lines_are_json_with_the_ids_once() {
 async fn lines_outside_a_request_have_no_ids() {
     let obs = observed();
     let _h = harness(&[]).await;
-    let startup = obs.lines().into_iter().find(|l| l["msg"] == "policies loaded").expect("the startup line");
-    assert!(startup.get("trace_id").is_none() && startup.get("span_id").is_none(), "{startup}");
-    assert_eq!(startup["flags"], 4);
+    // The tests share one log and run in parallel, so other services' startup lines may be
+    // there too, such as a_failed_evaluation_marks_its_span_and_logs_an_error's with a fifth
+    // flag. None of them may carry ids, and one is this service's, with the four sample flags.
+    let startups: Vec<Value> = obs.lines().into_iter().filter(|l| l["msg"] == "policies loaded").collect();
+    for startup in &startups {
+        assert!(startup.get("trace_id").is_none() && startup.get("span_id").is_none(), "{startup}");
+    }
+    assert!(startups.iter().any(|l| l["flags"] == 4), "no startup line with the four sample flags: {startups:?}");
 }
 
 #[tokio::test]
