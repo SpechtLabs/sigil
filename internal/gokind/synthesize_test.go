@@ -113,11 +113,25 @@ func TestSynthesizeTypes(t *testing.T) {
 		})
 	}
 
-	if tag := outer.Field(0).Tag.Get("policy"); tag != "inner" {
-		t.Errorf(`Outer.inner tag = %q, want "inner"`, tag)
+	if got := b.Fields["Outer.inner"]; !reflect.DeepEqual(got, []int{0}) {
+		t.Errorf(`Fields["Outer.inner"] = %v, want [0]`, got)
 	}
 	if got := b.Funcs["lookup"].Type(); got != reflect.TypeFor[func(string, int64) ([]string, error)]() {
 		t.Errorf("Funcs[lookup] type = %v", got)
+	}
+}
+
+// Kinds that differ only in their names share their Go types: reflect
+// keeps every type it builds for the life of the process, so a type per
+// name would make each kind with names of its own cost memory for good.
+func TestSynthesizedTypesDontHoldNames(t *testing.T) {
+	renamed := strings.NewReplacer("inner:", "nested:", "name:", "label:", "Inner", "Nested").Replace(synthKind)
+	a, b := gokind.Synthesize(loadKind(t, synthKind)), gokind.Synthesize(loadKind(t, renamed))
+	if a.Input != b.Input {
+		t.Errorf("input types differ:\n%v\n%v", a.Input, b.Input)
+	}
+	if got, want := b.Fields["Outer.nested"], a.Fields["Outer.inner"]; !reflect.DeepEqual(got, want) {
+		t.Errorf(`Fields["Outer.nested"] = %v, want %v as for inner`, got, want)
 	}
 }
 
