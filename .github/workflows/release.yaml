@@ -105,7 +105,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
 
       - name: Set up mise
-        uses: jdx/mise-action@94c60b39bc2d90ab2f9bab27f38d3cc4812c1834 # v5.1.0
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: go goreleaser
@@ -151,7 +151,7 @@ jobs:
           ref: ${{ env.TAG }}
 
       - name: Set up mise
-        uses: jdx/mise-action@94c60b39bc2d90ab2f9bab27f38d3cc4812c1834 # v5.1.0
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: bun node cosign
@@ -242,7 +242,7 @@ jobs:
           ref: ${{ env.TAG }}
 
       - name: Set up mise
-        uses: jdx/mise-action@94c60b39bc2d90ab2f9bab27f38d3cc4812c1834 # v5.1.0
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: rust cosign
