@@ -158,9 +158,10 @@
       "groupSlug": "node-packages"
     },
     {
-      "description": "The examples ship nothing, and release-please releases the whole repository from one package, so a fix(deps) there would cut a sigil release for an example app's dependency.",
+      "description": "The examples and the docs site ship nothing, and release-please releases the whole repository from one package, so a fix(deps) there would cut a sigil release for a dependency nobody gets. For docs/, whose playground depends on the published @spechtlabs/sigil, that's a loop: every release bumps it there, and the bump cut the next release.",
       "matchFileNames": [
-        "examples/**"
+        "examples/**",
+        "docs/**"
       ],
       "semanticCommitType": "chore"
     },
