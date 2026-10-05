@@ -1,6 +1,6 @@
 [package]
 name = "spechtlabs-sigil"
-version = "0.7.2"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.98"
 description = "Embed Sigil, a typed policy language, in Rust: the Go engine as a WebAssembly module on wasmtime"
