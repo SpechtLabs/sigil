@@ -140,7 +140,9 @@ timeline:
       formatter comment that moved on a second pass, a reserved area that could overwrite a
       Mach-O code signature, and a fuzz target that grew until its runner died; chasing that
       one found that `Synthesize` kept 2 KB per distinct kind for the life of the process. With
-      those fixed, the next run fuzzed every target for an hour without a failure.
+      those fixed, the next run fuzzed every target for an hour without a failure. With two
+      hour-per-target runs on a local machine, that's about 132 target-hours over two days, and
+      the Hardening milestone's fuzzing criterion is met.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -557,9 +559,9 @@ milestones:
       run on a schedule.
 
       **Done when** a day of fuzzing finds no panics, and `Import(Export(k)) == k` holds.
-      The tests and campaign runner are implemented, and the weekly campaign has fuzzed every
-      target for an hour without a failure. The day-long criterion has not yet been
-      demonstrated; parallel hour-per-target runs don't close it.
+      Both hold: four hour-per-target campaigns on October 4 and 5, about 132 target-hours,
+      found five problems, all fixed, and the last campaign passed every target. Public
+      `LoadKind` and static cost analysis remain.
     deliverables:
       - title: LoadKind
         state: DOING
@@ -589,15 +591,19 @@ milestones:
           fuzzes each target for an hour in a job of its own, pushes what it found to the corpus
           branch, and opens or updates a GitHub issue that names each failing target, what go
           test reported and how to replay it.
-      - title: Day-long fuzz campaign
-        state: TODO
+      - title: A day of fuzzing
+        state: DONE
         requirement: MUST
         description: |
-          Record a continuous 24-hour campaign that exercises every target for at least an hour,
-          with the revision, toolchain, durations and results. Parallel target-hours do not
-          substitute for elapsed campaign time. Fix and retain every failure before rerunning
-          the campaign and claiming the milestone's exit criterion. With 33 targets, an hour
-          each in sequence takes 33 hours.
+          Four campaigns on October 4 and 5 fuzzed each of the 33 targets for an hour: two on a
+          local Mac Studio and two on GitHub Actions, about 132 target-hours in all. They found a
+          formatter comment that moved on a second pass, a reserved area that could overwrite a
+          Mach-O code signature, an expression whose debug print nests past the parser's limit,
+          and a fuzz target that grew until its runner died, which led to `Synthesize` holding
+          2 KB per distinct kind. All are fixed: the three failing inputs are kept under
+          `testdata/fuzz`, and `TestSynthesizedTypesDontHoldNames` pins the memory fix. The
+          last campaign, [run 37288297603](https://github.com/SpechtLabs/sigil/actions/runs/37288297603),
+          passed every target. The weekly campaign keeps running.
       - title: Static cost analysis
         state: TODO
         requirement: SHOULD

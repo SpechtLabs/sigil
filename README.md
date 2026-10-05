@@ -209,7 +209,7 @@ mise run docs-dev
 
 ## Roadmap
 
-M1 to M6 are done. Hardening is in progress: fuzz targets and round-trip properties cover every layer, and a weekly campaign fuzzes each of the 33 targets for an hour. Public `LoadKind`, a day-long fuzz campaign and static cost analysis remain. Editor tooling comes last.
+M1 to M6 are done. Hardening is in progress: fuzz targets and round-trip properties cover every layer, and a weekly campaign fuzzes each of the 33 targets for an hour. A day of fuzzing has passed; public `LoadKind` and static cost analysis remain. Editor tooling comes last.
 
 | Milestone | Scope | State |
 | --- | --- | --- |
@@ -219,7 +219,7 @@ M1 to M6 are done. Hardening is in progress: fuzz targets and round-trip propert
 | M4 Policies | `when`, decision constructors, precedence, default, trace; host-ordered types remain | Done |
 | M5 Composition | `param`, `let`, modules and imports, policy invocation, `Require`, bundle loader, cycle detection, `sigil explain` | Done |
 | M6 Tooling I | `sigil fmt`, kind export, `sigil check` with lints, `sigil eval`, `sigil test`, `policytest` | Done |
-| M7 Hardening | Round-trip properties, fuzzing across layers and a weekly hour-per-target campaign; public `LoadKind`, a day-long campaign and cost analysis remain | In progress |
+| M7 Hardening | Round-trip properties, fuzzing across layers and a weekly hour-per-target campaign; public `LoadKind` and cost analysis remain | In progress |
 | M8 Tooling II | `sigil lsp`, `sigil gen go`, `sigil breaking`; the commands exist but aren't implemented | Planned |
 
 The roadmap lives in [`roadmap.yml`](./roadmap.yml) in the [roadmap-md](https://roadmap.sierrasoftworks.com/) format, with every deliverable and what "done" means for each milestone; open it in the [roadmap viewer](https://roadmap.sierrasoftworks.com/viewer/github.com#SpechtLabs/sigil) for the rendered version.

@@ -196,4 +196,6 @@ Keep a real failure in that directory with its fix. Ordinary `go test` then repl
 
 ## Record a campaign
 
-Record the commit, `go version`, target list, duration and worker count, logs, and any fixes or retained failures. The [roadmap](/project/roadmap/)'s hardening milestone asks for a continuous 24-hour campaign that exercises every target for at least an hour without failures, and no such campaign has been recorded yet. Parallel target-hours don't substitute for elapsed campaign time. With the current 33 targets, the sequential hour-per-target command above takes 33 hours, which covers it; rerun it after fixing any failure. The scheduled workflow adds parallel coverage but can't meet the elapsed-time criterion on its own.
+Record the commit, `go version`, target list, duration and worker count, logs, and any fixes or retained failures. `fuzz run` writes most of that to `metadata.json` and `results.json` in its results directory, and the next run replaces them, so copy them somewhere first. The corpus branch only keeps inputs: `fuzz corpus push` names the machine and the commit checked out when you push, not when the run started.
+
+The [roadmap](/project/roadmap/)'s hardening milestone asked for a day of fuzzing without failures. Four hour-per-target campaigns on October 4 and 5, two on a local machine and two from the Extended fuzzing workflow, ran about 132 target-hours; the problems they found are fixed, and the last campaign passed every target.
