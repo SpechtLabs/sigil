@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("remave_requestor:\n  calls:\n    - args: [{0,},[0,0,0]]\n      returns: [0,0,0]\n    - args: [{},[0,0]]\n      error: 0\ndouble:\n calls:\n - {args: [0],returns: 0}")

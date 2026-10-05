@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:A\x94\xf4\x8b\xad\xdb\x1f\xe7\xa7<\"00000000ޛ0000000")
+string("0")
+bool(true)

@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:A A(\"\xe8\"(\"\xe8\"")
+string("0")
+bool(true)

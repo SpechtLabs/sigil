@@ -1,0 +1,3 @@
+go test fuzz v1
+string("service.name like\"ƱΉ\"")
+int64(76)

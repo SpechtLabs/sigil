@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("policy: A\nstubs: {0: {returns: A}}\ncases:\n  - name: A\n    input: {A: }\n    stubs: {0: {calls: [{args: [A],error: 0}]}}\n    expect: {decision: A,reason: A}")
+[]byte("0")

@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("12\x06FFFFFF\x00\x10")
+[]byte("12\x06F00000\x000")

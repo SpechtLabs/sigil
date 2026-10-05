@@ -1,0 +1,3 @@
+go test fuzz v1
+string("policy good:K@1\nwhen true{A00000\x01A0)0}")
+string("good")

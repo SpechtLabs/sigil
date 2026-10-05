@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("0:\n  ca\\ls:\n    - returns: [[0]]\n  returns: []")

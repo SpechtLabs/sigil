@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(-50)
+string("y0 ")
+bool(true)

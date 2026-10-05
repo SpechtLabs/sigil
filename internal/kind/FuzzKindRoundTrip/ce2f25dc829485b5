@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("0")
+int64(-53)
+string("AZ\xd79BB\x7f)\xc4")
+bool(false)

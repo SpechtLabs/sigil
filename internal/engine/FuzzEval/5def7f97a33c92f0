@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("\uea16")
+[]byte("0")

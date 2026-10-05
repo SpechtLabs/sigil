@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("0")
+int64(-45)
+string("000000000ʨ000Į0\"000000")
+bool(false)

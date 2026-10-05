@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval approve(a+0)let a=0s")
+string("0")
+bool(false)

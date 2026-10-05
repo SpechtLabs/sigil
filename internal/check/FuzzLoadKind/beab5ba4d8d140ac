@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 enum Aa:A input A:AA fn A(AA)->AAA decision deny{reason:A00000000000000000000000000011011011101 A:A}default deny(A00020000)")

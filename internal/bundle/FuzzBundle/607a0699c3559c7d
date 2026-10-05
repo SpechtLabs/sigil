@@ -1,0 +1,3 @@
+go test fuzz v1
+string("kind K version 1 decision deny{A}decision allow{A}collect one precedence deny>allow default")
+string("0")

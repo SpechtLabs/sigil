@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("{\"age\":\"\xa6\xcd&\x99\"}")
+[]byte("0")

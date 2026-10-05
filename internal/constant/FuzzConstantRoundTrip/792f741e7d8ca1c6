@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(-80)
+float64(-499)
+string("0000000¿000000000")
+bool(true)

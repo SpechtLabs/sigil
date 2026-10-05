@@ -1,0 +1,2 @@
+go test fuzz v1
+string("\"礇酸媤緷酸媤緇釚\"")

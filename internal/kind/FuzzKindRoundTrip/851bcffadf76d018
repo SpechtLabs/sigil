@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("\x00by\x03\x04\x05")
+int64(-45)
+string("XYlx")
+bool(false)

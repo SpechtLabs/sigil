@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"files\":[{\"pAth\":\"0\",\"sourCe\":\"kind Access version 1\\bdecision deny{reason:A}collect one\\bprecedence deny\\u003eA\\bdefault deny(reason:B0)policy A:Access\\b\\bA(0)\"}],\"op\":\"test\",\"test_files\":[{\"pAth\":\"_test.yml\",\"sourCe\":\"%0\"}],\"trusted_files\":[{\"pAth\":\"1\",\"sourCe\":\"policy\\b\"}]}")

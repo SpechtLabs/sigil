@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(-45)
+float64(482.15999999999997)
+string("𒀒𒒒𒒀𒒒𒒀𒒀𒀒𒒀𒒒𒒀𒒀𒀒𒒒𒒀𒒀𒀒𒒀𒒀𒀒")
+bool(true)

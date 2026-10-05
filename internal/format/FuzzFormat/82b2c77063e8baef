@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A!pa(00 )0000 pa(00 param A:A! l(0 )00 let A=0 0 l(0 )00 l(0 )00 l(0 )00 l(0 )0000 A()00 let A=0!A()!let A=0!w(00 a(00000 A()!A()0")

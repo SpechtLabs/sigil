@@ -1,0 +1,4 @@
+go test fuzz v1
+string("0*policy A:DeployApproval#param B1Y2:Aa200!param A:C!let cC07X0=bC!let C=A0!let c0=B2AaB cCw()1")
+string("1")
+bool(false)

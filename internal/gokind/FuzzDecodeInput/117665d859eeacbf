@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("𑜑𑑙𑑑𑑙𑜑𑑖𑑑𑜑")
+bool(false)

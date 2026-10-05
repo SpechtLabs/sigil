@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("8\xba\x8by\xfb*policy A:A0 c\"\"B(0 A(let A=AAX let0 % A(let .")

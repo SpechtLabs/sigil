@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 enum type in collect one precedence type in in decision collect one precedence default")

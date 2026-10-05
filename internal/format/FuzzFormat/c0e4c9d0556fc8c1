@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A let A=A.A.A.A.A.A.A let A=any A in A.A:A.A(any A in A.A:\"\").A let A=all A in A.A:(\"\"and\"\")and A.A(A.A)and 0 or 0 when 0{when A.A.A{}}assert(\"\",A.A)")

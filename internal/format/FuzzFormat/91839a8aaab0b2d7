@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:A\"\"u(0 param A:A\"\"u(0 param A:A0")

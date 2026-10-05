@@ -1,0 +1,2 @@
+go test fuzz v1
+string("\"聭潏饏蚭暭潏隽\x8f难\"")

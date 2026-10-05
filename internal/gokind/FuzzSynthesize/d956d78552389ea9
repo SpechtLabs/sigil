@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind I version 1\ndecision d { reason: r }\ncollect all")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 input A:A collect one input A:A input A:A fn A(A,A)->A decision A{reason:A|A|A|A|A|A|A}input A:A decision A{reason:A|A}collect one precedence A>A input A:A input A:A fn A(A,A)->A decision A{reason:A|A|A|A|A|A|A|A}decision A{reason:A|A|A}decision A{reason:A|A|A}decision A{reason:A|A|A}collect one")

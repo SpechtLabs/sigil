@@ -1,0 +1,3 @@
+go test fuzz v1
+string("(C+z+b+B+B+B+c+c+B+Y+X+y+A+C+c+a+Z)!=A+A+b+y+X")
+string("1$X1")

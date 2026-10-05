@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("{\"user\":{\"\xb800\xb2\xb20ҳܲ\xb2\xb2\xb2\xb20\":\"\"}}")
+[]byte("0")

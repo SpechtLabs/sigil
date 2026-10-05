@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("{\"\x87Ame\x82\":\"\"}")
+[]byte("0")

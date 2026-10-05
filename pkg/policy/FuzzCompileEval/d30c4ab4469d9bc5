@@ -1,0 +1,4 @@
+go test fuzz v1
+string("kind DeployApproval version 0 fn A(string)->string decision A{reason:A A:list<string>A:duration}")
+string("0")
+bool(false)

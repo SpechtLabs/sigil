@@ -1,0 +1,4 @@
+go test fuzz v1
+string("mpob'/ \npolicy n: DeployApproval@9\"g2\nparam min_soBA: d= 241\nparam e:c(Z]X\nlet oYns_sbrviX =a7. ne\nlet r0x=gB\nlet i =i7A7C  y$re iAw(rao: ice_owe,vers: approe, bak7: s)\n")
+string("0")
+bool(false)

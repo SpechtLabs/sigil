@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 type A{A:A}decision A{A}collect one precedence A default A()0 0!0!0!---kind A version 0 decision A{A}collect one precedence A default A()conflict A(0s)")

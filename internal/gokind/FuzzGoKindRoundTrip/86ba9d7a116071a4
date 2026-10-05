@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(137)
+string("𗢢\U000a20ed")
+bool(false)

@@ -1,0 +1,3 @@
+go test fuzz v1
+string("module A: K@1\n\npub let A=name!=\"\"\n\n---\nB2\xfbA1 X C7!A0$A1!A1(B+B12\n\n0\n\npolicy A0:K@1\n\nuse B0\n\nC0A02()\n\nwhen name !=\"\"{\nallow(reason:ok)\n}\n\n---\n\npolicy X:K@1\n\nuse A7\nwhen name!=\"\" {\nA1A0A()\n}\n\n---\n\npolicy B11:K@1\n\nwhen Aa1{allow(reason:ok)\n}")
+string("1")

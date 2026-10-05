@@ -1,0 +1,2 @@
+go test fuzz v1
+string("쏏흯媐->絒錶媐->絏ᶡ")

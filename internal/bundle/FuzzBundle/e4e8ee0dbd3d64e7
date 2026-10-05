@@ -1,0 +1,3 @@
+go test fuzz v1
+string("policy A:A when true{A when true{A")
+string("0")

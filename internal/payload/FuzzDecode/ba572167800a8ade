@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("SZ0\xff19(\x177\x177\x177\x170")

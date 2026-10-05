@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(-9223372036854775749)
+string("헟⯤疟⯤疂萲ⷒ겲衉\"萲ⷒ겲衉")
+bool(true)

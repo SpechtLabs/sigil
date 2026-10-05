@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(110)
+float64(0.04166666666666667)
+string("\u074b\u07ba\u07bf\uf561\u05cb\ua8dd\u0095\u070f\u2065")
+bool(false)

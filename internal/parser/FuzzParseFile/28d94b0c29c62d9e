@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 00 decision A{A:A=\"\"in:A=\"\"policy:")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("y:\n calls:\n - {args: [0],returns: 0}\n1:\n returns: 10000")

@@ -1,0 +1,4 @@
+go test fuzz v1
+string("\"000000\x8000\"")
+string("0")
+bool(false)

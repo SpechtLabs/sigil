@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("S2pA\x011\xa588888888($ 0")

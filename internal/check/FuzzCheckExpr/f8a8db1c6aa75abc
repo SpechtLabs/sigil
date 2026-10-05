@@ -1,0 +1,2 @@
+go test fuzz v1
+string("\"\\UX0000000\"\"\\UX0000000\"")

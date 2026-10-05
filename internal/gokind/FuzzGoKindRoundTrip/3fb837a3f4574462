@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(69)
+string("\U000a20ed\U0001cb57\u0601\u07b7\U000a20ed\U0001cb57\u0601\u07b7")
+bool(true)

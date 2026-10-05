@@ -1,0 +1,4 @@
+go test fuzz v1
+string("module m:DeployApproval pub let ok=0!0 policy A:DeployApproval use m.{ok}when ok{}")
+string("0")
+bool(true)

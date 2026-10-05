@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(-17)
+float64(-18.833333333333332)
+string("\x13\x19\x13\xa9\xbf\x89\xd8\xf1\xf7漪\x8f\xfc\x01\xbb\xb3\x9e\xf7")
+bool(true)

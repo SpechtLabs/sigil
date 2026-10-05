@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 0\x860\x95A\x93A>0 A:0 input A:0 0 0 0  A<A>0 A{A}0 0 !0 0 0 0 0 000000A 0 ")

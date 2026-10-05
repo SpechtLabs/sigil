@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"require\":[{\"policy\":\"0\",\"000st00\xd1\xf0\x89\x860\xf40A\xd1a\":\"\", \"00000\": [\"000\"]}]}")

@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(-9223372036854775749)
+string("헟⯤疂萲ⷒ겲衒㧆\xea\xba0늨")
+bool(true)

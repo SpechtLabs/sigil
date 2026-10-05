@@ -1,0 +1,4 @@
+go test fuzz v1
+string("\"\xf3\x83\xa0\xf3\x83\xa0\xf3\x83\xa0\xf3\x83\xa00\"")
+string("0")
+bool(false)

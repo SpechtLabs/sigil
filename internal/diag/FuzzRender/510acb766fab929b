@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("\n\n\n\n\n\n\n\n")
+uint16(10)
+uint16(9)
+uint16(17)

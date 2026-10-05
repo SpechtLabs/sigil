@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(9223372036854775807)
+float64(1.7976931348623157e+308)
+string("\x00\xff\xe4\xb80界")
+bool(true)

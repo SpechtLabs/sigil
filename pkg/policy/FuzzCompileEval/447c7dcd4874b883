@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:A 0 when 00000{A000000(A0000\x00\x02}")
+string("0")
+bool(true)

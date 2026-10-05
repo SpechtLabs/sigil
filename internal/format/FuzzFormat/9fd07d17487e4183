@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A let A=\"\U0009a69a\xf2\xc700\"")

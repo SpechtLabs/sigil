@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("0")
+int64(-53)
+string("\x94\x90\xb6\xe7\x1e0")
+bool(false)

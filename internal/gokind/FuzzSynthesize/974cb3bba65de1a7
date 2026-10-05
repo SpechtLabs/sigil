@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 !A0000 decision 0 collect 0B\x16\xc4\xe5\x87\x12\xc3\x00!A000000000")

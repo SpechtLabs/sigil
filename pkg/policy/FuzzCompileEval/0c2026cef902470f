@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy p:DeployApproval@1 when false{let boom=split(actor.roles[0],\"\")when boom any in[\"\x98\"]{}}")
+string("0")
+bool(false)

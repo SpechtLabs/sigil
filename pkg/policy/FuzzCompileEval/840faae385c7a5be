@@ -1,0 +1,4 @@
+go test fuzz v1
+string("욌\"\xf3\x82\xd9䋰\xef\xb9\xd1\"涼")
+string("0")
+bool(false)

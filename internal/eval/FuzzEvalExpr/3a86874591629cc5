@@ -1,0 +1,3 @@
+go test fuzz v1
+string("0 matches\"[92702A709A270270270270279A]\"")
+int64(-157)

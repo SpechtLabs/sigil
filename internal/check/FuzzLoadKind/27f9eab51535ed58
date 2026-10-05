@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 enum Tier:A|A enum Plan:A|A input B:map<Tier,list<Plan>>decision d{reason:a|A00 t:Tier0=0}default d(t:0,reason:a)")

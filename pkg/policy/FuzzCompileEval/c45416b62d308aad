@@ -1,0 +1,4 @@
+go test fuzz v1
+string("\xe7\x8b\xe7\x8b0")
+string("0")
+bool(false)

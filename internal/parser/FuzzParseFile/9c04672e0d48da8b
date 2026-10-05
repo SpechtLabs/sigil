@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 0!!!!!!!!0!0(0!00000000 0000000A0!0((0(0!0 0!0!!!!0!!0!!0!0!!!!!!0!0(0(0((0(collect default\"\"\nprecedence")

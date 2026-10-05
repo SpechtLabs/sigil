@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 decision d(A:int=0){A}default d(B:0)")

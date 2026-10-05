@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(-14)
+float64(-56.5)
+string("00")
+bool(true)

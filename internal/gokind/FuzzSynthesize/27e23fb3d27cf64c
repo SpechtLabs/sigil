@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind D version 1\nenum Tier:l|d|a\ntype S{n:int f:float s:string b:bool d:duration t:timestamp o:?int l:list<int>m:map<string,int>mi:map<int,string>mb:map<bool,int>md:map<duration,int>inner:?Inner\n  tier: Tier\n  tiers: list<Tier>\n  mt: map<Tier, int>\n  ot: ?Tier\n}\n\ntype Inner {\n  x: int\n}\n\ninput s: S\ninput env: string\n\ndecision deny {\n  reason: r\n}\n\ncollect one\nprecedence deny\n\ndefault deny(reason: r)")

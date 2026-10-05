@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 enum A0:A input A:map<A,A>decision d{A A}default d(0)")

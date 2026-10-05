@@ -1,0 +1,2 @@
+go test fuzz v1
+string("\"㰌㶰嫌㰰嫌㶰嫌㶰\xb0\"")

@@ -1,0 +1,4 @@
+go test fuzz v1
+string("Ø\xe3\xb3\xe0\xa1ħ\u07b8ߦɰƴ")
+string("0")
+bool(false)

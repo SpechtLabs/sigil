@@ -1,0 +1,3 @@
+go test fuzz v1
+string("\ud7a4➈쾫⨴팯鈼댈\u0cf9")
+string("0")

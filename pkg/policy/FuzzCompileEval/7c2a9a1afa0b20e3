@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:A---policy B:A 0 policy C:A")
+string("0")
+bool(true)

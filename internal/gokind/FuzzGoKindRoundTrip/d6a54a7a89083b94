@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(36)
+string("ЌʋͶߙд«Ƃήɨ«\U000a20edԛ͗ӭֻ\U0001cb57\u0601ץϙɄ˚Ŷ\u07b7ڢǰܦߕǍġ")
+bool(false)

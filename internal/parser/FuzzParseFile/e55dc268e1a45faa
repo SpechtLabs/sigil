@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("\"\n\"\U000dddd8\xf0\xbb\x8e\n\"\U000c6c58\ue82a\n锅\"䮳\n\xf0\x9b\x97쏥")

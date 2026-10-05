@@ -1,0 +1,3 @@
+go test fuzz v1
+string("\"\U00090410\x90\"")
+int64(78)

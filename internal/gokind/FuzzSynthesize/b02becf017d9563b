@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 type B{B:A B:A A:B A:A A:A A:C A:C A:C A:C}type A{A:A}input A:C input A:C decision y{A}default y()")

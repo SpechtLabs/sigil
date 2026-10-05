@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A let A=\"\"in 0 and 0!=\"\"and{}like\"\"+(0 like\"\"and\"\")+0+0+[]+0+[]+0 or 0")

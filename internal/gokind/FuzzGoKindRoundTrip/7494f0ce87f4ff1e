@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(-9223372036854775797)
+string("ۭȫͼԅƾѭ\ue17dݬ")
+bool(false)

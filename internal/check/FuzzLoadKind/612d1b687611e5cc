@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 enum A000:A decision d{reason:A t:A0A0000A}default d(t:0)")

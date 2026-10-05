@@ -1,0 +1,4 @@
+go test fuzz v1
+string("kind DeployApproval version 0 type Actor{A0:A A00aa:list<A>aaaaa:list<string>aaaaaaa:list<string>}input aaaaaaaaaaaaaaaaaa:Actor input aaaaaaaaaaa:string fn aaaaa(string,string)->string decision aaaaaaaaa{reason:a0Aaaaaaaaaaaaa Aaaaaaaaa:list<string>a:duration}")
+string("0")
+bool(false)

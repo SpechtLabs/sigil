@@ -1,0 +1,3 @@
+go test fuzz v1
+string("0 matches\"[027Xx0z2XZ0\xc6xz\xd9xBX2Z07Xwy0XBZ0 x\x9e Bxzv2Xxz0270 C\xc61P70xӹz0\x8bx7B02\x9fb2\xb30X\xa52X7o08n0 ֮0\xdbX0x# \xce0 #1 X0 8\xa2xc\xccX]\"")
+int64(-168)

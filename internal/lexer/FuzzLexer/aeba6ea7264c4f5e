@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("搃`辫\uf36a`秩\"ữ乚쭜ॖ\xf9\"")

@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy p:DeployApproval@1 param min_soak:duration=27h when release.soak<min_soak{}")
+string("0")
+bool(false)

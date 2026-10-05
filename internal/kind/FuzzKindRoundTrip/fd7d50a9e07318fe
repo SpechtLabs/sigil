@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("0")
+int64(-9223372036854775784)
+string("\xae\x02\xad\xde\xd50000\xea\"\xa40000\"")
+bool(true)

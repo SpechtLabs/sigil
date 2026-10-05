@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:A0 assert(\"\",0)assert(\"\",0)")

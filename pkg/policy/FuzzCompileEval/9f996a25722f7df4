@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy z: DeployApproval%B7#param C810aA:A&+param Bz2c:B0 let BAz7=B\nlet y81= y$let ZZ=XZ0Zw97%w(9)'xX0v(b)8}Z0 ()9")
+string("0#x9")
+bool(true)

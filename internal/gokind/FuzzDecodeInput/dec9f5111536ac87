@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("\"\xe0\xb6\xe0\xb6Ҫő\"")
+bool(true)

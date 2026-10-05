@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(30)
+string("ZZZZ YZ(817,0$Zc)Z\xf7\x94\x9f")
+bool(true)

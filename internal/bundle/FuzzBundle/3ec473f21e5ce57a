@@ -1,0 +1,3 @@
+go test fuzz v1
+string("module A:K let A00000000000000000=A000")
+string("0")

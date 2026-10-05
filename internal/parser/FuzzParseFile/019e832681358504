@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:A@0 let A=A.A any in A.A let A=0(A.A[\"\"]+\"\")all in A.A pub let A=\"\"in A.A and 0!=\"\"and A.A has{\"00000000000000000000000000\":\"\",\"00000000000000000000000000\":\"\",}policy A:A@0 pub let A=A.A any in A.A pub let A=0(A.A[\"\"]+\"\")all in A.A pub let A=\"\"in A.A and 0!=\"\"and A.A has{\"00000000000000000000000000\":\"\",\"00000000000000000000000000\":\"\",}policy A:A@0 when A.A+0 and A.A{}policy A:A@0 when A.A.A in 0 and 0{}")

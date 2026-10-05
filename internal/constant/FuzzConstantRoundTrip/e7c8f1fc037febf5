@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(1)
+float64(-12)
+string("سįӃğڿ֥ћ\\۟𘤕ݫ\\Љ\u0590")
+bool(true)

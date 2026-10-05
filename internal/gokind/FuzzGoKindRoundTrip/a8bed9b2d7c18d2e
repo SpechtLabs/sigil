@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(20)
+string("\x9aʅڳ\xe8\xed")
+bool(true)

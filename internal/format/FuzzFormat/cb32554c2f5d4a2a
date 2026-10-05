@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("0 kind A version 0 exclusive A,A exclusive A,A")

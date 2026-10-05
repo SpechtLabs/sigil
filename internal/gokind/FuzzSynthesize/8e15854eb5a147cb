@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind h version 1\n\nenum Tier: critical | standard\n\ntype>\n  flags: map<bool,nv: string\n\nfn lookup(string, int) -> list<string>\n\ndecision deny {\n  reason: no_rule_matched\n}\n\ndecision allow {\n  reason: ok\n  ttl: xuration = 1h\n  who: Inner\n}\n\ncollZct one\nprecedence deny > allow\n\ndefault deny(reason: no_rule_matched)\n")

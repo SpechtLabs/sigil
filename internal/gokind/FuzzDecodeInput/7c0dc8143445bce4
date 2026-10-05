@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("{\"s\":{x,y,\"l\":[1,A],x0}}")
+bool(false)

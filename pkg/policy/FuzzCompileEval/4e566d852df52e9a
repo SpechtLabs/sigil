@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval param A:duration=``")
+string("0")
+bool(false)

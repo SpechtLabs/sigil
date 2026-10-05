@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:A A A A0 A000 A A!!!`\t`A!!A!!A A!A!A!A!\x15!A!A!A!!!\x11A!!A!!!A!\x10!A!A!A!A\x1aA!!!!\x14A\x05\x15\x03!A!A!!A\x11A!\x12!!!\x16!!!!!A!0A!\x0e\b!A!!!!\x1f!A")

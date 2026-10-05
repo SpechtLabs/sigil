@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A!pa(00\"\"l(0 l(0 l(0\"\"let A=[]exclusive i( outcome \"\"000 w(00")

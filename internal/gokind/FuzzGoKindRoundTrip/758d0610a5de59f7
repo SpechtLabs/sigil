@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(-9223372036854775722)
+string("0\x19\x16\"00")
+bool(false)

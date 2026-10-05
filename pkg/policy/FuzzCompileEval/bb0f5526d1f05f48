@@ -1,0 +1,4 @@
+go test fuzz v1
+string("\n0!!!!!!!0A!!!!!!!!!\xf3\xba!\xe5\xa0!!!!\xe0\xa1\xe8\xbb!")
+string("0")
+bool(true)

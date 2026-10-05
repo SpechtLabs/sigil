@@ -1,0 +1,3 @@
+go test fuzz v1
+string("module lib:K@1\n\npub let banned=name!!\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\"000000\"policy guard:K@1 use lib.{banned}when banned{deny(reason:banned)}---policy A:K@1 use guard guard()when name!=\"\"{allow(reason:ok)}---policy B:K@1 use guard\nwhen name==\"0\"{guard()}")
+string("0")

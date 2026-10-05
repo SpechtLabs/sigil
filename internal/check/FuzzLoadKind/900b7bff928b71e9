@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 2\nenum Tier:A10 decision A0{reason:A000 A:Tier}collect all ")

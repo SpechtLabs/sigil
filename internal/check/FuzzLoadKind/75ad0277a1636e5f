@@ -1,0 +1,2 @@
+go test fuzz v1
+string("0ܯ!ء!!!!!!\x85!0\xba\x85\x8f\xf6\xf6\x850A\xf1\x84ܻ!!")

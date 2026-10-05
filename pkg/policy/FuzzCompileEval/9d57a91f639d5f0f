@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy p:DeployApproval@1 assert(\"0\",release.soak>0s)when true{assert(\"0\",service.labels has\"\")}when actor.roles[0]!=\"\"{\nassert(\"0\",true)}")
+string("0")
+bool(false)

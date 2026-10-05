@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(-27)
+float64(4.2)
+string("\xf0\xf900")
+bool(true)

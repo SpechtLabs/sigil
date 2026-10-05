@@ -1,0 +1,4 @@
+go test fuzz v1
+string("\"Ç\xf3\x8500\"ҳȶ0A 0AٰԮیƑ0A\"̏ܡݞ֖ߙ\xea\x97\xf0\x94˫\xe8\x95\\bɤ\"˝ʧщ0A 0Aء\"Ç\xf3\x8500\"ҳȶ0A 0AٰԮیƑ0A\"̏ܡݞ֖ߙ\xea\x97\xf0\x94˫\xe8\x95\\bɤ\"")
+string("0")
+bool(false)

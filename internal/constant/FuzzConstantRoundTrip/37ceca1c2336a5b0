@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(-27)
+float64(-84.375)
+string("\U000d1750")
+bool(true)

@@ -1,0 +1,3 @@
+go test fuzz v1
+string("service.name matches\"[a0792]0\"")
+int64(81)

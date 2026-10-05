@@ -1,0 +1,4 @@
+go test fuzz v1
+string("\"\U000c30c3\U000c383c\xa9\"")
+string("0")
+bool(false)

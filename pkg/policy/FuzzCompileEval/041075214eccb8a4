@@ -1,0 +1,4 @@
+go test fuzz v1
+string("kind A version 0 type A{A:A}type A{A:A A:A A:list<A>A:map<A,A>}type A{A:A A:list<A>A:list<A>A:list<A>}input A:A input A:A input A:A input A:A fn A(A,A)->list<A>decision A{reason:A|A|A|A|A|A|A}decision A{reason:A|A|A A:list<A>}\n\ndecision A{reason:A|A|A|A A:A=0}\n\ncollect one precedence A>A>A\n\ndefault A() ---\n\n//\nkind B version 0\n\ndecision A{reason:A}\n\nprecedence A\n\ndefault A() ---\n\npolicy p:DeployApproval@1\n\nwhen true{approve(reason:a)\n}")
+string("0")
+bool(true)

@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("")
+int64(21)
+string("⾝\uf7a5")
+bool(false)

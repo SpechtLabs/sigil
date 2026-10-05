@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("S2\xe3,80\x130")

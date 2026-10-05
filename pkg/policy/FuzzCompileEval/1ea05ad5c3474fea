@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:A a(A000(\"\"(0 exclusive a(A000(\"\"(0 exclusive")
+string("0")
+bool(false)

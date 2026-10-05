@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy B: DeployApproval 0 when AC7{#approve(X708:cA)2}")
+string("")
+bool(true)

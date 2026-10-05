@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind B version 1 enum Tier:a|Y enum Plan:B\ninput X: map<Tier, list<Plan>>\ndecision d{ reason:a  t:Tier}collect all\ndefault d(t: Y, reason:a)")

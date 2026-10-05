@@ -1,0 +1,3 @@
+go test fuzz v1
+string("0 matches\"[20720CX1 X7C290720729 X8A270]\"")
+int64(-241)

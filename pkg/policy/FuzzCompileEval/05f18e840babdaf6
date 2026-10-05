@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:A whe(00 not a(A000(\"\"(0 not")
+string("0")
+bool(true)

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind Spe version 2\nflag:oolinTi?T\n\nfn eys(map<stn, string>,) -> list<sring>\nfn nw() -> teser\ndecision allow {  reason: noneard\n  tags: list<st---\n\npolicy shapes.demo: Shapes@1\n\nparam m: map<ing, int>= {}\nparam names:list<string>= [\"a\"]\nparam nested: list<list<strig>> = [[\"a\"], []]\nparam limitical\nparam allowed: list<Tier> = [standard, internal]\n\nwhe")

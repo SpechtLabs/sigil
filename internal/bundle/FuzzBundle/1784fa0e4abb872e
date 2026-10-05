@@ -1,0 +1,3 @@
+go test fuzz v1
+string("policy A:K deny(\"\xde\xde\xde\xde\")")
+string("0")

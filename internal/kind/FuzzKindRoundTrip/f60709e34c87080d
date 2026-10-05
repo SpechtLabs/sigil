@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("0")
+int64(106)
+string("0000\x04000\x170000\x1500000\x0200\x1400000\x1a00000000\f\x1400\x0e00\x0f0\x1300000\x0e00")
+bool(false)

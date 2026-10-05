@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("0: \nstubs: {0: {reu0ns}}\ncases:\n- stubs: {0: {calls: [{args: [],error: 0}]}}")
+[]byte("0")

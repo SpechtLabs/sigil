@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 decision d{reason:A A:A t:A}default d(t:0)")

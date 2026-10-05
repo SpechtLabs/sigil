@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(26)
+string("ΠШ\U000f945a݄ӂ\uf67aγʤԒ駱کގ\U0003b4c3߸ܴ̭ذǛ\uf67a۠ދݵѢ̘ϷϜ")
+bool(true)

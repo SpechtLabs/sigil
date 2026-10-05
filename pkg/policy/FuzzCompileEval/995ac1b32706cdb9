@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval when release.B00000{approve(A00000)}")
+string("0")
+bool(true)

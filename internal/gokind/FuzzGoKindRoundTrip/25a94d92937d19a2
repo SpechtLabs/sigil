@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(30)
+string("\r\r\r\r")
+bool(true)

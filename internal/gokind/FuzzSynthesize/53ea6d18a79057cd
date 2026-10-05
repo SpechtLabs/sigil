@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 1 enum Tier:A type Outer{A00000000000:Tier}type Inner{A000:string A0:int}input A0000:Outer input A00:list<string>decision deny{reason:_o_00ae_matched}decision allow{reason:A A00:duration A01:Inner}collect one precedence deny>allow default deny(reason:o_01_matched)")

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 00 fn A(A decision A{decision A(A:A 000000A000000\xe9\xfeA\v\v\v\v\v\v\v\v000000 ")

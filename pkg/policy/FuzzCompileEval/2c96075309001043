@@ -1,0 +1,4 @@
+go test fuzz v1
+string("module B:DeployApproval use A policy A:DeployApproval")
+string("0")
+bool(true)

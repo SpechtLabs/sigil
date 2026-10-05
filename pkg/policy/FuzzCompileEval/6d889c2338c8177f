@@ -1,0 +1,4 @@
+go test fuzz v1
+string("!!\x87!\xce0\x05\x9b\x82\xe6\x01\v\xb4!\xa4!\xfe")
+string("0")
+bool(true)

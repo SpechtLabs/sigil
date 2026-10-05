@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 input A:A input A:A input A:A0 fn A()->A fn A()->A policy A:A param A:A param A:A param A:A")

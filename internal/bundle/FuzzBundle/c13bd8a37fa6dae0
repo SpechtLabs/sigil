@@ -1,0 +1,3 @@
+go test fuzz v1
+string("\xf1\x95\xbc\U00055f26")
+string("0")

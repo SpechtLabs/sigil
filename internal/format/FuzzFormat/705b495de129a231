@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:A let A=\"\"all let A=0 has{\"\":\"\",\"\":\"\"}\x00\x020 use A.{A,param A:A=[]")

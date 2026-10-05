@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("\"䂱䝂䂱杂䂱䝂䂱䝒")

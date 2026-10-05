@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy p: DeployApproval@1")
+string("Y92")
+bool(true)

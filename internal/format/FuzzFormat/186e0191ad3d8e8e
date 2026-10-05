@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("0 policy A:A a(A000(\"\"([]exclusive assert(\"\",\"\",)a(A000(\"\"([]exclusive assert(\"\",\"\",)")

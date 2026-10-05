@@ -1,0 +1,3 @@
+go test fuzz v1
+string("0 matches\"\x9a\xf1\xef\"")
+int64(-23)

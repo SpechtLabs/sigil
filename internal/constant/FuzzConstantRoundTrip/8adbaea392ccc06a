@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(9223372036854775745)
+float64(4.4942328371557893e+307)
+string("\x01\x00\xff\xe4\x00\x00\x00\x01\x8c")
+bool(true)

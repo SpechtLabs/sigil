@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind B version 1\nenum Tier:a | b\nenum PByB:X\ndecision d {reason: a |y2C t:Tier =b }\ncollect all\ndefault d(t: a,reason:a)")

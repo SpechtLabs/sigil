@@ -1,0 +1,4 @@
+go test fuzz v1
+string("module m: DeployApproval@1\npub let k = release.hotfix\n---\npolicy A: DeployApproval@1\nuse m.{Ak}\nwhen A1 {approve(reason: a) }")
+string("2")
+bool(true)

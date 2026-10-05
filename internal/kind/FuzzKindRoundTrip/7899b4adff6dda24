@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("0")
+int64(-55)
+string("\b\u009e\u074b\b\u0604\u07be\ue26e\b\ue237\b\b\b")
+bool(false)

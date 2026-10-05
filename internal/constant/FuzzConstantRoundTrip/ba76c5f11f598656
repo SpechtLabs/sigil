@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(77)
+float64(30)
+string("\xeb\xbf\xf1\xa5\xf1\xa5\xeb\xbf0")
+bool(false)

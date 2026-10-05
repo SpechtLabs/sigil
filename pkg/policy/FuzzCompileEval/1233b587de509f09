@@ -1,0 +1,4 @@
+go test fuzz v1
+string("\"ҳȑҳȶҳȑٰԑ\"")
+string("0")
+bool(false)

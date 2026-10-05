@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 0 enum A:A\xa700A00000000000000000000000000000000000000 0000000A000000000 decision A{reason:A,0000000A000000000 0000000A decision policy A:A 0 when ){")

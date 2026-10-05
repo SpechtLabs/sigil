@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 enum a:A type A{A:B A:A0}type a{A:B}input A:B")

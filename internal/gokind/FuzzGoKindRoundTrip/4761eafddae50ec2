@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(70)
+string("𝗗𝢗𗢗𗃢𗃗𗢗𝢗𝢗𗭲")
+bool(false)

@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy p:DeployApproval@1 when\"\x85\x9a\xfe\x82\"in actor.teams{}")
+string("0")
+bool(false)

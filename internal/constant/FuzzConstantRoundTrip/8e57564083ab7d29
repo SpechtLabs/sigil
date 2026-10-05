@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(-9223372036854775757)
+float64(1.9)
+string("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
+bool(false)

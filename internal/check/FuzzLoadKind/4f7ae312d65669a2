@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 type A{A:map<B,A>A:B}type A{A:B}input A:B fn A(B,B)->B decision y{reason:A A:B A:B}default y(B00)")

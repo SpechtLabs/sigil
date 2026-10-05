@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval@1 A00000(\"000000000\"\"0\nreview(A, approvers: service.owners)")
+string("0")
+bool(true)

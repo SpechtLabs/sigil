@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(-24)
+string("\u05fb\uecc5\u008f\u0379")
+bool(false)

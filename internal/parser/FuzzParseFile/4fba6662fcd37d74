@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 decision A{reason:A A:map<A,A>=0>=0 A:map<A,A>={}A:A=0 A:A=[]}>=")

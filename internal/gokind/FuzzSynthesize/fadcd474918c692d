@@ -1,0 +1,2 @@
+go test fuzz v1
+string("\"\xb5\"\"\xac\"\"\xac\"\"\xac\"\"\x89\"\"\xac\"\"\xac\"\"\x89\"")

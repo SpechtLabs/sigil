@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A use A.{A}param A:list<A>param A:list<A>=param A:A=A,max:A,min:A param A:map<A,A>=A+let A=\"\"in A and A=={\"\":\"\",\"\":\"\"}let A={\"00000000000000000000000000\":\"\",\"00000000000000000000000000\":\"\"}let A=any let A= any A in A:A like#A let A=all A in(A like\"\"and A!=let A=-0--0 let A=A?.A??\"\"let A=present A?.A and not[A0]exclusive in outcome let A=A(A[\"\"])A(A or A let A=A or A or when A{when A and A{A(A}when A{A(A,A:A)A(A}}when A{}assert(\"\",A>=0s)assert(\"\",[A0]exclusive in outcome)A(A)A(A)A()")

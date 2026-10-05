@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(-9223372036854775690)
+string("\x95\"\xe7\"\x8c")
+bool(true)

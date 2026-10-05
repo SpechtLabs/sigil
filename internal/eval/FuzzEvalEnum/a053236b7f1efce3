@@ -1,0 +1,3 @@
+go test fuzz v1
+string("뷷∷∷눯뷷∷∷눯∷뷷ⷷ∷∷뷷ⷷ∷")
+string("0")

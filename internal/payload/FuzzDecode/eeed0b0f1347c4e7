@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("208\a\a7\a1\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7\a7")

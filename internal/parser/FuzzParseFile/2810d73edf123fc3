@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A param A:A={}0 param A:A=[[\"\"],[]]param A:A=-0 param A:A=0h+0m param A:A param A:A=[0,0 A(0 A(param A:A={}0 param A:A=[[\"\"],[]]param A:A=-0 param A:A=0h+0m param A:A param A:A=[0,0]")

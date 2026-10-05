@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("\"\xe3\x90\xe3\x91뇗\xf3\xbf욙問\xe4\x84妼\"")

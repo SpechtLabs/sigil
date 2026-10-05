@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(61)
+float64(0.4166666666666667)
+string("\"\"\"\"")
+bool(true)

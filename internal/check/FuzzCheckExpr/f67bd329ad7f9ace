@@ -1,0 +1,2 @@
+go test fuzz v1
+string("0漶헅麬거0赥0_ 0_ᅼ␖것")

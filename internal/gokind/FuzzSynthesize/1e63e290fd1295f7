@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 input A:A input A:A fn A()->lis,<A>deci\x80ion A{A}decision A(\x000(collect one pre-\xfb\xbacedence A default A()")

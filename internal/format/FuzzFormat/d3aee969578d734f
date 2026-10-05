@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A let A=(\"\")or 0 or 0 or 0 or 0")

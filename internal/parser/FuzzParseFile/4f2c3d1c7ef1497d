@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("\nkind A version 0\ntype A{A:A A:A A:A\nA:A\n}\n\n\n\n\n0!!!!!!!!!!!!!!!!!!!!!!!0000000A decision A{reason:A A:A}0")

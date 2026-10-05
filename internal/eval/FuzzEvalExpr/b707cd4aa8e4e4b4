@@ -1,0 +1,3 @@
+go test fuzz v1
+string("0 matches\"[17009AX790 1a0270Xa20791 #Xa 7b Yac a#ca 8A7029072072970]\"")
+int64(-25)

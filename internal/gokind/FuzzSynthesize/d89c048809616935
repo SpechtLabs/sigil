@@ -1,0 +1,2 @@
+go test fuzz v1
+string("0\xcb0~0\xe20a\"\xed\x820\xe1\xac0ȳٕӟĸ\"0\xf90\xed0\x930a")

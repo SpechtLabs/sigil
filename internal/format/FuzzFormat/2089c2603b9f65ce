@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A assert(\"\",[0 not in 0]not in\"\")")

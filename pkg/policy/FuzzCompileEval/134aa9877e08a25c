@@ -1,0 +1,4 @@
+go test fuzz v1
+string("module A$\x90\x90\x90\x90B11(2\n2 B Y1=A0A(A\n---\npolicy p: DeployApproval@1\nuse X.{C}\nwhen A1 { approve(reason: a) }")
+string("01")
+bool(true)

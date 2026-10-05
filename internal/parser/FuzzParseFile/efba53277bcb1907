@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A!when 0A0{0 when 0A0{0 when 0A0{0 000A00000!when 0A0{0 when 0 0{0 when 0 0{0 when 0{0 when 0{0 when 0{0 when 0{0 when 0{0 when 0{0 when 0{0 when 0{0 when 0{0 when 0{0}0}0}0}0}0}0}0}0}0}0}0}0}0}0}0")

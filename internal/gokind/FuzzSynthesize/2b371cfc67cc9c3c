@@ -1,0 +1,2 @@
+go test fuzz v1
+string("ҚӴߚ˄Ȫҽ½ܘЖ듦`\u0bc5`Ġ՚\"00\xd4\xca\xe50000\xd9000000\"")

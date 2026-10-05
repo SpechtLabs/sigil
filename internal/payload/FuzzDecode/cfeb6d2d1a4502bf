@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("S2@\x011\xa5\x03A9\r7C \"CA12BA0%\x03G9\r7C 2&&&&9999CA1 ")

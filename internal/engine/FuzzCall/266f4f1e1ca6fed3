@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"files\":[{\"pAth\":\"0\",\"sourCe\":\"kind A version 0\\bdecision page{reason:critical_alert|A}precedence page:critical_alert\\u003eB\"}],\"op\":\"check\"}")

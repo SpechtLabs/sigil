@@ -1,0 +1,2 @@
+go test fuzz v1
+string("䮙嶩㶸𣓜㰆岫넣\"\U000b6172")

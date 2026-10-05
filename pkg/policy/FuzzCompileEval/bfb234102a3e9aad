@@ -1,0 +1,4 @@
+go test fuzz v1
+string("module A:A use B use B use A0 use A0 use B use B use A0 use A0")
+string("0")
+bool(true)

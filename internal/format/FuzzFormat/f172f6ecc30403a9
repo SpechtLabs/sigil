@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A!param param\"\"let let let\"\"let let when")

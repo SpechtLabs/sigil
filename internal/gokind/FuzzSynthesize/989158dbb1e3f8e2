@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A!\x000E00\xe7\xd5\b\x85\xe3")

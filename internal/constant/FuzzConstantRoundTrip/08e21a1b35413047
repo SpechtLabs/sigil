@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(22)
+float64(85.5)
+string("\f\f\f\f")
+bool(true)

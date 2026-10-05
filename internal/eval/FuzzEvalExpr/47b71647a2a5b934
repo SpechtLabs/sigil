@@ -1,0 +1,3 @@
+go test fuzz v1
+string("0 matches\"[\xe7\x100ֱ27\xc0\x119\x9aAA C\xf5X]0\"")
+int64(25)

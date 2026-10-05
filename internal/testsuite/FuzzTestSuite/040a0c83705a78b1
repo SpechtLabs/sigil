@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte(">\n\n ᰐ\n  ᰐ\n")
+[]byte("0")

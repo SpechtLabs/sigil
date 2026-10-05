@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("09:\n080:\n0800:\n08:")
+[]byte("0")

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 type A00{A:A0000000}type A00{}input A:A000")

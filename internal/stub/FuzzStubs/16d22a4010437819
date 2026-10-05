@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{A: {\"calls\":[{\"args\":[0],\"returns\":0000000000000000A}]},\"\":{\"reaurs\":A0}}")

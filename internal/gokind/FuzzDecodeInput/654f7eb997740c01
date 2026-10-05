@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("\"𑜑𑑙𑑑𑑙𑜑𑑙𑑑\x91𑑑\"")
+bool(true)

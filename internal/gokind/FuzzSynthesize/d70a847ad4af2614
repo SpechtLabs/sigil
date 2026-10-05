@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 enum A:A|A enum A:A|A 0 fn A(A decision A{reason:A}decision A{reason:A A:A=0h}0 precedence default A()0 fn A(A decision A{reason:A}decision A{reason:A A:A=0h}0 precedence default A(0")

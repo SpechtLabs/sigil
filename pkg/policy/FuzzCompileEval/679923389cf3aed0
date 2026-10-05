@@ -1,0 +1,4 @@
+go test fuzz v1
+string("2700000h")
+string("0")
+bool(false)

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("𞲲𞲲𞲲𞲲𞸚𞲲𞲲𞲚𞲚𞲲𞲚\U0002fcb2𞲲𞲚𞲲\U0001ecb5𞲚𞲚\U0001ecbc𞲚𞲲𞲲𞲜𞲲𞲚𞲚")

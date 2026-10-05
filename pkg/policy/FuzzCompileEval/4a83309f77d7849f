@@ -1,0 +1,4 @@
+go test fuzz v1
+string("\"ҳȶ\x91\"\"ҳȶٰԮ\x91\"")
+string("0")
+bool(false)

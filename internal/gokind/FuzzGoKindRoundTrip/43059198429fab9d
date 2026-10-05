@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(-9223372036854775699)
+string("\v\v\v\v\v\v\r\r\r\r\r\r\r\r\r\r\r\r\r\r\r\r\v\v")
+bool(true)

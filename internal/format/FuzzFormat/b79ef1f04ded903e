@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A when 0{w(A0")

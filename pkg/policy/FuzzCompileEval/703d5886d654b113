@@ -1,0 +1,4 @@
+go test fuzz v1
+string("匒༿吚颁蹴뤺ꃫᕒ")
+string("0")
+bool(false)

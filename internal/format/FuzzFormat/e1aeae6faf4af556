@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0,accepts:0 enum A:A enum A:A type A{A:?A A:A}type A{A:A A:map<A,A>}input A:A input A:A fn A(A,A)->list<A>fn A()->A decision A{A}decision A{reason:A A:A}decision A{A:A=0h\xe8!0!collect one precedence A precedence A:A exclusive A.A,A.A conflict A(0)")

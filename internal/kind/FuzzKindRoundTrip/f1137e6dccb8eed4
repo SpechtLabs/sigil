@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("0")
+int64(62)
+string("\u05fb\U00015cdf\u07b2\u008e")
+bool(true)

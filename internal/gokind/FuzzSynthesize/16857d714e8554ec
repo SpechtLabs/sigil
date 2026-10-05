@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind Aaaaa version 0 enum aier:Aaaaaaaa00aaaaaaa type Outer{aaaaaaaaaaaaaaaaaaaaaaaaaa:timestamp aaaa:Aaer}type Inner{aaaa:string aa:int}input aaaaa:Outer input aaa:string fn aaaaaa()->list<string>decision aaaa{reason:aaaaaaaAaaaaaaa}decision aaaaa{reason:aa aaa:duration aaa:Inner}")

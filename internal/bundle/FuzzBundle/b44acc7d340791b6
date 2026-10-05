@@ -1,0 +1,3 @@
+go test fuzz v1
+string("module b:K policy guard:K use b A()policy A:K use guard BYAllYY(0)")
+string("0")

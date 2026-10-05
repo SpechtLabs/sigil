@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"handle\":1,\"input\":{},\"op.:\"eval\",\"timeout_ms\":10}")

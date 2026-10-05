@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"op\":\"format\",\"sourCe\":\"policy A:A@0\\nassert(\\\"\\\",_)when A{\\nA()\\n}\\n\\nwhen(a)==a{\\na(a+a,a:a)\\n}\\n\\nwhen a\\u003C0d{\\na(a(a a)\\n}\\n\\nchen any a in a:a==\\\"\\\"{\\na(a+a)\\n}\\n\"}")

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 1 enum Tier:b0b|b decision d{reason:A t:Tier=Tier.A}collect all default d(t:Tier.a)")

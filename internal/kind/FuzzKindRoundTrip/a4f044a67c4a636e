@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("\xf8\xf1+SH\xda")
+int64(-9223372036854775755)
+string("1")
+bool(false)

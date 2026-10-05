@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("0")
+int64(-9223372036854775797)
+string("ӽڝ\u0590ǳޭ̭鿰חؔҚ\u0590Ǵ")
+bool(false)

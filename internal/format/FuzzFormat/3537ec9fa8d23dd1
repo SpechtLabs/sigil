@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 type A{A:map<map<map<map<map<map policy A:A param A:map<A,A>=param A:list<A>=param A:map<A,A>=param A:list<A>=")

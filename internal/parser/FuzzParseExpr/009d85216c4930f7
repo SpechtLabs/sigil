@@ -1,0 +1,2 @@
+go test fuzz v1
+string("\"\ua7dd\xeb\x87\xf2\"")

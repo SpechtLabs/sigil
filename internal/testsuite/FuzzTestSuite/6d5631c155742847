@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("\u202a\u20280\u2028\u202a\u20280\u2028")
+[]byte("0")

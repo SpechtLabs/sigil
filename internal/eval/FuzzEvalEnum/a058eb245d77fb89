@@ -1,0 +1,3 @@
+go test fuzz v1
+string("[account.tier]")
+string("\xf70\xd70\xb3\xb0")

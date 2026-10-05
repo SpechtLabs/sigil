@@ -1,0 +1,4 @@
+go test fuzz v1
+string("module A:A let A=0d")
+string("0")
+bool(false)

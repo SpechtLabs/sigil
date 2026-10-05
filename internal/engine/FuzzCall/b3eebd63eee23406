@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"files\": [{\"pAth\": \"\", \"00000\xb4\xc6ԙ0000\": \"\"}, {\"pAth\":\"\",\"sourCe\":\"\"}]}")

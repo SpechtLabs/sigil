@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0\xc50\x92\x87ԁtype A{decision A()decision A(A:??decision\xcf100000A default\"\"precedence")

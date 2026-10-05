@@ -1,0 +1,4 @@
+go test fuzz v1
+string("kind A version 0 decision A{reason:A|A|A|A|A|A|A|A|A}policy p:DeployApproval@1")
+string("0")
+bool(false)

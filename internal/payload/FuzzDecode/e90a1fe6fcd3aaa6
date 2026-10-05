@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("\xaaV2U\xb2R\xa8V2Q\xb2R2R\xd2QP2V\xb2R\x88\xaeV2\x05(A\x160\x800")

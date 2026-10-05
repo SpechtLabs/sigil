@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 enum A00:A enum A000:A type A0{A:map<string,string>A:map<B0,A>}type A0{}input A:A01 input A:A1 fn A()->A1 decision deny{reason:A0|A0|A0 A:A1}default deny(0)")

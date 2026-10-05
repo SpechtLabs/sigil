@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 1 type A00{}type B{}input A:string fn B()->list<string>decision deny{reason:no_rule_matched}decision allow{reason:A}collect one precedence deny>allow default deny(reason:no_rule_matched)")

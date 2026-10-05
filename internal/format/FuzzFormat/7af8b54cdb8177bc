@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A let A=0 in 0+[]let A=\"\"in 0 and 0!=\"\"and 0 has{}let A=0 has{}let A=any A in 0:0 like\"\"+0(any A in 0:0 like\"\")or all A in 0:(0 like\"\"and 0!=\"\")--0--presen+A0 and no+[]+0(0 or 0)and 0 or 0 or 0 when 0{when 0 and 0{}}assert(\"\",0+0)assert(\"\",[0-0]in[])")

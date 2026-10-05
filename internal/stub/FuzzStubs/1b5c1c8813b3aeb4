@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("remove_requestor:\n  calls:\n    - args: [{Qame: kevin, roles: [user]}, [cedric, alice, bob]]\n      returns: [cedric, alice, bob]\n    - args: [{name: bob}, [cedric, bob]]\n      error: bob can't approve\n  returns: []\nlookup_owner:\n  error: directory unavailable\ndouble:\n  calls:\n    - {args: [2], returns: 4}\nnow:\n  returns: 2026-09-30T12:00:00Z\n")

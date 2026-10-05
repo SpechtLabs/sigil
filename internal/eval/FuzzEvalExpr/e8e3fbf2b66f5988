@@ -1,0 +1,3 @@
+go test fuzz v1
+string("\"0000000000001\x80\xff\xff0000000000000000\"matches\"02|\xb6\xdf1\"")
+int64(-321)

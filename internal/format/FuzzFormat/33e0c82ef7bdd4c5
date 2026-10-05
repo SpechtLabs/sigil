@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 0!\x85\x85\x85\x85\x85\x85\x85\x85\x85\x85\x85\x85\x85\x85\x85\x85conflict conflict\"\"conflict input conflict decision conflict")

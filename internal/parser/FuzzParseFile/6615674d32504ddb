@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:A let A=A+0 +0 000 let A=0(A+0[\"\"]+\"\")+0 000 let A=\"\"in A00 and 0!=\"\"and A+0 has{\"\":\"\",\"\":\"\"}")

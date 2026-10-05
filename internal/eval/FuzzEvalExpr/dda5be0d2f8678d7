@@ -1,0 +1,3 @@
+go test fuzz v1
+string("0 matches\"\\\\Q0000\"")
+int64(-70)

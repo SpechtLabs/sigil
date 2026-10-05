@@ -1,0 +1,3 @@
+go test fuzz v1
+string("kind K version 1\ninput A00a:string\n0(0(0(0(\n\ndecision allow{\nreason:aa\n}\n\ncollect one\nprecedence A>allow\ndefault A00(reason:A)\n")
+string("0")

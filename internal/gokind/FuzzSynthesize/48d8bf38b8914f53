@@ -1,0 +1,2 @@
+go test fuzz v1
+string("0h 0h0d 0d0d 0h0d 0h0d 0d0d 0h 0h0d 0h0d 0d0d 0h0d 0h0d 0d0d 0h00h")

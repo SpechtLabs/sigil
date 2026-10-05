@@ -1,0 +1,2 @@
+go test fuzz v1
+string("0.0\xa00.0\xa00.0\x7f0.0A")

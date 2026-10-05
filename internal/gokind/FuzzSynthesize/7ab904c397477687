@@ -1,0 +1,2 @@
+go test fuzz v1
+string("\"\\u000X\"\"\\uX000\"\"\\uX000\"\"\\u000X\"")

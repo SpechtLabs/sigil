@@ -1,0 +1,4 @@
+go test fuzz v1
+string("kind DeployApproval version 1 input A:int decision A{reason:A|A|A 000!0!precedence A default A(reason:A)")
+string("0")
+bool(false)

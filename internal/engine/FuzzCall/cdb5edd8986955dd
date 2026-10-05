@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"filEs\":[{\"pAth\":\"0\",\"sourCe\":\"policy A:A\\bwhen 0{A(0 A!A!A!A\"}],\"op\":\"check\"}")

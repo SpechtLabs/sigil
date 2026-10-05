@@ -1,0 +1,4 @@
+go test fuzz v1
+string("kind DeployApproval version 0 type AAaaaa{aa:A}type Aaaaa{aaaaaaaaaaaaaaaaaaaa:A}input aaaaaaa:A input aaaaaaa:A input aaaaa:A input aaaaaaaaaaa:A fn aaaaa(A0)->A decision deny{reason:a|aaaaaaaAaaaaaaa|aaaaa|a|aaaaaaaaaaaa|AaaaaaaaAaaaaa|a}decision aaaaaaa{reason:aaaaa|a|aaaaaaaaaaaaaaa|Aaaaaaaaaaaa Aaaa:A}collect one precedence deny>A0")
+string("0")
+bool(true)

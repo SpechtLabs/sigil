@@ -1,0 +1,4 @@
+go test fuzz v1
+string("kind DeployApproval version 0 type A00{A:A}type A00{A:A}fn A(A)->A decision A{A}collect one precedence A")
+string("0")
+bool(true)

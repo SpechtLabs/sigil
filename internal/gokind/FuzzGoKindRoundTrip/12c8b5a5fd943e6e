@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(-9223372036854775706)
+string("䦸䦸翸翸")
+bool(true)

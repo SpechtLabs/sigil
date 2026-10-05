@@ -1,0 +1,3 @@
+go test fuzz v1
+string("A!\x04\x04\x04\x04A(0")
+int64(0)

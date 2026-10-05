@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A assert(\"᪓\ue8a2ᢢ\xe1\",\"\ue8a2ᢢ\xe1\")")

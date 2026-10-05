@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A``use A``l(000 A()!A(0 A()0 when 0{}!A()!A(let A=0 00")

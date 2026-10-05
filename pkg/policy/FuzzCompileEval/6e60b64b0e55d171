@@ -1,0 +1,4 @@
+go test fuzz v1
+string("DMx7a9 //x,.\npolicy o: DeployApproval' \n\nparam o: lis\nparam mk: cu\nparam Cs: c7$riB let xX=czr+C\nlet ZZ00 =Xz1x#01")
+string("\x80")
+bool(true)

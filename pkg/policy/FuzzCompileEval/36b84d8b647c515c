@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy p:DeployApproval@1 assert(\"0\",deny in outcome)when\nactor.roles[0]!=\"\"{assert(\"0\",true)}")
+string("0")
+bool(true)

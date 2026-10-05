@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"files\":[{\"pAth\":\"0\",\"sourCe\":\"kind A00000000000 version 0\\benum A0000000:A0000000000000|A000\\btype A{A:map\\u003CA,A type A001{A00000000:string A0000000:string}input A0000000:A\\bdecision A001{reason:A000000000000000000000 A00000:string}decision A001{A00000000000000000}decision A00000{reason:A0000000000000 A000000:string}\"}],\"op\":\"test\",\"test_files\":[{\"pAth\":\"_test.yml\",\"sourCe\":\"0\\b\"}]}")

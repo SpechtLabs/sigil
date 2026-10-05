@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval review(\"\xac\xb600\x8500\x99a\xe6\xe7a\xae\xb20\xa7\xa0Ӎ0\x89\xb200\xc7a\xcf\xdbA00000\xd9\")")
+string("0")
+bool(true)

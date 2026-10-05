@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(-89)
+string("\x00\x01\x00\x00\x00\x00\x00\x7f0")
+bool(false)

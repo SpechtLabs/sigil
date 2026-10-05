@@ -1,0 +1,2 @@
+go test fuzz v1
+string("!\xfe!0A!!!\xc1!!!!!!!!!!!!0A!!!0A!!!!!!!!!!")

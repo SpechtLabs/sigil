@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval\"\"let B=\"\"in A\"\"when\"\"in A{when 0 in A{}}when\"\"in A{}")
+string("0")
+bool(false)

@@ -1,0 +1,4 @@
+go test fuzz v1
+string("module m:DeployApproval let A=B policy A:DeployApproval use m.{B}when A{}when A{A()}")
+string("0")
+bool(false)

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("\"ο\xed\x850\xe3\xb30ܢ\xe9\x960ޛح\xe3\xa10\"")

@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval param A:A=0 param A:A=[\"\" ]let e=0 any in 0 let B=split(service.labels[\"\"],\"\")all in 0 let A0000000=\"\"in 0 and 0!=\"\"and service.labels has{\"00000000000000000000000000\":\"\",\"00000000000000000000000000\":\"\",}when not 0{A(0!}when 0<A and not A{param A:A=A param A:A=let B=A any in A let A=A(A[\"\"],\"\"all in A let B=\"\"in A and A!=\"\"and A has{\"00000000000000000000000000\":\"\",\"00000000000000000000000000\":\"\",}when not A{}whe(A0<A and not A}when A{when A!=\"\"and\"\"in A{A(A}when A in A and A{review(A,approvers:A)}}when A and\"\"in A{approve(A,bake:A)}a(A000(\"\"(0+0")
+string("0")
+bool(false)

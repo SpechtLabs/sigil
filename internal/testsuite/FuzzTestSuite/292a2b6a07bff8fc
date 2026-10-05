@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("policy: 0\ncases:\n  - expect: {decision: deny,reason: too_Tld}")
+[]byte("0")

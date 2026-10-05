@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy p:DeployApproval@1 assert(\"\x80\",deny in outcome)when actor.roles[0]!=\"\x96\"{assert(\"\x9f\",true)}")
+string("0")
+bool(true)

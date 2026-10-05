@@ -1,0 +1,3 @@
+go test fuzz v1
+string("kind A version 0 0 decision A(reason")
+string("0")

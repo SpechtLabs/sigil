@@ -1,0 +1,4 @@
+go test fuzz v1
+string("a\xa1\x88\x1c")
+string("0")
+bool(true)

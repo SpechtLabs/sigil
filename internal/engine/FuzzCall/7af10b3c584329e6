@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"files\":[{},{},{\"pAth\":\"./000000000\"},{}],\"op\":\"check\",\"require\":[{\"trusted\":[\"0\"]}]}")

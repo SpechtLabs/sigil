@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("Ϳ\xf6\xb5\xb5\xb5")
+[]byte("0")

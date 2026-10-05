@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 enum A:A|A|A type A{A:A A:A A:A A:A A:A A:A A:?A A:list<A>A:map<A,A>A:map<A,A>\xfe0+0+0+0+0+0+0+0+0++0 0+0 0+0+0+0+0+0+0+0++0 type A{A:A}input A:A input A:A decision A{reason:A}collect one precedence A default A(A+0)")

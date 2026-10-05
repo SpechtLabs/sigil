@@ -1,0 +1,2 @@
+go test fuzz v1
+string("¯Ҏ\"\xe2\xf8Ґ\xd8ʚ\xf2\xe900000\xc6\xf0000000\xdb\xe7\x83\xfc00000000000000\xf3\x98\xd5\xda\xdc000000Ӥ0ʣ000000000000\\0\"ł")

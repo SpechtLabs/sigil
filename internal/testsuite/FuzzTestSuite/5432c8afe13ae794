@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("stubs: {0: {ŲÙřŲÙŸòÙřŲÙŸòљŸÙŸ}}")
+[]byte("0")

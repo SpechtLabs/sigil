@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("8")
+int64(-9223372036854775808)
+string("\x01\x01\f")
+bool(false)

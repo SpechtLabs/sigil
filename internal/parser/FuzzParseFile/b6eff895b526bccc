@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("````kind:policy:module:kind:policy A:A whe(A0.kind.policy.module A(kind:")

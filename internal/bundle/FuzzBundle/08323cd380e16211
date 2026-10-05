@@ -1,0 +1,3 @@
+go test fuzz v1
+string("policy A:A use A use A use A use A")
+string("0")

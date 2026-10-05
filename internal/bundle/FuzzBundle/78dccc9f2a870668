@@ -1,0 +1,3 @@
+go test fuzz v1
+string("module lib:K pub let An0d=0 policy A:K use lib.{An1d}use lib.{An1d}")
+string("0")

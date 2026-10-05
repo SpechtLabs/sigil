@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("re0BBe_reBBestor:\n calls:\n    - args: [{0}]\n      returns: 0")

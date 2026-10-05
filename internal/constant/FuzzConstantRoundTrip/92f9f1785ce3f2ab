@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(-100)
+float64(-176)
+string("˿ǁȘĤ胖͋馡ՐðғѬ흱ЭԊ䅎ŽǢےוֹ욭ŝ뉗߁ǁȘĤ胖͋馡Րðғ")
+bool(false)

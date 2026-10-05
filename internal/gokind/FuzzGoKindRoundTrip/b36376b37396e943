@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(76)
+string("㉫緝ꋸ\xf3\x99\x93\xf1\xa0\x99\xf2\x86\x96膡\xf0\x9c\xb50")
+bool(true)

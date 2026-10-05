@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(-11)
+float64(-56.5)
+string("\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t")
+bool(false)

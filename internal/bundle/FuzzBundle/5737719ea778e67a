@@ -1,0 +1,3 @@
+go test fuzz v1
+string("policy good:K A000000()policy A:K use good A000()")
+string("0")

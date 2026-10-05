@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A0!when !{!w(00!w(000!when!{!w(00A")

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("?0I\x19\x7fQvt>?????")

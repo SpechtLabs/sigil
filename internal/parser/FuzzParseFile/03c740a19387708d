@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 0!0 collect all exclusive A!0 0!0 policy A:A assert(\"\",outcome)assert(\"\"")

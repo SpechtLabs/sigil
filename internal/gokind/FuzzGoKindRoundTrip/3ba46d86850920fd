@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(-43)
+string("\"\"\b\"\b\x18\"\"\"\"\x05\"\"\"\x7f\"\"\x05\r\"\"\"\x82\"\"\"\x13\"\"\f\x7f")
+bool(true)

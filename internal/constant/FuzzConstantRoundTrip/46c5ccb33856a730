@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(-338)
+float64(6.928571428571429)
+string("\x13\a\a\a")
+bool(true)

@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(0)
+string("\x00\x02\x85110\xe8\xed")
+bool(true)

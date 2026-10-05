@@ -1,0 +1,3 @@
+go test fuzz v1
+string("悜\ue78c𞄱幅䩷᜔黍\xf1\xa4\x9b0")
+int64(-64)

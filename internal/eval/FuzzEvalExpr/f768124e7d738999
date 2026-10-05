@@ -1,0 +1,3 @@
+go test fuzz v1
+string("0 matches\"(?<\xad\xad\xad\xad\xad\xad\xac\xbe\"")
+int64(-129)

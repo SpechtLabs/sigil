@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("\"䂱䝂䂱䝂䂱䝂䂱䝒")

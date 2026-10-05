@@ -1,0 +1,3 @@
+go test fuzz v1
+string("p!A00000000\r")
+string("0")

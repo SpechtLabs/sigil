@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:A\"\"when 0{assert\"\"assert\"\"assert\"\"assert")
+string("0")
+bool(true)

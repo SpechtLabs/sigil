@@ -1,0 +1,3 @@
+go test fuzz v1
+string("module lib:K@1 pub let banned=name!=\"\"policy A0000:K@1 use lib.{banned}when 0000A0{}policy A:K@1 when 0\"\"{}policy B:K@1 when 0\"\"{}policy C:K@1")
+string("0")

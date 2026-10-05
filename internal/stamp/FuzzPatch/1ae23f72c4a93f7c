@@ -1,0 +1,4 @@
+go test fuzz v1
+[]byte("\xca\xfe\xba\xbe")
+[]byte("0")
+uint16(10)
