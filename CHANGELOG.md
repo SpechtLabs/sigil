@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.2](https://github.com/SpechtLabs/sigil/compare/v0.7.1...v0.7.2) (2026-10-05)
+
+
+### Features
+
+* **devtool:** keep the fuzz corpus on a fuzz-corpus branch ([#164](https://github.com/SpechtLabs/sigil/issues/164)) ([76f5b61](https://github.com/SpechtLabs/sigil/commit/76f5b614c2c64b717b1efa3827ec21afa2e49739))
+
+
+### Bug Fixes
+
+* **format:** keep a comment after a call's opening paren trailing it ([#162](https://github.com/SpechtLabs/sigil/issues/162)) ([645e03c](https://github.com/SpechtLabs/sigil/commit/645e03c25b5d5500023bf8abab678db6da3ae1d3))
+* **gokind:** keep Sigil names out of the types Synthesize builds ([#178](https://github.com/SpechtLabs/sigil/issues/178)) ([31a4a31](https://github.com/SpechtLabs/sigil/commit/31a4a31f26393f129385e5083364b3305da69871))
+* **stamp:** refuse a reserved area that overlaps the Mach-O code signature ([#163](https://github.com/SpechtLabs/sigil/issues/163)) ([910fd3c](https://github.com/SpechtLabs/sigil/commit/910fd3cd88cbc42ab1fd57425034c6aedf6e16a4))
+
 ## [0.7.1](https://github.com/SpechtLabs/sigil/compare/v0.7.0...v0.7.1) (2026-10-04)
 
 
