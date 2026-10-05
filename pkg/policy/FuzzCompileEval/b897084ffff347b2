@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval deny()approve(reason:\"release_manager\")deny()approve(reason:\"release_manager\")0")
+string("0")
+bool(false)

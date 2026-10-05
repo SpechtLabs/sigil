@@ -1,0 +1,3 @@
+go test fuzz v1
+string("service.name matches\"[ 02tp\x01 xx\x12z0X2x10z02 02AC0xzaaxAXax027x70100z802ac\xdex79z0XA1ZACXl02AXZb!AACYacC_20yaBZ0B0X0B[4aXB5117m\x1c^b\x1b07C11]\"")
+int64(11)

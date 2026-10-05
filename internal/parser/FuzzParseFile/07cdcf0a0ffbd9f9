@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 type A{A:A A:A module:A A decision A{A:list<A>kind:A=\"\"in:A A decision A(A decision A{A:list<A>kind:A=\"\"in:A A decision A{A:A A policy A:A whe(A0.kind==\"\"an(A0.policy.module??\"\"==!A(A.A,A:[],kind:A.kind) module A:A@0 let A=A.kind A(A:policy A:A whe(A0.kind==\"\"an(A0.policy.module??\"\"==!A(A.A,A:[],kind:A.kind) module A:A@0 let A=A.A")

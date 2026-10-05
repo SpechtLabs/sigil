@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("remove_requestor: {calls: [{args: [&u {name: a, r_les: ~}, []], returns: ~}, {args: [*u, [a]], returns: [a]}, {args: [{}, ~], returns: []}]}\n")

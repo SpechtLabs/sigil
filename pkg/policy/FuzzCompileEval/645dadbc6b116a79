@@ -1,0 +1,4 @@
+go test fuzz v1
+string("module A:DeployApproval@1 pub let A000000=release.hotfix//\n---policy p:DeployApproval@1")
+string("0")
+bool(true)

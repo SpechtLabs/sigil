@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy p:DeployApproval@1 when\"\"in actor.teams{when\"\"in actor.roles{approve(reason:release_manager)}}when\"\"in actor.roles{approve(reason:release_manager)}")
+string("0")
+bool(false)

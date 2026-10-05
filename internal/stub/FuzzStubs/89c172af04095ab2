@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("remove_requestor:\n  calls:\n    - args: [{},[A]]\n      returns:\n    - args: [{},[A]]\n      returns:\nlookup_owner:\n error: 0\ndouble:\n calls:\n - {args: [0],returns: 0}\nnow:\n returns: 0000-1-1")

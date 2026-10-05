@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Aݫݫݫݫݫݓݫݓ:\n error: 0")

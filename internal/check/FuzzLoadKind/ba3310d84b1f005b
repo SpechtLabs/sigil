@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 conflict conflict precedence conflict conflict conflict precedence conflict conflict conflict conflict precedence conflict conflict conflict precedence conflict conflict conflict conflict")

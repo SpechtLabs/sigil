@@ -1,0 +1,2 @@
+go test fuzz v1
+string("all r in outcome:0!=z")

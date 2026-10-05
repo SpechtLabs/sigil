@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 1 enum Tier:A0000000 fn A()->list<string>fn B()->Tier decision deny{reason:no_rule_matched}decision review{reason:A}decision approve{reason:A A:duration=70h}collect one precedence deny>review>approve default deny(reason:no_rule_matched)")

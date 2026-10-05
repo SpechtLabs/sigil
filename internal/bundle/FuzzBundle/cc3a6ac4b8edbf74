@@ -1,0 +1,3 @@
+go test fuzz v1
+string("module A:K let A=name!=\"\"policy A0:K when name!=\"\"{}when name!=\"\"{}when name!=\"\"{}")
+string("0")

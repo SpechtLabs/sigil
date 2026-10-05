@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("\x190000000i\xc4\t3")
+int64(3)
+string("a")
+bool(false)

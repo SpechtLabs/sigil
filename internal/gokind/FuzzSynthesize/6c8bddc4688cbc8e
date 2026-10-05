@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 enum type input A:A input A:A fn enum type input A:A input A:A fn decision type input A:A input A:A fn decision decision collect one precedence decision type input A:A input A:A fn decision decision collect one precedence")

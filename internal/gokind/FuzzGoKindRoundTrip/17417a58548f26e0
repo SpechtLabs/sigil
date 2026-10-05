@@ -1,0 +1,4 @@
+go test fuzz v1
+int64(35)
+string("\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f")
+bool(false)

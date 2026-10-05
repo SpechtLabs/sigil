@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 00!type type input decision collect precedence A 0 input fn decision decision type type type input decision collect precedence A 0 input fn decision decision decision collect precedence A!decision collect precedence A 0")

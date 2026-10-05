@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("//\n//\npolicy A:A//\n//\n//\nlet A=//\n0//\nwhen 0{//\n//\n//\n//0\n}when//\n0{}//0")

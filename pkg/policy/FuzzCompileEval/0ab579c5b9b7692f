@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval let A=actor.A and\"\"and service.A0 let B=actor.A let C=split(service.A,\"\")in actor.A0 when release.A and release.A{when service.A!=\"\"and service.A and 0 and release.A{ when service.A!=\"\"and service.A and 0 and release.A and release.A{}when service.A!=\"\"and service.A and 0{}}}when 0 and release.A{}when service.A!=\"\"and service.A and 0 and 0{}")
+string("0")
+bool(true)

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 0 enum A:all decision decision decision A{reason:?decision A{reason:A<decision enum enum A:all decision decision decision A{reason:?decision A{reason:A<decision decision enum enum A:all decision decision decision A{reason:?decision A{reason:A<decision decision enum enum A:all decision decision decision A{reason:?decision A{reason:A<decision decision decision")

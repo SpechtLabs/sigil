@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy p:DeployApproval@1 when true{assert(\"0\",\ntrue)}")
+string("0")
+bool(true)

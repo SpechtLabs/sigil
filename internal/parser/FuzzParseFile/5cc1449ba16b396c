@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A when 0{A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A when 0{A A w\"000000\"when 0{A A when 0{A A A when 0{A A A A when 0{A A A when 00000000{0000 A00000 A A A A A when 0{A A A A A A A w\"000000\"0000 A A A A00000 A A A A when 0{A A A w\"000000\"A A A00000 A A A A00000 A A00000 A A A00 A0000 A A A A00 A A\"00\"A}0000 A0 A A0 A A")

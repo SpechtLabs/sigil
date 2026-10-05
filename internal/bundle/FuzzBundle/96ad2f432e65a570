@@ -1,0 +1,3 @@
+go test fuzz v1
+string("module lib:K 000000000000000000 policy guard:K@1 use lib policy A:K@1 use e  policy e:K@1 use guard use lib")
+string("0")

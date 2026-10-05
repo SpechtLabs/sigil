@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("0\xf86\x96=a\xa1\xf0\xb4\xf0X\xc8Pp\xees鞳\x99\x1fh\xea\xa8\xe0")
+int64(-9223372036854775756)
+string("\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t")
+bool(true)

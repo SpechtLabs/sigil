@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval let C=A and A A()let B\xff\x00 and A\"\"when A{}when A{when A!=A{}when A in A and A{A()}}when A in A{A(0)}")
+string("a")
+bool(false)

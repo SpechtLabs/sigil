@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A let A=A let A=A[\"\"]in A and A!=\"\"and A let A=A let A=any A in A:A or A(any A in A:A)or A let A=A(A and A)let A=A??A and A let A=A in A let A=A(A)(A or A)and A let A=A or A or A when A{when A and A{A(A)}when A{A(A,A:A)A(A)}}when A{}assert(\"\",A+A)assert(\"\",A in A)A(A)A(A)")

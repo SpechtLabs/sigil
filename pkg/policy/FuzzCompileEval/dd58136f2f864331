@@ -1,0 +1,4 @@
+go test fuzz v1
+string("// A scoped let is visible in its body only and runs only when the body\n// is reached, so the one under `when false` never fails.\npolicy p: DeployApproval@1\n\nwhen false {\n  let boom = split(actor.roles[9], \",\")\n  when boom any in [\"x\"] {\n    deny(reason: never)\n  }\n}\n\nwhen service.tier == \"critical\" {\n  let owners = service.owners\n  when \"payments\" in owners {\n    approve(reason: owned)\n  }\n}\n")
+string("1")
+bool(true)

@@ -1,0 +1,4 @@
+go test fuzz v1
+string("module m:A policy A:A use m.{A}use m.{A}use m.{A}use m.{A}")
+string("0")
+bool(true)

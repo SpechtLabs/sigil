@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 1 enum Tier:A type A0000{A:timestamp A0:Tier}type A0001{}input B:string fn C()->list<string>decision deny{reason:no_rule_matched}decision allow{reason:A}collect one precedence deny>allow default deny(reason:no_rule_matched)")

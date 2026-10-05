@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval let A=\"\"and\"\"and 0 and\"\"and 0 when\"\"and 0 and 0{}")
+string("0")
+bool(true)

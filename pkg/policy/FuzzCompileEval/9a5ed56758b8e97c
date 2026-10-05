@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval when \"\"{let owners=0}when \"\"{let owners=0}")
+string("0")
+bool(true)

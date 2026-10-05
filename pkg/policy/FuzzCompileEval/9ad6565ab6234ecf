@@ -1,0 +1,4 @@
+go test fuzz v1
+string("0h\xd20h\xd20h\xd20h\xd20h\xd20h\xd20h\xd20h\xd20h\xd20h\xd20h\xd20h\xd20h\xd20h\xd20h\xd20h\xd2")
+string("0")
+bool(true)

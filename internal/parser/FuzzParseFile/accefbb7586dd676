@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("0 module kind kind kind\"\"policy module\"\"kind kind kind policy kind\"\"policy module\"\"kind kind module")

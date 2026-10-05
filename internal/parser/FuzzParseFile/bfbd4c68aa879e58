@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A 00h//\n//\nwhen 0<0<0h //\n{A(A:0)}//\n//\nA(A:00m)//\n//\nwhen 0<{A(A:0)}when 0 and{let }//\nparam A:A=00h//\n//\nwhen 0{A(A:0)}//\nwhen 0<0<0h{A(A:0)}//\nwhen 0{A(A:0)}//\nwhen 0{A(}//\nwhen 0{A(A:00m)}//\n//\nwhen 0<{A(A:0)}when 0 and{let")
