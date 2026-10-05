@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/SpechtLabs/sigil/compare/v0.7.2...v0.7.3) (2026-10-05)
+
+
+### Bug Fixes
+
+* **release:** drop the article from the Homebrew cask description ([#187](https://github.com/SpechtLabs/sigil/issues/187)) ([e4c5ed2](https://github.com/SpechtLabs/sigil/commit/e4c5ed2e9beb32da01ff64e0ae73396f40564084))
+
 ## [0.7.2](https://github.com/SpechtLabs/sigil/compare/v0.7.1...v0.7.2) (2026-10-05)
 
 
