@@ -1,8 +1,6 @@
 module github.com/spechtlabs/sigil/examples/deploy-gates
 
-go 1.27
-
-toolchain go1.27.1
+go 1.27.1
 
 // The examples are a module of their own so their service dependencies never
 // reach the library's go.mod. They build against the sigil checkout they live
@@ -19,8 +17,8 @@ require (
 	github.com/prometheus/client_model v0.6.3
 	github.com/prometheus/common v0.72.0
 	github.com/sierrasoftworks/humane-errors-go v0.0.0-20260820132314-9a466da5e0f0
-	github.com/spechtlabs/go-otel-utils/otelprovider v0.2.0
-	github.com/spechtlabs/go-otel-utils/otelzap v0.2.0
+	github.com/spechtlabs/go-otel-utils/otelprovider v0.2.2
+	github.com/spechtlabs/go-otel-utils/otelzap v0.2.2
 	github.com/spechtlabs/sigil v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
@@ -37,7 +35,7 @@ require (
 	charm.land/fang/v2 v2.0.1 // indirect
 	charm.land/lipgloss/v2 v2.0.6 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
-	github.com/aws/smithy-go v1.27.2 // indirect
+	github.com/aws/smithy-go v1.28.2 // indirect
 	github.com/aymanbagabas/go-udiff v0.4.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
