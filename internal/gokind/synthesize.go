@@ -123,17 +123,17 @@ func (s *synth) structType(t *types.Struct) reflect.Type {
 }
 
 // fields builds a struct with one exported Go field per Sigil field and
-// records each field's index path under prefix+name. The Go names are
-// positional, since Sigil names needn't be exported Go identifiers; the
-// `policy` tag keeps the Sigil name for reading back.
+// records each field's index path under prefix+name, which is how
+// decoding and evaluation find it. The Go names are positional, since
+// Sigil names needn't be exported Go identifiers, and the fields carry no
+// tags: reflect.StructOf keeps every type it builds for the life of the
+// process, so a type that held the Sigil names would make every kind
+// with names of its own cost memory that's never given back. Without
+// them, kinds whose structs have the same field types share one type.
 func (s *synth) fields(fields []*types.Field, prefix string) reflect.Type {
 	sf := make([]reflect.StructField, len(fields))
 	for i, f := range fields {
-		sf[i] = reflect.StructField{
-			Name: "F" + strconv.Itoa(i),
-			Type: s.goType(f.Type),
-			Tag:  reflect.StructTag(`policy:"` + f.Name + `"`),
-		}
+		sf[i] = reflect.StructField{Name: "F" + strconv.Itoa(i), Type: s.goType(f.Type)}
 		s.binding.Fields[prefix+f.Name] = []int{i}
 	}
 	return reflect.StructOf(sf)
