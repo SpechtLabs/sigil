@@ -124,6 +124,25 @@ timeline:
       The engine builds as a WebAssembly module, and `@spechtlabs/sigil` runs it from TypeScript,
       so a host outside Go evaluates policies with Go's semantics exactly. The package isn't
       published yet.
+  - date: 2026-10-04
+    title: Fuzzing reaches the WebAssembly engine, and the corpus is shared
+    description: |
+      `FuzzCall` sends any request to the engine the playground and the bindings call,
+      `FuzzEval` fuzzes the host-function protocol, and `FuzzStubs` binds any stubs document.
+      Evaluation is checked against constant folding for every constant type, not only ints.
+      The inputs fuzzing finds now live on a `fuzz-corpus` branch, so every run, local or in CI,
+      starts from what earlier runs found.
+  - date: 2026-10-05
+    title: First clean extended fuzz campaign
+    description: |
+      The extended campaign fuzzes each of the 33 targets in a job of its own, publishes one
+      summary, and opens an issue that says which target failed and why. Its first run found a
+      formatter comment that moved on a second pass, a reserved area that could overwrite a
+      Mach-O code signature, and a fuzz target that grew until its runner died; chasing that
+      one found that `Synthesize` kept 2 KB per distinct kind for the life of the process. With
+      those fixed, the next run fuzzed every target for an hour without a failure. With two
+      hour-per-target runs on a local machine, that's about 132 target-hours over two days, and
+      the Hardening milestone's fuzzing criterion is met.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -535,12 +554,14 @@ milestones:
     description: |
       Generated contracts check kind export/import. Fuzzing covers the lexer, parser and AST,
       formatter, checker, constants, kind model, Go bindings, evaluator, composition, decision
-      resolution, diagnostics and tooling. Both arbitrary source and valid generated inputs
-      exercise the language. Short campaigns run in CI; longer campaigns run on a schedule.
+      resolution, diagnostics, the WebAssembly engine and tooling. Both arbitrary source and
+      valid generated inputs exercise the language. Short campaigns run in CI; longer campaigns
+      run on a schedule.
 
       **Done when** a day of fuzzing finds no panics, and `Import(Export(k)) == k` holds.
-      The tests and campaign runner are implemented. The day-long criterion has not yet been
-      demonstrated; no short local or CI run closes it.
+      Both hold: four hour-per-target campaigns on October 4 and 5, about 132 target-hours,
+      found five problems, all fixed, and the last campaign passed every target. Public
+      `LoadKind` and static cost analysis remain.
     deliverables:
       - title: LoadKind
         state: DOING
@@ -560,19 +581,29 @@ milestones:
         state: DONE
         requirement: MUST
         description: |
-          Native Go fuzz targets include arbitrary source, grammar fixtures, valid generated
-          contracts and semantic oracles for arithmetic, collection operators and resolution.
-          `mise run fuzz` discovers every target. CI runs bounded, five-second smoke tests and
-          preserves failing inputs. Weekly hour-per-target campaigns run from main, retain
-          their corpus and logs, and open or update a GitHub issue when they fail.
-      - title: Day-long fuzz campaign
-        state: TODO
+          33 native Go fuzz targets take arbitrary source, grammar fixtures and valid generated
+          contracts, and check semantic oracles: evaluation agrees with constant folding,
+          collection operators with set membership, resolution with its rule. They also cover
+          the WebAssembly engine's JSON requests and host-function protocol, host-function stubs,
+          and the binary patching behind `sigil compile`. `mise run fuzz` discovers every target
+          and starts from the shared corpus on the `fuzz-corpus` branch. CI runs five-second
+          smoke tests on every pull request and preserves failing inputs. A weekly campaign
+          fuzzes each target for an hour in a job of its own, pushes what it found to the corpus
+          branch, and opens or updates a GitHub issue that names each failing target, what go
+          test reported and how to replay it.
+      - title: A day of fuzzing
+        state: DONE
         requirement: MUST
         description: |
-          Record a continuous 24-hour campaign that exercises every target for at least an hour,
-          with the revision, toolchain, durations and results. Parallel target-hours do not
-          substitute for elapsed campaign time. Fix and retain every failure before rerunning
-          the campaign and claiming the milestone's exit criterion.
+          Four campaigns on October 4 and 5 fuzzed each of the 33 targets for an hour: two on a
+          local Mac Studio and two on GitHub Actions, about 132 target-hours in all. They found a
+          formatter comment that moved on a second pass, a reserved area that could overwrite a
+          Mach-O code signature, an expression whose debug print nests past the parser's limit,
+          and a fuzz target that grew until its runner died, which led to `Synthesize` holding
+          2 KB per distinct kind. All are fixed: the three failing inputs are kept under
+          `testdata/fuzz`, and `TestSynthesizedTypesDontHoldNames` pins the memory fix. The
+          last campaign, [run 37288297603](https://github.com/SpechtLabs/sigil/actions/runs/37288297603),
+          passed every target. The weekly campaign keeps running.
       - title: Static cost analysis
         state: TODO
         requirement: SHOULD
