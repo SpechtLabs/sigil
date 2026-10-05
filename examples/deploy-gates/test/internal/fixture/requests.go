@@ -36,7 +36,7 @@ const (
 // Ada is the actor of every request the fixtures build.
 const Ada = "ada"
 
-// The access policy the service evaluates before every deploy.
+// AccessPolicy is the policy the service evaluates before every deploy.
 const AccessPolicy = "access.main"
 
 // Mutator changes one aspect of a request built by OwnerRequest.
