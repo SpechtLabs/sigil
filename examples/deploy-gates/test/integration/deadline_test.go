@@ -58,8 +58,10 @@ var _ = Describe("An evaluation that doesn't finish", func() {
 		}).WithTimeout(5 * time.Second).Should(Succeed())
 
 		// Nothing failed, in the policy or in deploygate: no evaluation
-		// error, no decision, and no span marked as an error, though the
-		// evaluation span records why it stopped.
+		// error, no decision, and the evaluation span isn't marked as an
+		// error, though it records why it stopped. The request span is:
+		// otelgin follows the HTTP conventions, which count a client that
+		// left as an error on the server span.
 		families := e.families()
 		Expect(families.Count(fixture.MetricEvalErrors, nil)).To(BeZero())
 		Expect(families.Count(fixture.MetricDecisions, nil)).To(BeZero())
@@ -67,6 +69,8 @@ var _ = Describe("An evaluation that doesn't finish", func() {
 		evalSpan := e.waitForSpan("deploygate.evaluate")
 		Expect(evalSpan.Status.Code).To(Equal(codes.Unset))
 		Expect(evalSpan.Events).To(ContainElement(HaveField("Name", "exception")))
-		Expect(e.serverSpan().Status.Code).To(Equal(codes.Unset))
+		server := e.serverSpan()
+		Expect(server.Status.Code).To(Equal(codes.Error))
+		Expect(server.Status.Description).To(Equal("context canceled"))
 	})
 })

@@ -11,6 +11,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/deploy"
 	"github.com/spechtlabs/sigil/examples/deploy-gates/internal/freeze"
@@ -413,9 +414,16 @@ func TestCanceledRequest(t *testing.T) {
 			if want := `deploygate_requests_total{code="499",method="POST"`; !strings.Contains(metrics, want) {
 				t.Errorf("/metrics doesn't contain %s", want)
 			}
+			// otelgin follows the HTTP conventions, which mark the request
+			// span failed when the client left; deploygate's own spans aren't.
 			spans := env.spans.GetSpans()
 			for _, s := range spans {
-				if s.Status.Code == codes.Error {
+				switch {
+				case s.SpanKind == trace.SpanKindServer:
+					if s.Status.Code != codes.Error || s.Status.Description != context.Canceled.Error() {
+						t.Errorf("request span %s status = %v, want an error for the cancellation", s.Name, s.Status)
+					}
+				case s.Status.Code == codes.Error:
 					t.Errorf("span %s is marked failed: %v", s.Name, s.Status)
 				}
 			}
