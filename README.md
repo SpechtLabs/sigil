@@ -2,7 +2,7 @@
 
 A small, statically typed policy language for Go hosts.
 
-![Status: hardening](https://img.shields.io/badge/status-hardening-yellow)
+![Status: beta](https://img.shields.io/badge/status-beta-blue)
 ![Language: Go](https://img.shields.io/badge/host-Go-00ADD8?logo=go&logoColor=white)
 [![Go Reference](https://pkg.go.dev/badge/github.com/spechtlabs/sigil.svg)](https://pkg.go.dev/github.com/spechtlabs/sigil)
 [![codecov](https://codecov.io/gh/SpechtLabs/sigil/graph/badge.svg?token=SSPVPzObye)](https://codecov.io/gh/SpechtLabs/sigil)
@@ -11,8 +11,8 @@ A small, statically typed policy language for Go hosts.
 
 Sigil is a small language for decision logic. Your Go program hands a policy typed input, the policy's rules look at it, and the answer is a typed decision: page the on-call, turn a feature on, approve a deploy, grant a role. Every decision carries a reason and a payload, and every policy is type-checked against a contract your Go code defines. The language terminates on finite inputs when its host functions terminate. It ships as an importable Go library, in the spirit of [filt-rs](https://github.com/SierraSoftworks/filters), and it's meant to replace the YAML rule engines with label-selector matchers that teams keep rebuilding.
 
-> [!IMPORTANT]
-> The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`) and host-ordered types such as versions. The [roadmap](#roadmap) tracks what's left.
+> [!NOTE]
+> Sigil is nearly complete. The language, the Go API, composition, the CLI, the language server and editor support are built, and fuzzing covers every layer. Two pieces remain: loading a kind from a file at run time (`policy.LoadKind`) and host-ordered types such as versions. The [roadmap](#roadmap) tracks them.
 
 ## What it looks like
 
@@ -218,7 +218,7 @@ mise run docs-dev
 
 ## Roadmap
 
-M1 to M6 are done. Hardening is in progress: fuzz targets and round-trip properties cover every layer, and a weekly campaign fuzzes each of the 38 targets for an hour. A day of fuzzing has passed; public `LoadKind` remains. Tooling II has its three commands and a tree-sitter grammar.
+Every milestone has met its exit criterion. Hardening passed a day of fuzzing, and a weekly campaign still fuzzes each of the 38 targets for an hour; public `LoadKind` is the one deliverable it has left. Tooling II shipped the language server, `sigil gen go`, `sigil breaking`, `sigil compile`, a tree-sitter grammar and plugins for VS Code and Neovim. Beyond `LoadKind` and host-ordered types, only optional work remains: an invocation code lens in the language server and cross targets for `sigil compile`.
 
 | Milestone | Scope | State |
 | --- | --- | --- |
@@ -228,8 +228,8 @@ M1 to M6 are done. Hardening is in progress: fuzz targets and round-trip propert
 | M4 Policies | `when`, decision constructors, precedence, default, trace; host-ordered types remain | Done |
 | M5 Composition | `param`, `let`, modules and imports, policy invocation, `Require`, bundle loader, cycle detection, `sigil explain` | Done |
 | M6 Tooling I | `sigil fmt`, kind export, `sigil check` with lints, `sigil eval`, `sigil test`, `policytest` | Done |
-| M7 Hardening | Round-trip properties, fuzzing across layers and a weekly hour-per-target campaign; public `LoadKind` remains | In progress |
-| M8 Tooling II | `sigil lsp`, `sigil gen go`, `sigil breaking`; the invocation code lens and cross targets for `sigil compile` remain | In progress |
+| M7 Hardening | Round-trip properties, fuzzing across layers and a weekly hour-per-target campaign; public `LoadKind` remains | Nearly done |
+| M8 Tooling II | `sigil lsp`, `sigil gen go`, `sigil breaking`, `sigil compile`, the tree-sitter grammar and editor plugins; the optional invocation code lens and cross targets for `sigil compile` remain | Done |
 
 The roadmap lives in [`roadmap.yml`](./roadmap.yml) in the [roadmap-md](https://roadmap.sierrasoftworks.com/) format, with every deliverable and what "done" means for each milestone; open it in the [roadmap viewer](https://roadmap.sierrasoftworks.com/viewer/github.com#SpechtLabs/sigil) for the rendered version.
 
