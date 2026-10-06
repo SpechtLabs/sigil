@@ -12,7 +12,7 @@ What Rust adds over the other hosts is control from outside. Runaway engine work
 cargo add spechtlabs-sigil
 ```
 
-and `use sigil::...`: the library is named `sigil`. The crate is versioned with Sigil: `spechtlabs-sigil` 0.7.0 runs the engine of Sigil 0.7.0.
+and `use sigil::...`: the library is named `sigil`. The crate is versioned with Sigil: each version of `spechtlabs-sigil` runs the engine of the Sigil release with the same number.
 
 The default feature `bundled` embeds `sigil.wasm` in the crate. The package ships the module in `module/sigil.wasm` (the release builds it from the tag and copies it there before `cargo publish`), so installing the crate needs no Go. `build.rs` reads `$SIGIL_WASM` first, so a build can swap in another module, and in a checkout of the repository it falls back to `../../dist/wasm/sigil.wasm`, which `mise run wasm-build` writes. Without the feature, load the module yourself with `Module::from_file` or `Module::from_bytes`.
 

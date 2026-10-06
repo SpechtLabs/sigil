@@ -382,11 +382,13 @@ run = [
 # editors/tree-sitter-sigil: the tree-sitter grammar editors parse Sigil with.
 # The parser it generates into src/ is committed, because nvim-treesitter and
 # other editors build it from the repository without the CLI's generator.
-# grammar_test.go generates it with the same flags to check it's current.
+# grammar_test.go generates it and checks it's current, and with -update
+# writes it, with the release-please markers that keep the version in
+# parser.c in step with tree-sitter.json.
 [tasks.tree-sitter-generate]
 description = "Generate the tree-sitter grammar's parser into editors/tree-sitter-sigil/src from grammar.js"
 dir = "editors/tree-sitter-sigil"
-run = "tree-sitter generate --abi 15 --js-runtime native"
+run = "go test -count=1 -run '^TestGeneratedSourcesAreCurrent$' ./ -update"
 
 # The Go tests need the CLI, and skip without it; here it's on PATH.
 [tasks.tree-sitter-test]

@@ -12,7 +12,7 @@ The module is the stock `sigil` CLI's engine without a filesystem or a terminal.
 npm install @spechtlabs/sigil
 ```
 
-The package is published with each Sigil release and carries its version: `@spechtlabs/sigil@0.7.0` runs the engine of sigil v0.7.0, and its [provenance](https://docs.npmjs.com/generating-provenance-statements) links it to the release workflow that built it. `sigil.wasm` is inside the package; nothing downloads at run time.
+The package is published with each Sigil release and carries its version: each version of the package runs the engine of the Sigil release with the same number, and its [provenance](https://docs.npmjs.com/generating-provenance-statements) links it to the release workflow that built it. `sigil.wasm` is inside the package; nothing downloads at run time.
 
 ## Build from the repository
 

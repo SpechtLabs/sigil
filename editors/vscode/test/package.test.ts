@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { hostTarget, PLATFORMS, vsixName } from "../scripts/package";
+import { hostTarget, PLATFORMS, pack, ROOT_CHANGELOG, vsixName } from "../scripts/package";
 import { repo } from "./sigil-cli";
 
 interface GoReleaser {
@@ -40,4 +42,15 @@ describe("the release's VSIX files", () => {
     expect(hostTarget("linux", "x64")).toBe("linux-x64");
     expect(hostTarget()).toBe(`${process.platform}-${process.arch}`);
   });
+});
+
+// Packaging needs the bundle, which `mise run vscode-test` builds first, and
+// unzip to read the VSIX back.
+const canPack = existsSync(join(import.meta.dir, "../dist/extension.js")) && Bun.which("unzip") !== null;
+
+test.skipIf(!canPack)("the VSIX's changelog is the one release-please writes", () => {
+  const out = mkdtempSync(join(tmpdir(), "sigil-vsix-"));
+  const vsix = pack(out);
+  const packed = execFileSync("unzip", ["-p", vsix, "extension/changelog.md"], { encoding: "utf8" });
+  expect(packed).toBe(readFileSync(ROOT_CHANGELOG, "utf8"));
 });

@@ -36,7 +36,7 @@ The policies are the ones [Getting Started](/getting-started/share-rules/) build
 npm install @spechtlabs/sigil
 ```
 
-The package's version is the Sigil release it was built from, so `@spechtlabs/sigil@0.7.0` decides exactly as `sigil` v0.7.0 does. It runs on Node 20 and later, Bun and browsers, and has no runtime dependencies. To build it from a checkout of the repository instead, see the [package README](https://github.com/SpechtLabs/sigil/tree/main/bindings/typescript#build-from-the-repository). Everything below ran under Bun 1.4.2, and `src/route.ts` runs unchanged under Node 24.
+The package's version is the Sigil release it was built from, so a version of `@spechtlabs/sigil` decides exactly as the `sigil` CLI of the same version does. It runs on Node 20 and later, Bun and browsers, and has no runtime dependencies. To build it from a checkout of the repository instead, see the [package README](https://github.com/SpechtLabs/sigil/tree/main/bindings/typescript#build-from-the-repository). Everything below ran under Bun 1.4.2, and `src/route.ts` runs unchanged under Node 24.
 
 ## Define the kind
 
