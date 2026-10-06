@@ -8,3 +8,6 @@ bin/
 *.vsix
 # The coverage report bun test writes (see bunfig.toml).
 coverage/
+# The repository's CHANGELOG.md, which release-please writes; scripts/package.ts
+# copies it here for vsce to pack.
+/CHANGELOG.md

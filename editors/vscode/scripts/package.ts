@@ -37,6 +37,9 @@ export const PLATFORMS: readonly Platform[] = [
 
 const root = join(import.meta.dir, "..");
 
+/** The changelog release-please writes for every release, at the repository root. */
+export const ROOT_CHANGELOG = join(root, "../../CHANGELOG.md");
+
 /** The VSIX file name for a target, or the universal VSIX without one. */
 export function vsixName(version: string, target?: string): string {
   return target === undefined ? `sigil-${version}.vsix` : `sigil-${target}-${version}.vsix`;
@@ -47,10 +50,15 @@ export function hostTarget(platform: string = process.platform, arch: string = p
   return `${platform}-${arch}`;
 }
 
-/** Packages one VSIX: with binary copied to bin/ for target, or universal without both. */
-function pack(out: string, binary?: string, target?: string): string {
+/**
+ * Packages one VSIX: with binary copied to bin/ for target, or universal
+ * without both. The VSIX's changelog is the repository's, which
+ * release-please writes, copied in first; the copy is gitignored.
+ */
+export function pack(out: string, binary?: string, target?: string): string {
   const bin = join(root, "bin");
   rmSync(bin, { recursive: true, force: true });
+  copyFileSync(ROOT_CHANGELOG, join(root, "CHANGELOG.md"));
   const file = join(out, vsixName(manifest.version, target));
   const args = ["vsce", "package", "--no-dependencies", "--out", file];
   try {
