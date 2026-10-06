@@ -3,6 +3,8 @@ package lsp
 import (
 	"strings"
 	"testing"
+
+	"github.com/spechtlabs/sigil/internal/lsp/protocol"
 )
 
 // TestSignature checks the signature of the call at the marker: its
@@ -66,13 +68,16 @@ func TestSignature(t *testing.T) {
 }
 
 // TestSignatureUnits checks that the protocol's parameter spans count
-// UTF-16 code units.
+// in the encoding agreed on: UTF-16 code units, or bytes for UTF-8.
 func TestSignatureUnits(t *testing.T) {
 	sig := &signature{label: "f(ä: 𝄞, b)", params: []parameter{{from: 2, to: 10}, {from: 12, to: 13}}, active: -1}
-	help := sig.protocol()
+	help := sig.protocol(protocol.EncodingUTF16)
 	got := help.Signatures[0].Parameters
 	if got[0].Label != [2]uint32{2, 7} || got[1].Label != [2]uint32{9, 10} {
 		t.Errorf("spans = %v, want [2 7] and [9 10]", got)
+	}
+	if bytes := sig.protocol(protocol.EncodingUTF8).Signatures[0].Parameters; bytes[0].Label != [2]uint32{2, 10} || bytes[1].Label != [2]uint32{12, 13} {
+		t.Errorf("spans in UTF-8 = %v, want [2 10] and [12 13]", bytes)
 	}
 	if *help.ActiveParameter != 2 {
 		t.Errorf("active parameter = %d, want 2, past the last, for none", *help.ActiveParameter)

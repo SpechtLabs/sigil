@@ -53,6 +53,11 @@ func TestCompletionSnippets(t *testing.T) {
 			}
 			var cond protocol.CompletionList
 			s.decode(s.call(protocol.MethodCompletion, s.at("production.sigil", 2, 5)), &cond)
+			for i := 1; i < len(cond.Items); i++ {
+				if strings.ToLower(cond.Items[i-1].SortText) >= strings.ToLower(cond.Items[i].SortText) || cond.Items[i].Preselect {
+					t.Errorf("item %d sorts %q after %q, or is preselected past the first", i, cond.Items[i].SortText, cond.Items[i-1].SortText)
+				}
+			}
 			if len(cond.Items) == 0 || !cond.Items[0].Preselect || cond.Items[0].Label != "release.hotfix" {
 				t.Errorf("after when, first = %+v, want release.hotfix preselected", cond.Items[:min(1, len(cond.Items))])
 			}

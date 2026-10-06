@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"bytes"
+	"fmt"
 	"encoding/json"
 	"path/filepath"
 
@@ -64,7 +65,7 @@ func (s *Server) completion(raw json.RawMessage) (*protocol.CompletionList, *jso
 			Label:     it.label,
 			Kind:      it.kind,
 			Detail:    it.detail,
-			SortText:  it.sortKey(),
+			SortText:  fmt.Sprintf("%05d", i), // the order complete sorted them in, which no client's case folding changes
 			Preselect: it.best,
 			TextEdit:  &protocol.TextEdit{Range: edit, NewText: insert},
 		}
@@ -162,5 +163,5 @@ func (s *Server) signatureHelp(raw json.RawMessage) (*protocol.SignatureHelp, *j
 	if sig == nil {
 		return nil, nil
 	}
-	return sig.protocol(), nil
+	return sig.protocol(s.encoding), nil
 }

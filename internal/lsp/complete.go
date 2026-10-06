@@ -127,9 +127,10 @@ func (v *view) complete(offset int) ([]item, int, int) {
 }
 
 // sortKey orders items: by rank, then nearest scope first, then class,
-// then label.
+// then label, as a client that ignores case sorts labels, with case
+// breaking a tie.
 func (it item) sortKey() string {
-	return fmt.Sprintf("%d%02d%02d%s", it.rank, it.depth, it.class, it.label)
+	return fmt.Sprintf("%d%02d%02d%s\x00%s", it.rank, it.depth, it.class, strings.ToLower(it.label), it.label)
 }
 
 // keywordItems returns keywords as completions.

@@ -165,15 +165,16 @@ func (b *builder) signature(doc string) *signature {
 	return &signature{label: b.label.String(), params: b.params, doc: doc}
 }
 
-// protocol converts the signature into the protocol's help: the
-// parameter spans in UTF-16 code units, as the protocol counts a label.
-func (sig *signature) protocol() *protocol.SignatureHelp {
+// protocol converts the signature into the protocol's help, with the
+// parameter spans counted in encoding, the position encoding the client
+// and the server agreed on: bytes for UTF-8, UTF-16 code units otherwise.
+func (sig *signature) protocol(encoding string) *protocol.SignatureHelp {
 	info := protocol.SignatureInformation{Label: sig.label, Parameters: make([]protocol.ParameterInformation, len(sig.params))}
 	if sig.doc != "" {
 		info.Documentation = &protocol.MarkupContent{Kind: protocol.Markdown, Value: sig.doc}
 	}
 	for i, p := range sig.params {
-		info.Parameters[i].Label = [2]uint32{unitsOf(sig.label[:p.from]), unitsOf(sig.label[:p.to])}
+		info.Parameters[i].Label = [2]uint32{unitsOf(sig.label[:p.from], encoding), unitsOf(sig.label[:p.to], encoding)}
 		if p.doc != "" {
 			info.Parameters[i].Documentation = &protocol.MarkupContent{Kind: protocol.Markdown, Value: p.doc}
 		}
@@ -188,8 +189,12 @@ func (sig *signature) protocol() *protocol.SignatureHelp {
 	return &protocol.SignatureHelp{Signatures: []protocol.SignatureInformation{info}, ActiveParameter: &at}
 }
 
-// unitsOf returns how many UTF-16 code units s is.
-func unitsOf(s string) uint32 {
+// unitsOf returns how long s is in encoding: bytes for UTF-8, UTF-16
+// code units otherwise.
+func unitsOf(s, encoding string) uint32 {
+	if encoding == protocol.EncodingUTF8 {
+		return uint32(len(s)) //nolint:gosec // the length of a signature's label
+	}
 	n := 0
 	for _, r := range s {
 		n += utf16Len(r)
