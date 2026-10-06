@@ -1,0 +1,4 @@
+module deploy.common: DeployApproval@2
+
+pub let owns_service = actor.teams any in service.owners
+pub let cleared = split(service.labels["regions"], ",") all in actor.regions

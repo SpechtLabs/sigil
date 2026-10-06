@@ -1360,7 +1360,8 @@ func (c *Checker) binder(kw, what string, ent Entity, v *ast.Ident, rng, body as
 	}
 
 	inner := env.Child()
-	b := Binding{Entity: ent, Type: l.Elem}
+	c.scope(inner, rng.End(), body.End(), false)
+	b := Binding{Entity: ent, Type: l.Elem, Decl: v}
 	if prev, ok := inner.Declare(v.Name, b); !ok {
 		if !c.keeps(prev) {
 			c.errorf(v, "nothing shadows anything; pick a name that isn't in use",

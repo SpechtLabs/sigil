@@ -130,7 +130,7 @@ linters:
       - linters:
           - golint-sl
         text: "^nilcheck:"
-        path: ^(internal/(ast|check|compat|engine|eval|gokind|lint|result|stub|testrun|testsuite|workspace)|pkg/(build|policy|policytest)|cmd)/
+        path: ^(internal/(ast|check|compat|engine|eval|gokind|lint|lsp|result|stub|testrun|testsuite|workspace)|pkg/(build|policy|policytest)|cmd)/
 
       # The public API returns typed errors (*CompileError, *AssertionError,
       # *RuntimeError) that hosts match with errors.As, each carrying its own

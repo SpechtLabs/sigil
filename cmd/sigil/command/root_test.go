@@ -36,10 +36,7 @@ func TestOutputFlagRejectsUnknownFormat(t *testing.T) {
 }
 
 func TestCommandSurface(t *testing.T) {
-	const (
-		notImplemented = "is not implemented yet"
-		noKindFile     = "the kind file couldn't be read"
-	)
+	const noKindFile = "the kind file couldn't be read"
 
 	tests := []struct {
 		args    []string
@@ -72,7 +69,8 @@ func TestCommandSurface(t *testing.T) {
 		{args: []string{"gen", "go", "k.sigil"}, wantErr: "k.sigil can't be read"},
 		{args: []string{"gen", "go", "--check", "k.sigil"}, wantErr: "--check needs the file to compare"},
 		{args: []string{"gen"}},
-		{args: []string{"lsp"}, wantErr: notImplemented},
+		{args: []string{"lsp", "extra"}, wantErr: "lsp takes no arguments, got 1"},
+		{args: []string{"language-server"}, wantErr: "Did you mean this?\n\tlsp"},
 		{args: []string{"fmt", "--write", "--check"}, wantErr: "none of the others can be"},
 		{args: []string{"evaluate", "-k", "k.sigil", "-i", "in.json", "p.sigil"}, wantErr: noKindFile},
 		// export is hidden without a linked kind, so nothing suggests it.
@@ -147,12 +145,9 @@ func TestOutputFlagCompletion(t *testing.T) {
 }
 
 // TestOutputFlagReachesEveryCommand checks that the commands with no
-// report of their own honor --output too: fmt prints its records, and a
-// planned command its error.
+// report of their own honor --output too: fmt and gen go print their
+// records.
 func TestOutputFlagReachesEveryCommand(t *testing.T) {
-	notImplemented := func(path string) string {
-		return "{\n  \"error\": {\n    \"kind\": \"not_implemented\",\n    \"message\": \"\\\"sigil " + path + "\\\" is not implemented yet\","
-	}
 	tests := []struct {
 		args  []string
 		stdin string
@@ -160,7 +155,6 @@ func TestOutputFlagReachesEveryCommand(t *testing.T) {
 	}{
 		{args: []string{"fmt", "-o", "json", "-"}, stdin: "policy a: K@1\n", want: "[\n  {\n    \"file\": \"\\u003cstdin\\u003e\",\n    \"formatted\": true,"},
 		{args: []string{"fmt", "-o", "yaml", "--check", "-"}, stdin: "policy a: K@1\n", want: "- file: <stdin>\n  formatted: true\n"},
-		{args: []string{"lsp", "-o", "json"}, want: notImplemented("lsp")},
 		{args: []string{"gen", "go", "-o", "json", "-"}, stdin: "kind Gate version 1\n\ndecision deny {\n  reason: no\n}\n\ncollect one\nprecedence deny\n\ndefault deny(reason: no)\n", want: "{\n  \"kind\": \"Gate\",\n  \"package\": \"gate\","},
 	}
 	for _, tt := range tests {
@@ -192,14 +186,13 @@ func TestHelpListsWhatRuns(t *testing.T) {
 	}{
 		{
 			name:   "stock binary",
-			listed: []string{"POLICY COMMANDS", "fmt [PATH...]", "KIND COMMANDS", "breaking OLD_KIND_FILE NEW_KIND_FILE", "gen", "OTHER COMMANDS", "version"},
-			absent: []string{"EDITOR INTEGRATION", "export", "lsp", "--kind"},
+			listed: []string{"POLICY COMMANDS", "fmt [PATH...]", "KIND COMMANDS", "breaking OLD_KIND_FILE NEW_KIND_FILE", "gen", "EDITOR INTEGRATION", "lsp", "OTHER COMMANDS", "version"},
+			absent: []string{"export", "--kind"},
 		},
 		{
 			name:   "host binary",
 			opts:   []Option{WithKind(hostAccess)},
-			listed: []string{"POLICY COMMANDS", "KIND COMMANDS", "export [KIND]", "breaking OLD_KIND_FILE NEW_KIND_FILE", "gen", "OTHER COMMANDS"},
-			absent: []string{"EDITOR INTEGRATION", "lsp"},
+			listed: []string{"POLICY COMMANDS", "KIND COMMANDS", "export [KIND]", "breaking OLD_KIND_FILE NEW_KIND_FILE", "gen", "EDITOR INTEGRATION", "lsp", "OTHER COMMANDS"},
 		},
 	}
 	for _, tt := range tests {
@@ -225,9 +218,11 @@ func TestHelpListsWhatRuns(t *testing.T) {
 				}
 			}
 			// cobra's own usage template prints every group it knows,
-			// so an empty one shows up there as a bare heading.
-			if usage := cmd.UsageString(); strings.Contains(usage, groupEditor.Title) {
-				t.Errorf("usage lists the empty %q group:\n%s", groupEditor.Title, usage)
+			// so an empty one would show up there as a bare heading.
+			for _, g := range []*cobra.Group{groupKind, groupEditor} {
+				if usage := cmd.UsageString(); !strings.Contains(help, strings.ToUpper(g.Title)) && strings.Contains(usage, g.Title) {
+					t.Errorf("usage lists the empty %q group:\n%s", g.Title, usage)
+				}
 			}
 			// breaking and gen go need no linked kind, so the kind group is always there.
 			if !cmd.ContainsGroup(groupKind.ID) {

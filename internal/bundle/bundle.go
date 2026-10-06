@@ -264,6 +264,17 @@ func (b *Bundle) Documents() []*Document {
 	return out
 }
 
+// All lists the bundle's own policies and modules in the order they were
+// read, then the trusted bundle's, for a tool that looks at every document
+// a `use` can name.
+func (b *Bundle) All() []*Document {
+	out := b.Documents()
+	if b.trusted != nil {
+		out = append(out, b.trusted.All()...)
+	}
+	return out
+}
+
 // Policies lists the bundle's own policies, in the order they were read.
 func (b *Bundle) Policies() []string {
 	var out []string
@@ -694,7 +705,7 @@ func (b *Bundle) DocumentOf(e *diag.Error) string {
 	if !ok {
 		return b.DocumentAt(e.File, e.Pos)
 	}
-	for _, d := range b.all() {
+	for _, d := range b.All() {
 		if d.File == e.File && sameSource(d.src, src) && d.contains(e.Pos) {
 			return d.Name
 		}
@@ -732,7 +743,7 @@ func (b *Bundle) documentAt(file string, p token.Pos) *Document {
 	if !p.IsValid() {
 		return nil
 	}
-	for _, d := range b.all() {
+	for _, d := range b.All() {
 		if d.File == file && d.contains(p) {
 			return d
 		}
@@ -754,16 +765,6 @@ func (b *Bundle) quote(d *Document, e *diag.Error) *diag.Error {
 		b.quotes[e] = d.src
 	}
 	return e
-}
-
-// all lists the bundle's own policies and modules in reading order, then
-// the trusted bundle's.
-func (b *Bundle) all() []*Document {
-	out := b.Documents()
-	if b.trusted != nil {
-		out = append(out, b.trusted.all()...)
-	}
-	return out
 }
 
 // contains reports whether p falls inside the document.

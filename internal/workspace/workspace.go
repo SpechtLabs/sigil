@@ -55,6 +55,7 @@ type Project struct {
 	docs     []*bundle.Document          // the same, in read order, for naming diagnostics
 	sources  map[string][]byte           // every file read, by name
 	kindDocs map[string][]ast.Node       // the kind documents of every file read, by file
+	known    *kinds                      // every kind a source provided, by name
 	errs     diag.ErrorList              // what loading found: parse and kind errors, unknown kinds, names defined twice
 	files    int                         // files read from the paths
 	checked  bool
@@ -134,6 +135,38 @@ func (p *Project) Names() []string {
 	return out
 }
 
+// Kinds lists every kind the project knows, linked into the binary or
+// read from a kind document, sorted by name. A kind whose document
+// doesn't check is left out.
+func (p *Project) Kinds() []*Kind {
+	if p.known == nil {
+		return nil
+	}
+	out := make([]*Kind, 0, len(p.known.byName))
+	for _, k := range p.known.byName {
+		if k.kind != nil {
+			out = append(out, k.kind)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Model.Name < out[j].Model.Name })
+	return out
+}
+
+// KindSource returns the document that declares the kind called name, the
+// first one read, and its file. It returns nil and "" for a kind linked
+// into the binary, which has no document, and for one the project doesn't
+// know.
+func (p *Project) KindSource(name string) (*ast.KindDoc, string) {
+	if p.known == nil {
+		return nil, ""
+	}
+	k, ok := p.known.byName[name]
+	if !ok || k.doc == nil {
+		return nil, ""
+	}
+	return k.doc, k.file
+}
+
 // Files returns how many files were read from the paths, trusted paths
 // and kind files apart.
 func (p *Project) Files() int { return p.files }
@@ -143,6 +176,17 @@ func (p *Project) Files() int { return p.files }
 // It's what check reports as checked, the same for one tree whether a
 // file is read as trusted or not.
 func (p *Project) Read() int { return len(p.sources) }
+
+// SourceNames lists the names of every file the project read, sorted, as
+// [Project.SourceOf] takes them.
+func (p *Project) SourceNames() []string {
+	out := make([]string, 0, len(p.sources))
+	for name := range p.sources {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
 
 // SourceOf returns a file's source, or nil for a file the project didn't
 // read.

@@ -12,12 +12,12 @@ import (
 )
 
 // configure reads the configuration, from configFile or the nearest
-// configuration file, and applies it to src: its kind files, its
-// trusted: paths after the --trusted ones, and the trusted paths of the
-// requirements the run enforces, which it returns: the flags' when
-// --require is given, and otherwise the file's.
-func configure(configFile string, src *project.Sources, patterns, requires []string) (*config.Config, []config.Require, humane.Error) {
-	cfg, err := config.Load(configFile, ".")
+// configuration file at or above dir, and applies it to src: its kind
+// files, its trusted: paths after the --trusted ones, and the trusted
+// paths of the requirements the run enforces, which it returns: the
+// flags' when --require is given, and otherwise the file's.
+func configure(dir, configFile string, src *project.Sources, patterns, requires []string) (*config.Config, []config.Require, humane.Error) {
+	cfg, err := config.Load(configFile, dir)
 	if err != nil {
 		return nil, nil, err
 	}

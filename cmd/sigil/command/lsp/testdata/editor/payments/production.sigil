@@ -1,0 +1,10 @@
+policy payments.production: DeployApproval@2
+
+use deploy.common.{cleared, owns_service}
+use deploy.guardrails
+
+guardrails(min_soak: 4h)
+
+when cleared and owns_service {
+  review(reason: service_owner, approvers: ["payments-leads"])
+}

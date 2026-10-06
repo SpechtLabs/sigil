@@ -171,6 +171,12 @@ timeline:
       a kind file as compatible, breaking or breaking in behavior, and fails when `version`
       didn't move or a breaking change didn't raise `accepts`. Reviewers no longer check the two
       numbers by hand.
+  - date: 2026-10-06
+    title: Language server
+    description: |
+      `sigil lsp` gives editors the diagnostics `sigil check` reports, completion, hover,
+      go-to-definition and formatting, read from the exported kind file and the policies alone.
+      That meets Tooling II's exit criterion.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -646,14 +652,30 @@ milestones:
     description: |
       Editor support and cross-service consumption. It comes last because it depends on the kind
       file format being stable, and that format only settles once the earlier milestones have
-      exercised it. The three commands are registered in the CLI but exit with "not implemented
-      yet".
+      exercised it. `sigil lsp`, `sigil gen go` and `sigil breaking` all run.
 
-      **Done when** editor completion works from an exported kind file alone.
+      **Done when** editor completion works from an exported kind file alone, which `sigil lsp`
+      does.
     deliverables:
       - title: sigil lsp (language server)
-        state: TODO
+        state: DONE
         requirement: SHOULD
+        description: |
+          Speaks the Language Server Protocol over stdio and reads each document's project the way
+          `sigil check` does, from the nearest configuration file, with open buffers over the files
+          on disk. It publishes check's diagnostics and lints, completes inputs, fields through
+          optional chains and quantifier variables, functions, decisions, reasons, payload keys,
+          params, enum values, imports and kinds in documents that don't parse yet, shows a
+          decision's signature and every name's type on hover, goes to definitions in the kind
+          file and across imports, and formats like `sigil fmt`.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/cli.md#sigil-lsp
+      - title: Invocation code lens and hover in sigil lsp
+        state: TODO
+        requirement: MAY
+        description: |
+          A code lens on each policy invocation that sums up what it contributes, and a hover with
+          its flattened rules, as `sigil explain` shows them for that call.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/project/planned.md#invocations-in-sigil-lsp
       - title: sigil gen go (typed code generation)
         state: DONE
         requirement: SHOULD

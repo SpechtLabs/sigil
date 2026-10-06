@@ -116,28 +116,16 @@ A host binary exports its kind, so a policy repository can check team policies w
 
 The proposal links the trusted documents into the host binary the way `cli.WithKind` links the kind, and has `sigil export` write them into a directory next to the kind file, with `--check` failing on a stale copy as it does for the kind. The option that would link them doesn't exist in package `cli` yet.
 
-## `sigil lsp`
+## Invocations in `sigil lsp`
 
-**Status:** not implemented; tracked on the [roadmap](/project/roadmap/) under Tooling II. Editor completion working from a kind file alone is that milestone's exit criterion. The command is registered and exits with "not implemented yet"; see [`sigil lsp`](/reference/cli/#sigil-lsp).
+**Status:** not implemented; tracked on the [roadmap](/project/roadmap/) under Tooling II. The rest of the language server is: diagnostics, completion, hover, go-to-definition and formatting; see [`sigil lsp`](/reference/cli/#sigil-lsp).
 
-`sigil lsp` runs the Sigil language server, which editors start in the background and talk to over stdin and stdout.
+Two features would show what a policy invocation contributes where it's written:
 
-```text
-sigil lsp [flags]
-```
-
-| Flag | Default | Does |
-| --- | --- | --- |
-| `--stdio` | on | Talks to the editor over stdin and stdout, the only transport. Editors pass it by convention |
-
-The server reads the kind file and offers completion for inputs, fields, functions and decision payload keys, and hover that shows a decision's full signature.
-
-Imports and invocations get their own support:
-
-- Completion after `use deploy.common.{` lists the module's `pub let`s. Path-first imports are what make this work: the editor knows the file before you type the names.
-- Go-to-definition works across imports and into invoked policies.
-- A code lens on each invocation summarizes what it contributes, for example "production: 1 approve, 1 review, gated by compliance != pci".
+- A code lens on each invocation summarizes it, for example "production: 1 approve, 1 review, gated by compliance != pci".
 - Hovering an invocation shows its flattened rules, the same view as `sigil explain`, scoped to that call.
+
+Both read the flattened rules `sigil explain` computes, so the server would compile each invoked policy with the call's arguments bound.
 
 ## `explain --input`
 

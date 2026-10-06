@@ -89,6 +89,7 @@ func (l *Loader) Load(paths, trusted []File) *Project {
 	}
 	l.group(rfiles, false)
 	l.indexKinds()
+	l.p.known = l.kinds
 	return l.p
 }
 

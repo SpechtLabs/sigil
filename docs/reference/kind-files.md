@@ -16,7 +16,7 @@ A kind file is what a host's `Schema()` exports from the kind it defines in Go w
 Why a kind is a contract generated from Go: [Kinds as contracts](/understanding/kinds/).
 
 ::: warning Planned
-[Loading a kind at run time](/project/planned/#loading-a-kind-at-run-time) with `policy.LoadKind` and the [language server](/project/planned/#sigil-lsp) don't exist yet.
+[Loading a kind at run time](/project/planned/#loading-a-kind-at-run-time) with `policy.LoadKind` doesn't exist yet.
 :::
 
 ## A complete kind

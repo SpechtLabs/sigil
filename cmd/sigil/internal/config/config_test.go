@@ -353,3 +353,20 @@ func write(t *testing.T, path, src string) {
 		t.Fatal(err)
 	}
 }
+
+// TestFind finds the configuration file Load reads without a path: the
+// nearest at or above a directory, or none.
+func TestFind(t *testing.T) {
+	root := t.TempDir()
+	teams := filepath.Join(root, "teams", "payments")
+	if err := os.MkdirAll(teams, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := config.Find(teams); err != nil || got != "" {
+		t.Errorf("Find() without a file = %q, %v, want none", got, err)
+	}
+	write(t, filepath.Join(root, "sigil.yaml"), "")
+	if got, err := config.Find(teams); err != nil || got != filepath.Join(root, "sigil.yaml") {
+		t.Errorf("Find() = %q, %v, want %s", got, err, filepath.Join(root, "sigil.yaml"))
+	}
+}
