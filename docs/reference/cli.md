@@ -20,7 +20,7 @@ The tools read the exported kind file (`deploy_approval.sigil` in the running ex
 | [`sigil export`](#sigil-export) | Writes the kind file of a kind linked into a host binary | A host binary; `sigil --help` lists it only there |
 | [`sigil gen go`](#sigil-gen-go) | Generates typed Go code from a kind file, for a Go service that doesn't import the host | Kind file |
 | [`sigil breaking`](#sigil-breaking) | Compares two versions of a kind file, classifies every change, and checks `version` and `accepts` | Two kind files |
-| [`sigil lsp`](#sigil-lsp) | Runs the language server editors start for diagnostics, completion, hover, go-to-definition and formatting | Kind file |
+| [`sigil lsp`](#sigil-lsp) | Runs the language server editors start for diagnostics, completion, signature help, hover, go-to-definition, quick fixes, inlay hints and formatting | Kind file |
 | [`sigil version`](#sigil-version) | Shows the version and build information | Nothing |
 
 `sigil completion bash|fish|powershell|zsh` prints a shell completion script, and `sigil help <command>` or `--help` (`-h`) prints any command's help. The script completes `--policy` and `--require` with the names of the policies in the command's paths, or in `.` when it names none. It reads only the documents' headers, so it needs no kind file, and it completes `--require` from the `--trusted` paths when the command line has any.
@@ -1149,7 +1149,7 @@ The server reads each open document's project the way `sigil check` run in the p
 - Open documents replace their files on disk. A document that isn't on disk, saved or not, counts too.
 - A file belongs to the project of the configuration file nearest it, so a directory with a configuration file of its own is a project of its own, and the project above it doesn't report on its files.
 - A project is read again 200 ms after its last change, and at once when a document opens or closes, on a goroutine of its own, so the server keeps answering while it reads. A request about a document waits only for its project's first read.
-- Completion, hover and definition check the document's current text against the project's latest read, so a request right after an edit checks that one document, not the project.
+- Completion, signature help, hover, definition and inlay hints check the document's current text against the project's latest read, so a request right after an edit checks that one document, not the project.
 - Workspace folders added or removed by the editor, and configuration files created or deleted on disk, move documents to their new roots.
 - When the client lets it, the server asks the client to watch `**/*.sigil` and the configuration file names, and reads the projects again when one changes on disk.
 
@@ -1165,7 +1165,7 @@ The server reads each open document's project the way `sigil check` run in the p
 | On close | The project is read again from disk; when no document of the project is open any more, every diagnostic it published is cleared |
 | After shutdown | Nothing more is published |
 
-What stops the check, such as a configuration file that doesn't parse or a requirement that can't be enforced, is shown as an error message instead. The documents still get completion, hover and definition.
+What stops the check, such as a configuration file that doesn't parse or a requirement that can't be enforced, is shown as an error message instead. The documents still get completion, signature help, hover and definition.
 
 ### Completion
 
@@ -1176,13 +1176,15 @@ Completion works in a document that doesn't parse, as it's being typed.
 | Start of a file, or after `---` | `policy`, `module` |
 | After `policy name:` or `module name:` | The kinds the project knows |
 | After `Kind@` | The kind's current version |
-| Start of a statement | `use`, `param`, `let`, `pub let`, `when`, `assert`, and the imported policies to invoke; in a `when` body, the kind's decisions to construct; in a module, `use`, `let` and `pub let` |
-| After `use` | The policies and modules of the document's kind, trusted ones included, as dotted names |
+| Start of a statement | `use`, `param`, `let`, `pub let`, `when`, `assert`, and the imported policies to invoke; in a `when` body, the kind's decisions to construct; in a module, `use`, `let` and `pub let`. `use` only before the other statements, and nothing but `use` above an import |
+| After `use` | The policies and modules of the document's kind it can import, as dotted names: trusted ones included, only trusted ones in a trusted document, and none that imports the document, which would be a cycle |
 | Inside `use path.{` | The pub lets of `path` the import doesn't list yet |
 | After `param name:` | The built-in types, `list`, `map`, and the kind's struct types and enums |
 | After a param's default and `,` | `min`, `max` |
 | An operand | Inputs, lets, imported lets, params, quantifier and filter variables, host functions with their signatures, enum values, enums, imported modules, `any`, `all`, `filter`, `not`, `present`, `true`, `false`; in an assert, the decisions and `outcome` |
-| An operand compared with `==` or `!=`, or a payload field's or param's value | The same, with the values of the operand's enum first |
+| An operand of a known type | The same, with what has that type first: names, the fields of inputs and variables such as `service.name`, enum values, `true` and `false`, and a literal: a duration, `""`, `[]` or `{}`. The best match is preselected |
+| A param's default or bound, an invoked policy's argument | The literals and enum values of the param's type, or `true` and `false`; these are constants |
+| After a number, where a duration is expected | The number with each unit: `24d`, `24h`, `24m`, `24s`, `24ms` |
 | A value two enums declare | `Enum.value` for each, not the bare value |
 | After `x.` or `x?.` | The fields of `x`'s struct type, through optional chaining, indexing and parentheses |
 | After `Enum.` | The enum's values |
@@ -1190,12 +1192,92 @@ Completion works in a document that doesn't parse, as it's being typed.
 | After `outcome.` | The decisions, whose candidates it reads |
 | After `outcome.d.`, `d.` | The decision's reasons |
 | After a candidate variable and `.` | The decision's payload fields and `reason` |
-| After an operand | The keyword operators: `and`, `or`, `xor`, `in`, `not in`, `has`, `like`, `matches`, `all in`, `any in`, `one in`, `exclusive in` |
+| After an operand | The operators its type takes, by the table below; every keyword operator when its type isn't known |
 | Inside `decision(` or after `,` | `reason` and the payload fields not given yet, those without a default first |
 | After `reason:` | The decision's reasons |
 | Inside `policy(` or after `,` | The invoked policy's params not given yet, required ones first |
 
 Nothing completes inside a comment or a string, or where a name is being declared.
+
+Where an operand goes, the context says what type it should have:
+
+| The operand | Should have the type |
+| --- | --- |
+| A `when` or assert condition, a quantifier's or filter's body, after `not`, either side of `and`, `or`, `xor` | `bool` |
+| Right of `==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, `-` | The left side's; a duration after a timestamp, except after `-` |
+| Right of `in`, `not in` | A list of the left side's type |
+| Right of `any in`, `all in`, `one in`, `exclusive in` | The left side's list |
+| Right of `has` | The key type of the map on the left |
+| Right of `??` | What the optional on the left holds |
+| Right of `like`, `matches` | `string` |
+| A host function's argument | The parameter's type at its position |
+| A payload field's value, an invoked policy's argument | The field's or param's type; a literal's detail shows a param's default and bounds |
+| An index | A map's key type, or `int` for a list |
+| A param's default or bound | The param's type |
+| An element of a list or map literal | The element, key or value type of what the literal's place expects; constants only in a param's default or an invocation's argument |
+
+Completions sort by how well they fit that type, then by how near their scope is, so a quantifier's variable comes before the document's names, then by name. The operand on an operator's left isn't offered on its right.
+
+The operators after an operand depend on its type:
+
+| Operand | Operators |
+| --- | --- |
+| `bool` | `and`, `or`, `xor`, `==`, `!=` |
+| `string` | `like`, `matches`, `in`, `not in`, `==`, `!=` |
+| `int`, `float`, `duration`, `timestamp` | `<`, `<=`, `>`, `>=`, `==`, `!=`, `in`, `not in`, `+`, `-` |
+| An enum, `decision` | `==`, `!=`, `in`, `not in` |
+| A list | `any in`, `all in`, `one in`, `exclusive in` |
+| A map | `has` |
+| An optional | `??`, and `?.` for an optional struct |
+| A struct | None |
+
+A completion's detail is its type or signature, and its label description says what it is, such as `input`, `host function` or `from deploy.common`. Its documentation is the doc comment of its declaration: the `//` lines right above an input, host function, decision, payload field, struct field, struct type, enum or pub let. Hover shows the same comment.
+
+When the editor's completion takes snippets, these completions insert one. Every placeholder's default is code that checks, so tabbing through a snippet without typing leaves a document `sigil check` accepts:
+
+| Completion | Inserts |
+| --- | --- |
+| `when` | `when true {` and the body |
+| `assert` | `assert("reason", true)` |
+| `use` | `use` and a module, or else a policy, of the kind that the document doesn't import yet; only before the document's other statements |
+| `let`, `pub let` | `let name = true`, with a name nothing binds yet |
+| `param` | `param name: string`, with a name nothing binds yet |
+| `any`, `all`, `filter` | `any x in list: true`, with a variable nothing binds yet and the nearest list in scope |
+| A decision constructor | The constructor with its first reason, or its only one, and every payload field without a default set to its type's zero value, leaving out a field whose type has no literal, such as an optional, like `review(reason: service_owner, approvers: [])`; after `reason: `, completion offers the other reasons |
+| An imported policy | The invocation with every param without a default set to its type's zero value |
+| A host function | The call with each argument set to its type's zero value, like `split("", "")` |
+| A duration, string, list or map literal | `1h`, with the number and the unit as placeholders, `""`, `[]` or `{}`, with the cursor inside |
+
+A type's zero value is `""`, `0`, `0.0`, `false`, `0s`, `[]`, `{}`, or an enum's first value; a struct's or a timestamp's placeholder is empty. No snippet uses a choice. An editor whose completion doesn't take snippets gets the names alone.
+
+### Signature help
+
+Inside a call, after `(` or `,`, signature help shows what the call takes and marks the argument the cursor is on:
+
+| Call | Shows |
+| --- | --- |
+| A host function | Its parameters' types, the one at the cursor's position marked, and its doc comment |
+| A decision constructor | `reason` with the decision's reasons, and the payload fields with their types and defaults, the required ones saying so. Between arguments, the next one not given yet is marked |
+| An imported policy | Its params with their types and defaults, each with its bounds and whether it's required |
+
+### Code actions
+
+The server offers quick fixes for the diagnostics it published:
+
+| Diagnostic | Quick fix |
+| --- | --- |
+| A name, field, reason, enum value, payload field, decision or imported let whose help says `did you mean` | Replace it with the suggestion; preferred when it's the only fix |
+| A map key that reads as a name | Write it as a string key, or as the suggested name |
+| A reason written as a string or qualified, such as `reason: "not_eligible"` | Write it as the bare name |
+| A reason passed without its label, such as `deny(not_eligible)` | Write `reason: not_eligible`, or the reason closest to it |
+| A reason the decision doesn't declare, with none close to it | Change it to each reason the decision declares |
+| A constructor that leaves out a payload field without a default | Add the field with its type's zero value, such as `approvers: []`, after the last argument |
+
+Each diagnostic carries its fixes in its `data`, so asking for them doesn't check the document again. A fix applies only while the document still holds the lines it was worked out from, so after an edit a fix of a different construct at the same place isn't offered.
+
+### Inlay hints
+
+The server shows the type of each name declared without one, after the name: a let's, and a quantifier's or filter's variable's, such as `: list<string>`.
 
 ### Hover and definition
 

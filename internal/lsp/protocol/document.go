@@ -63,11 +63,34 @@ const (
 
 // Diagnostic is one problem in a document.
 type Diagnostic struct {
+	Data     *DiagnosticData    `json:"data,omitempty"` // the server's own, read back by a code action
 	Code     string             `json:"code,omitempty"` // the lint's name, for a lint finding
 	Source   string             `json:"source"`
 	Message  string             `json:"message"`
 	Range    Range              `json:"range"`
 	Severity DiagnosticSeverity `json:"severity"`
+}
+
+// DiagnosticData is what the server attaches to a diagnostic and reads
+// back when the client asks for its code actions: the fixes for it,
+// worked out when the diagnostic was.
+type DiagnosticData struct {
+	Fixes []Fix `json:"fixes,omitempty"`
+}
+
+// Fix is one fix of a diagnostic: an edit of its document, which applies
+// only while the guard's range still holds the guard's text.
+type Fix struct {
+	Title string   `json:"title"`
+	Edit  TextEdit `json:"edit"`
+	Guard Guard    `json:"guard"`
+}
+
+// Guard is the text a fix was worked out from, and where it was: the
+// whole lines of what the fix changes.
+type Guard struct {
+	Text  string `json:"text"`
+	Range Range  `json:"range"`
 }
 
 // PublishDiagnosticsParams replaces every diagnostic of a document.

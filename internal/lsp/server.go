@@ -92,6 +92,7 @@ type Server struct {
 	delay    time.Duration
 	nextID   int  // the id of the last request the server sent
 	watch    bool // the client lets the server register file watchers
+	snippets bool // the client's completion takes snippets
 	state    lifecycle
 }
 
@@ -279,6 +280,12 @@ func (s *Server) call(m *jsonrpc.Message) (result json.RawMessage, bad *jsonrpc.
 		return reply(s.definition(m.Params))
 	case protocol.MethodFormatting:
 		return reply(s.formatting(m.Params))
+	case protocol.MethodSignatureHelp:
+		return reply(s.signatureHelp(m.Params))
+	case protocol.MethodCodeAction:
+		return reply(s.codeActions(m.Params))
+	case protocol.MethodInlayHint:
+		return reply(s.inlayHints(m.Params))
 	}
 	return nil, &jsonrpc.Error{Code: jsonrpc.MethodNotFound, Message: fmt.Sprintf("the Sigil language server doesn't implement %s", m.Method)}
 }
@@ -352,6 +359,9 @@ func (s *Server) initialize(raw json.RawMessage) (*protocol.InitializeResult, *j
 	if w := p.Capabilities.Workspace; w != nil && w.DidChangeWatchedFiles != nil {
 		s.watch = w.DidChangeWatchedFiles.DynamicRegistration
 	}
+	if t := p.Capabilities.TextDocument; t != nil && t.Completion != nil && t.Completion.CompletionItem != nil {
+		s.snippets = t.Completion.CompletionItem.SnippetSupport
+	}
 	if p.Capabilities.General != nil && slices.Contains(p.Capabilities.General.PositionEncodings, protocol.EncodingUTF8) {
 		s.encoding = protocol.EncodingUTF8
 	}
@@ -366,9 +376,12 @@ func (s *Server) initialize(raw json.RawMessage) (*protocol.InitializeResult, *j
 				Save:      &protocol.SaveOptions{},
 			},
 			CompletionProvider:         &protocol.CompletionOptions{TriggerCharacters: []string{".", ":", "{", "(", ",", "@"}},
+			SignatureHelpProvider:      &protocol.SignatureHelpOptions{TriggerCharacters: []string{"(", ","}},
+			CodeActionProvider:         &protocol.CodeActionOptions{CodeActionKinds: []string{protocol.CodeActionQuickFix}},
 			HoverProvider:              true,
 			DefinitionProvider:         true,
 			DocumentFormattingProvider: true,
+			InlayHintProvider:          true,
 			Workspace: &protocol.WorkspaceCapabilities{
 				WorkspaceFolders: &protocol.WorkspaceFoldersServerCapabilities{Supported: true, ChangeNotifications: true},
 			},
@@ -476,7 +489,7 @@ func describe(err error) string {
 // finishes.
 func (s *Server) postpone(m *jsonrpc.Message) bool {
 	switch m.Method {
-	case protocol.MethodCompletion, protocol.MethodHover, protocol.MethodDefinition:
+	case protocol.MethodCompletion, protocol.MethodHover, protocol.MethodDefinition, protocol.MethodSignatureHelp, protocol.MethodInlayHint:
 	default:
 		return false
 	}

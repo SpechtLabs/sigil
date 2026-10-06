@@ -22,6 +22,7 @@ var completionKinds = map[protocol.CompletionItemKind]string{
 	protocol.CompletionEnumMember:  "enum value",
 	protocol.CompletionConstant:    "param",
 	protocol.CompletionStruct:      "type",
+	protocol.CompletionOperator:    "operator",
 }
 
 // render writes what the server sent, for method, to the transcript in a
@@ -42,6 +43,7 @@ func (c *client) render(method string, raw json.RawMessage) {
 		if p.Version != nil {
 			version = fmt.Sprintf(" (version %d)", *p.Version)
 		}
+		c.shown[p.URI] = p.Diagnostics
 		fmt.Fprintf(&c.log, "<-- diagnostics for %s%s: %d\n", c.relative(p.URI), version, len(p.Diagnostics))
 		for _, d := range p.Diagnostics {
 			severity := "error"
@@ -65,6 +67,12 @@ func (c *client) render(method string, raw json.RawMessage) {
 			if it.TextEdit != nil {
 				line += fmt.Sprintf(" -> %q at %s", it.TextEdit.NewText, span(it.TextEdit.Range))
 			}
+			if it.InsertTextFormat == protocol.Snippet {
+				line += " (snippet)"
+			}
+			if it.Preselect {
+				line += " (preselected)"
+			}
 			fmt.Fprintln(&c.log, line)
 		}
 	case protocol.MethodHover:
@@ -83,6 +91,17 @@ func (c *client) render(method string, raw json.RawMessage) {
 		fmt.Fprintf(&c.log, "<-- %d edits\n", len(edits))
 		for _, e := range edits {
 			fmt.Fprintf(&c.log, "    replace %s with\n    %s\n", span(e.Range), indent(strings.TrimSuffix(e.NewText, "\n"), "    "))
+		}
+	case protocol.MethodSignatureHelp:
+		c.signature(raw)
+	case protocol.MethodCodeAction:
+		c.actionsOf(raw)
+	case protocol.MethodInlayHint:
+		var hints []protocol.InlayHint
+		c.decode(raw, &hints)
+		fmt.Fprintf(&c.log, "<-- %d inlay hints\n", len(hints))
+		for _, h := range hints {
+			fmt.Fprintf(&c.log, "    %q at %d:%d\n", h.Label, h.Position.Line, h.Position.Character)
 		}
 	default:
 		c.json(raw)
@@ -105,4 +124,47 @@ func span(r protocol.Range) string {
 // indent indents every line of s after the first by prefix.
 func indent(s, prefix string) string {
 	return strings.ReplaceAll(s, "\n", "\n"+prefix)
+}
+
+// signature writes signature help to the transcript: each signature, and
+// a line per parameter with its documentation, the active one starred.
+func (c *client) signature(raw json.RawMessage) {
+	c.t.Helper()
+	var h protocol.SignatureHelp
+	c.decode(raw, &h)
+	for _, sig := range h.Signatures {
+		fmt.Fprintf(&c.log, "<-- signature %s\n", sig.Label)
+		for i, p := range sig.Parameters {
+			mark := " "
+			if h.ActiveParameter != nil && int(*h.ActiveParameter) == i {
+				mark = "*"
+			}
+			doc := ""
+			if p.Documentation != nil {
+				doc = ": " + p.Documentation.Value
+			}
+			fmt.Fprintf(&c.log, "   %s %s%s\n", mark, sig.Label[p.Label[0]:p.Label[1]], indent(doc, "      "))
+		}
+	}
+}
+
+// actionsOf writes code actions to the transcript: each one's title and
+// kind, and its edits.
+func (c *client) actionsOf(raw json.RawMessage) {
+	c.t.Helper()
+	var actions []protocol.CodeAction
+	c.decode(raw, &actions)
+	fmt.Fprintf(&c.log, "<-- %d code actions\n", len(actions))
+	for _, a := range actions {
+		preferred := ""
+		if a.IsPreferred {
+			preferred = ", preferred"
+		}
+		fmt.Fprintf(&c.log, "    %s (%s%s)\n", a.Title, a.Kind, preferred)
+		for uri, edits := range a.Edit.Changes {
+			for _, e := range edits {
+				fmt.Fprintf(&c.log, "      %s: replace %s with %q\n", c.relative(uri), span(e.Range), e.NewText)
+			}
+		}
+	}
 }

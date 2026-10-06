@@ -1,6 +1,11 @@
 --> initialize
 {
   "capabilities": {
+    "codeActionProvider": {
+      "codeActionKinds": [
+        "quickfix"
+      ]
+    },
     "completionProvider": {
       "triggerCharacters": [
         ".",
@@ -14,7 +19,14 @@
     "definitionProvider": true,
     "documentFormattingProvider": true,
     "hoverProvider": true,
+    "inlayHintProvider": true,
     "positionEncoding": "utf-16",
+    "signatureHelpProvider": {
+      "triggerCharacters": [
+        "(",
+        ","
+      ]
+    },
     "textDocumentSync": {
       "change": 1,
       "openClose": true,
@@ -47,27 +59,29 @@
     owners (field) list<string> -> "owners" at 13:13-13:13
     tier (field) Tier -> "tier" at 13:13-13:13
 --> complete the inputs after `when `
-<-- 20 completions
-    Tier (enum) enum Tier: critical | standard | internal -> "Tier" at 13:5-13:12
-    actor (variable) Actor -> "actor" at 13:5-13:12
-    cleared (variable) bool -> "cleared" at 13:5-13:12
-    critical (enum value) Tier -> "critical" at 13:5-13:12
-    environment (variable) string -> "environment" at 13:5-13:12
-    freeze (variable) Freeze -> "freeze" at 13:5-13:12
-    internal (enum value) Tier -> "internal" at 13:5-13:12
+<-- 22 completions
+    cleared (variable) bool -> "cleared" at 13:5-13:12 (preselected)
     owns_service (variable) bool -> "owns_service" at 13:5-13:12
-    release (variable) Release -> "release" at 13:5-13:12
-    service (variable) Service -> "service" at 13:5-13:12
-    split (function) fn split(string, string) -> list<string> -> "split" at 13:5-13:12
-    standard (enum value) Tier -> "standard" at 13:5-13:12
-    unused (variable) int -> "unused" at 13:5-13:12
-    all (keyword) -> "all" at 13:5-13:12
-    any (keyword) -> "any" at 13:5-13:12
+    freeze.unknown (field) bool -> "freeze.unknown" at 13:5-13:12
+    release.hotfix (field) bool -> "release.hotfix" at 13:5-13:12
+    all (keyword) -> "all ${1:x} in ${2:actor.teams}: ${3:true}" at 13:5-13:12 (snippet)
+    any (keyword) -> "any ${1:x} in ${2:actor.teams}: ${3:true}" at 13:5-13:12 (snippet)
     false (keyword) -> "false" at 13:5-13:12
-    filter (keyword) -> "filter" at 13:5-13:12
     not (keyword) -> "not" at 13:5-13:12
     present (keyword) -> "present" at 13:5-13:12
     true (keyword) -> "true" at 13:5-13:12
+    unused (variable) int -> "unused" at 13:5-13:12
+    actor (variable) Actor -> "actor" at 13:5-13:12
+    environment (variable) string -> "environment" at 13:5-13:12
+    freeze (variable) Freeze -> "freeze" at 13:5-13:12
+    release (variable) Release -> "release" at 13:5-13:12
+    service (variable) Service -> "service" at 13:5-13:12
+    split (function) fn split(string, string) -> list<string> -> "split(${1:\"\"}, ${2:\"\"})" at 13:5-13:12 (snippet)
+    critical (enum value) Tier -> "critical" at 13:5-13:12
+    internal (enum value) Tier -> "internal" at 13:5-13:12
+    standard (enum value) Tier -> "standard" at 13:5-13:12
+    Tier (enum) enum Tier: critical | standard | internal -> "Tier" at 13:5-13:12
+    filter (keyword) -> "filter ${1:x} in ${2:actor.teams}: ${3:true}" at 13:5-13:12 (snippet)
 --> edit payments/production.sigil to construct decisions
 <-- diagnostics for file:///workspace/payments/production.sigil (version 3): 2
     12:15-12:16 error: expected an expression, found `)`
@@ -84,25 +98,38 @@
     approvers (field) approvers: list<string> -> "approvers: " at 13:32-13:32
 --> complete the tier's values
 <-- 19 completions
-    critical (enum value) Tier -> "critical" at 11:21-11:29
+    critical (enum value) Tier -> "critical" at 11:21-11:29 (preselected)
     internal (enum value) Tier -> "internal" at 11:21-11:29
     standard (enum value) Tier -> "standard" at 11:21-11:29
-    Tier (enum) enum Tier: critical | standard | internal -> "Tier" at 11:21-11:29
-    actor (variable) Actor -> "actor" at 11:21-11:29
     cleared (variable) bool -> "cleared" at 11:21-11:29
+    owns_service (variable) bool -> "owns_service" at 11:21-11:29
+    actor (variable) Actor -> "actor" at 11:21-11:29
     environment (variable) string -> "environment" at 11:21-11:29
     freeze (variable) Freeze -> "freeze" at 11:21-11:29
-    owns_service (variable) bool -> "owns_service" at 11:21-11:29
     release (variable) Release -> "release" at 11:21-11:29
     service (variable) Service -> "service" at 11:21-11:29
-    split (function) fn split(string, string) -> list<string> -> "split" at 11:21-11:29
-    all (keyword) -> "all" at 11:21-11:29
-    any (keyword) -> "any" at 11:21-11:29
+    split (function) fn split(string, string) -> list<string> -> "split(${1:\"\"}, ${2:\"\"})" at 11:21-11:29 (snippet)
+    Tier (enum) enum Tier: critical | standard | internal -> "Tier" at 11:21-11:29
+    all (keyword) -> "all ${1:x} in ${2:actor.teams}: ${3:true}" at 11:21-11:29 (snippet)
+    any (keyword) -> "any ${1:x} in ${2:actor.teams}: ${3:true}" at 11:21-11:29 (snippet)
     false (keyword) -> "false" at 11:21-11:29
-    filter (keyword) -> "filter" at 11:21-11:29
+    filter (keyword) -> "filter ${1:x} in ${2:actor.teams}: ${3:true}" at 11:21-11:29 (snippet)
     not (keyword) -> "not" at 11:21-11:29
     present (keyword) -> "present" at 11:21-11:29
     true (keyword) -> "true" at 11:21-11:29
+--> signature help in the review constructor
+<-- signature review(reason: service_owner, approvers: list<string>)
+     reason: service_owner: The reason, one of the decision's: service_owner.
+   * approvers: list<string>: Required.
+--> complete the decisions to construct
+<-- 7 completions
+    approve (constructor) approve takes reason: release_manager | payments_sre, and bake: duration = 1h -> "approve(reason: ${1:release_manager})" at 14:0-14:0 (snippet)
+    deny (constructor) deny takes reason: not_eligible | change_freeze | soak_too_short | no_rule_matched -> "deny(reason: ${1:not_eligible})" at 14:0-14:0 (snippet)
+    guardrails (module) policy deploy.guardrails -> "guardrails($0)" at 14:0-14:0 (snippet)
+    review (constructor) review takes reason: service_owner, and approvers: list<string> -> "review(reason: service_owner, approvers: ${1:[]})" at 14:0-14:0 (snippet)
+    assert (keyword) -> "assert(\"${1:reason}\", ${2:true})" at 14:0-14:0 (snippet)
+    let (keyword) -> "let ${1:name} = ${2:true}" at 14:0-14:0 (snippet)
+    when (keyword) -> "when ${1:true} {\n\t$0\n}" at 14:0-14:0 (snippet)
 --> hover over the review constructor
 <-- hover at 13:2-13:8
     ```sigil
@@ -128,10 +155,21 @@
 <-- file:///workspace/deploy/guardrails.sigil at 0:7-0:24
 --> go to the input service
 <-- file:///workspace/deploy_approval.sigil at 29:6-29:13
---> edit payments/production.sigil back, unformatted and with a let nothing reads
+--> edit payments/production.sigil to misspell an input
 <-- diagnostics for file:///workspace/payments/production.sigil (version 4): 1
+    11:5-11:11 error: unknown name `servce`
+      help: did you mean `service`?
+--> quick fixes for the misspelled input
+<-- 1 code actions
+    Change to `service` (quickfix, preferred)
+      file:///workspace/payments/production.sigil: replace 11:5-11:11 with "service"
+--> edit payments/production.sigil back, unformatted and with a let nothing reads
+<-- diagnostics for file:///workspace/payments/production.sigil (version 5): 1
     11:4-11:10 warning unused-let: let unused is never read
       help: remove the let, or read it; a private let can't be imported
+--> inlay hints of payments/production.sigil
+<-- 1 inlay hints
+    ": int" at 11:10
 --> format payments/production.sigil
 <-- 1 edits
     replace 0:0-12:0 with

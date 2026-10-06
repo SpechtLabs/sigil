@@ -179,8 +179,9 @@ func (r *resolver) typeName(t ast.Type) *target {
 	case *ast.NamedType:
 		if s := r.kind.Type(t.Name.Name); s != nil {
 			out := r.on(t)
-			out.hover = code(structSource(s))
-			out.defs = r.inKind(func(d ast.Decl) *ast.Ident { return typeDecl(d, s.Name) })
+			find := func(d ast.Decl) *ast.Ident { return typeDecl(d, s.Name) }
+			out.hover = joinLines(code(structSource(s)), r.comment(find))
+			out.defs = r.inKind(find)
 			return out
 		}
 		if e := r.kind.Enum(t.Name.Name); e != nil {
@@ -266,8 +267,9 @@ func (r *resolver) payload(t *target, d *kind.Decision, name string) *target {
 	if f == nil {
 		return nil
 	}
-	t.hover = joinLines(code(fieldSource(f)), fmt.Sprintf("A payload field of `%s`.", d.Name), code(declsOf(f.Type, r.kind)))
-	t.defs = r.inKind(func(decl ast.Decl) *ast.Ident { return decisionField(decl, d.Name, name) })
+	find := func(decl ast.Decl) *ast.Ident { return decisionField(decl, d.Name, name) }
+	t.hover = joinLines(code(fieldSource(f)), fmt.Sprintf("A payload field of `%s`.", d.Name), r.comment(find), code(declsOf(f.Type, r.kind)))
+	t.defs = r.inKind(find)
 	return t
 }
 
@@ -297,15 +299,17 @@ func (r *resolver) reason(t *target, d *kind.Decision, name string) *target {
 
 // decision is a decision: its whole declaration.
 func (r *resolver) decision(t *target, d *kind.Decision) *target {
-	t.hover = code(strings.TrimSuffix(d.Source(), "\n"))
-	t.defs = r.inKind(func(decl ast.Decl) *ast.Ident { return decisionDecl(decl, d.Name) })
+	find := func(decl ast.Decl) *ast.Ident { return decisionDecl(decl, d.Name) }
+	t.hover = joinLines(code(strings.TrimSuffix(d.Source(), "\n")), r.comment(find))
+	t.defs = r.inKind(find)
 	return t
 }
 
 // enum is an enum: its values.
 func (r *resolver) enum(t *target, e *types.Enum) *target {
-	t.hover = code(enumSource(e))
-	t.defs = r.inKind(func(decl ast.Decl) *ast.Ident { return enumDecl(decl, e.Name) })
+	find := func(decl ast.Decl) *ast.Ident { return enumDecl(decl, e.Name) }
+	t.hover = joinLines(code(enumSource(e)), r.comment(find))
+	t.defs = r.inKind(find)
 	return t
 }
 
@@ -342,7 +346,7 @@ func (r *resolver) importedLet(t *target, d *bundle.Document, name string) *targ
 	if !ok {
 		return nil
 	}
-	t.hover = joinLines(code("pub let "+typed(name, typ)), fmt.Sprintf("From `%s`.", d.Name), code(declsOf(typ, r.kind)))
+	t.hover = joinLines(code("pub let "+typed(name, typ)), fmt.Sprintf("From `%s`.", d.Name), r.v.letComment(d.Name, name), code(declsOf(typ, r.kind)))
 	if l := letIn(d.Node, name); l != nil {
 		t.defs = []location{{file: d.File, from: l.Name.Pos().Offset, to: l.Name.End().Offset}}
 	}
@@ -404,11 +408,13 @@ func (r *resolver) name(id *ast.Ident) *target {
 	t := r.on(id)
 	switch b.Entity {
 	case check.Input:
-		t.hover = joinLines(code("input "+typed(id.Name, b.Type)), code(declsOf(b.Type, r.kind)))
-		t.defs = r.inKind(func(d ast.Decl) *ast.Ident { return inputDecl(d, id.Name) })
+		find := func(d ast.Decl) *ast.Ident { return inputDecl(d, id.Name) }
+		t.hover = joinLines(code("input "+typed(id.Name, b.Type)), r.comment(find), code(declsOf(b.Type, r.kind)))
+		t.defs = r.inKind(find)
 	case check.Function:
-		t.hover = code(b.Func.Signature())
-		t.defs = r.inKind(func(d ast.Decl) *ast.Ident { return fnDecl(d, id.Name) })
+		find := func(d ast.Decl) *ast.Ident { return fnDecl(d, id.Name) }
+		t.hover = joinLines(code(b.Func.Signature()), r.comment(find))
+		t.defs = r.inKind(find)
 	case check.DecisionName:
 		return r.decision(t, r.kind.Decision(id.Name))
 	case check.EnumType:
@@ -482,8 +488,9 @@ func (r *resolver) selector(sel *ast.SelectorExpr) *target {
 			return nil
 		}
 		f := s.Field(name)
-		t.hover = joinLines(code(name+": "+f.Type.String()), fmt.Sprintf("A field of `%s`.", s.Name), code(declsOf(f.Type, r.kind)))
-		t.defs = r.inKind(func(d ast.Decl) *ast.Ident { return typeField(d, s.Name, name) })
+		find := func(d ast.Decl) *ast.Ident { return typeField(d, s.Name, name) }
+		t.hover = joinLines(code(name+": "+f.Type.String()), fmt.Sprintf("A field of `%s`.", s.Name), r.comment(find), code(declsOf(f.Type, r.kind)))
+		t.defs = r.inKind(find)
 		return t
 	case *types.Candidate:
 		return r.payload(t, r.kind.Decision(b.Decision), name)
@@ -575,4 +582,10 @@ func paramNamed(d ast.Doc, decl *ast.Ident) *ast.ParamStmt {
 		}
 	}
 	return nil
+}
+
+// comment is the doc comment of the declaration in the kind's document
+// that find picks, or "" for none.
+func (r *resolver) comment(find func(ast.Decl) *ast.Ident) string {
+	return r.v.kindComment(r.kind.Name, find)
 }

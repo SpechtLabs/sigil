@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/spechtlabs/sigil/internal/diag"
+	"github.com/spechtlabs/sigil/internal/kind"
 	"github.com/spechtlabs/sigil/internal/lsp/jsonrpc"
 	"github.com/spechtlabs/sigil/internal/lsp/protocol"
 )
@@ -227,7 +228,10 @@ func (s *Server) publish(p *project) {
 		if p.snap.Project != nil {
 			src = p.snap.Project.SourceOf(e.File)
 		}
-		byURI[uri] = append(byURI[uri], diagnostic(e, newLines(src, s.encoding)))
+		l := newLines(src, s.encoding)
+		d := diagnostic(e, l)
+		d.Data = fixesOf(e, src, p.kindOf(e.Doc), l)
+		byURI[uri] = append(byURI[uri], d)
 		paths[uri] = path
 	}
 	for _, d := range s.docs {
@@ -352,4 +356,16 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// kindOf returns the kind of the document called name in p's latest load,
+// or nil.
+func (p *project) kindOf(name string) *kind.Kind {
+	if p.snap.Project == nil || name == "" {
+		return nil
+	}
+	if g := p.snap.Project.Group(name); g != nil {
+		return g.Kind.Model
+	}
+	return nil
 }

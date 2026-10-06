@@ -146,6 +146,30 @@ func TestScopesAreOptIn(t *testing.T) {
 	}
 }
 
+// TestDepth checks how far out a name's scope is: a filter's variable in
+// its own scope, a `when` body's let one out, the document's names
+// furthest, and a name nothing binds at -1.
+func TestDepth(t *testing.T) {
+	c := withScopes(t, scoped)
+	at := strings.Index(scoped, "o != ") + len("o != ")
+	env := c.Info().ScopeAt(at)
+	tests := []struct {
+		name string
+		want int
+	}{
+		{name: "o", want: 0},
+		{name: "owners", want: 1},
+		{name: "cleared", want: 2},
+		{name: "service", want: 2},
+		{name: "nope", want: -1},
+	}
+	for _, tt := range tests {
+		if got := env.Depth(tt.name); got != tt.want {
+			t.Errorf("Depth(%s) = %d, want %d", tt.name, got, tt.want)
+		}
+	}
+}
+
 // withScopes checks src, one policy of the test kind, with scopes
 // recorded.
 func withScopes(t *testing.T, src string) *check.Checker {

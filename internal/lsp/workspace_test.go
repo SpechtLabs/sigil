@@ -25,9 +25,10 @@ const root = "/ws"
 // reads while a server runs.
 type memLoader struct {
 	files      map[string][]byte
-	err        error    // what every load reports as stopping the check
-	undeclared bool     // no configuration file declares the project
-	changed    []string // the files Changed was told about
+	trusted    map[string]bool // the files read as trusted paths, by name
+	err        error           // what every load reports as stopping the check
+	undeclared bool            // no configuration file declares the project
+	changed    []string        // the files Changed was told about
 	mu         sync.Mutex
 	loads      int
 }
@@ -66,11 +67,15 @@ func (l *memLoader) Load(_ string, overlay map[string][]byte) *Snapshot {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	files := make([]workspace.File, len(names))
-	for i, name := range names {
-		files[i] = workspace.File{Name: name, Source: merged[name]}
+	var files, trusted []workspace.File
+	for _, name := range names {
+		if l.trusted[name] {
+			trusted = append(trusted, workspace.File{Name: name, Source: merged[name]})
+		} else {
+			files = append(files, workspace.File{Name: name, Source: merged[name]})
+		}
 	}
-	p := workspace.NewLoader(nil).Load(files, nil)
+	p := workspace.NewLoader(nil).Load(files, trusted)
 	errs, err := p.Diagnose(workspace.Checks{})
 	if l.err != nil {
 		return &Snapshot{Project: p, Err: l.err}
