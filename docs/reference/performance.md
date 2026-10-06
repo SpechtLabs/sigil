@@ -12,7 +12,7 @@ What compiling and evaluating Sigil policies costs, as measured on one machine; 
 
 - **Compile once, evaluate often.** Compiling a one-rule policy costs about 7 µs, and evaluating it under 1 µs. A service compiles when it loads or reloads policies, never per request.
 - **Evaluation cost follows the rules that match.** Every rule's condition is evaluated, and each rule that matches also builds a candidate that's folded, ranked and traced. In the synthetic 64-rule policy below, a rule costs about 140 ns when it doesn't match and 375 ns when it does, so the policy takes 8.8 µs when one rule matches and 24 µs when all of them do. Most real policies decide with a handful of matching rules.
-- **Cost grows in proportion to the policy.** At every size up to 512 rules, each rule that doesn't match adds about 140 ns and one allocation, and compiling costs about 5 µs and 8 KiB per rule. When every rule matches, the cost per rule rises from about 370 ns to 465 ns at 256 rules, while the allocations stay at six per rule; that rise is the garbage collector marking a large compiled policy in a small heap, [explained below](#by-the-size-of-the-policy).
+- **Cost grows in proportion to the policy.** At every size up to 512 rules, each rule that doesn't match adds about 140 ns and one allocation, and compiling costs about 5 µs and 8 KiB per rule. When every rule matches, the cost per rule rises slowly with their number, to 525 ns at 512 rules, while the allocations stay at six per rule; most of that rise is the garbage collector marking a large compiled policy in a small heap, [explained below](#by-the-size-of-the-policy).
 - **Compiled policies are safe to share.** A compiled policy is immutable. Concurrent evaluations share no mutable state and take no locks, so any number of goroutines can evaluate the same policy.
 - **Allocation is predictable.** An evaluation allocates the same number of objects every time for the same input and outcome; no evaluation benchmark's count varied between samples. Most of it is the result and the trace a host receives.
 - **Every evaluation halts.** Its cost grows with the input's lists, which the host bounds, and a deadline stops one that runs long; see [Halting by construction](/understanding/halting/).
@@ -51,7 +51,7 @@ Below the public API, the evaluator alone takes 478 ns for one matching rule and
   :x="[1, 8, 16, 32, 64, 128, 256, 512]"
   :x-ticks="[0, 128, 256, 384, 512]"
   :series="[
-    { label: 'Every rule matches', values: [0.478, 3.02, 5.83, 11.7, 24.0, 51.1, 119, 233] },
+    { label: 'Every rule matches', values: [0.478, 3.02, 5.83, 11.7, 24.0, 51.1, 119, 269] },
     { label: 'One rule matches', values: [0.470, 1.40, 2.43, 4.53, 8.84, 17.8, 35.8, 70.7] },
   ]"
 />
@@ -64,10 +64,10 @@ Below the public API, the evaluator alone takes 478 ns for one matching rule and
 | 32 | 11.7 µs | 15.8 KiB | 210 | 4.53 µs | 2.8 KiB | 49 |
 | 64 | 24.0 µs | 31.3 KiB | 403 | 8.84 µs | 4.8 KiB | 81 |
 | 128 | 51.1 µs | 62.1 KiB | 788 | 17.8 µs | 8.3 KiB | 145 |
-| 256 | 119 µs | 126 KiB | 1,557 | 35.8 µs | 16.0 KiB | 273 |
-| 512 | 233 µs | 253 KiB | 3,094 | 70.7 µs | 31.4 KiB | 529 |
+| 256 | 119 µs | 124 KiB | 1,557 | 35.8 µs | 16.0 KiB | 273 |
+| 512 | 269 µs | 249 KiB | 3,094 | 70.7 µs | 31.4 KiB | 529 |
 
-Dividing each time by the number of rules shows what a rule costs. With one rule matching, the cost settles at 140 ns a rule from 32 rules up; below that, the evaluation's fixed cost is a large share. With every rule matching, it's about 370 ns a rule from 8 to 64 rules, then rises to 399 ns at 128 and 465 ns at 256, and stays there: 455 ns at 512.
+Dividing each time by the number of rules shows what a rule costs. With one rule matching, the cost settles at 140 ns a rule from 32 rules up; below that, the evaluation's fixed cost is a large share. With every rule matching, it's about 370 ns a rule from 8 to 64 rules, then rises as their number grows: 399 ns at 128, 465 ns at 256 and 525 ns at 512.
 
 <LineChart
   title="Evaluation time per rule"
@@ -76,12 +76,12 @@ Dividing each time by the number of rules shows what a rule costs. With one rule
   :x="[1, 8, 16, 32, 64, 128, 256, 512]"
   :x-ticks="[0, 128, 256, 384, 512]"
   :series="[
-    { label: 'Every rule matches', values: [0.478, 0.378, 0.364, 0.366, 0.375, 0.399, 0.465, 0.455] },
+    { label: 'Every rule matches', values: [0.478, 0.378, 0.364, 0.366, 0.375, 0.399, 0.465, 0.525] },
     { label: 'One rule matches', values: [0.470, 0.175, 0.152, 0.142, 0.138, 0.139, 0.140, 0.138] },
   ]"
 />
 
-The rise is the garbage collector, and it belongs to the benchmark's small heap. A compiled policy keeps about 5 KiB per rule alive, 2.7 MiB at 512 rules, and every collection marks all of it. Go doesn't let its heap goal drop below 4 MiB, so while the live heap is that small it collects about as often whatever the policy's size, and each evaluation pays its share of marking a policy that grows with the rules. With collection switched off (`GOGC=off`), a matching rule costs between 360 and 380 ns at every size from 64 to 512 rules. In a service whose live heap is well past 4 MiB, a larger heap means fewer collections, so the collector's cost follows the bytes an evaluation allocates, which grow in proportion to the rules. Folding the candidates, which compares each one with those kept before it, sorts them by fingerprint past 128 candidates, so that part stays close to linear too.
+Most of that rise is the garbage collector, and it belongs to the benchmark's small heap. A compiled policy keeps about 5 KiB per rule alive, 2.7 MiB at 512 rules, and every collection marks all of it. Go doesn't let its heap goal drop below 4 MiB, so while the live heap is that small it collects about as often whatever the policy's size, and each evaluation pays its share of marking a policy that grows with the rules. With collection switched off (`GOGC=off`), a matching rule costs between 360 and 380 ns at every size from 64 to 512 rules. In a service whose live heap is well past 4 MiB, a larger heap means fewer collections, so the collector's cost follows the bytes an evaluation allocates, which grow in proportion to the rules.
 
 Allocations per rule stay flat at every size. Every evaluation starts at 18; each rule that doesn't match adds exactly one, and each rule that matches adds six:
 
@@ -213,8 +213,8 @@ Apple M5 Pro, `GOMAXPROCS=2`, medians of ten samples each; see [how they were me
 | internal/eval | EvalPolicy/rules=32 | 11.7 µs | 15.8 KiB | 210 |
 | internal/eval | EvalPolicy/rules=64 | 24 µs | 31.3 KiB | 403 |
 | internal/eval | EvalPolicy/rules=128 | 51.1 µs | 62.1 KiB | 788 |
-| internal/eval | EvalPolicy/rules=256 | 119 µs | 126 KiB | 1.56k |
-| internal/eval | EvalPolicy/rules=512 | 233 µs | 253 KiB | 3.09k |
+| internal/eval | EvalPolicy/rules=256 | 119 µs | 124 KiB | 1.56k |
+| internal/eval | EvalPolicy/rules=512 | 269 µs | 249 KiB | 3.09k |
 | internal/format | Format/rules=1 | 4.97 µs | 6.02 KiB | 176 |
 | internal/format | Format/rules=8 | 29 µs | 36.5 KiB | 986 |
 | internal/format | Format/rules=16 | 56.3 µs | 69.5 KiB | 1.9k |
