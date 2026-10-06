@@ -19,20 +19,34 @@ The tools read the exported kind file (`deploy_approval.sigil` in the running ex
 | [`sigil compile`](#sigil-compile) | Checks policies, then writes a copy of the binary with them compiled in, which evaluates them without any file | Kind file; a host binary for kinds with functions |
 | [`sigil export`](#sigil-export) | Writes the kind file of a kind linked into a host binary | A host binary; `sigil --help` lists it only there |
 | [`sigil gen go`](#sigil-gen-go) | Generates typed Go code from a kind file, for a Go service that doesn't import the host | Kind file |
+| [`sigil breaking`](#sigil-breaking) | Compares two versions of a kind file, classifies every change, and checks `version` and `accepts` | Two kind files |
 | [`sigil version`](#sigil-version) | Shows the version and build information | Nothing |
 
 `sigil completion bash|fish|powershell|zsh` prints a shell completion script, and `sigil help <command>` or `--help` (`-h`) prints any command's help. The script completes `--policy` and `--require` with the names of the policies in the command's paths, or in `.` when it names none. It reads only the documents' headers, so it needs no kind file, and it completes `--require` from the `--trusted` paths when the command line has any.
 
-`sigil breaking` and `sigil lsp` are planned:
+## Planned commands
+
+`sigil lsp` is planned:
 
 | Command | Will | Needs |
 | --- | --- | --- |
-| [`sigil breaking`](#sigil-breaking) | Compare two kind versions and flag incompatible changes | Two kind files |
 | [`sigil lsp`](#sigil-lsp) | Run the language server | Kind file |
 
 ::: warning Planned
-`sigil breaking`, `sigil lsp` and `explain --input` aren't implemented. The first two still run, so their help is there (`sigil breaking --help`), but `sigil --help` doesn't list them, and each one only prints an error. Their designs are in [Planned designs](/project/planned/), and the [roadmap](/project/roadmap/) tracks them.
+`sigil lsp` and `explain --input` aren't implemented. `sigil lsp` still runs, so its help is there (`sigil lsp --help`), but `sigil --help` doesn't list it, and it only prints an error. Their designs are in [Planned designs](/project/planned/), and the [roadmap](/project/roadmap/) tracks them.
 :::
+
+With `-o json` or `-o yaml`, `lsp` prints the error as a record on standard output instead, in the shape of the `error` record [`sigil eval`](#records) prints for a failed evaluation, and still exits with status 1:
+
+```json
+{
+  "error": {
+    "kind": "not_implemented",
+    "message": "\"sigil lsp\" is not implemented yet",
+    "help": "the command is planned for a later milestone; track progress at https://github.com/SpechtLabs/sigil/blob/main/roadmap.yml"
+  }
+}
+```
 
 ## Inputs
 
@@ -94,7 +108,7 @@ Every command takes two global flags:
 | `-o`, `--output` | `text` | Output format: `text`, `json` or `yaml`. Every command honors it; each command's section describes its records |
 | `--color` | `auto` | When to color text output: `auto`, `always` or `never`. `auto` colors on a terminal, and not when piped or when `NO_COLOR` is set |
 
-`check`, `test`, `compile`, `fmt --check`, `fmt --write`, `export --out` and `gen go --out` end their text output with one line that sums the run up, marked `✓`, `!` or `✗`:
+`check`, `test`, `compile`, `fmt --check`, `fmt --write`, `export --out`, `gen go --out` and `breaking` end their text output with one line that sums the run up, marked `✓`, `!` or `✗`:
 
 ```text
 ✓ checked 4 files, no problems found
@@ -115,10 +129,10 @@ Caused by
 ```
 
 - With `-o json` or `-o yaml`, standard output holds the command's records and nothing else: no summary line, and no styling.
-- The records carry what the text shows, including what failed, such as `check`'s error diagnostics or the `error` record of a [planned command](#sigil-breaking).
+- The records carry what the text shows, including what failed, such as `check`'s error diagnostics or the `error` record of a [planned command](#planned-commands).
 - The `Error:` block of a command that couldn't run at all still goes to standard error as text.
 
-Every command exits with status 0 on success and 1 on any failure: a usage error, an unreadable file, an error found by `check`, a failed evaluation, a failing test case, a bundle `compile` refuses, an unformatted file under `fmt --check`, or a stale file under `export --check` or `gen go --check`. There are no other exit codes. Warnings don't change the status, and the status is the same in every output format.
+Every command exits with status 0 on success and 1 on any failure: a usage error, an unreadable file, an error found by `check`, a failed evaluation, a failing test case, a bundle `compile` refuses, an unformatted file under `fmt --check`, a stale file under `export --check` or `gen go --check`, or a kind header that `breaking` finds breaks a rule. There are no other exit codes. Warnings don't change the status, and the status is the same in every output format.
 
 ## Host functions and host binaries
 
@@ -947,21 +961,102 @@ sigil version [flags]
 sigil breaking OLD_KIND_FILE NEW_KIND_FILE [flags]
 ```
 
-::: warning Planned
-Not implemented. It prints `Error: "sigil breaking" is not implemented yet` and exits with status 1. The design is in [sigil breaking](/project/planned/#sigil-breaking).
-:::
+Compares two versions of a kind file, classifies every change by the [compatibility table](/reference/kind-files/#versioning), and checks the new kind's `version` and `accepts`. It takes only the global flags.
 
-With `-o json` or `-o yaml`, `breaking` and `lsp` print the error as a record on standard output instead, in the shape of the `error` record [`sigil eval`](#records) prints for a failed evaluation, and still exit with status 1:
+- Either file may be `-` for stdin, but not both: `git show main:deploy_approval.sigil | sigil breaking - deploy_approval.sigil`.
+- Both files are loaded as `sigil check` loads a kind file. One that doesn't load prints its diagnostics, as `check` does, and nothing is compared.
+- Changes are found on the kind, not on its text, so comments and layout never count. Order counts only where the [canonical form](/reference/kind-files/#canonical-form) prints it: reordering an enum's values is a compatible change.
+- A rename is a removal and an addition. Nothing guesses that two names mean the same thing.
+- Every line names the new file, the one to fix.
+
+| Class | Means | Printed as |
+| --- | --- | --- |
+| `compatible` | Every policy written against the old kind compiles and decides as before | `compatible` |
+| `breaking` | A policy written against the old kind may stop compiling | `breaking`, or `covered` when `accepts` covers it |
+| `behavior` | Every policy still compiles, but decisions may change | the same as `breaking` |
+
+A breaking or behavior change is covered when the new `accepts` is the new `version` and above the old one, so every policy pinned to a version the old kind had stops loading until its team raises the pin. A covered change is listed with `= note:` and doesn't fail. An uncovered one has `= help:` naming the number to raise `accepts` to.
+
+The header rules, checked after the changes:
+
+| Rule | Severity | When |
+| --- | --- | --- |
+| `version_unchanged` | error | The contract changed, but `version` didn't |
+| `version_decreased` | error | `version` went down |
+| `accepts_not_raised` | error | A change is breaking or breaking in behavior, and `accepts` doesn't cover it |
+| `accepts_lowered` | error | `accepts` went down |
+| `version_only` | note | `version` went up, but the contract didn't change |
+
+```text
+$ git show main:deploy_approval.sigil | sigil breaking - deploy_approval.sigil
+deploy_approval.sigil: breaking: enum Plan declares `standard`, which Tier declares too
+  = help: a bare `standard` without context becomes ambiguous; raise `accepts` to 4, and qualify it as `Tier.standard`
+deploy_approval.sigil: compatible: input region was added
+deploy_approval.sigil: breaking: decision deny lost reason `no_release`
+  = help: policies that construct deny(reason: no_release) no longer compile; raise `accepts` to 4
+deploy_approval.sigil: breaking: precedence changed
+  - deny > review > approve
+  + deny > approve > review
+  = help: every policy still compiles, but the decisions rank differently; raise `accepts` to 4, so policies pinned to older versions are reviewed before they load
+deploy_approval.sigil: error: 3 breaking changes, but `accepts` is 2
+  = help: raise `accepts` to 4, so policies written against version 3 or earlier are reviewed before they load
+
+✗ DeployApproval 3 → 4: 3 breaking changes and 1 compatible change
+```
+
+With `kind DeployApproval version 4, accepts: 4`, the same changes are covered:
+
+```text
+deploy_approval.sigil: covered: enum Plan declares `standard`, which Tier declares too
+  = note: a bare `standard` without context becomes ambiguous
+deploy_approval.sigil: compatible: input region was added
+deploy_approval.sigil: covered: decision deny lost reason `no_release`
+  = note: policies that construct deny(reason: no_release) no longer compile
+deploy_approval.sigil: covered: precedence changed
+  - deny > review > approve
+  + deny > approve > review
+  = note: every policy still compiles, but the decisions rank differently
+
+✓ DeployApproval 3 → 4: 3 breaking changes that `accepts: 4` covers and 1 compatible change
+```
+
+`-o json` and `-o yaml` print one object:
+
+| Field | Holds |
+| --- | --- |
+| `old`, `new` | Each file's `file`, and its header's `kind`, `version` and `accepts` |
+| `ok` | Whether the new header breaks no rule. The exit status follows it |
+| `changes` | Every change, in the order the kinds declare what changed |
+| `problems` | The header rules the new kind breaks, each with `rule`, `severity`, `message` and `help`, then the notes |
+| `minVersion`, `minAccepts` | The lowest `version` and `accepts` the new kind may declare |
+
+Each change has:
+
+| Field | Holds |
+| --- | --- |
+| `change` | `added`, `removed`, `changed`, `reordered`, or `ambiguous` for an enum value a bare name can no longer resolve |
+| `class` | `compatible`, `breaking` or `behavior` |
+| `covered` | Whether `accepts` covers a breaking or behavior change |
+| `path` | What changed, as the kind file spells it: `input region`, `enum Tier value batch`, `type Release field soak`, `fn split`, `decision deny reason no_release`, `decision approve field bake`, `collect`, `precedence`, `precedence deny`, `exclusive approve, deny`, `default`, `conflict` or `kind`. A reorder names the list: `enum Tier values`, `type Release fields`, `decision deny reasons`, `decision approve fields`, `enums`, `types`, `inputs`, `functions`, `decisions` or `exclusive` |
+| `old`, `new` | The declaration as each kind file writes it, on one line; left out where that kind doesn't declare it |
+| `message` | What changed |
+| `help` | For a breaking or behavior change, why it breaks, then the fix unless it's covered |
 
 ```json
 {
-  "error": {
-    "kind": "not_implemented",
-    "message": "\"sigil breaking\" is not implemented yet",
-    "help": "the command is planned for a later milestone; track progress at https://github.com/SpechtLabs/sigil/blob/main/roadmap.yml"
-  }
+  "change": "removed",
+  "class": "breaking",
+  "covered": false,
+  "path": "decision deny reason no_release",
+  "old": "no_release",
+  "message": "decision deny lost reason `no_release`",
+  "help": "policies that construct deny(reason: no_release) no longer compile; raise `accepts` to 4"
 }
 ```
+
+A kind file that doesn't load prints its diagnostics as the records `check` prints.
+
+It exits with status 0 when the new header breaks no rule, covered breaking changes included, and 1 when a file can't be read, a kind file doesn't load or a header rule is broken. To run it in CI, see [Check for breaking changes in CI](/guides/evolve-a-kind/#check-for-breaking-changes-in-ci).
 
 ## `sigil gen go`
 
@@ -1054,7 +1149,7 @@ sigil lsp [flags]
 ```
 
 ::: warning Planned
-Not implemented. It prints `Error: "sigil lsp" is not implemented yet`, or [an `error` record](#sigil-breaking) with `-o json` or `-o yaml`, and exits with status 1. The design is in [sigil lsp](/project/planned/#sigil-lsp).
+Not implemented. It prints `Error: "sigil lsp" is not implemented yet`, or [an `error` record](#planned-commands) with `-o json` or `-o yaml`, and exits with status 1. The design is in [sigil lsp](/project/planned/#sigil-lsp).
 :::
 
 ## Error messages

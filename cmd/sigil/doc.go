@@ -29,7 +29,7 @@
 //	explain     flatten a policy into its guarded decisions
 //	test        run the test cases in *_test.yaml files
 //	export      write the kind file of a kind linked into a host binary
-//	breaking    compare two kind files for incompatible changes (not implemented yet)
+//	breaking    compare two kind files for incompatible changes
 //	gen go      generate typed Go code from a kind file
 //	lsp         run the Sigil language server (not implemented yet)
 //	version     print the version and build information

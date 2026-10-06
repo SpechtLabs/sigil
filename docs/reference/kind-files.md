@@ -485,25 +485,27 @@ The rules for changing the numbers, set with `policy.WithVersion` and `policy.Wi
 - Every change to the contract bumps `version`, including compatible ones.
 - A breaking change also raises `accepts` to the new version.
 
-| Change                                                                                                                                    | Effect                                                        |
-| ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Add an input, type field, function, decision or reason                                                                                    | Compatible                                                    |
-| Add an enum, or a value to an enum, when no other enum declares that value                                                                | Compatible                                                    |
-| Add a value that another enum already declares                                                                                            | Breaking                                                      |
-| Reorder an enum's values                                                                                                                  | Compatible                                                    |
-| Add a payload field with a default                                                                                                        | Compatible                                                    |
-| Remove or rename anything, including an enum or one of its values                                                                         | Breaking                                                      |
-| Change a type, including a `string` field to an enum                                                                                      | Breaking                                                      |
-| Add a payload field without a default                                                                                                     | Breaking                                                      |
-| Reorder `precedence`, add or reorder a scoped `precedence`, add an `exclusive` set, change `default`, or add, remove or change `conflict` | Breaking in behavior, even though every policy still compiles |
-| Switch between `collect one` and `collect all`                                                                                            | Breaking                                                      |
+| Change                                                                                  | Effect                                                        |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Add an input, type field, function, decision or reason                                  | Compatible                                                    |
+| Add an enum, or a value to an enum, when no other enum declares that value              | Compatible                                                    |
+| Add a value that another enum already declares                                          | Breaking                                                      |
+| Reorder an enum's values, or declarations, fields or reasons                           | Compatible                                                    |
+| Add a payload field with a default, or give an existing one a default                   | Compatible                                                    |
+| Remove or rename anything, including an enum or one of its values                       | Breaking                                                      |
+| Change a type, including a `string` field to an enum                                    | Breaking                                                      |
+| Add a payload field without a default, or remove a payload field's default              | Breaking                                                      |
+| Reorder `precedence`, or add, remove or reorder a scoped `precedence`                   | Breaking in behavior, even though every policy still compiles |
+| Add or remove an `exclusive` set, or add, remove or change `default` or `conflict`      | Breaking in behavior, even though every policy still compiles |
+| Change a payload field's default, or add or remove `precedence` in a `collect all` kind | Breaking in behavior, even though every policy still compiles |
+| Switch between `collect one` and `collect all`                                          | Breaking                                                      |
 
-::: warning Planned
-[`sigil breaking`](/project/planned/#sigil-breaking) will check both rules in CI from the old and new kind files. Until it exists, review `version` and `accepts` changes by hand.
-:::
+[`sigil breaking`](/reference/cli/#sigil-breaking) classifies every change between two kind files by this table, and checks both rules.
 
 - A name a newer kind adds that collides with a document's own name is resolved by the document's pin; see [Identifiers](/reference/policy-files/#identifiers). That includes an enum value.
-- Adding a value that another enum already declares makes a bare use without context, such as `let t = standard`, ambiguous, whatever the document's pin; the fix is the qualified form, `Tier.standard`. A new enum whose values overlap an existing enum's counts too.
+- Adding a value that another enum already declares makes a bare use without context, such as `let t = standard`, ambiguous, whatever the document's pin; the fix is the qualified form, `Tier.standard`. A new enum whose values overlap an existing enum's counts too. A value no enum of the old kind declares isn't in any policy yet, so two new enums may share it.
+- Ranking a new decision or reason anywhere in a `precedence` is part of adding it, and compatible: no policy written against the old kind constructs it.
+- Removing an `exclusive` set lets evaluations that failed with a conflict return both outcomes, so it's breaking in behavior, like adding one.
 - A document reads the payload fields the host's kind declares now, whatever its pin, including through [`outcome.<decision>`](/reference/expressions/#candidates) in an assert. Payload fields aren't in the namespace, so adding one never collides with a policy's names.
 
 Why pins work this way: [Adding a name never breaks a policy](/understanding/kinds/#adding-a-name-never-breaks-a-policy) and [Enums and versions](/understanding/kinds/#enums-and-versions). To change a kind step by step, see [Evolve a kind safely](/guides/evolve-a-kind/).

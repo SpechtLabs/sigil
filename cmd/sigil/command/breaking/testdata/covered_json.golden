@@ -1,0 +1,56 @@
+{
+  "old": {
+    "file": "../main/deploy_approval.sigil",
+    "kind": "DeployApproval",
+    "version": 3,
+    "accepts": 2
+  },
+  "new": {
+    "file": "deploy_approval.sigil",
+    "kind": "DeployApproval",
+    "version": 4,
+    "accepts": 4
+  },
+  "ok": true,
+  "changes": [
+    {
+      "change": "ambiguous",
+      "class": "breaking",
+      "covered": true,
+      "path": "enum Plan value standard",
+      "new": "standard",
+      "message": "enum Plan declares `standard`, which Tier declares too",
+      "help": "a bare `standard` without context becomes ambiguous"
+    },
+    {
+      "change": "added",
+      "class": "compatible",
+      "covered": false,
+      "path": "input region",
+      "new": "input region: string",
+      "message": "input region was added"
+    },
+    {
+      "change": "removed",
+      "class": "breaking",
+      "covered": true,
+      "path": "decision deny reason no_release",
+      "old": "no_release",
+      "message": "decision deny lost reason `no_release`",
+      "help": "policies that construct deny(reason: no_release) no longer compile"
+    },
+    {
+      "change": "changed",
+      "class": "behavior",
+      "covered": true,
+      "path": "precedence",
+      "old": "deny \u003e review \u003e approve",
+      "new": "deny \u003e approve \u003e review",
+      "message": "precedence changed",
+      "help": "every policy still compiles, but the decisions rank differently"
+    }
+  ],
+  "problems": [],
+  "minVersion": 4,
+  "minAccepts": 4
+}

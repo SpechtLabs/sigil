@@ -1,0 +1,44 @@
+{
+  "old": {
+    "file": "../main/deploy_approval.sigil",
+    "kind": "DeployApproval",
+    "version": 3,
+    "accepts": 2
+  },
+  "new": {
+    "file": "deploy_approval.sigil",
+    "kind": "DeployApproval",
+    "version": 4,
+    "accepts": 2
+  },
+  "ok": true,
+  "changes": [
+    {
+      "change": "added",
+      "class": "compatible",
+      "covered": false,
+      "path": "enum Tier value batch",
+      "new": "batch",
+      "message": "enum Tier gained value `batch`"
+    },
+    {
+      "change": "added",
+      "class": "compatible",
+      "covered": false,
+      "path": "input region",
+      "new": "input region: string",
+      "message": "input region was added"
+    },
+    {
+      "change": "added",
+      "class": "compatible",
+      "covered": false,
+      "path": "decision approve field notify",
+      "new": "notify: bool = false",
+      "message": "decision approve gained field `notify` with a default"
+    }
+  ],
+  "problems": [],
+  "minVersion": 4,
+  "minAccepts": 2
+}

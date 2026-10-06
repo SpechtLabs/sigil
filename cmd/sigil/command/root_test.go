@@ -67,7 +67,7 @@ func TestCommandSurface(t *testing.T) {
 		{args: []string{"test", "--kind", "k.sigil", "--run", "("}, wantErr: "--run isn't a valid regular expression"},
 		{args: []string{"export"}, wantErr: "no kind is linked into this binary"},
 		{args: []string{"export", "a", "b"}, wantErr: "export takes at most one KIND, got 2"},
-		{args: []string{"breaking", "old.sigil", "new.sigil"}, wantErr: notImplemented},
+		{args: []string{"breaking", "old.sigil", "new.sigil"}, wantErr: "old.sigil couldn't be read"},
 		{args: []string{"breaking", "old.sigil"}, wantErr: "breaking needs OLD_KIND_FILE and NEW_KIND_FILE, got 1"},
 		{args: []string{"gen", "go", "k.sigil"}, wantErr: "k.sigil can't be read"},
 		{args: []string{"gen", "go", "--check", "k.sigil"}, wantErr: "--check needs the file to compare"},
@@ -162,7 +162,6 @@ func TestOutputFlagReachesEveryCommand(t *testing.T) {
 		{args: []string{"fmt", "-o", "yaml", "--check", "-"}, stdin: "policy a: K@1\n", want: "- file: <stdin>\n  formatted: true\n"},
 		{args: []string{"lsp", "-o", "json"}, want: notImplemented("lsp")},
 		{args: []string{"gen", "go", "-o", "json", "-"}, stdin: "kind Gate version 1\n\ndecision deny {\n  reason: no\n}\n\ncollect one\nprecedence deny\n\ndefault deny(reason: no)\n", want: "{\n  \"kind\": \"Gate\",\n  \"package\": \"gate\","},
-		{args: []string{"breaking", "-o", "json", "old.sigil", "new.sigil"}, want: notImplemented("breaking")},
 	}
 	for _, tt := range tests {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
@@ -193,14 +192,14 @@ func TestHelpListsWhatRuns(t *testing.T) {
 	}{
 		{
 			name:   "stock binary",
-			listed: []string{"POLICY COMMANDS", "fmt [PATH...]", "KIND COMMANDS", "gen", "OTHER COMMANDS", "version"},
-			absent: []string{"EDITOR INTEGRATION", "export", "breaking", "lsp", "--kind"},
+			listed: []string{"POLICY COMMANDS", "fmt [PATH...]", "KIND COMMANDS", "breaking OLD_KIND_FILE NEW_KIND_FILE", "gen", "OTHER COMMANDS", "version"},
+			absent: []string{"EDITOR INTEGRATION", "export", "lsp", "--kind"},
 		},
 		{
 			name:   "host binary",
 			opts:   []Option{WithKind(hostAccess)},
-			listed: []string{"POLICY COMMANDS", "KIND COMMANDS", "export [KIND]", "gen", "OTHER COMMANDS"},
-			absent: []string{"EDITOR INTEGRATION", "breaking", "lsp"},
+			listed: []string{"POLICY COMMANDS", "KIND COMMANDS", "export [KIND]", "breaking OLD_KIND_FILE NEW_KIND_FILE", "gen", "OTHER COMMANDS"},
+			absent: []string{"EDITOR INTEGRATION", "lsp"},
 		},
 	}
 	for _, tt := range tests {
@@ -230,9 +229,9 @@ func TestHelpListsWhatRuns(t *testing.T) {
 			if usage := cmd.UsageString(); strings.Contains(usage, groupEditor.Title) {
 				t.Errorf("usage lists the empty %q group:\n%s", groupEditor.Title, usage)
 			}
-			// gen go needs no linked kind, so the kind group is always there.
+			// breaking and gen go need no linked kind, so the kind group is always there.
 			if !cmd.ContainsGroup(groupKind.ID) {
-				t.Errorf("ContainsGroup(%q) = false, want the group gen is in", groupKind.ID)
+				t.Errorf("ContainsGroup(%q) = false, want the group breaking and gen are in", groupKind.ID)
 			}
 		})
 	}

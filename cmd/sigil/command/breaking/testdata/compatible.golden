@@ -1,0 +1,5 @@
+deploy_approval.sigil: compatible: enum Tier gained value `batch`
+deploy_approval.sigil: compatible: input region was added
+deploy_approval.sigil: compatible: decision approve gained field `notify` with a default
+
+✓ DeployApproval 3 → 4: 3 compatible changes

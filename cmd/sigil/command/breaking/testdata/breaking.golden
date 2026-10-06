@@ -1,0 +1,13 @@
+deploy_approval.sigil: breaking: enum Plan declares `standard`, which Tier declares too
+  = help: a bare `standard` without context becomes ambiguous; raise `accepts` to 4, and qualify it as `Tier.standard`
+deploy_approval.sigil: compatible: input region was added
+deploy_approval.sigil: breaking: decision deny lost reason `no_release`
+  = help: policies that construct deny(reason: no_release) no longer compile; raise `accepts` to 4
+deploy_approval.sigil: breaking: precedence changed
+  - deny > review > approve
+  + deny > approve > review
+  = help: every policy still compiles, but the decisions rank differently; raise `accepts` to 4, so policies pinned to older versions are reviewed before they load
+deploy_approval.sigil: error: 3 breaking changes, but `accepts` is 2
+  = help: raise `accepts` to 4, so policies written against version 3 or earlier are reviewed before they load
+
+✗ DeployApproval 3 → 4: 3 breaking changes and 1 compatible change

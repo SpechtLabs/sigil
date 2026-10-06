@@ -1,0 +1,14 @@
+--- error ---
+../invalid/deploy_approval.sigil:3:34: error: enum Tier: value "critical" is declared twice
+  |
+3 | enum Tier: critical | standard | critical
+  |                                  ^^^^^^^^
+  = help: declare each value once
+
+../invalid/deploy_approval.sigil:39:1: error: precedence doesn't name decision "approve"
+   |
+39 | precedence deny > review
+   | ^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: list every decision exactly once, highest first
+
+a kind file doesn't load, so nothing was compared

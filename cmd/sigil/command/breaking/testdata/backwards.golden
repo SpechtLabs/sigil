@@ -1,0 +1,4 @@
+deploy_approval.sigil: error: `version` went down from 3 to 2
+  = help: a kind's version only goes up; set `version` to 3, or check that OLD_KIND_FILE comes first
+
+✗ DeployApproval 3 → 2: no changes

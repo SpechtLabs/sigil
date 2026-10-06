@@ -1,0 +1,42 @@
+kind Deploy version 4, accepts: 4
+
+enum Tier: critical | standard | internal
+enum Plan: free | premium
+
+type Release {
+  soak: duration
+  hotfix: bool
+}
+
+type Service {
+  name: string
+  tier: Tier
+  plan: Plan
+  owners: list<string>
+}
+
+input release: Release
+input service: Service
+input environment: string
+
+fn split(string, string) -> list<string>
+
+decision deny {
+  reason: not_eligible | no_release | soak_too_short | no_rule_matched
+}
+
+decision review {
+  reason: service_owner
+  approvers: list<string>
+}
+
+decision approve {
+  reason: release_manager | payments_sre
+  bake: duration = 1h
+}
+
+collect one
+precedence deny > review > approve
+precedence deny: not_eligible > no_release > soak_too_short > no_rule_matched
+
+default deny(reason: no_rule_matched)
