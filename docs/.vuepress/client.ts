@@ -1,10 +1,6 @@
 import { defineClientConfig } from "vuepress/client";
-import VPContributorsCustom from "./components/VPContributorsCustom.vue";
-import VPListCompare from "./components/VPListCompareCustom.vue";
 
-export default defineClientConfig({
-  enhance({ app }) {
-    app.component("VPContributors", VPContributorsCustom);
-    app.component("VPListCompare", VPListCompare);
-  },
-});
+// The shared components (VPContributors, VPListCompare, VPReleases and the
+// rest) come from @spechtlabs/docs-kit, which registers them itself (see
+// config.ts).
+export default defineClientConfig({});
