@@ -1,0 +1,23 @@
+kind RankedAccess version 2
+
+type Actor {
+  name: string
+}
+
+input actor: Actor
+
+decision write {
+  reason: owner | maintainer
+  scope: list<string> = []
+}
+
+decision read {
+  reason: member | public
+}
+
+collect all
+precedence write > read
+precedence write: owner > maintainer
+exclusive write.owner, read.public
+
+default read(reason: public)

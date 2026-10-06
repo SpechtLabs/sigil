@@ -1,0 +1,40 @@
+kind name_clash version 1
+
+enum level: low | high
+
+type time {
+  at: timestamp
+}
+
+type Input {
+  user_id: string
+  userID: string
+  _1: int
+  type: string
+}
+
+input when_: time
+input user: Input
+input lvl: level
+
+fn get_url(string) -> string
+fn getURL(string) -> string
+
+decision level_low {
+  reason: a | b
+}
+
+decision new_kind {
+  reason: a
+}
+
+decision x {
+  reason: x_y
+}
+
+decision x_data {
+  reason: y
+}
+
+collect all
+precedence x_data > x > new_kind > level_low

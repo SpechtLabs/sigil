@@ -1,0 +1,17 @@
+reserved_names.sigil:3:6: error: Go code can't declare enum error: error is predeclared in Go, and the generated code uses Go's own
+  |
+3 | enum error: a | b
+  |      ^^^^^
+  = help: a generated type keeps the kind's name, which is the one policies write; rename enum error in the kind, which is a breaking change
+
+reserved_names.sigil:5:6: error: Go code can't declare type chan: chan is a Go keyword
+  |
+5 | type chan {
+  |      ^^^^
+  = help: a generated type keeps the kind's name, which is the one policies write; rename type chan in the kind, which is a breaking change
+
+reserved_names.sigil:9:6: error: Go code can't declare type init: init is reserved for Go's package initializers
+  |
+9 | type init {
+  |      ^^^^
+  = help: a generated type keeps the kind's name, which is the one policies write; rename type init in the kind, which is a breaking change

@@ -1,0 +1,10 @@
+kind Switch version 1
+
+decision deny {
+  reason: no
+}
+
+collect one
+precedence deny
+
+default deny(reason: no)

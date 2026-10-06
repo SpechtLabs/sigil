@@ -1,0 +1,12 @@
+- severity: error
+  file: gate.sigil
+  message: kind Gate declares no decisions
+  help: declare at least one decision
+  line: 1
+  column: 6
+- severity: error
+  file: gate.sigil
+  message: unknown type `strin`
+  help: did you mean `string`?
+  line: 3
+  column: 13

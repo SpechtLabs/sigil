@@ -156,6 +156,14 @@ timeline:
       `editors/tree-sitter-sigil` gives Neovim, and other editors built on tree-sitter, a parser
       for Sigil with highlighting, folds, indentation and text objects. Its tests hold it to the
       Go parser on every Sigil source in the repository.
+  - date: 2026-10-06
+    title: Typed Go code from a kind file
+    description: |
+      `sigil gen go` turns an exported kind file into a Go package: the enums, struct types and
+      input as Go types, a payload struct per decision for a type switch on `Result.Value`, a
+      handle per decision and reason, and a `NewKind` that builds the kind. A second Go service
+      evaluates policies with typed results without importing the host, and the kind it builds
+      exports the kind file it came from byte for byte.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -640,8 +648,15 @@ milestones:
         state: TODO
         requirement: SHOULD
       - title: sigil gen go (typed code generation)
-        state: TODO
+        state: DONE
         requirement: SHOULD
+        description: |
+          Generates a Go package from a kind file: enums, struct types, the input struct, a
+          payload type per decision, decision and reason handles, a `Funcs` struct for the host
+          functions and a `NewKind` constructor whose `Schema()` is the kind file byte for byte.
+          `--check` fails CI on stale generated code, and kind files Go can't declare exactly are
+          refused with a fix per declaration.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/cli.md#sigil-gen-go
       - title: sigil breaking
         state: TODO
         requirement: MUST

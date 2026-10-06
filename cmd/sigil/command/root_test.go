@@ -69,14 +69,15 @@ func TestCommandSurface(t *testing.T) {
 		{args: []string{"export", "a", "b"}, wantErr: "export takes at most one KIND, got 2"},
 		{args: []string{"breaking", "old.sigil", "new.sigil"}, wantErr: notImplemented},
 		{args: []string{"breaking", "old.sigil"}, wantErr: "breaking needs OLD_KIND_FILE and NEW_KIND_FILE, got 1"},
-		{args: []string{"gen", "go", "k.sigil"}, wantErr: notImplemented},
+		{args: []string{"gen", "go", "k.sigil"}, wantErr: "k.sigil can't be read"},
+		{args: []string{"gen", "go", "--check", "k.sigil"}, wantErr: "--check needs the file to compare"},
 		{args: []string{"gen"}},
 		{args: []string{"lsp"}, wantErr: notImplemented},
 		{args: []string{"fmt", "--write", "--check"}, wantErr: "none of the others can be"},
 		{args: []string{"evaluate", "-k", "k.sigil", "-i", "in.json", "p.sigil"}, wantErr: noKindFile},
 		// export is hidden without a linked kind, so nothing suggests it.
 		{args: []string{"schema"}, wantErr: `unknown command "schema" for "sigil"`},
-		{args: []string{"generate", "golang", "k.sigil"}, wantErr: notImplemented},
+		{args: []string{"generate", "golang", "k.sigil"}, wantErr: "k.sigil can't be read"},
 		{args: []string{"chek"}, wantErr: "Did you mean this?\n\tcheck"},
 		{args: []string{"validate"}, wantErr: "Did you mean this?\n\tcheck"},
 		{args: []string{"gen", "rust"}, wantErr: `unknown command "rust" for "sigil gen"`},
@@ -160,7 +161,7 @@ func TestOutputFlagReachesEveryCommand(t *testing.T) {
 		{args: []string{"fmt", "-o", "json", "-"}, stdin: "policy a: K@1\n", want: "[\n  {\n    \"file\": \"\\u003cstdin\\u003e\",\n    \"formatted\": true,"},
 		{args: []string{"fmt", "-o", "yaml", "--check", "-"}, stdin: "policy a: K@1\n", want: "- file: <stdin>\n  formatted: true\n"},
 		{args: []string{"lsp", "-o", "json"}, want: notImplemented("lsp")},
-		{args: []string{"gen", "go", "-o", "json", "k.sigil"}, want: notImplemented("gen go")},
+		{args: []string{"gen", "go", "-o", "json", "-"}, stdin: "kind Gate version 1\n\ndecision deny {\n  reason: no\n}\n\ncollect one\nprecedence deny\n\ndefault deny(reason: no)\n", want: "{\n  \"kind\": \"Gate\",\n  \"package\": \"gate\","},
 		{args: []string{"breaking", "-o", "json", "old.sigil", "new.sigil"}, want: notImplemented("breaking")},
 	}
 	for _, tt := range tests {
@@ -180,9 +181,9 @@ func TestOutputFlagReachesEveryCommand(t *testing.T) {
 }
 
 // TestHelpListsWhatRuns checks the root help: the planned commands are
-// hidden, and export is hidden unless a kind is linked in, which also
-// leaves a group whose commands are all hidden out of the help. Hidden
-// commands still run, and a host binary still suggests export.
+// hidden, and export is hidden unless a kind is linked in, and a group
+// whose commands are all hidden stays out of the help. Hidden commands
+// still run, and a host binary still suggests export.
 func TestHelpListsWhatRuns(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -192,14 +193,14 @@ func TestHelpListsWhatRuns(t *testing.T) {
 	}{
 		{
 			name:   "stock binary",
-			listed: []string{"POLICY COMMANDS", "fmt [PATH...]", "OTHER COMMANDS", "version"},
-			absent: []string{"KIND COMMANDS", "EDITOR INTEGRATION", "export", "breaking", "gen", "lsp", "--kind"},
+			listed: []string{"POLICY COMMANDS", "fmt [PATH...]", "KIND COMMANDS", "gen", "OTHER COMMANDS", "version"},
+			absent: []string{"EDITOR INTEGRATION", "export", "breaking", "lsp", "--kind"},
 		},
 		{
 			name:   "host binary",
 			opts:   []Option{WithKind(hostAccess)},
-			listed: []string{"POLICY COMMANDS", "KIND COMMANDS", "export [KIND]", "OTHER COMMANDS"},
-			absent: []string{"EDITOR INTEGRATION", "breaking", "gen", "lsp"},
+			listed: []string{"POLICY COMMANDS", "KIND COMMANDS", "export [KIND]", "gen", "OTHER COMMANDS"},
+			absent: []string{"EDITOR INTEGRATION", "breaking", "lsp"},
 		},
 	}
 	for _, tt := range tests {
@@ -229,8 +230,9 @@ func TestHelpListsWhatRuns(t *testing.T) {
 			if usage := cmd.UsageString(); strings.Contains(usage, groupEditor.Title) {
 				t.Errorf("usage lists the empty %q group:\n%s", groupEditor.Title, usage)
 			}
-			if got := cmd.ContainsGroup(groupKind.ID); got != (len(tt.opts) > 0) {
-				t.Errorf("ContainsGroup(%q) = %v, want it only with a linked kind", groupKind.ID, got)
+			// gen go needs no linked kind, so the kind group is always there.
+			if !cmd.ContainsGroup(groupKind.ID) {
+				t.Errorf("ContainsGroup(%q) = false, want the group gen is in", groupKind.ID)
 			}
 		})
 	}

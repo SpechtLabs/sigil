@@ -1,0 +1,17 @@
+kind DefaultArgs version 1
+
+decision deny {
+  reason: no_rule_matched | conflicting_rules
+  code: int = 1
+  note: string
+}
+
+decision allow {
+  reason: ok
+}
+
+collect one
+precedence deny > allow
+
+default deny(reason: no_rule_matched, note: "none", code: 1)
+conflict deny(reason: conflicting_rules, note: "conflict", code: 2)

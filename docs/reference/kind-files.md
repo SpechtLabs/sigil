@@ -7,7 +7,7 @@ permalink: /reference/kind-files/
 
 The kind file format, its validity rules and its versioning rules.
 
-A kind file is what a host's `Schema()` exports from the kind it defines in Go with `policy.NewKind` ([Kinds](/reference/go-api/#kinds)), and what `sigil check`, `eval`, `explain` and `test` read, among their inputs or named with `--kind` ([Kinds](/reference/cli/#kinds)).
+A kind file is what a host's `Schema()` exports from the kind it defines in Go with `policy.NewKind` ([Kinds](/reference/go-api/#kinds)), and what `sigil check`, `eval`, `explain` and `test` read, among their inputs or named with `--kind` ([Kinds](/reference/cli/#kinds)). [`sigil gen go`](/reference/cli/#sigil-gen-go) generates Go code from one for a service that doesn't import the host.
 
 - Every policy names exactly one kind in its header and is type-checked against it.
 - Kind files use the `.sigil` extension, like policies and modules. The `kind` header tells them apart.
@@ -16,7 +16,7 @@ A kind file is what a host's `Schema()` exports from the kind it defines in Go w
 Why a kind is a contract generated from Go: [Kinds as contracts](/understanding/kinds/).
 
 ::: warning Planned
-[Loading a kind at run time](/project/planned/#loading-a-kind-at-run-time) with `policy.LoadKind`, [`sigil gen go`](/project/planned/#sigil-gen-go) and the [language server](/project/planned/#sigil-lsp) don't exist yet.
+[Loading a kind at run time](/project/planned/#loading-a-kind-at-run-time) with `policy.LoadKind` and the [language server](/project/planned/#sigil-lsp) don't exist yet.
 :::
 
 ## A complete kind
