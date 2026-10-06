@@ -1,0 +1,50 @@
+name: Editors
+
+# Editor support: the tree-sitter grammar under editors/tree-sitter-sigil.
+# Nothing here ships with a release, so only pull requests run this (through
+# ci.yaml), besides runs from the Actions tab.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# See go.yaml for both.
+env:
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
+  MISE_VERSION: 2026.10.2
+
+jobs:
+  tree-sitter:
+    name: Tree-sitter grammar
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Only the two tools the grammar's tests run, like go.yaml's macOS job:
+      # the rest of go.yaml's MISE_TOOLS would only slow this job down.
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: go aqua:tree-sitter/tree-sitter
+
+      # Restored only, from go.yaml's test job, which saves it on main: the
+      # Go tests here build the parser packages that job builds.
+      - name: Restore Go modules and build output
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-test-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-test-${{ runner.os }}-
+
+      # The corpus and highlight tests, then the Go tests: the committed
+      # parser is what grammar.js generates, every query compiles, and every
+      # Sigil source the Go parser accepts parses to the same tree.
+      - name: Test the grammar
+        run: mise run tree-sitter-test

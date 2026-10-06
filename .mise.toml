@@ -55,6 +55,11 @@ node = "24.21.0"
 # Serves the Go API documentation as pkg.go.dev renders it (see the docs-godoc task).
 "go:golang.org/x/pkgsite/cmd/pkgsite" = "0.5.0"
 
+# Editor support: generates and tests the tree-sitter grammar under
+# editors/tree-sitter-sigil (see the tree-sitter-* tasks). Its own QuickJS runs
+# grammar.js, so generating needs no Node.
+"aqua:tree-sitter/tree-sitter" = "0.27.0"
+
 [tasks.build]
 description = "Build the sigil binary into bin/"
 run = "go build -o bin/sigil ./cmd/sigil/"
@@ -120,7 +125,7 @@ run = "golangci-lint fmt"
 description = "Format every .sigil file in sigil fmt's canonical style"
 run = """
 git ls-files --cached --others --exclude-standard -z -- '*.sigil' \
-  ':!:internal/parser/testdata' ':!:internal/format/testdata' \
+  ':!:internal/parser/testdata' ':!:internal/format/testdata' ':!:editors/tree-sitter-sigil/test' \
   ':!:pkg/policy/testdata/errors_check.sigil' ':!:pkg/policy/testdata/errors_diagnostics.sigil' \
   ':!:cmd/sigil/command/check/testdata/kinds/legacy.sigil' \
   | xargs -0 go run ./cmd/sigil fmt --write
@@ -159,15 +164,16 @@ description = "Lint the Go module with golangci-lint and golint-sl, the WebAssem
 depends = ["lint-build", "sigil-lint", "yaml-lint", "actionlint", "wasm-lint"]
 run = "./custom-gcl run ./..."
 
-# The parser's and the formatter's test inputs are unformatted on purpose,
-# and errors_check.sigil and errors_diagnostics.sigil don't parse on purpose;
-# every other .sigil file, tracked or new, must be in sigil fmt's canonical
-# style.
+# The parser's and the formatter's test inputs, and the tree-sitter grammar's
+# highlight tests, whose assertion comments sit under the lines they check,
+# are unformatted on purpose, and errors_check.sigil and errors_diagnostics.sigil
+# don't parse on purpose; every other .sigil file, tracked or new, must be in
+# sigil fmt's canonical style.
 [tasks.sigil-lint]
 description = "Check that every .sigil file in the repository is formatted"
 run = """
 git ls-files --cached --others --exclude-standard -z -- '*.sigil' \
-  ':!:internal/parser/testdata' ':!:internal/format/testdata' \
+  ':!:internal/parser/testdata' ':!:internal/format/testdata' ':!:editors/tree-sitter-sigil/test' \
   ':!:pkg/policy/testdata/errors_check.sigil' ':!:pkg/policy/testdata/errors_diagnostics.sigil' \
   ':!:cmd/sigil/command/check/testdata/kinds/legacy.sigil' \
   | xargs -0 go run ./cmd/sigil fmt --check
@@ -367,3 +373,18 @@ run = [
   "cp ../../dist/wasm/sigil.wasm module/sigil.wasm",
   "cargo package --locked --allow-dirty",
 ]
+
+# editors/tree-sitter-sigil: the tree-sitter grammar editors parse Sigil with.
+# The parser it generates into src/ is committed, because nvim-treesitter and
+# other editors build it from the repository without the CLI's generator.
+# grammar_test.go generates it with the same flags to check it's current.
+[tasks.tree-sitter-generate]
+description = "Generate the tree-sitter grammar's parser into editors/tree-sitter-sigil/src from grammar.js"
+dir = "editors/tree-sitter-sigil"
+run = "tree-sitter generate --abi 15 --js-runtime native"
+
+# The Go tests need the CLI, and skip without it; here it's on PATH.
+[tasks.tree-sitter-test]
+description = "Test the tree-sitter grammar: its corpus and highlight tests, its queries, and that it parses every Sigil source the Go parser accepts to the same tree"
+dir = "editors/tree-sitter-sigil"
+run = ["tree-sitter test", "go test ./"]

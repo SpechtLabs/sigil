@@ -1,0 +1,370 @@
+================================================================================
+Whole imports
+================================================================================
+
+policy p: K@1
+
+use deploy.common
+use deploy.common as common
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (use_statement
+      path: (policy_name
+        (identifier)
+        (identifier)))
+    (use_statement
+      path: (policy_name
+        (identifier)
+        (identifier))
+      alias: (identifier))))
+
+================================================================================
+Selective imports
+================================================================================
+
+policy p: K@1
+
+use deploy.common.{cleared}
+use deploy.common.{cleared, owns_service as owns,}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (use_statement
+      path: (policy_name
+        (identifier)
+        (identifier))
+      imports: (import_list
+        (import_item
+          name: (identifier))))
+    (use_statement
+      path: (policy_name
+        (identifier)
+        (identifier))
+      imports: (import_list
+        (import_item
+          name: (identifier))
+        (import_item
+          name: (identifier)
+          alias: (identifier))))))
+
+================================================================================
+Params
+================================================================================
+
+policy p: K@1
+
+param approvers: list<string>
+param min_soak: duration = 24h
+param limit: int = 5, min: 1, max: 10
+param tier: Tier = critical
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (param_statement
+      name: (identifier)
+      type: (list_type
+        element: (type_identifier)))
+    (param_statement
+      name: (identifier)
+      type: (type_identifier)
+      default: (duration))
+    (param_statement
+      name: (identifier)
+      type: (type_identifier)
+      default: (integer)
+      bound: (param_bound
+        name: (identifier)
+        value: (integer))
+      bound: (param_bound
+        name: (identifier)
+        value: (integer)))
+    (param_statement
+      name: (identifier)
+      type: (type_identifier)
+      default: (identifier))))
+
+================================================================================
+Lets
+================================================================================
+
+module m: K@1
+
+let cleared = environment == "production"
+pub let owns_service = actor.teams any in service.owners
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_document
+    header: (module_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (identifier)
+        right: (string
+          (string_content))))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (selector_expression
+          operand: (identifier)
+          field: (identifier))
+        right: (selector_expression
+          operand: (identifier)
+          field: (identifier))))))
+
+================================================================================
+Rules nest, and hold lets, asserts and calls
+================================================================================
+
+policy p: K@1
+
+when environment == "production" {
+  let soaked = release.soak >= min_soak
+  when not soaked {
+    deny(reason: soak_too_short)
+  }
+  assert("no_root", outcome != deny,)
+  guardrails(min_soak: 4h)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (when_statement
+      condition: (binary_expression
+        left: (identifier)
+        right: (string
+          (string_content)))
+      body: (block
+        (let_statement
+          name: (identifier)
+          value: (binary_expression
+            left: (selector_expression
+              operand: (identifier)
+              field: (identifier))
+            right: (identifier)))
+        (when_statement
+          condition: (unary_expression
+            operand: (identifier))
+          body: (block
+            (call
+              name: (identifier)
+              arguments: (call_arguments
+                (named_argument
+                  name: (identifier)
+                  value: (identifier))))))
+        (assert_statement
+          reason: (string
+            (string_content))
+          condition: (binary_expression
+            left: (outcome)
+            right: (identifier)))
+        (call
+          name: (identifier)
+          arguments: (call_arguments
+            (named_argument
+              name: (identifier)
+              value: (duration))))))))
+
+================================================================================
+Asserts
+================================================================================
+
+policy p: K@1
+
+assert("no_root", all g in grants: g != "root")
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (assert_statement
+      reason: (string
+        (string_content))
+      condition: (quantifier_expression
+        variable: (identifier)
+        range: (identifier)
+        body: (binary_expression
+          left: (identifier)
+          right: (string
+            (string_content)))))))
+
+================================================================================
+Calls with named arguments
+================================================================================
+
+policy p: K@1
+
+review(reason: service_owner, approvers: ["payments-leads"],)
+production()
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (call
+      name: (identifier)
+      arguments: (call_arguments
+        (named_argument
+          name: (identifier)
+          value: (identifier))
+        (named_argument
+          name: (identifier)
+          value: (list_literal
+            (string
+              (string_content))))))
+    (call
+      name: (identifier)
+      arguments: (call_arguments))))
+
+================================================================================
+Calls with the old positional reason
+================================================================================
+
+policy p: K@1
+
+when true {
+  deny(soak_too_short)
+  approve(release_manager, bake: 2h)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (when_statement
+      condition: (true)
+      body: (block
+        (call
+          name: (identifier)
+          arguments: (call_arguments
+            positional: (identifier)))
+        (call
+          name: (identifier)
+          arguments: (call_arguments
+            positional: (identifier)
+            (named_argument
+              name: (identifier)
+              value: (duration))))))))
+
+================================================================================
+Named arguments spelled like keywords
+================================================================================
+
+policy p: K@1
+
+review(type: x, true: y, not: z, in: w)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (call
+      name: (identifier)
+      arguments: (call_arguments
+        (named_argument
+          name: (identifier)
+          value: (identifier))
+        (named_argument
+          name: (identifier)
+          value: (identifier))
+        (named_argument
+          name: (identifier)
+          value: (identifier))
+        (named_argument
+          name: (identifier)
+          value: (identifier))))))
+
+================================================================================
+Newlines never end a statement
+================================================================================
+
+policy p: K@1
+let a =
+  environment
+    == "production"
+let b = a when a
+  and b { deny(reason: x) }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (identifier)
+        right: (string
+          (string_content))))
+    (let_statement
+      name: (identifier)
+      value: (identifier))
+    (when_statement
+      condition: (binary_expression
+        left: (identifier)
+        right: (identifier))
+      body: (block
+        (call
+          name: (identifier)
+          arguments: (call_arguments
+            (named_argument
+              name: (identifier)
+              value: (identifier))))))))

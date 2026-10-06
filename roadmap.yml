@@ -150,6 +150,12 @@ timeline:
       policy walks, which the host bounds, and a deadline stops an evaluation that runs long. A
       budget would have needed collection limits and host-function costs in every kind, for a
       worst-case number the deadline already covers.
+  - date: 2026-10-06
+    title: Tree-sitter grammar
+    description: |
+      `editors/tree-sitter-sigil` gives Neovim, and other editors built on tree-sitter, a parser
+      for Sigil with highlighting, folds, indentation and text objects. Its tests hold it to the
+      Go parser on every Sigil source in the repository.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -667,3 +673,13 @@ milestones:
           `compile --from` would copy a release binary of another platform, after checking with
           `debug/buildinfo` that it's the same build as the binary that checked the bundle.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/project/planned.md
+      - title: Tree-sitter grammar
+        state: DONE
+        requirement: SHOULD
+        description: |
+          `editors/tree-sitter-sigil` parses policy, module and kind files, multi-document ones
+          included, for editors built on tree-sitter, with Neovim's highlight, fold, indent,
+          injection, locals and text object queries. A Go test parses every Sigil source in the
+          repository and the documentation with it and fails unless its tree agrees with the Go
+          parser's.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/editors/tree-sitter-sigil/README.md

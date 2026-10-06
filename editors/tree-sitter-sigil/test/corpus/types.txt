@@ -1,0 +1,136 @@
+================================================================================
+Named and built-in types
+================================================================================
+
+kind K version 1
+
+input flag: bool
+input service: Service
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (input_declaration
+      name: (identifier)
+      type: (type_identifier))
+    (input_declaration
+      name: (identifier)
+      type: (type_identifier))))
+
+================================================================================
+Optional types
+================================================================================
+
+kind K version 1
+
+input owner: ?string
+input tiers: ?list<Tier>
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (input_declaration
+      name: (identifier)
+      type: (optional_type
+        type: (type_identifier)))
+    (input_declaration
+      name: (identifier)
+      type: (optional_type
+        type: (list_type
+          element: (type_identifier))))))
+
+================================================================================
+Nested lists and maps close with two >
+================================================================================
+
+kind K version 1
+
+type Nested {
+  matrix: list<list<string>>
+  deep: map<string, map<string, ?Nested>>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (type_declaration
+      name: (identifier)
+      body: (field_list
+        (field_declaration
+          name: (identifier)
+          type: (list_type
+            element: (list_type
+              element: (type_identifier))))
+        (field_declaration
+          name: (identifier)
+          type: (map_type
+            key: (type_identifier)
+            value: (map_type
+              key: (type_identifier)
+              value: (optional_type
+                type: (type_identifier)))))))))
+
+================================================================================
+A >= that closes a type splits into > and =
+================================================================================
+
+policy p: K@1
+
+param m: map<string, int>= {}
+param names: list<string>= ["a"]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (param_statement
+      name: (identifier)
+      type: (map_type
+        key: (type_identifier)
+        value: (type_identifier))
+      default: (map_literal))
+    (param_statement
+      name: (identifier)
+      type: (list_type
+        element: (type_identifier))
+      default: (list_literal
+        (string
+          (string_content))))))
+
+================================================================================
+list and map are names outside a type
+================================================================================
+
+policy p: K@1
+
+let list = map
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (identifier))))

@@ -1,0 +1,808 @@
+================================================================================
+Literals
+================================================================================
+
+policy p: K@1
+
+let a = [true, false, 42, 007, 0.5, 30m, 1h30m, 500ms, 2d, outcome]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (list_literal
+        (true)
+        (false)
+        (integer)
+        (integer)
+        (float)
+        (duration)
+        (duration)
+        (duration)
+        (duration)
+        (outcome)))))
+
+================================================================================
+Strings and escapes
+================================================================================
+
+policy p: K@1
+
+let a = ["deployer", "", "line one\nline two", "\"quoted\" \\ \x41é\U0001F600\101"]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (list_literal
+        (string
+          (string_content))
+        (string)
+        (string
+          (string_content)
+          (escape_sequence)
+          (string_content))
+        (string
+          (escape_sequence)
+          (string_content)
+          (escape_sequence)
+          (string_content)
+          (escape_sequence)
+          (string_content)
+          (escape_sequence)
+          (string_content)
+          (escape_sequence)
+          (escape_sequence))))))
+
+================================================================================
+Raw strings
+================================================================================
+
+policy p: K@1
+
+let a = `^team-[a-z]+$`
+let b = `two
+lines \n`
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (raw_string))
+    (let_statement
+      name: (identifier)
+      value: (raw_string))))
+
+================================================================================
+List and map literals
+================================================================================
+
+policy p: K@1
+
+let a = []
+let b = ["eu", "us",]
+let c = {}
+let d = {"app.kubernetes.io/managed-by": "argocd", team: "payments",}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (list_literal))
+    (let_statement
+      name: (identifier)
+      value: (list_literal
+        (string
+          (string_content))
+        (string
+          (string_content))))
+    (let_statement
+      name: (identifier)
+      value: (map_literal))
+    (let_statement
+      name: (identifier)
+      value: (map_literal
+        (map_entry
+          key: (string
+            (string_content))
+          value: (string
+            (string_content)))
+        (map_entry
+          key: (identifier)
+          value: (string
+            (string_content)))))))
+
+================================================================================
+and binds tighter than or
+================================================================================
+
+policy p: K@1
+
+let a = x or y and z or w
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (binary_expression
+          left: (identifier)
+          right: (binary_expression
+            left: (identifier)
+            right: (identifier)))
+        right: (identifier)))))
+
+================================================================================
+xor
+================================================================================
+
+policy p: K@1
+
+let a = x xor y and z
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (identifier)
+        right: (binary_expression
+          left: (identifier)
+          right: (identifier))))))
+
+================================================================================
+not takes a comparison
+================================================================================
+
+policy p: K@1
+
+let a = not x in y and not z
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (unary_expression
+          operand: (binary_expression
+            left: (identifier)
+            right: (identifier)))
+        right: (unary_expression
+          operand: (identifier))))))
+
+================================================================================
+Comparisons
+================================================================================
+
+policy p: K@1
+
+let a = [a == b, a != b, a < b, a <= b, a > b, a >= b]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (list_literal
+        (binary_expression
+          left: (identifier)
+          right: (identifier))
+        (binary_expression
+          left: (identifier)
+          right: (identifier))
+        (binary_expression
+          left: (identifier)
+          right: (identifier))
+        (binary_expression
+          left: (identifier)
+          right: (identifier))
+        (binary_expression
+          left: (identifier)
+          right: (identifier))
+        (binary_expression
+          left: (identifier)
+          right: (identifier))))))
+
+================================================================================
+Membership and pattern operators
+================================================================================
+
+policy p: K@1
+
+let a = [
+  r in roles,
+  r not in roles,
+  roles all in allowed,
+  roles any in allowed,
+  flags one in [a, b],
+  flags exclusive in [a, b],
+  labels has {"team": "payments"},
+  name like "sre-*",
+  name matches `^sre-[a-z]+$`,
+]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (list_literal
+        (binary_expression
+          left: (identifier)
+          right: (identifier))
+        (binary_expression
+          left: (identifier)
+          right: (identifier))
+        (binary_expression
+          left: (identifier)
+          right: (identifier))
+        (binary_expression
+          left: (identifier)
+          right: (identifier))
+        (binary_expression
+          left: (identifier)
+          right: (list_literal
+            (identifier)
+            (identifier)))
+        (binary_expression
+          left: (identifier)
+          right: (list_literal
+            (identifier)
+            (identifier)))
+        (binary_expression
+          left: (identifier)
+          right: (map_literal
+            (map_entry
+              key: (string
+                (string_content))
+              value: (string
+                (string_content)))))
+        (binary_expression
+          left: (identifier)
+          right: (string
+            (string_content)))
+        (binary_expression
+          left: (identifier)
+          right: (raw_string))))))
+
+================================================================================
+?? is right-associative and binds tighter than comparisons
+================================================================================
+
+policy p: K@1
+
+let a = x ?? y ?? z == w
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (binary_expression
+          left: (identifier)
+          right: (binary_expression
+            left: (identifier)
+            right: (identifier)))
+        right: (identifier)))))
+
+================================================================================
+Arithmetic is left-associative and binds tighter than ??
+================================================================================
+
+policy p: K@1
+
+let a = 1h + 30m - 5m ?? 0s
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (binary_expression
+          left: (binary_expression
+            left: (duration)
+            right: (duration))
+          right: (duration))
+        right: (duration)))))
+
+================================================================================
+Unary minus and present
+================================================================================
+
+policy p: K@1
+
+let a = -3
+let b = a - -b
+let c = a - --b
+let d = present release.owner and -x.y < 0
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (unary_expression
+        operand: (integer)))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (identifier)
+        right: (unary_expression
+          operand: (identifier))))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (identifier)
+        right: (unary_expression
+          operand: (unary_expression
+            operand: (identifier)))))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (unary_expression
+          operand: (selector_expression
+            operand: (identifier)
+            field: (identifier)))
+        right: (binary_expression
+          left: (unary_expression
+            operand: (selector_expression
+              operand: (identifier)
+              field: (identifier)))
+          right: (integer))))))
+
+================================================================================
+Postfix operators bind tightest
+================================================================================
+
+policy p: K@1
+
+let a = service.labels["platform.example.com/lifecycle"]
+let b = actor?.manager?.name
+let c = split(service.name, "-")[0]
+let d = f(a,)(b).c
+let e = service.type.default
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (index_expression
+        operand: (selector_expression
+          operand: (identifier)
+          field: (identifier))
+        index: (string
+          (string_content))))
+    (let_statement
+      name: (identifier)
+      value: (selector_expression
+        operand: (selector_expression
+          operand: (identifier)
+          field: (identifier))
+        field: (identifier)))
+    (let_statement
+      name: (identifier)
+      value: (index_expression
+        operand: (call_expression
+          function: (identifier)
+          arguments: (arguments
+            (selector_expression
+              operand: (identifier)
+              field: (identifier))
+            (string
+              (string_content))))
+        index: (integer)))
+    (let_statement
+      name: (identifier)
+      value: (selector_expression
+        operand: (call_expression
+          function: (call_expression
+            function: (identifier)
+            arguments: (arguments
+              (identifier)))
+          arguments: (arguments
+            (identifier)))
+        field: (identifier)))
+    (let_statement
+      name: (identifier)
+      value: (selector_expression
+        operand: (selector_expression
+          operand: (identifier)
+          field: (identifier))
+        field: (identifier)))))
+
+================================================================================
+Quantifiers
+================================================================================
+
+policy p: K@1
+
+let a = all r in actor.roles: r != "admin"
+let b = any r in actor.roles: r like "sre-*"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (quantifier_expression
+        variable: (identifier)
+        range: (selector_expression
+          operand: (identifier)
+          field: (identifier))
+        body: (binary_expression
+          left: (identifier)
+          right: (string
+            (string_content)))))
+    (let_statement
+      name: (identifier)
+      value: (quantifier_expression
+        variable: (identifier)
+        range: (selector_expression
+          operand: (identifier)
+          field: (identifier))
+        body: (binary_expression
+          left: (identifier)
+          right: (string
+            (string_content)))))))
+
+================================================================================
+A quantifier body takes every and and or after it
+================================================================================
+
+policy p: K@1
+
+let a = any r in actor.roles: r like "sre-*" and eligible or x
+let b = eligible and all r in xs: r or y
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (quantifier_expression
+        variable: (identifier)
+        range: (selector_expression
+          operand: (identifier)
+          field: (identifier))
+        body: (binary_expression
+          left: (binary_expression
+            left: (binary_expression
+              left: (identifier)
+              right: (string
+                (string_content)))
+            right: (identifier))
+          right: (identifier))))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (identifier)
+        right: (quantifier_expression
+          variable: (identifier)
+          range: (identifier)
+          body: (binary_expression
+            left: (identifier)
+            right: (identifier)))))))
+
+================================================================================
+A quantifier range is parsed at the level of ??
+================================================================================
+
+policy p: K@1
+
+let a = any r in actor.roles ?? []: r == "admin"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (quantifier_expression
+        variable: (identifier)
+        range: (binary_expression
+          left: (selector_expression
+            operand: (identifier)
+            field: (identifier))
+          right: (list_literal))
+        body: (binary_expression
+          left: (identifier)
+          right: (string
+            (string_content)))))))
+
+================================================================================
+A quantifier body ends at a closing delimiter or a comma
+================================================================================
+
+policy p: K@1
+
+let a = [any r in xs: r, (all s in ys: s) and z]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (list_literal
+        (quantifier_expression
+          variable: (identifier)
+          range: (identifier)
+          body: (identifier))
+        (binary_expression
+          left: (parenthesized_expression
+            (quantifier_expression
+              variable: (identifier)
+              range: (identifier)
+              body: (identifier)))
+          right: (identifier))))))
+
+================================================================================
+Filters
+================================================================================
+
+policy p: K@1
+
+let a = filter g in grants: g.expires > now()
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (filter_expression
+        variable: (identifier)
+        range: (identifier)
+        body: (binary_expression
+          left: (selector_expression
+            operand: (identifier)
+            field: (identifier))
+          right: (call_expression
+            function: (identifier)
+            arguments: (arguments)))))))
+
+================================================================================
+not before a quantifier
+================================================================================
+
+policy p: K@1
+
+let a = not any r in roles: r == "admin"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (unary_expression
+        operand: (quantifier_expression
+          variable: (identifier)
+          range: (identifier)
+          body: (binary_expression
+            left: (identifier)
+            right: (string
+              (string_content))))))))
+
+================================================================================
+A map literal where an operand is expected, a rule body after a complete one
+================================================================================
+
+policy p: K@1
+
+when service.labels has {"team": "payments"} {
+  deny(reason: x)
+}
+when x {}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (when_statement
+      condition: (binary_expression
+        left: (selector_expression
+          operand: (identifier)
+          field: (identifier))
+        right: (map_literal
+          (map_entry
+            key: (string
+              (string_content))
+            value: (string
+              (string_content)))))
+      body: (block
+        (call
+          name: (identifier)
+          arguments: (call_arguments
+            (named_argument
+              name: (identifier)
+              value: (identifier))))))
+    (when_statement
+      condition: (identifier)
+      body: (block))))
+
+================================================================================
+Parentheses
+================================================================================
+
+policy p: K@1
+
+let a = ((x or y)) and z
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (parenthesized_expression
+          (parenthesized_expression
+            (binary_expression
+              left: (identifier)
+              right: (identifier))))
+        right: (identifier)))))
+
+================================================================================
+Enum values and decision reasons through a dot
+================================================================================
+
+policy p: K@1
+
+assert("approved", outcome == approve.release_manager or service.tier == Tier.critical)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (assert_statement
+      reason: (string
+        (string_content))
+      condition: (binary_expression
+        left: (binary_expression
+          left: (outcome)
+          right: (selector_expression
+            operand: (identifier)
+            field: (identifier)))
+        right: (binary_expression
+          left: (selector_expression
+            operand: (identifier)
+            field: (identifier))
+          right: (selector_expression
+            operand: (identifier)
+            field: (identifier)))))))
