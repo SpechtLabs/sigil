@@ -83,7 +83,7 @@ When none of the three exists, the extension says so and offers a link to these 
 
 Changing `sigil.path` or `sigil.server.enabled` restarts the server.
 
-In an [untrusted workspace](https://code.visualstudio.com/docs/editor/workspace-trust), the extension ignores a `sigil.path` set in the workspace's own settings, so a folder you open can't pick the program it runs. Your user settings still apply.
+A folder you open can't pick the program the extension runs. In an [untrusted workspace](https://code.visualstudio.com/docs/editor/workspace-trust), it ignores a `sigil.path` set in the workspace's own settings, and refuses a relative `sigil.path` such as `bin/sigil` even from your user settings, because it would resolve inside the workspace; absolute paths, `~/` and command names still work. Trusting the workspace restarts the server with both. Everywhere, it skips `PATH` entries that aren't absolute, such as `bin`, since the server starts in the workspace folder. On Windows, `sigil.path` can't name a `.bat` or `.cmd` file, which can't start without a shell.
 
 To format on save:
 
@@ -110,6 +110,8 @@ With a `.sigil` file open, the `{}` item in the status bar shows the server's st
 **"Couldn't find the sigil binary".** The extension has no bundled binary for your platform, and there's no `sigil` on `PATH`. Install the CLI (see [Which sigil runs](#which-sigil-runs)), or set `sigil.path` to it. VS Code reads `PATH` when it starts, so restart VS Code after installing, or launch it from a shell that has the new `PATH`.
 
 **"sigil.path is set to ..., but there's no executable at ...".** The setting points at a file that doesn't exist or can't run. Fix the path, or clear the setting to use the bundled binary.
+
+**"sigil.path is set to ..., a path relative to the workspace, which an untrusted workspace can't choose".** The workspace isn't trusted, and a relative path would run a program from inside it. Trust the workspace (**Manage Workspace Trust** in the error), or make `sigil.path` absolute.
 
 **"sigil lsp didn't start".** The binary ran but the language server didn't come up. A `sigil` from before the language server exits at once: run **Sigil: Show sigil Version**, and update the CLI or clear `sigil.path`. **Sigil: Show Language Server Output** has what the server printed.
 

@@ -67,7 +67,7 @@ To run a build of your own, or a version other than the bundled one, set `sigil.
 
 The server restarts when the setting changes. **Sigil: Show sigil Version** in the Command Palette says which binary runs and where it came from.
 
-A workspace's `.vscode/settings.json` can set `sigil.path` too, for a repository that builds its own binary, such as a host binary with the kinds linked in. VS Code only honours it once you trust the workspace.
+A workspace's `.vscode/settings.json` can set `sigil.path` too, for a repository that builds its own binary, such as a host binary with the kinds linked in. VS Code only honours it once you trust the workspace, and until then a relative `sigil.path`, even one in your user settings, is refused rather than resolved inside the folder.
 
 ## Format on save
 
