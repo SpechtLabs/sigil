@@ -2,8 +2,8 @@ package lsp
 
 import (
 	"bytes"
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 
 	"github.com/spechtlabs/sigil/internal/format"

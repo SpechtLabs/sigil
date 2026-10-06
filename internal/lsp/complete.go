@@ -279,8 +279,11 @@ func (v *view) importable(c *cursor, env *check.Env) string {
 			policies = append(policies, d.Name)
 		}
 	}
-	if all := append(modules, policies...); len(all) > 0 {
-		return all[0]
+	if len(modules) > 0 {
+		return modules[0]
+	}
+	if len(policies) > 0 {
+		return policies[0]
 	}
 	return ""
 }
@@ -459,7 +462,7 @@ func (v *view) typeItems(c *cursor) []item {
 	for _, name := range types.ScalarNames() {
 		out = append(out, item{label: name, kind: protocol.CompletionStruct, rank: rankName})
 	}
-	out = append(out, item{label: "list", kind: protocol.CompletionStruct, rank: rankName}, item{label: "map", kind: protocol.CompletionStruct, rank: rankName})
+	out = append(out, item{label: typeList, kind: protocol.CompletionStruct, rank: rankName}, item{label: typeMap, kind: protocol.CompletionStruct, rank: rankName})
 	if k := v.kindNamed(c.kind); k != nil {
 		for _, s := range k.Model.Types {
 			out = append(out, item{label: s.Name, kind: protocol.CompletionStruct, doc: code(structSource(s)), rank: rankName})

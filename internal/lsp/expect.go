@@ -15,6 +15,12 @@ const (
 	rankKeyword         // a keyword that doesn't fit the expected type
 )
 
+// The names of the composite types a param declares.
+const (
+	typeList = "list"
+	typeMap  = "map"
+)
+
 // expected returns the type the operand at the cursor should have, or
 // nil when nothing says:
 //
@@ -147,16 +153,16 @@ func typeOfTokens(toks []token.Token, k *kind.Kind) (types.Type, []token.Token) 
 		return &types.Optional{Elem: elem}, rest
 	case t.Kind != token.Ident:
 		return nil, nil
-	case len(toks) > 1 && toks[1].Kind == token.Lt && (t.Text == "list" || t.Text == "map"):
+	case len(toks) > 1 && toks[1].Kind == token.Lt && (t.Text == typeList || t.Text == typeMap):
 		first, rest := typeOfTokens(toks[2:], k)
 		var second types.Type
-		if t.Text == "map" && first != nil && len(rest) > 0 && rest[0].Kind == token.Comma {
+		if t.Text == typeMap && first != nil && len(rest) > 0 && rest[0].Kind == token.Comma {
 			second, rest = typeOfTokens(rest[1:], k)
 		}
 		switch {
-		case first == nil || len(rest) == 0 || rest[0].Kind != token.Gt || t.Text == "map" && second == nil:
+		case first == nil || len(rest) == 0 || rest[0].Kind != token.Gt || t.Text == typeMap && second == nil:
 			return nil, nil
-		case t.Text == "map":
+		case t.Text == typeMap:
 			return &types.Map{Key: first, Value: second}, rest[1:]
 		}
 		return &types.List{Elem: first}, rest[1:]

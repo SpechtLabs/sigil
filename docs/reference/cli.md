@@ -1183,7 +1183,7 @@ Completion works in a document that doesn't parse, as it's being typed.
 | After a param's default and `,` | `min`, `max` |
 | An operand | Inputs, lets, imported lets, params, quantifier and filter variables, host functions with their signatures, enum values, enums, imported modules, `any`, `all`, `filter`, `not`, `present`, `true`, `false`; in an assert, the decisions and `outcome` |
 | An operand of a known type | The same, with what has that type first: names, the fields of inputs and variables such as `service.name`, enum values, `true` and `false`, and a literal: a duration, `""`, `[]` or `{}`. The best match is preselected |
-| A param's default or bound | Literals, enum values, `true` and `false`; a default is a constant |
+| A param's default or bound, an invoked policy's argument | The literals and enum values of the param's type, or `true` and `false`; these are constants |
 | After a number, where a duration is expected | The number with each unit: `24d`, `24h`, `24m`, `24s`, `24ms` |
 | A value two enums declare | `Enum.value` for each, not the bare value |
 | After `x.` or `x?.` | The fields of `x`'s struct type, through optional chaining, indexing and parentheses |
@@ -1230,23 +1230,24 @@ The operators after an operand depend on its type:
 | An optional | `??`, and `?.` for an optional struct |
 | A struct | None |
 
-A completion's detail is its type or signature, and its label description says what it is, such as `input`, `host function` or `from deploy.common`. Its documentation is the doc comment of its declaration: the `//` lines right above an input, host function, decision, payload field, struct field or pub let.
+A completion's detail is its type or signature, and its label description says what it is, such as `input`, `host function` or `from deploy.common`. Its documentation is the doc comment of its declaration: the `//` lines right above an input, host function, decision, payload field, struct field, struct type, enum or pub let. Hover shows the same comment.
 
-When the editor's completion takes snippets, these completions insert one:
+When the editor's completion takes snippets, these completions insert one. Every placeholder's default is code that checks, so tabbing through a snippet without typing leaves a document `sigil check` accepts:
 
 | Completion | Inserts |
 | --- | --- |
-| `when` | `when condition {` and the body |
-| `assert` | `assert("reason", condition)` |
-| `use` | `use path.{names}` |
-| `let`, `pub let`, `param` | The declaration, with its name to fill in |
-| `any`, `all`, `filter` | `any x in list: body` |
-| A decision constructor | The constructor with its reasons as a choice and every payload field without a default, like `review(reason: service_owner, approvers: list<string>)` |
-| An imported policy | The invocation with every param without a default |
-| A host function | The call, with the cursor in the parentheses |
-| A duration, string, list or map literal | The literal, with the cursor inside it, or on a duration's number and then its unit |
+| `when` | `when true {` and the body |
+| `assert` | `assert("reason", true)` |
+| `use` | `use` and a module, or else a policy, of the kind that the document doesn't import yet; only before the document's other statements |
+| `let`, `pub let` | `let name = true`, with a name nothing binds yet |
+| `param` | `param name: string`, with a name nothing binds yet |
+| `any`, `all`, `filter` | `any x in list: true`, with a variable nothing binds yet and the nearest list in scope |
+| A decision constructor | The constructor with its first reason, or its only one, and every payload field without a default set to its type's zero value, like `review(reason: service_owner, approvers: [])`; after `reason: `, completion offers the other reasons |
+| An imported policy | The invocation with every param without a default set to its type's zero value |
+| A host function | The call with each argument set to its type's zero value, like `split("", "")` |
+| A duration, string, list or map literal | `1h`, with the number and the unit as placeholders, `""`, `[]` or `{}`, with the cursor inside |
 
-An editor whose completion doesn't take snippets gets the names alone.
+A type's zero value is `""`, `0`, `0.0`, `false`, `0s`, `[]`, `{}`, or an enum's first value; a struct's or a timestamp's placeholder is empty. No snippet uses a choice. An editor whose completion doesn't take snippets gets the names alone.
 
 ### Signature help
 
@@ -1269,9 +1270,9 @@ The server offers quick fixes for the diagnostics it published:
 | A reason written as a string or qualified, such as `reason: "not_eligible"` | Write it as the bare name |
 | A reason passed without its label, such as `deny(not_eligible)` | Write `reason: not_eligible`, or the reason closest to it |
 | A reason the decision doesn't declare, with none close to it | Change it to each reason the decision declares |
-| A constructor that leaves out a payload field without a default | Add the field with its type's zero value, such as `approvers: []` |
+| A constructor that leaves out a payload field without a default | Add the field with its type's zero value, such as `approvers: []`, after the last argument |
 
-Each diagnostic carries its fixes in its `data`, so asking for them doesn't check the document again. A fix applies only while the document still holds the text it replaces.
+Each diagnostic carries its fixes in its `data`, so asking for them doesn't check the document again. A fix applies only while the document still holds the lines it was worked out from, so after an edit a fix of a different construct at the same place isn't offered.
 
 ### Inlay hints
 
