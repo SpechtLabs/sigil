@@ -324,9 +324,9 @@ Newlines never end anything. Every top-level statement starts with one of these:
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Policy   | `policy`, `use`, `param`, `let`, `pub`, `when`, `assert`, or an identifier followed by `(` (a decision constructor or policy invocation) |
 | Module   | `module`, `use`, `let`, `pub`                                                                                                            |
-| Kind     | `kind`, `enum`, `type`, `input`, `fn`, `decision`, `precedence`, `collect`, `default`, `conflict`                                        |
+| Kind     | `kind`, `enum`, `type`, `input`, `fn`, `decision`, `precedence`, `exclusive`, `collect`, `default`, `conflict`                           |
 
-- None of those keywords can continue an expression, and an expression never continues with a bare identifier. When the parser is inside a `let` expression and meets `let`, `when` or `guardrails(`, the expression is over.
+- None of those keywords can continue an expression, and an expression never continues with a bare identifier. When the parser is inside a `let` expression and meets `let`, `when` or `guardrails(`, the expression is over. `exclusive` is the exception, since it also writes the `exclusive in` operator, but a kind's expressions sit inside braces or parentheses, so a top-level `exclusive` never follows an unfinished expression.
 - A header keyword or a `---` ends the whole document the same way.
 - No other statement starts with an identifier.
 
@@ -338,10 +338,11 @@ let a = environment == "production" let b = "deployer" in actor.roles guardrails
 
 That line parses the same as the formatted version, although `sigil fmt` would never produce it.
 
-Two other boundaries work the same way:
+Other boundaries work the same way:
 
 - A `when` condition ends at a `{` in operator position. A `{` in operand position starts a map literal instead, which is how `when service.labels has {"team": "payments"} { ... }` parses: the first `{` follows `has`, the second follows a complete expression.
 - In a `type` body, a field's type ends where the next `Name :` begins, because a type never continues with a name.
+- In a decision body, a payload field's default ends where the next `Name :` begins too. A keyword followed by `:` counts as a name there, so in `scope: string = "" in: bool` the `in` starts the next field instead of continuing the default as an operator.
 - An enum's value list, and a decision's `reason:` list, end at the first token after a value that isn't `|`. A list can break across lines, and `|` may start a line.
 
 ### Calls

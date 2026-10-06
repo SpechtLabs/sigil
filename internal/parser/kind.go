@@ -105,7 +105,7 @@ func (p *parser) parseTypeDecl() *ast.TypeDecl {
 // isDeclKeyword reports whether k starts a kind declaration.
 func isDeclKeyword(k token.Kind) bool {
 	switch k {
-	case token.KwType, token.KwEnum, token.KwInput, token.KwFn, token.KwDecision, token.KwPrecedence, token.KwCollect, token.KwDefault, token.KwConflict:
+	case token.KwType, token.KwEnum, token.KwInput, token.KwFn, token.KwDecision, token.KwPrecedence, token.KwExclusive, token.KwCollect, token.KwDefault, token.KwConflict:
 		return true
 	}
 	return false
