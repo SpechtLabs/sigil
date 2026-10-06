@@ -1,0 +1,184 @@
+>policy access.main: AccessGrant@1
+#^^^^^^ source.sigil keyword.other.sigil
+#      ^ source.sigil
+#       ^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+#                  ^ source.sigil punctuation.separator.colon.sigil
+#                   ^ source.sigil
+#                    ^^^^^^^^^^^ source.sigil entity.name.type.sigil
+#                               ^ source.sigil punctuation.separator.version.sigil
+#                                ^ source.sigil constant.numeric.sigil
+>
+>use access.guardrails
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^^^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+>use access.common.{admin_cleared, break_glass, compliance_member, on_call, platform_member, team_member}
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+#                 ^ source.sigil punctuation.accessor.sigil
+#                  ^ source.sigil punctuation.section.braces.begin.sigil
+#                   ^^^^^^^^^^^^^ source.sigil
+#                                ^ source.sigil punctuation.separator.comma.sigil
+#                                 ^^^^^^^^^^^^ source.sigil
+#                                             ^ source.sigil punctuation.separator.comma.sigil
+#                                              ^^^^^^^^^^^^^^^^^^ source.sigil
+#                                                                ^ source.sigil punctuation.separator.comma.sigil
+#                                                                 ^^^^^^^^ source.sigil
+#                                                                         ^ source.sigil punctuation.separator.comma.sigil
+#                                                                          ^^^^^^^^^^^^^^^^ source.sigil
+#                                                                                          ^ source.sigil punctuation.separator.comma.sigil
+#                                                                                           ^^^^^^^^^^^^ source.sigil
+#                                                                                                       ^ source.sigil punctuation.section.braces.end.sigil
+>
+>guardrails()
+#^^^^^^^^^^ source.sigil entity.name.function.sigil
+#          ^ source.sigil punctuation.section.parens.begin.sigil
+#           ^ source.sigil punctuation.section.parens.end.sigil
+>
+>when team_member {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^^^^^^^^ source.sigil
+>  reader(reason: team_member)
+#^^ source.sigil
+#  ^^^^^^ source.sigil entity.name.function.sigil
+#        ^ source.sigil punctuation.section.parens.begin.sigil
+#         ^^^^^^ source.sigil variable.parameter.sigil
+#               ^ source.sigil punctuation.separator.colon.sigil
+#                ^^^^^^^^^^^^ source.sigil
+#                            ^ source.sigil punctuation.section.parens.end.sigil
+>  deployer(reason: team_member)
+#^^ source.sigil
+#  ^^^^^^^^ source.sigil entity.name.function.sigil
+#          ^ source.sigil punctuation.section.parens.begin.sigil
+#           ^^^^^^ source.sigil variable.parameter.sigil
+#                 ^ source.sigil punctuation.separator.colon.sigil
+#                  ^^^^^^^^^^^^ source.sigil
+#                              ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>
+>when environment == "staging" {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^^^^^^ source.sigil
+#                 ^^ source.sigil keyword.operator.sigil
+#                   ^ source.sigil
+#                    ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                     ^^^^^^^ source.sigil string.quoted.double.sigil
+#                            ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                             ^^^ source.sigil
+>  reader(reason: everyone_in_staging)
+#^^ source.sigil
+#  ^^^^^^ source.sigil entity.name.function.sigil
+#        ^ source.sigil punctuation.section.parens.begin.sigil
+#         ^^^^^^ source.sigil variable.parameter.sigil
+#               ^ source.sigil punctuation.separator.colon.sigil
+#                ^^^^^^^^^^^^^^^^^^^^ source.sigil
+#                                    ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>
+>// The on-call SRE deploys for two hours, long enough to ship a fix.
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>when on_call {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^^^^ source.sigil
+>  deployer(reason: oncall, ttl: 2h)
+#^^ source.sigil
+#  ^^^^^^^^ source.sigil entity.name.function.sigil
+#          ^ source.sigil punctuation.section.parens.begin.sigil
+#           ^^^^^^ source.sigil variable.parameter.sigil
+#                 ^ source.sigil punctuation.separator.colon.sigil
+#                  ^^^^^^^ source.sigil
+#                         ^ source.sigil punctuation.separator.comma.sigil
+#                          ^ source.sigil
+#                           ^^^ source.sigil variable.parameter.sigil
+#                              ^ source.sigil punctuation.separator.colon.sigil
+#                               ^ source.sigil
+#                                ^^ source.sigil constant.numeric.duration.sigil
+#                                  ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>
+>// An admin already holds everything a release manager does, and the kind
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>// declares the two exclusive, so the platform grant leaves admins out.
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>when platform_member and not admin_cleared {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^^^^^^^^^^ source.sigil
+#                     ^^^ source.sigil keyword.operator.word.sigil
+#                        ^ source.sigil
+#                         ^^^ source.sigil keyword.operator.word.sigil
+#                            ^^^^^^^^^^^^^^^^^ source.sigil
+>  release_manager(reason: platform_member, ttl: 4h)
+#^^ source.sigil
+#  ^^^^^^^^^^^^^^^ source.sigil entity.name.function.sigil
+#                 ^ source.sigil punctuation.section.parens.begin.sigil
+#                  ^^^^^^ source.sigil variable.parameter.sigil
+#                        ^ source.sigil punctuation.separator.colon.sigil
+#                         ^^^^^^^^^^^^^^^^ source.sigil
+#                                         ^ source.sigil punctuation.separator.comma.sigil
+#                                          ^ source.sigil
+#                                           ^^^ source.sigil variable.parameter.sigil
+#                                              ^ source.sigil punctuation.separator.colon.sigil
+#                                               ^ source.sigil
+#                                                ^^ source.sigil constant.numeric.duration.sigil
+#                                                  ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>
+>when admin_cleared {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^^^^^^^^^^ source.sigil
+>  admin(reason: clearance)
+#^^ source.sigil
+#  ^^^^^ source.sigil entity.name.function.sigil
+#       ^ source.sigil punctuation.section.parens.begin.sigil
+#        ^^^^^^ source.sigil variable.parameter.sigil
+#              ^ source.sigil punctuation.separator.colon.sigil
+#               ^^^^^^^^^^ source.sigil
+#                         ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>
+>// Break-glass access is short-lived by design. It doesn't check for platform
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>// membership: a break-glass member in platform is a conflict the host reports,
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>// because the two groups aren't meant to overlap.
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>when break_glass {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^^^^^^^^ source.sigil
+>  admin(reason: break_glass, ttl: 15m)
+#^^ source.sigil
+#  ^^^^^ source.sigil entity.name.function.sigil
+#       ^ source.sigil punctuation.section.parens.begin.sigil
+#        ^^^^^^ source.sigil variable.parameter.sigil
+#              ^ source.sigil punctuation.separator.colon.sigil
+#               ^^^^^^^^^^^^ source.sigil
+#                           ^ source.sigil punctuation.separator.comma.sigil
+#                            ^ source.sigil
+#                             ^^^ source.sigil variable.parameter.sigil
+#                                ^ source.sigil punctuation.separator.colon.sigil
+#                                 ^ source.sigil
+#                                  ^^^ source.sigil constant.numeric.duration.sigil
+#                                     ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>
+>when compliance_member {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^^^^^^^^^^^^^^ source.sigil
+>  auditor(reason: compliance_member)
+#^^ source.sigil
+#  ^^^^^^^ source.sigil entity.name.function.sigil
+#         ^ source.sigil punctuation.section.parens.begin.sigil
+#          ^^^^^^ source.sigil variable.parameter.sigil
+#                ^ source.sigil punctuation.separator.colon.sigil
+#                 ^^^^^^^^^^^^^^^^^^ source.sigil
+#                                   ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>

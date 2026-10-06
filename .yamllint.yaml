@@ -11,3 +11,5 @@ ignore: |
   **/node_modules/
   **/.next/
   dist/
+  # The VS Code builds the extension's integration tests download.
+  editors/vscode/.vscode-test/

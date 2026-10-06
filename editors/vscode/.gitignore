@@ -1,0 +1,10 @@
+node_modules/
+# The bundle bun build writes, and the integration tests' build.
+dist/
+# The release binary a platform VSIX bundles (see the vscode-package task).
+bin/
+# The VS Code builds @vscode/test-electron downloads for the integration tests.
+.vscode-test/
+*.vsix
+# The coverage report bun test writes (see bunfig.toml).
+coverage/

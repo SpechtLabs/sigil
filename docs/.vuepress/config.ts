@@ -6,7 +6,7 @@ import { path } from "@vuepress/utils";
 import container from "markdown-it-container";
 import { defineUserConfig } from "vuepress";
 import { plumeTheme } from "vuepress-theme-plume";
-import sigilGrammar from "./sigil.tmLanguage.json" with { type: "json" };
+import sigilGrammar from "../../editors/vscode/syntaxes/sigil.tmLanguage.json" with { type: "json" };
 
 export default defineUserConfig({
   base: "/",
@@ -105,8 +105,8 @@ export default defineUserConfig({
     cache: "filesystem",
     search: { provider: "local" },
 
-    // Sigil has no upstream grammar, so the docs ship their own TextMate
-    // grammar and every ```sigil fence (policy and kind files alike) uses it.
+    // Sigil has no upstream grammar, so every ```sigil fence (policy and kind
+    // files alike) uses the TextMate grammar the VS Code extension ships.
     codeHighlighter: {
       langs: [sigilGrammar as any],
     },
@@ -202,7 +202,10 @@ export default defineUserConfig({
           icon: "mdi:application-edit-outline",
           collapsed: false,
           prefix: "/guides/editors/",
-          items: [{ text: "Set up your editor", link: "", icon: "mdi:application-edit-outline" }],
+          items: [
+            { text: "Set up your editor", link: "", icon: "mdi:application-edit-outline" },
+            { text: "Set up VS Code", link: "vscode", icon: "mdi:microsoft-visual-studio-code" },
+          ],
         },
       ],
 

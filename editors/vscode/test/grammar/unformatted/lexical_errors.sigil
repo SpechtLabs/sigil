@@ -1,0 +1,12 @@
+// What the lexer rejects, which the grammar marks invalid.illegal.
+
+let quote = "it\'s"
+let tab = "a\tb\q"
+let hex = 0x10
+let exponent = 1e3 + 1.5e3
+let separator = 1_000
+let fraction = 1.5h
+let order = 30m1h + 1h1h + 1h30
+let unit = 5w
+let open = "no closing quote
+let after = "the next line is fine"

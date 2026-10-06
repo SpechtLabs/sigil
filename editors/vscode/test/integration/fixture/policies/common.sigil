@@ -1,0 +1,3 @@
+module deploy.common: DeployApproval@1
+
+pub let owns_service = actor.teams any in service.owners

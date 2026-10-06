@@ -1,0 +1,110 @@
+policy deploy.production: DeployApproval@2
+// <- keyword.import
+//     ^ module
+//           ^ punctuation.delimiter
+//             ^ module
+//                         ^ type
+//                                      ^ operator
+//                                       ^ number
+
+use deploy.common.{cleared, owns_service as owns}
+// <- keyword.import
+//   ^ module
+//               ^ punctuation.delimiter
+//                ^ punctuation.bracket
+//                 ^ variable
+//                                       ^ keyword.import
+use deploy.common as common
+//                ^ keyword.import
+//                   ^ module
+
+param min_soak: duration = 24h, min: 1h
+// <- keyword
+//    ^ variable.parameter
+//              ^ type.builtin
+//                       ^ operator
+//                         ^ number
+//                              ^ property
+param approvers: list<string>
+//               ^ type.builtin
+//                   ^ punctuation.bracket
+//                    ^ type.builtin
+param tier: Tier = critical
+//          ^ type
+
+pub let soaked = release.soak >= min_soak
+// <- keyword.modifier
+//  ^ keyword
+//      ^ variable
+//               ^ variable
+//                      ^ punctuation.delimiter
+//                       ^ variable.member
+//                            ^ operator
+
+let roles = actor?.roles ?? []
+//               ^ operator
+//                       ^ operator
+//                          ^ punctuation.bracket
+
+// A comment.
+// <- comment
+when environment == "production" and not soaked {
+// <- keyword.conditional
+//                  ^ string
+//                               ^ keyword.operator
+//                                   ^ keyword.operator
+//                                              ^ punctuation.bracket
+  deny(reason: soak_too_short)
+//^ constructor
+//     ^ variable.parameter
+//           ^ punctuation.delimiter
+//             ^ constant
+  review(reason: service_owner, approvers: approvers,)
+//                              ^ variable.parameter
+//                                         ^ variable
+}
+
+when any r in actor.roles: r like "sre-*" {
+//   ^ keyword.repeat
+//       ^ variable.parameter
+//         ^ keyword.operator
+//                           ^ keyword.operator
+//                                ^ string.special
+  guardrails(min_soak: 4h)
+//^ constructor
+//                     ^ number
+}
+
+when service.labels["team"] matches `^team-[a-z]+$` {
+//                  ^ string
+//                          ^ keyword.operator
+//                                  ^ string.regexp
+  approve(reason: release_manager, note: "a \"note\"\n")
+//                                          ^ string.escape
+//                                       ^ string
+}
+
+let a = filter g in grants: g.expires > now()
+//      ^ keyword.repeat
+//             ^ variable.parameter
+//                                      ^ function.call
+let b = actor.teams any in service.owners
+//                  ^ keyword.operator
+let c = [true, false, 0.5, 1h30m, -3, present release.owner]
+//       ^ boolean
+//             ^ boolean
+//                    ^ number.float
+//                         ^ number
+//                                ^ operator
+//                                    ^ keyword.operator
+
+assert("approved", outcome != deny.not_eligible)
+// <- keyword
+//      ^ string
+//                 ^ variable.builtin
+
+---
+// <- punctuation.special
+
+module deploy.common: DeployApproval@1
+// <- keyword.import

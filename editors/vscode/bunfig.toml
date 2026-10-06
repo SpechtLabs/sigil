@@ -1,0 +1,12 @@
+# Every bun test run measures coverage of src/: a table in the terminal, and
+# coverage/lcov.info, which CI uploads to Codecov. The unit tests cover the
+# modules that don't import vscode; the integration tests (test/integration)
+# run the rest inside VS Code.
+[test]
+coverage = true
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+coverageSkipTestFiles = true
+# The tests' own helpers and fixtures, which aren't test files by name, and
+# the packaging script, which the CI packaging step runs end to end.
+coveragePathIgnorePatterns = ["test/**", "scripts/**"]

@@ -1,0 +1,108 @@
+>// What the lexer rejects, which the grammar marks invalid.illegal.
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>
+>let quote = "it\'s"
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^ source.sigil variable.other.definition.sigil
+#         ^ source.sigil
+#          ^ source.sigil keyword.operator.assignment.sigil
+#           ^ source.sigil
+#            ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#             ^^ source.sigil string.quoted.double.sigil
+#               ^^ source.sigil string.quoted.double.sigil invalid.illegal.escape.sigil
+#                 ^ source.sigil string.quoted.double.sigil
+#                  ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+>let tab = "a\tb\q"
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^ source.sigil variable.other.definition.sigil
+#       ^ source.sigil
+#        ^ source.sigil keyword.operator.assignment.sigil
+#         ^ source.sigil
+#          ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#           ^ source.sigil string.quoted.double.sigil
+#            ^^ source.sigil string.quoted.double.sigil constant.character.escape.sigil
+#              ^ source.sigil string.quoted.double.sigil
+#               ^^ source.sigil string.quoted.double.sigil invalid.illegal.escape.sigil
+#                 ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+>let hex = 0x10
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^ source.sigil variable.other.definition.sigil
+#       ^ source.sigil
+#        ^ source.sigil keyword.operator.assignment.sigil
+#         ^ source.sigil
+#          ^^^^ source.sigil invalid.illegal.numeric.sigil
+>let exponent = 1e3 + 1.5e3
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^^^^ source.sigil variable.other.definition.sigil
+#            ^ source.sigil
+#             ^ source.sigil keyword.operator.assignment.sigil
+#              ^ source.sigil
+#               ^^^ source.sigil invalid.illegal.numeric.sigil
+#                  ^ source.sigil
+#                   ^ source.sigil keyword.operator.sigil
+#                    ^ source.sigil
+#                     ^^^^^ source.sigil invalid.illegal.numeric.sigil
+>let separator = 1_000
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^^^^^ source.sigil variable.other.definition.sigil
+#             ^ source.sigil
+#              ^ source.sigil keyword.operator.assignment.sigil
+#               ^ source.sigil
+#                ^^^^^ source.sigil invalid.illegal.numeric.sigil
+>let fraction = 1.5h
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^^^^ source.sigil variable.other.definition.sigil
+#            ^ source.sigil
+#             ^ source.sigil keyword.operator.assignment.sigil
+#              ^ source.sigil
+#               ^^^^ source.sigil invalid.illegal.numeric.sigil
+>let order = 30m1h + 1h1h + 1h30
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^ source.sigil variable.other.definition.sigil
+#         ^ source.sigil
+#          ^ source.sigil keyword.operator.assignment.sigil
+#           ^ source.sigil
+#            ^^^^^ source.sigil invalid.illegal.numeric.sigil
+#                 ^ source.sigil
+#                  ^ source.sigil keyword.operator.sigil
+#                   ^ source.sigil
+#                    ^^^^ source.sigil invalid.illegal.numeric.sigil
+#                        ^ source.sigil
+#                         ^ source.sigil keyword.operator.sigil
+#                          ^ source.sigil
+#                           ^^^^ source.sigil invalid.illegal.numeric.sigil
+>let unit = 5w
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^ source.sigil variable.other.definition.sigil
+#        ^ source.sigil
+#         ^ source.sigil keyword.operator.assignment.sigil
+#          ^ source.sigil
+#           ^^ source.sigil invalid.illegal.numeric.sigil
+>let open = "no closing quote
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^ source.sigil variable.other.definition.sigil
+#        ^ source.sigil
+#         ^ source.sigil keyword.operator.assignment.sigil
+#          ^ source.sigil
+#           ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#            ^^^^^^^^^^^^^^^^ source.sigil string.quoted.double.sigil
+>let after = "the next line is fine"
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^ source.sigil variable.other.definition.sigil
+#         ^ source.sigil
+#          ^ source.sigil keyword.operator.assignment.sigil
+#           ^ source.sigil
+#            ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#             ^^^^^^^^^^^^^^^^^^^^^ source.sigil string.quoted.double.sigil
+#                                  ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+>

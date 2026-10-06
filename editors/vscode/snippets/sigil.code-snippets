@@ -1,0 +1,75 @@
+{
+  "Policy header": {
+    "prefix": "policy",
+    "description": "A policy document: its name, and the kind and version it's written against",
+    "body": ["policy ${1:team.production}: ${2:Kind}@${3:1}", "", "$0"]
+  },
+  "Module header": {
+    "prefix": "module",
+    "description": "A module document: shared lets other policies import with use",
+    "body": ["module ${1:team.common}: ${2:Kind}@${3:1}", "", "pub let ${4:name} = $0"]
+  },
+  "Selective import": {
+    "prefix": "use",
+    "description": "Import names from a module",
+    "body": ["use ${1:team.common}.{${2:name}}"]
+  },
+  "When block": {
+    "prefix": "when",
+    "description": "A rule: when the condition holds, the decisions inside fire",
+    "body": ["when ${1:condition} {", "\t${2:allow}(reason: ${3:permitted})", "}"]
+  },
+  "Decision constructor": {
+    "prefix": "decide",
+    "description": "Fire a decision with one of its reasons",
+    "body": ["${1:deny}(reason: ${2:no_rule_matched})"]
+  },
+  "Assert": {
+    "prefix": "assert",
+    "description": "Fail the evaluation with a reason when the condition doesn't hold",
+    "body": ["assert(\"${1:reason}\", ${2:condition})"]
+  },
+  "Param": {
+    "prefix": "param",
+    "description": "A typed parameter an invoking policy passes in",
+    "body": ["param ${1:name}: ${2:type}"]
+  },
+  "Kind skeleton": {
+    "prefix": "kind",
+    "description": "A kind file: an input, two decisions, and what to return when no rule fires",
+    "body": [
+      "kind ${1:Kind} version ${2:1}",
+      "",
+      "input ${3:request}: ${4:string}",
+      "",
+      "decision ${5:deny} {",
+      "\treason: ${6:no_rule_matched}",
+      "}",
+      "",
+      "decision ${7:allow} {",
+      "\treason: ${8:permitted}",
+      "}",
+      "",
+      "collect one",
+      "precedence ${5} > ${7}",
+      "",
+      "default ${5}(reason: ${6})",
+      "$0"
+    ]
+  },
+  "Struct type": {
+    "prefix": "type",
+    "description": "A struct type in a kind file",
+    "body": ["type ${1:Name} {", "\t${2:field}: ${3:string}", "}"]
+  },
+  "Decision declaration": {
+    "prefix": "decision",
+    "description": "A decision in a kind file, with its reasons and a payload field",
+    "body": ["decision ${1:review} {", "\treason: ${2:reason}", "\t${3:field}: ${4:string}", "}"]
+  },
+  "Enum": {
+    "prefix": "enum",
+    "description": "An enum in a kind file",
+    "body": ["enum ${1:Name}: ${2:first} | ${3:second}"]
+  }
+}

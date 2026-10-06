@@ -1,0 +1,28 @@
+{
+  "comments": {
+    "lineComment": "//"
+  },
+  "brackets": [["{", "}"], ["[", "]"], ["(", ")"]],
+  "autoClosingPairs": [
+    { "open": "{", "close": "}" },
+    { "open": "[", "close": "]" },
+    { "open": "(", "close": ")" },
+    { "open": "\"", "close": "\"", "notIn": ["string", "comment"] },
+    { "open": "`", "close": "`", "notIn": ["string", "comment"] }
+  ],
+  "autoCloseBefore": ";:.,=}])> \n\t",
+  "surroundingPairs": [["{", "}"], ["[", "]"], ["(", ")"], ["\"", "\""], ["`", "`"], ["<", ">"]],
+  "colorizedBracketPairs": [["{", "}"], ["[", "]"], ["(", ")"]],
+  "indentationRules": {
+    "increaseIndentPattern": "^.*(\\{[^}\"`]*|\\([^)\"`]*|\\[[^\\]\"`]*)(//.*)?$",
+    "decreaseIndentPattern": "^\\s*[}\\])]"
+  },
+  "wordPattern": "(?:\\d+(?:ms|[smhd]))+\\b|\\d+(?:\\.\\d+)?|[A-Za-z_][A-Za-z0-9_]*",
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*//.*$",
+      "afterText": "^.+$",
+      "action": { "indent": "none", "appendText": "// " }
+    }
+  ]
+}

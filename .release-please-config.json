@@ -20,6 +20,11 @@
           "jsonpath": "$.version"
         },
         {
+          "type": "json",
+          "path": "editors/vscode/package.json",
+          "jsonpath": "$.version"
+        },
+        {
           "type": "toml",
           "path": "bindings/rust/Cargo.toml",
           "jsonpath": "$.package.version"

@@ -1,0 +1,389 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "sigil",
+  "displayName": "Sigil",
+  "scopeName": "source.sigil",
+  "aliases": ["sgl"],
+  "fileTypes": ["sigil"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#separator" },
+    { "include": "#kind-header" },
+    { "include": "#document-header" },
+    { "include": "#use-selective" },
+    { "include": "#use" },
+    { "include": "#enum-declaration" },
+    { "include": "#type-declaration" },
+    { "include": "#decision-declaration" },
+    { "include": "#fn-declaration" },
+    { "include": "#typed-declaration" },
+    { "include": "#declaration" },
+    { "include": "#collect" },
+    { "include": "#exclusive-statement" },
+    { "include": "#param-bound" },
+    { "include": "#expression" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.double-slash.sigil",
+      "match": "//.*$"
+    },
+    "separator": {
+      "name": "punctuation.separator.document.sigil",
+      "match": "^\\s*---\\s*$"
+    },
+    "kind-header": {
+      "comment": "kind DeployApproval version 3, accepts: 2. accepts is a keyword only here.",
+      "match": "\\b(kind)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(version)\\s+(\\d+)(?:\\s*(,)\\s*(accepts)\\s*(:)\\s*(\\d+))?)?",
+      "captures": {
+        "1": { "name": "keyword.other.sigil" },
+        "2": { "name": "entity.name.type.sigil" },
+        "3": { "name": "keyword.other.sigil" },
+        "4": { "name": "constant.numeric.sigil" },
+        "5": { "name": "punctuation.separator.comma.sigil" },
+        "6": { "name": "keyword.other.sigil" },
+        "7": { "name": "punctuation.separator.colon.sigil" },
+        "8": { "name": "constant.numeric.sigil" }
+      }
+    },
+    "document-header": {
+      "comment": "policy deploy.production: DeployApproval@1, and the same for module.",
+      "match": "\\b(policy|module)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)(?:\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(@)\\s*(\\d+))?)?",
+      "captures": {
+        "1": { "name": "keyword.other.sigil" },
+        "2": { "name": "entity.name.namespace.sigil" },
+        "3": { "name": "punctuation.separator.colon.sigil" },
+        "4": { "name": "entity.name.type.sigil" },
+        "5": { "name": "punctuation.separator.version.sigil" },
+        "6": { "name": "constant.numeric.sigil" }
+      }
+    },
+    "use-selective": {
+      "comment": "use deploy.common.{cleared, owns_service as owns}",
+      "begin": "\\b(use)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)(\\.)(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.sigil" },
+        "2": { "name": "entity.name.namespace.sigil" },
+        "3": { "name": "punctuation.accessor.sigil" },
+        "4": { "name": "punctuation.section.braces.begin.sigil" }
+      },
+      "end": "\\}",
+      "endCaptures": { "0": { "name": "punctuation.section.braces.end.sigil" } },
+      "patterns": [
+        { "include": "#comment" },
+        { "name": "keyword.other.sigil", "match": "\\bas\\b" },
+        { "name": "punctuation.separator.comma.sigil", "match": "," }
+      ]
+    },
+    "use": {
+      "comment": "use deploy.common, use deploy.common as common",
+      "match": "\\b(use)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)(?:\\s+(as)\\s+([A-Za-z_][A-Za-z0-9_]*))?",
+      "captures": {
+        "1": { "name": "keyword.other.sigil" },
+        "2": { "name": "entity.name.namespace.sigil" },
+        "3": { "name": "keyword.other.sigil" },
+        "4": { "name": "entity.name.namespace.sigil" }
+      }
+    },
+    "enum-declaration": {
+      "comment": "enum Tier: critical | standard | internal. The values may continue on lines that start with |.",
+      "begin": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.sigil" },
+        "2": { "name": "entity.name.type.sigil" },
+        "3": { "name": "punctuation.separator.colon.sigil" }
+      },
+      "end": "^(?!\\s*\\|)",
+      "patterns": [{ "include": "#comment" }, { "include": "#alternatives" }]
+    },
+    "alternatives": {
+      "comment": "Enum values and a decision's reasons, separated by |.",
+      "patterns": [
+        { "name": "punctuation.separator.pipe.sigil", "match": "\\|" },
+        { "name": "constant.other.enum.sigil", "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b" }
+      ]
+    },
+    "type-declaration": {
+      "comment": "type Release { soak: duration }. Field names may be keywords.",
+      "begin": "\\b(type)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.sigil" },
+        "2": { "name": "entity.name.type.sigil" },
+        "3": { "name": "punctuation.section.braces.begin.sigil" }
+      },
+      "end": "\\}",
+      "endCaptures": { "0": { "name": "punctuation.section.braces.end.sigil" } },
+      "patterns": [{ "include": "#comment" }, { "include": "#field-label" }, { "include": "#type-expression" }]
+    },
+    "decision-declaration": {
+      "comment": "decision approve { reason: release_manager | payments_sre  bake: duration = 1h }",
+      "begin": "\\b(decision)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.sigil" },
+        "2": { "name": "entity.name.function.sigil" },
+        "3": { "name": "punctuation.section.braces.begin.sigil" }
+      },
+      "end": "\\}",
+      "endCaptures": { "0": { "name": "punctuation.section.braces.end.sigil" } },
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#reason-field" },
+        { "include": "#payload-field" },
+        { "include": "#payload-default" }
+      ]
+    },
+    "reason-field": {
+      "comment": "reason is a keyword only as a decision's first field. Its list may continue on lines that start with |.",
+      "begin": "\\b(reason)\\s*(:)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.sigil" },
+        "2": { "name": "punctuation.separator.colon.sigil" }
+      },
+      "end": "(?=\\})|^(?!\\s*\\|)",
+      "patterns": [{ "include": "#comment" }, { "include": "#alternatives" }]
+    },
+    "payload-field": {
+      "begin": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+      "beginCaptures": {
+        "1": { "name": "variable.other.property.sigil" },
+        "2": { "name": "punctuation.separator.colon.sigil" }
+      },
+      "end": "(?=$|\\}|=|//)",
+      "patterns": [{ "include": "#type-expression" }]
+    },
+    "payload-default": {
+      "begin": "=",
+      "beginCaptures": { "0": { "name": "keyword.operator.assignment.sigil" } },
+      "end": "$|(?=\\})",
+      "patterns": [{ "include": "#expression" }]
+    },
+    "fn-declaration": {
+      "comment": "fn split(string, string) -> list<string>",
+      "begin": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.sigil" },
+        "2": { "name": "entity.name.function.sigil" }
+      },
+      "end": "$|(?=//)",
+      "patterns": [
+        { "name": "keyword.operator.arrow.sigil", "match": "->" },
+        { "name": "punctuation.section.parens.sigil", "match": "[()]" },
+        { "include": "#type-expression" }
+      ]
+    },
+    "typed-declaration": {
+      "comment": "input release: Release, param tiers: list<Tier>. The type ends at a default, a bound or the line's end.",
+      "begin": "\\b(input|param)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.sigil" },
+        "2": { "name": "variable.other.definition.sigil" },
+        "3": { "name": "punctuation.separator.colon.sigil" }
+      },
+      "end": "(?==(?!=)|,|$|//)",
+      "patterns": [{ "include": "#type-expression" }]
+    },
+    "declaration": {
+      "patterns": [
+        {
+          "match": "\\b(let)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.sigil" },
+            "2": { "name": "variable.other.definition.sigil" }
+          }
+        },
+        {
+          "match": "\\b(input|param)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.sigil" },
+            "2": { "name": "variable.other.definition.sigil" }
+          }
+        },
+        {
+          "match": "\\b(type|enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.sigil" },
+            "2": { "name": "entity.name.type.sigil" }
+          }
+        },
+        {
+          "match": "\\b(decision)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.sigil" },
+            "2": { "name": "entity.name.function.sigil" }
+          }
+        }
+      ]
+    },
+    "collect": {
+      "match": "\\b(collect)\\s+(one|all)\\b",
+      "captures": {
+        "1": { "name": "keyword.other.sigil" },
+        "2": { "name": "keyword.other.sigil" }
+      }
+    },
+    "exclusive-statement": {
+      "comment": "exclusive approve, review in a kind file, which isn't the exclusive in operator.",
+      "match": "^\\s*(exclusive)\\b(?!\\s+in\\b)",
+      "captures": { "1": { "name": "keyword.other.sigil" } }
+    },
+    "param-bound": {
+      "comment": "param min_soak: duration = 2h, min: 1h, max: 1d. min and max aren't keywords anywhere else.",
+      "match": "(,)\\s*\\b(min|max)\\s*(:)",
+      "captures": {
+        "1": { "name": "punctuation.separator.comma.sigil" },
+        "2": { "name": "keyword.other.sigil" },
+        "3": { "name": "punctuation.separator.colon.sigil" }
+      }
+    },
+    "field-label": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+      "captures": {
+        "1": { "name": "variable.other.property.sigil" },
+        "2": { "name": "punctuation.separator.colon.sigil" }
+      }
+    },
+    "type-expression": {
+      "comment": "bool, ?string, list<Tier>, map<string, list<string>>, a struct type or an enum.",
+      "patterns": [
+        { "include": "#comment" },
+        { "name": "keyword.operator.optional.sigil", "match": "\\?" },
+        { "name": "punctuation.definition.typeparameters.sigil", "match": "[<>]" },
+        { "name": "punctuation.separator.comma.sigil", "match": "," },
+        { "include": "#builtin-type" },
+        { "name": "entity.name.type.sigil", "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b" }
+      ]
+    },
+    "expression": {
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#string" },
+        { "include": "#raw-string" },
+        { "include": "#number" },
+        { "include": "#member" },
+        { "include": "#keyword" },
+        { "include": "#word-operator" },
+        { "include": "#constant" },
+        { "include": "#builtin-type" },
+        { "include": "#call" },
+        { "include": "#group" },
+        { "include": "#operator" }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.sigil",
+      "begin": "\"",
+      "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.sigil" } },
+      "end": "\"|$",
+      "endCaptures": { "0": { "name": "punctuation.definition.string.end.sigil" } },
+      "patterns": [
+        {
+          "comment": "Go's escapes for interpreted string literals; \\' isn't one of them.",
+          "name": "constant.character.escape.sigil",
+          "match": "\\\\(?:[abfnrtv\\\\\"]|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|[0-7]{3})"
+        },
+        { "name": "invalid.illegal.escape.sigil", "match": "\\\\." }
+      ]
+    },
+    "raw-string": {
+      "name": "string.quoted.raw.sigil",
+      "begin": "`",
+      "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.sigil" } },
+      "end": "`",
+      "endCaptures": { "0": { "name": "punctuation.definition.string.end.sigil" } }
+    },
+    "number": {
+      "patterns": [
+        {
+          "comment": "Units at most once each, largest first: 2d, 1h30m, 500ms.",
+          "name": "constant.numeric.duration.sigil",
+          "match": "\\b(?=\\d)(?:\\d+d)?(?:\\d+h)?(?:\\d+m(?!s))?(?:\\d+s)?(?:\\d+ms)?(?<=[dhms])\\b"
+        },
+        {
+          "name": "constant.numeric.float.sigil",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.sigil",
+          "match": "\\b\\d+\\b(?!\\.\\d)"
+        },
+        {
+          "comment": "Everything else that starts with a digit is a lexical error: 0x10, 1e3, 1_000, 1.5h, 30m1h, 5w.",
+          "name": "invalid.illegal.numeric.sigil",
+          "match": "\\b\\d[A-Za-z0-9_]*(?:\\.\\d[A-Za-z0-9_]*)?"
+        }
+      ]
+    },
+    "member": {
+      "comment": "The name after . or ?. is a field, an enum value or a reason, keyword or not: service.type, Tier.critical, approve.release_manager.",
+      "match": "(\\?\\.|\\.)\\s*([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "punctuation.accessor.sigil" },
+        "2": { "name": "variable.other.property.sigil" }
+      }
+    },
+    "keyword": {
+      "patterns": [
+        {
+          "name": "keyword.control.sigil",
+          "match": "\\b(when|assert)\\b"
+        },
+        {
+          "name": "keyword.other.sigil",
+          "match": "\\b(policy|module|use|as|param|let|pub|kind|version|enum|type|input|fn|decision|precedence|collect|default|conflict)\\b"
+        }
+      ]
+    },
+    "word-operator": {
+      "name": "keyword.operator.word.sigil",
+      "match": "\\b(and|or|xor|not|in|all|any|filter|one|exclusive|has|like|matches|present)\\b"
+    },
+    "constant": {
+      "patterns": [
+        { "name": "constant.language.boolean.sigil", "match": "\\b(true|false)\\b" },
+        { "name": "constant.language.sigil", "match": "\\boutcome\\b" }
+      ]
+    },
+    "builtin-type": {
+      "name": "support.type.sigil",
+      "match": "\\b(bool|int|float|string|duration|timestamp|list|map)\\b"
+    },
+    "call": {
+      "comment": "A decision constructor, a policy invocation or a host function call. Inside, Name: starts a named argument.",
+      "begin": "\\b(?!(?:policy|module|use|as|param|let|pub|when|assert|kind|version|enum|type|input|fn|decision|precedence|collect|default|conflict|and|or|xor|not|in|all|any|filter|one|exclusive|has|like|matches|present|true|false|outcome)\\b)([A-Za-z_][A-Za-z0-9_]*)\\s*(\\()",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.sigil" },
+        "2": { "name": "punctuation.section.parens.begin.sigil" }
+      },
+      "end": "\\)",
+      "endCaptures": { "0": { "name": "punctuation.section.parens.end.sigil" } },
+      "patterns": [
+        {
+          "match": "(?:(?<=[(,])|^)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+          "captures": {
+            "1": { "name": "variable.parameter.sigil" },
+            "2": { "name": "punctuation.separator.colon.sigil" }
+          }
+        },
+        { "include": "#expression" }
+      ]
+    },
+    "group": {
+      "begin": "\\(",
+      "beginCaptures": { "0": { "name": "punctuation.section.parens.begin.sigil" } },
+      "end": "\\)",
+      "endCaptures": { "0": { "name": "punctuation.section.parens.end.sigil" } },
+      "patterns": [{ "include": "#expression" }]
+    },
+    "operator": {
+      "patterns": [
+        { "name": "keyword.operator.sigil", "match": "\\?\\?|==|!=|<=|>=|->|[<>+\\-]" },
+        { "name": "keyword.operator.optional.sigil", "match": "\\?" },
+        { "name": "keyword.operator.assignment.sigil", "match": "=" },
+        { "name": "punctuation.separator.pipe.sigil", "match": "\\|" },
+        { "name": "punctuation.separator.version.sigil", "match": "@" },
+        { "name": "punctuation.separator.comma.sigil", "match": "," },
+        { "name": "punctuation.separator.colon.sigil", "match": ":" }
+      ]
+    }
+  }
+}

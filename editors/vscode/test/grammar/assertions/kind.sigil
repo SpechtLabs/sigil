@@ -1,0 +1,101 @@
+// SYNTAX TEST "source.sigil" "kind files"
+
+kind DeployApproval version 3, accepts: 2
+// <---- keyword.other.sigil
+//   ^^^^^^^^^^^^^^ entity.name.type.sigil
+//                  ^^^^^^^ keyword.other.sigil
+//                          ^ constant.numeric.sigil
+//                           ^ punctuation.separator.comma.sigil
+//                             ^^^^^^^ keyword.other.sigil
+//                                      ^ constant.numeric.sigil
+
+enum Tier: critical | standard
+// <---- keyword.other.sigil
+//   ^^^^ entity.name.type.sigil
+//         ^^^^^^^^ constant.other.enum.sigil
+//                  ^ punctuation.separator.pipe.sigil
+//                    ^^^^^^^^ constant.other.enum.sigil
+  | internal
+//^ punctuation.separator.pipe.sigil
+//  ^^^^^^^^ constant.other.enum.sigil
+
+type Resource {
+// <---- keyword.other.sigil
+//   ^^^^^^^^ entity.name.type.sigil
+  kind: string
+//^^^^ variable.other.property.sigil
+//^^^^ - keyword.other.sigil
+//      ^^^^^^ support.type.sigil
+  policy: ?Tier
+//^^^^^^ variable.other.property.sigil
+//        ^ keyword.operator.optional.sigil
+//         ^^^^ entity.name.type.sigil
+  labels: map<string, list<string>>
+//        ^^^ support.type.sigil
+//           ^ punctuation.definition.typeparameters.sigil
+//                    ^^^^ support.type.sigil
+//                                ^^ punctuation.definition.typeparameters.sigil
+}
+
+input resource: Resource
+// <----- keyword.other.sigil
+//    ^^^^^^^^ variable.other.definition.sigil
+//              ^^^^^^^^ entity.name.type.sigil
+
+fn split(string, string) -> list<string>
+// <-- keyword.other.sigil
+// ^^^^^ entity.name.function.sigil
+//       ^^^^^^ support.type.sigil
+//                       ^^ keyword.operator.arrow.sigil
+//                          ^^^^ support.type.sigil
+
+decision review {
+// <-------- keyword.other.sigil
+//       ^^^^^^ entity.name.function.sigil
+  reason: service_owner | cluster_access
+//^^^^^^ keyword.other.sigil
+//        ^^^^^^^^^^^^^ constant.other.enum.sigil
+//                      ^ punctuation.separator.pipe.sigil
+    | security
+//  ^ punctuation.separator.pipe.sigil
+//    ^^^^^^^^ constant.other.enum.sigil
+  approvers: list<string>
+//^^^^^^^^^ variable.other.property.sigil
+//           ^^^^ support.type.sigil
+  bake: duration = 1h30m
+//^^^^ variable.other.property.sigil
+//      ^^^^^^^^ support.type.sigil
+//               ^ keyword.operator.assignment.sigil
+//                 ^^^^^ constant.numeric.duration.sigil
+  type: Tier = critical
+//^^^^ variable.other.property.sigil
+//      ^^^^ entity.name.type.sigil
+//             ^^^^^^^^ - entity.name.type.sigil
+}
+
+decision deny { reason: no_rule_matched }
+//                      ^^^^^^^^^^^^^^^ constant.other.enum.sigil
+//                                      ^ punctuation.section.braces.end.sigil
+
+collect one
+// <------- keyword.other.sigil
+//      ^^^ keyword.other.sigil
+precedence deny > review
+// <---------- keyword.other.sigil
+//              ^ keyword.operator.sigil
+precedence deny: no_rule_matched > soak_too_short
+// <---------- keyword.other.sigil
+exclusive approve.release_manager, review
+// <--------- keyword.other.sigil
+//               ^ punctuation.accessor.sigil
+//                ^^^^^^^^^^^^^^^ variable.other.property.sigil
+
+default deny(reason: no_rule_matched)
+// <------- keyword.other.sigil
+//      ^^^^ entity.name.function.sigil
+//           ^^^^^^ variable.parameter.sigil
+conflict review(reason: cluster_access, approvers: ["sre-leads"])
+// <-------- keyword.other.sigil
+//       ^^^^^^ entity.name.function.sigil
+//                                      ^^^^^^^^^ variable.parameter.sigil
+//                                                  ^^^^^^^^^^^ string.quoted.double.sigil

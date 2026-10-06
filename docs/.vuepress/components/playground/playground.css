@@ -595,6 +595,9 @@
   --sg-operator: #ab5959;
   --sg-builtin: #998418;
   --sg-number: #2f798a;
+  --sg-constant: #a65e2b;
+  --sg-invalid: #b31d28;
+  --sg-quote: #b5695977;
 }
 
 .pg .pg-editor {
@@ -617,6 +620,9 @@
   --sg-operator: #cb7676;
   --sg-builtin: #b8a965;
   --sg-number: #4c9a91;
+  --sg-constant: #c99076;
+  --sg-invalid: #fdaeb7;
+  --sg-quote: #c98a7d77;
 }
 
 /* Drawn over the editor, whose sticky gutter would cover an outline. */
@@ -797,6 +803,15 @@
 }
 .pg .sg-number {
   color: var(--sg-number);
+}
+.pg .sg-constant {
+  color: var(--sg-constant);
+}
+.pg .sg-invalid {
+  color: var(--sg-invalid);
+}
+.pg .sg-quote {
+  color: var(--sg-quote);
 }
 
 /* Problems from check. */

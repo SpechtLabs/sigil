@@ -1,0 +1,14 @@
+# The VSIX holds only what VS Code loads: the bundle (its dependencies are
+# inlined, hence --no-dependencies), the declarative parts, the Open VSX
+# page and, in a platform VSIX, the release binary under bin/.
+**
+!dist/extension.js
+!language-configuration.json
+!syntaxes/*.tmLanguage.json
+!snippets/*.code-snippets
+!images/icon.png
+!bin/sigil
+!bin/sigil.exe
+!README.md
+!CHANGELOG.md
+!LICENSE

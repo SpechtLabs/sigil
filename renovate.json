@@ -302,6 +302,17 @@
         "typescript"
       ],
       "allowedVersions": "<7"
+    },
+    {
+      "description": "@types/vscode and @types/node in editors/vscode describe the oldest VS Code the extension supports (engines.vscode, which the engines rule leaves alone) and the Node inside it, not the newest; vsce refuses an @types/vscode newer than engines.vscode. Bump all three by hand when support for old VS Code versions is dropped.",
+      "matchFileNames": [
+        "editors/vscode/package.json"
+      ],
+      "matchPackageNames": [
+        "@types/vscode",
+        "@types/node"
+      ],
+      "enabled": false
     }
   ]
 }
