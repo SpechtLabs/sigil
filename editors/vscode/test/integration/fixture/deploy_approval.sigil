@@ -1,0 +1,36 @@
+kind DeployApproval version 1
+
+enum Tier: critical | standard
+
+type Service {
+  name: string
+  tier: Tier
+  owners: list<string>
+}
+
+type Actor {
+  name: string
+  teams: list<string>
+}
+
+input service: Service
+input actor: Actor
+input environment: string
+
+decision deny {
+  reason: not_owner | no_rule_matched
+}
+
+decision review {
+  reason: critical_service
+  approvers: list<string>
+}
+
+decision approve {
+  reason: service_owner
+}
+
+collect one
+precedence deny > review > approve
+
+default deny(reason: no_rule_matched)

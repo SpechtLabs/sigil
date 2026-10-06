@@ -1,0 +1,101 @@
+>policy grants: Grants@1
+#^^^^^^ source.sigil keyword.other.sigil
+#      ^ source.sigil
+#       ^^^^^^ source.sigil entity.name.namespace.sigil
+#             ^ source.sigil punctuation.separator.colon.sigil
+#              ^ source.sigil
+#               ^^^^^^ source.sigil entity.name.type.sigil
+#                     ^ source.sigil punctuation.separator.version.sigil
+#                      ^ source.sigil constant.numeric.sigil
+>
+>when "eng" in teams {
+#^^^^ source.sigil keyword.control.sigil
+#    ^ source.sigil
+#     ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#      ^^^ source.sigil string.quoted.double.sigil
+#         ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#          ^ source.sigil
+#           ^^ source.sigil keyword.operator.word.sigil
+#             ^^^^^^^^^ source.sigil
+>  read(reason: member, scope: "eng")
+#^^ source.sigil
+#  ^^^^ source.sigil entity.name.function.sigil
+#      ^ source.sigil punctuation.section.parens.begin.sigil
+#       ^^^^^^ source.sigil variable.parameter.sigil
+#             ^ source.sigil punctuation.separator.colon.sigil
+#              ^^^^^^^ source.sigil
+#                     ^ source.sigil punctuation.separator.comma.sigil
+#                      ^ source.sigil
+#                       ^^^^^ source.sigil variable.parameter.sigil
+#                            ^ source.sigil punctuation.separator.colon.sigil
+#                             ^ source.sigil
+#                              ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                               ^^^ source.sigil string.quoted.double.sigil
+#                                  ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                                   ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>
+>when "platform" in teams {
+#^^^^ source.sigil keyword.control.sigil
+#    ^ source.sigil
+#     ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#      ^^^^^^^^ source.sigil string.quoted.double.sigil
+#              ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#               ^ source.sigil
+#                ^^ source.sigil keyword.operator.word.sigil
+#                  ^^^^^^^^^ source.sigil
+>  write(reason: owner)
+#^^ source.sigil
+#  ^^^^^ source.sigil entity.name.function.sigil
+#       ^ source.sigil punctuation.section.parens.begin.sigil
+#        ^^^^^^ source.sigil variable.parameter.sigil
+#              ^ source.sigil punctuation.separator.colon.sigil
+#               ^^^^^^ source.sigil
+#                     ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>
+>when "oncall" in teams {
+#^^^^ source.sigil keyword.control.sigil
+#    ^ source.sigil
+#     ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#      ^^^^^^ source.sigil string.quoted.double.sigil
+#            ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#             ^ source.sigil
+#              ^^ source.sigil keyword.operator.word.sigil
+#                ^^^^^^^^^ source.sigil
+>  write(reason: oncall)
+#^^ source.sigil
+#  ^^^^^ source.sigil entity.name.function.sigil
+#       ^ source.sigil punctuation.section.parens.begin.sigil
+#        ^^^^^^ source.sigil variable.parameter.sigil
+#              ^ source.sigil punctuation.separator.colon.sigil
+#               ^^^^^^^ source.sigil
+#                      ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>
+>// An outcome assert: whoever may write may read.
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>assert("write_needs_read", write not in outcome or read in outcome)
+#^^^^^^ source.sigil keyword.control.sigil
+#      ^ source.sigil punctuation.section.parens.begin.sigil
+#       ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#        ^^^^^^^^^^^^^^^^ source.sigil string.quoted.double.sigil
+#                        ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                         ^ source.sigil punctuation.separator.comma.sigil
+#                          ^^^^^^^ source.sigil
+#                                 ^^^ source.sigil keyword.operator.word.sigil
+#                                    ^ source.sigil
+#                                     ^^ source.sigil keyword.operator.word.sigil
+#                                       ^ source.sigil
+#                                        ^^^^^^^ source.sigil constant.language.sigil
+#                                               ^ source.sigil
+#                                                ^^ source.sigil keyword.operator.word.sigil
+#                                                  ^^^^^^ source.sigil
+#                                                        ^^ source.sigil keyword.operator.word.sigil
+#                                                          ^ source.sigil
+#                                                           ^^^^^^^ source.sigil constant.language.sigil
+#                                                                  ^ source.sigil punctuation.section.parens.end.sigil
+>

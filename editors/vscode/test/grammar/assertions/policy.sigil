@@ -1,0 +1,152 @@
+// SYNTAX TEST "source.sigil" "policy and module files"
+
+policy deploy.production: DeployApproval@1
+// <------ keyword.other.sigil
+//     ^^^^^^^^^^^^^^^^^ entity.name.namespace.sigil
+//                      ^ punctuation.separator.colon.sigil
+//                        ^^^^^^^^^^^^^^ entity.name.type.sigil
+//                                      ^ punctuation.separator.version.sigil
+//                                       ^ constant.numeric.sigil
+
+use deploy.common.{cleared, owns_service as owns}
+// <--- keyword.other.sigil
+//  ^^^^^^^^^^^^^ entity.name.namespace.sigil
+//                ^ punctuation.section.braces.begin.sigil
+//                                       ^^ keyword.other.sigil
+//                                              ^ punctuation.section.braces.end.sigil
+use deploy.guardrails as rails
+//  ^^^^^^^^^^^^^^^^^ entity.name.namespace.sigil
+//                    ^^ keyword.other.sigil
+//              ^^^^^ entity.name.namespace.sigil
+
+param approvers: list<string>
+// <----- keyword.other.sigil
+//    ^^^^^^^^^ variable.other.definition.sigil
+//               ^^^^ support.type.sigil
+//                    ^^^^^^ support.type.sigil
+param min_soak: duration = 2h, min: 1h, max: 1d
+//              ^^^^^^^^ support.type.sigil
+//                       ^ keyword.operator.assignment.sigil
+//                         ^^ constant.numeric.duration.sigil
+//                             ^^^ keyword.other.sigil
+//                                  ^^ constant.numeric.duration.sigil
+//                                      ^^^ keyword.other.sigil
+//                                           ^^ constant.numeric.duration.sigil
+param tiers: list<Tier> = [standard, internal]
+//                ^^^^ entity.name.type.sigil
+//                         ^^^^^^^^ - entity.name.type.sigil
+
+pub let eligible = "deployer" in actor.roles and environment == "production"
+// <--- keyword.other.sigil
+//  ^^^ keyword.other.sigil
+//      ^^^^^^^^ variable.other.definition.sigil
+//                 ^^^^^^^^^^ string.quoted.double.sigil
+//                            ^^ keyword.operator.word.sigil
+//                                    ^ punctuation.accessor.sigil
+//                                     ^^^^^ variable.other.property.sigil
+//                                           ^^^ keyword.operator.word.sigil
+//                                                           ^^ keyword.operator.sigil
+
+when service.type == "web" and resource.kind != "" {
+// <---- keyword.control.sigil
+//           ^^^^ variable.other.property.sigil
+//           ^^^^ - keyword.other.sigil
+//                                      ^^^^ variable.other.property.sigil
+//                                      ^^^^ - keyword.other.sigil
+//                                           ^^ keyword.operator.sigil
+  approve(reason: release_manager, bake: 15m)
+//^^^^^^^ entity.name.function.sigil
+//        ^^^^^^ variable.parameter.sigil
+//              ^ punctuation.separator.colon.sigil
+//                ^^^^^^^^^^^^^^^ - variable.parameter.sigil
+//                                 ^^^^ variable.parameter.sigil
+//                                       ^^^ constant.numeric.duration.sigil
+}
+
+production(
+  approvers: ["payments-leads", "security-leads"],
+//^^^^^^^^^ variable.parameter.sigil
+  tiers: [standard],
+//^^^^^ variable.parameter.sigil
+)
+
+let tight = not (any r in actor.roles: r like "sre-*") xor present service.owner
+//          ^^^ keyword.operator.word.sigil
+//               ^^^ keyword.operator.word.sigil
+//                              ^^^^^ variable.other.property.sigil
+//                              ^^^^^ - variable.parameter.sigil
+//                                       ^^^^ keyword.operator.word.sigil
+//                                                     ^^^ keyword.operator.word.sigil
+//                                                         ^^^^^^^ keyword.operator.word.sigil
+let kept = filter g in grants: g.ttl > 1h
+//         ^^^^^^ keyword.operator.word.sigil
+//                     ^^^^^^ - variable.parameter.sigil
+//                                   ^ keyword.operator.sigil
+let owner = service?.owner ?? "nobody"
+//                 ^^ punctuation.accessor.sigil
+//                   ^^^^^ variable.other.property.sigil
+//                         ^^ keyword.operator.sigil
+let re = service.labels["team"] matches `^team-[a-z]+$`
+//                              ^^^^^^^ keyword.operator.word.sigil
+//                                      ^^^^^^^^^^^^^^^ string.quoted.raw.sigil
+let picked = split(service.labels["regions"], ",") all in actor.regions
+//           ^^^^^ entity.name.function.sigil
+//                                                 ^^^ keyword.operator.word.sigil
+
+assert("no_root", all g in grants: g != "root")
+// <------ keyword.control.sigil
+//     ^^^^^^^^^ string.quoted.double.sigil
+//                ^^^ keyword.operator.word.sigil
+//                         ^^^^^^ - variable.parameter.sigil
+assert("write_needs_read", write not in outcome or read in outcome)
+//                                      ^^^^^^^ constant.language.sigil
+
+let flags = [true, false, 3, 0.5, 30m, 500ms, 2d, 1h30m, 007]
+//           ^^^^ constant.language.boolean.sigil
+//                 ^^^^^ constant.language.boolean.sigil
+//                        ^ constant.numeric.integer.sigil
+//                           ^^^ constant.numeric.float.sigil
+//                                ^^^ constant.numeric.duration.sigil
+//                                     ^^^^^ constant.numeric.duration.sigil
+//                                            ^^ constant.numeric.duration.sigil
+//                                                ^^^^^ constant.numeric.duration.sigil
+//                                                       ^^^ constant.numeric.integer.sigil
+let bad = [0x10, 1e3, 1_000, 1.5h, 30m1h, 1h1h, 1h30, 5w, 1.5e3]
+//         ^^^^ invalid.illegal.numeric.sigil
+//               ^^^ invalid.illegal.numeric.sigil
+//                    ^^^^^ invalid.illegal.numeric.sigil
+//                           ^^^^ invalid.illegal.numeric.sigil
+//                                 ^^^^^ invalid.illegal.numeric.sigil
+//                                        ^^^^ invalid.illegal.numeric.sigil
+//                                              ^^^^ invalid.illegal.numeric.sigil
+//                                                    ^^ invalid.illegal.numeric.sigil
+//                                                        ^^^^^ invalid.illegal.numeric.sigil
+let s = "tab\there \u00e9 \x41 \101 \' end" // a comment, not "a string"
+//          ^^ constant.character.escape.sigil
+//                 ^^^^^^ constant.character.escape.sigil
+//                        ^^^^ constant.character.escape.sigil
+//                             ^^^^ constant.character.escape.sigil
+//                                  ^^ invalid.illegal.escape.sigil
+//                                          ^^^^^^^^^^^^ comment.line.double-slash.sigil
+//                                                            ^^^^^^^^^^ comment.line.double-slash.sigil
+let url = "https://example.com" // the // inside the string isn't a comment
+//               ^^ string.quoted.double.sigil
+//               ^^ - comment.line.double-slash.sigil
+//                              ^^ comment.line.double-slash.sigil
+let open = "an unterminated string ends with its line
+//         ^^^ string.quoted.double.sigil
+let after = 1
+// <--- keyword.other.sigil
+//          ^ constant.numeric.integer.sigil
+let multi = `line one
+//          ^^^^^^^^^ string.quoted.raw.sigil
+line two`
+// <--------- string.quoted.raw.sigil
+
+---
+// <--- punctuation.separator.document.sigil
+
+module deploy.common: DeployApproval@1
+// <------ keyword.other.sigil
+//     ^^^^^^^^^^^^^ entity.name.namespace.sigil
+//                    ^^^^^^^^^^^^^^ entity.name.type.sigil

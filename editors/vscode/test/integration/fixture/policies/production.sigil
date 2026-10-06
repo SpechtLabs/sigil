@@ -1,0 +1,19 @@
+policy deploy.production: DeployApproval@1
+
+use deploy.common.{owns_service}
+
+param approvers: list<string> = ["release-managers"]
+
+when environment == "production" and owns_service {
+  when service.tier == critical {
+    review(reason: critical_service, approvers: approvers)
+  }
+
+  when service.tier == standard {
+    approve(reason: service_owner)
+  }
+}
+
+when not owns_service {
+  deny(reason: not_owner)
+}

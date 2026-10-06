@@ -1,0 +1,197 @@
+{
+  "name": "sigil",
+  "displayName": "Sigil",
+  "description": "The Sigil policy language: syntax highlighting, diagnostics, completion, hover, go to definition and formatting through sigil lsp",
+  "version": "0.7.3",
+  "publisher": "spechtlabs",
+  "author": "Cedric Specht <cedric@specht-labs.de>",
+  "license": "Apache-2.0",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SpechtLabs/sigil.git",
+    "directory": "editors/vscode"
+  },
+  "homepage": "https://sigil.specht-labs.de/guides/editors/vscode/",
+  "bugs": {
+    "url": "https://github.com/SpechtLabs/sigil/issues"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters",
+    "Snippets"
+  ],
+  "keywords": [
+    "sigil",
+    "policy",
+    "policy-language",
+    "lsp"
+  ],
+  "engines": {
+    "vscode": "^1.91.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/*.sigil"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In an untrusted workspace, the workspace's sigil.path setting is ignored, so a folder you open can't choose which program runs.",
+      "restrictedConfigurations": [
+        "sigil.path"
+      ]
+    },
+    "virtualWorkspaces": {
+      "supported": "limited",
+      "description": "Highlighting and snippets work everywhere; the language server needs files on disk."
+    }
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "sigil",
+        "aliases": [
+          "Sigil",
+          "sigil"
+        ],
+        "extensions": [
+          ".sigil"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/icon.png",
+          "dark": "./images/icon.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sigil",
+        "scopeName": "source.sigil",
+        "path": "./syntaxes/sigil.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.sigil.codeblock",
+        "path": "./syntaxes/sigil.markdown.tmLanguage.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.sigil": "sigil"
+        }
+      }
+    ],
+    "snippets": [
+      {
+        "language": "sigil",
+        "path": "./snippets/sigil.code-snippets"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": [
+          "sigil.json",
+          ".sigil.json"
+        ],
+        "url": "https://sigil.specht-labs.de/schema/config.json"
+      }
+    ],
+    "yamlValidation": [
+      {
+        "fileMatch": [
+          "sigil.yaml",
+          ".sigil.yaml"
+        ],
+        "url": "https://sigil.specht-labs.de/schema/config.json"
+      }
+    ],
+    "tomlValidation": [
+      {
+        "fileMatch": "^(.*/)?\\.?sigil\\.toml$",
+        "url": "https://sigil.specht-labs.de/schema/config.json"
+      }
+    ],
+    "configuration": {
+      "title": "Sigil",
+      "properties": {
+        "sigil.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "The `sigil` binary to run the language server with: an absolute path, a path starting with `~/`, a path relative to the first workspace folder, or a command name looked up on `PATH`. Leave it empty to use the binary bundled with the extension, or `sigil` on `PATH` when there's none."
+        },
+        "sigil.server.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Run `sigil lsp` for diagnostics, completion, hover, go to definition and formatting. Highlighting and snippets work without it."
+        },
+        "sigil.trace.server": {
+          "type": "string",
+          "enum": [
+            "messages",
+            "verbose"
+          ],
+          "enumDescriptions": [
+            "Log each message's method and timing",
+            "Log each message with its parameters and result"
+          ],
+          "default": "messages",
+          "markdownDescription": "How much of each message between VS Code and `sigil lsp` the **Sigil Language Server Trace** output channel logs. The channel only logs messages while its log level is **Trace**: open it in the Output panel and pick Trace from the gear menu."
+        },
+        "sigil.checkForUpdates": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "markdownDescription": "Once a day, ask GitHub for the latest Sigil release, and offer to download it when it's newer than this extension. Only VS Code asks: the extension isn't in the Visual Studio Marketplace, so VS Code never updates it. VSCodium, Cursor and the other editors that install it from Open VSX update it themselves."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[sigil]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true
+      }
+    },
+    "commands": [
+      {
+        "command": "sigil.restartServer",
+        "title": "Restart Language Server",
+        "category": "Sigil"
+      },
+      {
+        "command": "sigil.showOutput",
+        "title": "Show Language Server Output",
+        "category": "Sigil"
+      },
+      {
+        "command": "sigil.showVersion",
+        "title": "Show sigil Version",
+        "category": "Sigil"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "bun build src/extension.ts --outdir dist --target node --format cjs --external vscode --minify --sourcemap=external",
+    "build:integration": "bun build test/integration/suite.ts test/integration/fake-server.ts --outdir dist/test --target node --format cjs --external vscode",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test",
+    "test:grammar": "vscode-tmgrammar-test 'test/grammar/assertions/*.sigil' && vscode-tmgrammar-snap 'test/grammar/snapshots/*.sigil' 'test/grammar/unformatted/*.sigil'",
+    "test:grammar:update": "vscode-tmgrammar-snap --updateSnapshot 'test/grammar/snapshots/*.sigil' 'test/grammar/unformatted/*.sigil'",
+    "test:integration": "bun run build:integration && node test/integration/run.mjs"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "@types/node": "20.19.43",
+    "@types/vscode": "1.91.0",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.0.0",
+    "ovsx": "1.2.0",
+    "typescript": "7.0.2",
+    "vscode-languageclient": "10.1.2",
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.3.2",
+    "vscode-tmgrammar-test": "0.1.3"
+  }
+}

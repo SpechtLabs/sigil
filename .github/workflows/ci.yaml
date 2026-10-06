@@ -51,3 +51,5 @@ jobs:
   editors:
     name: Editors
     uses: ./.github/workflows/editors.yaml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

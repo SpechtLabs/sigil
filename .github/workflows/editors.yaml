@@ -1,16 +1,20 @@
 name: Editors
 
-# Editor support: the tree-sitter grammar under editors/tree-sitter-sigil.
-# Nothing here ships with a release, so only pull requests run this (through
-# ci.yaml), besides runs from the Actions tab.
+# Editor support: the tree-sitter grammar under editors/tree-sitter-sigil and
+# the VS Code extension under editors/vscode. ci.yaml calls it for pull
+# requests, release.yaml gates the extension's publish job, and only that
+# job, on it, and it runs on its own from the Actions tab.
 on:
   workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# See go.yaml for both.
+# See go.yaml for both. Each job installs only the tools it runs.
 env:
   MISE_TASK_RUN_AUTO_INSTALL: "false"
   # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
@@ -48,3 +52,116 @@ jobs:
       # Sigil source the Go parser accepts parses to the same tree.
       - name: Test the grammar
         run: mise run tree-sitter-test
+
+  # The VS Code extension (editors/vscode): type-check, lint, unit and grammar
+  # tests, and packaging. The snippet tests check the snippets with a sigil
+  # built from this checkout, so the job needs go as well as bun, and biome
+  # lints.
+  vscode:
+    name: VS Code extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: go bun node biome
+
+      # Restored only, from go.yaml's test job, as in the tree-sitter job.
+      - name: Restore Go modules and build output
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-test-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-test-${{ runner.os }}-
+
+      - name: Type-check and lint
+        run: mise run vscode-lint
+
+      - name: Bundle the extension
+        run: mise run vscode-build
+
+      # bunfig.toml has bun test write coverage/lcov.info, with paths relative
+      # to the extension; Codecov matches them against the repository.
+      - name: Unit tests
+        working-directory: editors/vscode
+        run: bun test
+
+      - name: Point the coverage report at the repository root
+        run: perl -pi -e 's{^SF:}{SF:editors/vscode/}' editors/vscode/coverage/lcov.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: editors/vscode/coverage/lcov.info
+          disable_search: true
+          flags: vscode
+          fail_ci_if_error: false
+
+      - name: Grammar assertions and snapshots
+        working-directory: editors/vscode
+        run: bun run test:grammar
+
+      # The universal VSIX, and a linux-x64 one with this checkout's sigil
+      # inside, which a reviewer can download from the run and install.
+      - name: Package the extension
+        run: |
+          set -euo pipefail
+          mise run vscode-package
+          (cd editors/vscode && bun scripts/package.ts --universal)
+
+      - name: Keep the VSIX files
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vscode-extension
+          path: editors/vscode/*.vsix
+          if-no-files-found: error
+          retention-days: 7
+
+  # The extension in a real VS Code, against a fake language server: the
+  # oldest version engines.vscode allows, and the current stable one.
+  vscode-integration:
+    name: VS Code extension in VS Code ${{ matrix.vscode }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        vscode:
+          - 1.91.0
+          - stable
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: bun node
+
+      # A pinned version never changes, so its download is cached; stable
+      # moves every week, and is downloaded each time.
+      - name: Cache the VS Code download
+        if: matrix.vscode != 'stable'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: editors/vscode/.vscode-test
+          key: vscode-test-${{ runner.os }}-${{ runner.arch }}-${{ matrix.vscode }}
+
+      - name: Bundle the extension
+        run: mise run vscode-build
+
+      # VS Code needs a display; xvfb-run gives it a virtual one. The
+      # required flag turns a skip (no download, no display) into a failure.
+      - name: Run the integration tests
+        working-directory: editors/vscode
+        env:
+          SIGIL_VSCODE_TEST_REQUIRED: "1"
+          VSCODE_TEST_VERSION: ${{ matrix.vscode }}
+        run: xvfb-run -a bun run test:integration

@@ -1,0 +1,134 @@
+>policy payments.production: DeployApproval@1
+#^^^^^^ source.sigil keyword.other.sigil
+#      ^ source.sigil
+#       ^^^^^^^^^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+#                          ^ source.sigil punctuation.separator.colon.sigil
+#                           ^ source.sigil
+#                            ^^^^^^^^^^^^^^ source.sigil entity.name.type.sigil
+#                                          ^ source.sigil punctuation.separator.version.sigil
+#                                           ^ source.sigil constant.numeric.sigil
+>
+>use deploy.guardrails
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^^^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+>use deploy.production
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^^^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+>use deploy.common.{cleared}
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+#                 ^ source.sigil punctuation.accessor.sigil
+#                  ^ source.sigil punctuation.section.braces.begin.sigil
+#                   ^^^^^^^ source.sigil
+#                          ^ source.sigil punctuation.section.braces.end.sigil
+>
+>guardrails(min_soak: 4h)
+#^^^^^^^^^^ source.sigil entity.name.function.sigil
+#          ^ source.sigil punctuation.section.parens.begin.sigil
+#           ^^^^^^^^ source.sigil variable.parameter.sigil
+#                   ^ source.sigil punctuation.separator.colon.sigil
+#                    ^ source.sigil
+#                     ^^ source.sigil constant.numeric.duration.sigil
+#                       ^ source.sigil punctuation.section.parens.end.sigil
+>
+>when service.labels["compliance"] == "pci" {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^ source.sigil
+#            ^ source.sigil punctuation.accessor.sigil
+#             ^^^^^^ source.sigil variable.other.property.sigil
+#                   ^ source.sigil
+#                    ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                     ^^^^^^^^^^ source.sigil string.quoted.double.sigil
+#                               ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                                ^^ source.sigil
+#                                  ^^ source.sigil keyword.operator.sigil
+#                                    ^ source.sigil
+#                                     ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                                      ^^^ source.sigil string.quoted.double.sigil
+#                                         ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                                          ^^^ source.sigil
+>  production(approvers: ["payments-leads", "security-leads"])
+#^^ source.sigil
+#  ^^^^^^^^^^ source.sigil entity.name.function.sigil
+#            ^ source.sigil punctuation.section.parens.begin.sigil
+#             ^^^^^^^^^ source.sigil variable.parameter.sigil
+#                      ^ source.sigil punctuation.separator.colon.sigil
+#                       ^^ source.sigil
+#                         ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                          ^^^^^^^^^^^^^^ source.sigil string.quoted.double.sigil
+#                                        ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                                         ^ source.sigil punctuation.separator.comma.sigil
+#                                          ^ source.sigil
+#                                           ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                                            ^^^^^^^^^^^^^^ source.sigil string.quoted.double.sigil
+#                                                          ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                                                           ^ source.sigil
+#                                                            ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>
+>when service.labels["compliance"] != "pci" {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^ source.sigil
+#            ^ source.sigil punctuation.accessor.sigil
+#             ^^^^^^ source.sigil variable.other.property.sigil
+#                   ^ source.sigil
+#                    ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                     ^^^^^^^^^^ source.sigil string.quoted.double.sigil
+#                               ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                                ^^ source.sigil
+#                                  ^^ source.sigil keyword.operator.sigil
+#                                    ^ source.sigil
+#                                     ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                                      ^^^ source.sigil string.quoted.double.sigil
+#                                         ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                                          ^^^ source.sigil
+>  production(approvers: ["payments-leads"])
+#^^ source.sigil
+#  ^^^^^^^^^^ source.sigil entity.name.function.sigil
+#            ^ source.sigil punctuation.section.parens.begin.sigil
+#             ^^^^^^^^^ source.sigil variable.parameter.sigil
+#                      ^ source.sigil punctuation.separator.colon.sigil
+#                       ^^ source.sigil
+#                         ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                          ^^^^^^^^^^^^^^ source.sigil string.quoted.double.sigil
+#                                        ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                                         ^ source.sigil
+#                                          ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>
+>when cleared and "payments-sre" in actor.teams {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^^ source.sigil
+#             ^^^ source.sigil keyword.operator.word.sigil
+#                ^ source.sigil
+#                 ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                  ^^^^^^^^^^^^ source.sigil string.quoted.double.sigil
+#                              ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                               ^ source.sigil
+#                                ^^ source.sigil keyword.operator.word.sigil
+#                                  ^^^^^^ source.sigil
+#                                        ^ source.sigil punctuation.accessor.sigil
+#                                         ^^^^^ source.sigil variable.other.property.sigil
+#                                              ^^^ source.sigil
+>  approve(reason: payments_sre, bake: 15m)
+#^^ source.sigil
+#  ^^^^^^^ source.sigil entity.name.function.sigil
+#         ^ source.sigil punctuation.section.parens.begin.sigil
+#          ^^^^^^ source.sigil variable.parameter.sigil
+#                ^ source.sigil punctuation.separator.colon.sigil
+#                 ^^^^^^^^^^^^^ source.sigil
+#                              ^ source.sigil punctuation.separator.comma.sigil
+#                               ^ source.sigil
+#                                ^^^^ source.sigil variable.parameter.sigil
+#                                    ^ source.sigil punctuation.separator.colon.sigil
+#                                     ^ source.sigil
+#                                      ^^^ source.sigil constant.numeric.duration.sigil
+#                                         ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>

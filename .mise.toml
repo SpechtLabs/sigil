@@ -44,6 +44,8 @@ pinact = "5.0.0"
 # is the same version the docs workflow runs.
 bun = "1.4.2"
 markdownlint-cli2 = "0.23.3"
+# Lints and formats the VS Code extension (editors/vscode); see biome.json there.
+biome = "2.5.15"
 # Node: the release workflow publishes @spechtlabs/sigil with npm (see
 # release.yaml; trusted publishing needs npm 11.5 or later), and
 # examples/alert-routing builds and serves on Node, whose Pyroscope profiler
@@ -128,6 +130,7 @@ git ls-files --cached --others --exclude-standard -z -- '*.sigil' \
   ':!:internal/parser/testdata' ':!:internal/format/testdata' ':!:editors/tree-sitter-sigil/test' \
   ':!:pkg/policy/testdata/errors_check.sigil' ':!:pkg/policy/testdata/errors_diagnostics.sigil' \
   ':!:cmd/sigil/command/check/testdata/kinds/legacy.sigil' \
+  ':!:editors/vscode/test/grammar/assertions' ':!:editors/vscode/test/grammar/unformatted' \
   | xargs -0 go run ./cmd/sigil fmt --write
 """
 
@@ -164,11 +167,12 @@ description = "Lint the Go module with golangci-lint and golint-sl, the WebAssem
 depends = ["lint-build", "sigil-lint", "yaml-lint", "actionlint", "wasm-lint"]
 run = "./custom-gcl run ./..."
 
-# The parser's and the formatter's test inputs, and the tree-sitter grammar's
-# highlight tests, whose assertion comments sit under the lines they check,
-# are unformatted on purpose, and errors_check.sigil and errors_diagnostics.sigil
-# don't parse on purpose; every other .sigil file, tracked or new, must be in
-# sigil fmt's canonical style.
+# The parser's and the formatter's test inputs, and the editor grammars'
+# highlight tests (tree-sitter's, and the VS Code grammar's assertions and
+# unformatted inputs), whose assertion comments sit under the lines they
+# check, are unformatted on purpose, and errors_check.sigil and
+# errors_diagnostics.sigil don't parse on purpose; every other .sigil file,
+# tracked or new, must be in sigil fmt's canonical style.
 [tasks.sigil-lint]
 description = "Check that every .sigil file in the repository is formatted"
 run = """
@@ -176,6 +180,7 @@ git ls-files --cached --others --exclude-standard -z -- '*.sigil' \
   ':!:internal/parser/testdata' ':!:internal/format/testdata' ':!:editors/tree-sitter-sigil/test' \
   ':!:pkg/policy/testdata/errors_check.sigil' ':!:pkg/policy/testdata/errors_diagnostics.sigil' \
   ':!:cmd/sigil/command/check/testdata/kinds/legacy.sigil' \
+  ':!:editors/vscode/test/grammar/assertions' ':!:editors/vscode/test/grammar/unformatted' \
   | xargs -0 go run ./cmd/sigil fmt --check
 """
 
@@ -388,3 +393,54 @@ run = "tree-sitter generate --abi 15 --js-runtime native"
 description = "Test the tree-sitter grammar: its corpus and highlight tests, its queries, and that it parses every Sigil source the Go parser accepts to the same tree"
 dir = "editors/tree-sitter-sigil"
 run = ["tree-sitter test", "go test ./"]
+
+# editors/vscode: the VS Code extension. Its bundle inlines its dependencies,
+# so the VSIX needs no node_modules; see editors/vscode/README.md.
+[tasks.vscode-install]
+description = "Install the VS Code extension's dev dependencies"
+dir = "editors/vscode"
+run = "bun install --frozen-lockfile"
+
+[tasks.vscode-build]
+description = "Bundle the VS Code extension into editors/vscode/dist"
+depends = ["vscode-install"]
+dir = "editors/vscode"
+run = "bun run build"
+
+[tasks.vscode-lint]
+description = "Type-check the VS Code extension, and lint and format-check it with Biome"
+depends = ["vscode-install"]
+dir = "editors/vscode"
+run = ["bun run typecheck", "biome ci ."]
+
+[tasks.vscode-fmt]
+description = "Format the VS Code extension with Biome"
+dir = "editors/vscode"
+run = "biome check --write ."
+
+# The unit tests build the sigil CLI with go, to check the snippets, so go
+# must be on PATH too. The integration tests download VS Code into
+# editors/vscode/.vscode-test and open a window, or skip without a display or
+# a network; SIGIL_VSCODE_TEST_REQUIRED=1 makes a skip fail, as CI does.
+[tasks.vscode-test]
+description = "Test the VS Code extension: unit tests, the grammar's assertions and snapshots, and the integration tests in VS Code"
+depends = ["vscode-build"]
+dir = "editors/vscode"
+run = ["bun test", "bun run test:grammar", "bun run test:integration"]
+
+[tasks.vscode-grammar-update]
+description = "Rewrite the VS Code grammar's snapshots after an intended change to the grammar"
+depends = ["vscode-install"]
+dir = "editors/vscode"
+run = "bun run test:grammar:update"
+
+# A platform VSIX with this machine's build of the CLI inside, to install and
+# try a change end to end. The release builds its VSIX files from the
+# archives GoReleaser built instead (see release.yaml).
+[tasks.vscode-package]
+description = "Package the VS Code extension for this machine, with a sigil built from this checkout, into editors/vscode/"
+depends = ["vscode-build"]
+run = [
+  "go build -o editors/vscode/dist/sigil ./cmd/sigil",
+  "cd editors/vscode && bun scripts/package.ts --binary dist/sigil",
+]

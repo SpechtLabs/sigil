@@ -59,6 +59,17 @@ jobs:
       group: ${{ github.workflow }}-gate-wasm-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
       cancel-in-progress: ${{ github.event_name == 'push' }}
 
+  # The VS Code extension's gate (editors.yaml, which tests the tree-sitter
+  # grammar too). Only the vscode job waits for it, so release-please and
+  # GoReleaser never do. It has no group: a newer
+  # push cancelling it would leave this run's release without the extension,
+  # since only the run that created a release publishes it.
+  editors:
+    name: Editors
+    uses: ./.github/workflows/editors.yaml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
   release-please:
     name: Release Please
     runs-on: ubuntu-latest
@@ -381,3 +392,194 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || env.BOOTSTRAP_TOKEN }}
         run: cargo publish --locked --allow-dirty --no-verify
+
+  # The VS Code extension, versioned with Sigil (release-please bumps
+  # editors/vscode/package.json with the Go release). Each platform's VSIX
+  # bundles the sigil binary GoReleaser built, signed and attached to this
+  # release, and the universal VSIX, which Open VSX serves on every other
+  # platform, has none and runs sigil from PATH. This job attaches all of
+  # them to the GitHub release, where VS Code users get them: the extension
+  # isn't in the Visual Studio Marketplace. vscode-openvsx publishes the same
+  # files to Open VSX.
+  vscode:
+    name: Publish the VS Code extension
+    runs-on: ubuntu-latest
+    needs:
+      - release-please
+      - goreleaser
+      - editors
+    if: >-
+      always() &&
+      needs.goreleaser.result == 'success' &&
+      needs.editors.result == 'success'
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+
+      # A repair of a tag from before the extension stops here.
+      - name: Decide whether to package
+        id: check
+        run: |
+          set -euo pipefail
+          if [ ! -f editors/vscode/package.json ]; then
+            echo "::notice::${TAG} has no editors/vscode; nothing to publish"
+            echo "package=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          version="$(jq -r .version editors/vscode/package.json)"
+          if [ "v${version}" != "${TAG}" ]; then
+            echo "::error::editors/vscode/package.json is at ${version}, but the release is ${TAG}; release-please's extra-files should keep them in lockstep"
+            exit 1
+          fi
+          echo "package=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up mise
+        if: steps.check.outputs.package == 'true'
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: bun node cosign
+
+      # See the npm job: the archives this release has, checked against the
+      # signed checksums.txt, not binaries built again here.
+      - name: Fetch and verify the release's CLI archives
+        if: steps.check.outputs.package == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IDENTITY: https://github.com/${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          release="${RUNNER_TEMP}/release"
+          version="${TAG#v}"
+          patterns=(--pattern checksums.txt --pattern checksums.txt.sigstore.json)
+          archives=()
+          for platform in darwin_arm64 darwin_amd64 linux_amd64 linux_arm64; do
+            archives+=("sigil_${version}_${platform}.tar.gz")
+            patterns+=(--pattern "sigil_${version}_${platform}.tar.gz")
+          done
+          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --dir "${release}" "${patterns[@]}"
+          cosign verify-blob \
+            --bundle "${release}/checksums.txt.sigstore.json" \
+            --certificate-identity "${IDENTITY}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${release}/checksums.txt"
+          for archive in "${archives[@]}"; do
+            (cd "${release}" && grep "  ${archive}\$" checksums.txt | sha256sum --check --strict)
+          done
+
+      # The universal VSIX and one per archive above (see
+      # editors/vscode/scripts/package.ts).
+      - name: Package the extension
+        if: steps.check.outputs.package == 'true'
+        run: |
+          set -euo pipefail
+          mise run vscode-build
+          cd editors/vscode
+          bun scripts/package.ts --release "${RUNNER_TEMP}/release" --out "${RUNNER_TEMP}/vsix"
+
+      # --clobber: a rerun or a repair replaces the files rather than failing.
+      - name: Attach the VSIX files to the release
+        if: steps.check.outputs.package == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${TAG}" "${RUNNER_TEMP}"/vsix/*.vsix --repo "${GITHUB_REPOSITORY}" --clobber
+
+      - name: Keep the VSIX files for the Open VSX job
+        if: steps.check.outputs.package == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vscode-vsix
+          path: ${{ runner.temp }}/vsix/*.vsix
+          if-no-files-found: error
+          retention-days: 1
+
+    outputs:
+      package: ${{ steps.check.outputs.package }}
+
+  # Open VSX, which VSCodium, Cursor, Gitpod, Theia and the other editors
+  # built on VS Code install from. With OVSX_TRUSTED_PUBLISHING set to
+  # true, ovsx trades GitHub's OIDC token for a short-lived publishing token,
+  # which open-vsx.org issues to this workflow in the openvsx-publish
+  # environment once the spechtlabs namespace registers it as a trusted
+  # publisher; one token covers all five files. Until then the OVSX_PAT
+  # secret publishes, and without either the job says so and skips. ovsx
+  # reads OVSX_PAT from the environment and prefers it to trusted
+  # publishing, so only the token step sees it.
+  vscode-openvsx:
+    name: Publish the VS Code extension to Open VSX
+    runs-on: ubuntu-latest
+    needs:
+      - release-please
+      - vscode
+    if: >-
+      always() &&
+      needs.vscode.result == 'success' &&
+      needs.vscode.outputs.package == 'true'
+    environment: openvsx-publish
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
+    steps:
+      - name: Decide how to publish
+        id: check
+        env:
+          TRUSTED: ${{ vars.OVSX_TRUSTED_PUBLISHING }}
+          HAS_PAT: ${{ secrets.OVSX_PAT != '' }}
+        run: |
+          set -euo pipefail
+          if [ "${TRUSTED}" = "true" ]; then
+            echo "with=trusted-publishing" >> "${GITHUB_OUTPUT}"
+          elif [ "${HAS_PAT}" = "true" ]; then
+            echo "with=token" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::notice::Neither OVSX_TRUSTED_PUBLISHING nor OVSX_PAT is set; the extension isn't published to Open VSX"
+            echo "with=none" >> "${GITHUB_OUTPUT}"
+          fi
+
+      # ovsx comes from the extension's dev dependencies, at the tag's pin
+      # (1.2.0 or later has --trusted-publishing).
+      - name: Checkout release tag
+        if: steps.check.outputs.with != 'none'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Set up mise
+        if: steps.check.outputs.with != 'none'
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: bun node
+
+      - name: Install ovsx
+        if: steps.check.outputs.with != 'none'
+        run: mise run vscode-install
+
+      - name: Download the VSIX files
+        if: steps.check.outputs.with != 'none'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: vscode-vsix
+          path: ${{ runner.temp }}/vsix
+
+      # --skip-duplicate makes a rerun, or a repair of a version that's
+      # published already, a no-op: Open VSX never accepts a version twice.
+      - name: Publish to Open VSX with trusted publishing
+        if: steps.check.outputs.with == 'trusted-publishing'
+        working-directory: editors/vscode
+        run: bunx ovsx publish --trusted-publishing --skip-duplicate --packagePath "${RUNNER_TEMP}"/vsix/*.vsix
+
+      - name: Publish to Open VSX with OVSX_PAT
+        if: steps.check.outputs.with == 'token'
+        working-directory: editors/vscode
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: bunx ovsx publish --skip-duplicate --packagePath "${RUNNER_TEMP}"/vsix/*.vsix

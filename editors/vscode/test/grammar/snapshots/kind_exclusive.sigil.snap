@@ -1,0 +1,188 @@
+>kind AccessGrant version 1
+#^^^^ source.sigil keyword.other.sigil
+#    ^ source.sigil
+#     ^^^^^^^^^^^ source.sigil entity.name.type.sigil
+#                ^ source.sigil
+#                 ^^^^^^^ source.sigil keyword.other.sigil
+#                        ^ source.sigil
+#                         ^ source.sigil constant.numeric.sigil
+>
+>type Actor {
+#^^^^ source.sigil keyword.other.sigil
+#    ^ source.sigil
+#     ^^^^^ source.sigil entity.name.type.sigil
+#          ^ source.sigil
+#           ^ source.sigil punctuation.section.braces.begin.sigil
+>  name: string
+#^^ source.sigil
+#  ^^^^ source.sigil variable.other.property.sigil
+#      ^ source.sigil punctuation.separator.colon.sigil
+#       ^ source.sigil
+#        ^^^^^^ source.sigil support.type.sigil
+>  groups: list<string>
+#^^ source.sigil
+#  ^^^^^^ source.sigil variable.other.property.sigil
+#        ^ source.sigil punctuation.separator.colon.sigil
+#         ^ source.sigil
+#          ^^^^ source.sigil support.type.sigil
+#              ^ source.sigil punctuation.definition.typeparameters.sigil
+#               ^^^^^^ source.sigil support.type.sigil
+#                     ^ source.sigil punctuation.definition.typeparameters.sigil
+>  clearance: string
+#^^ source.sigil
+#  ^^^^^^^^^ source.sigil variable.other.property.sigil
+#           ^ source.sigil punctuation.separator.colon.sigil
+#            ^ source.sigil
+#             ^^^^^^ source.sigil support.type.sigil
+>}
+#^ source.sigil punctuation.section.braces.end.sigil
+>
+>input actor: Actor
+#^^^^^ source.sigil keyword.other.sigil
+#     ^ source.sigil
+#      ^^^^^ source.sigil variable.other.definition.sigil
+#           ^ source.sigil punctuation.separator.colon.sigil
+#            ^ source.sigil
+#             ^^^^^ source.sigil entity.name.type.sigil
+>input team: string
+#^^^^^ source.sigil keyword.other.sigil
+#     ^ source.sigil
+#      ^^^^ source.sigil variable.other.definition.sigil
+#          ^ source.sigil punctuation.separator.colon.sigil
+#           ^ source.sigil
+#            ^^^^^^ source.sigil support.type.sigil
+>input environment: string
+#^^^^^ source.sigil keyword.other.sigil
+#     ^ source.sigil
+#      ^^^^^^^^^^^ source.sigil variable.other.definition.sigil
+#                 ^ source.sigil punctuation.separator.colon.sigil
+#                  ^ source.sigil
+#                   ^^^^^^ source.sigil support.type.sigil
+>
+>decision reader {
+#^^^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil
+#         ^^^^^^ source.sigil entity.name.function.sigil
+#               ^ source.sigil
+#                ^ source.sigil punctuation.section.braces.begin.sigil
+>  reason: team_member | everyone_in_staging
+#^^ source.sigil
+#  ^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil punctuation.separator.colon.sigil
+#         ^ source.sigil
+#          ^^^^^^^^^^^ source.sigil constant.other.enum.sigil
+#                     ^ source.sigil
+#                      ^ source.sigil punctuation.separator.pipe.sigil
+#                       ^ source.sigil
+#                        ^^^^^^^^^^^^^^^^^^^ source.sigil constant.other.enum.sigil
+>}
+#^ source.sigil punctuation.section.braces.end.sigil
+>
+>decision deployer {
+#^^^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil
+#         ^^^^^^^^ source.sigil entity.name.function.sigil
+#                 ^ source.sigil
+#                  ^ source.sigil punctuation.section.braces.begin.sigil
+>  reason: team_member | oncall
+#^^ source.sigil
+#  ^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil punctuation.separator.colon.sigil
+#         ^ source.sigil
+#          ^^^^^^^^^^^ source.sigil constant.other.enum.sigil
+#                     ^ source.sigil
+#                      ^ source.sigil punctuation.separator.pipe.sigil
+#                       ^ source.sigil
+#                        ^^^^^^ source.sigil constant.other.enum.sigil
+>  ttl: duration = 8h
+#^^ source.sigil
+#  ^^^ source.sigil variable.other.property.sigil
+#     ^ source.sigil punctuation.separator.colon.sigil
+#      ^ source.sigil
+#       ^^^^^^^^ source.sigil support.type.sigil
+#               ^ source.sigil
+#                ^ source.sigil keyword.operator.assignment.sigil
+#                 ^ source.sigil
+#                  ^^ source.sigil constant.numeric.duration.sigil
+>}
+#^ source.sigil punctuation.section.braces.end.sigil
+>
+>decision release_manager {
+#^^^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil
+#         ^^^^^^^^^^^^^^^ source.sigil entity.name.function.sigil
+#                        ^ source.sigil
+#                         ^ source.sigil punctuation.section.braces.begin.sigil
+>  reason: platform_member
+#^^ source.sigil
+#  ^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil punctuation.separator.colon.sigil
+#         ^ source.sigil
+#          ^^^^^^^^^^^^^^^ source.sigil constant.other.enum.sigil
+>  ttl: duration = 8h
+#^^ source.sigil
+#  ^^^ source.sigil variable.other.property.sigil
+#     ^ source.sigil punctuation.separator.colon.sigil
+#      ^ source.sigil
+#       ^^^^^^^^ source.sigil support.type.sigil
+#               ^ source.sigil
+#                ^ source.sigil keyword.operator.assignment.sigil
+#                 ^ source.sigil
+#                  ^^ source.sigil constant.numeric.duration.sigil
+>}
+#^ source.sigil punctuation.section.braces.end.sigil
+>
+>decision admin {
+#^^^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil
+#         ^^^^^ source.sigil entity.name.function.sigil
+#              ^ source.sigil
+#               ^ source.sigil punctuation.section.braces.begin.sigil
+>  reason: clearance | break_glass
+#^^ source.sigil
+#  ^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil punctuation.separator.colon.sigil
+#         ^ source.sigil
+#          ^^^^^^^^^ source.sigil constant.other.enum.sigil
+#                   ^ source.sigil
+#                    ^ source.sigil punctuation.separator.pipe.sigil
+#                     ^ source.sigil
+#                      ^^^^^^^^^^^ source.sigil constant.other.enum.sigil
+>  ttl: duration = 1h
+#^^ source.sigil
+#  ^^^ source.sigil variable.other.property.sigil
+#     ^ source.sigil punctuation.separator.colon.sigil
+#      ^ source.sigil
+#       ^^^^^^^^ source.sigil support.type.sigil
+#               ^ source.sigil
+#                ^ source.sigil keyword.operator.assignment.sigil
+#                 ^ source.sigil
+#                  ^^ source.sigil constant.numeric.duration.sigil
+>}
+#^ source.sigil punctuation.section.braces.end.sigil
+>
+>decision auditor {
+#^^^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil
+#         ^^^^^^^ source.sigil entity.name.function.sigil
+#                ^ source.sigil
+#                 ^ source.sigil punctuation.section.braces.begin.sigil
+>  reason: compliance_member
+#^^ source.sigil
+#  ^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil punctuation.separator.colon.sigil
+#         ^ source.sigil
+#          ^^^^^^^^^^^^^^^^^ source.sigil constant.other.enum.sigil
+>}
+#^ source.sigil punctuation.section.braces.end.sigil
+>
+>collect all
+#^^^^^^^ source.sigil keyword.other.sigil
+#       ^ source.sigil
+#        ^^^ source.sigil keyword.other.sigil
+>exclusive admin, release_manager
+#^^^^^^^^^ source.sigil keyword.other.sigil
+#         ^^^^^^ source.sigil
+#               ^ source.sigil punctuation.separator.comma.sigil
+#                ^^^^^^^^^^^^^^^^^ source.sigil
+>

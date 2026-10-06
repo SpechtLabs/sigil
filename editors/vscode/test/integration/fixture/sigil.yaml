@@ -1,0 +1,3 @@
+# yaml-language-server: $schema=https://sigil.specht-labs.de/schema/config.json
+lints:
+  gated-deny: warning

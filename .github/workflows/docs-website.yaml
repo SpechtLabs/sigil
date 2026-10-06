@@ -7,6 +7,8 @@ on:
       - main
     paths:
       - docs/**
+      # The docs highlight ```sigil fences with the VS Code extension's grammar.
+      - editors/vscode/syntaxes/**
       - .markdownlint-cli2.yaml
       - roadmap.yml
       - .mise.toml
@@ -17,6 +19,8 @@ on:
       - main
     paths:
       - docs/**
+      # The docs highlight ```sigil fences with the VS Code extension's grammar.
+      - editors/vscode/syntaxes/**
       - .markdownlint-cli2.yaml
       - roadmap.yml
       - .mise.toml

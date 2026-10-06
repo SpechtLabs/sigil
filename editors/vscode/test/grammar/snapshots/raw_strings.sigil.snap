@@ -1,0 +1,66 @@
+>policy platform.guardrails: FeatureRollout@1
+#^^^^^^ source.sigil keyword.other.sigil
+#      ^ source.sigil
+#       ^^^^^^^^^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+#                          ^ source.sigil punctuation.separator.colon.sigil
+#                           ^ source.sigil
+#                            ^^^^^^^^^^^^^^ source.sigil entity.name.type.sigil
+#                                          ^ source.sigil punctuation.separator.version.sigil
+#                                           ^ source.sigil constant.numeric.sigil
+>
+>use platform.residency.{ready_regions}
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^^^^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+#                      ^ source.sigil punctuation.accessor.sigil
+#                       ^ source.sigil punctuation.section.braces.begin.sigil
+#                        ^^^^^^^^^^^^^ source.sigil
+#                                     ^ source.sigil punctuation.section.braces.end.sigil
+>
+>// Data residency: outside the ready regions nothing is enabled. Both
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>// disables outrank every enable (disable > enable), so no flag policy can
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>// switch either off, whatever it decides.
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>when user.region not in ready_regions {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^ source.sigil
+#         ^ source.sigil punctuation.accessor.sigil
+#          ^^^^^^ source.sigil variable.other.property.sigil
+#                ^ source.sigil
+#                 ^^^ source.sigil keyword.operator.word.sigil
+#                    ^ source.sigil
+#                     ^^ source.sigil keyword.operator.word.sigil
+#                       ^^^^^^^^^^^^^^^^^ source.sigil
+>  disable(reason: region_not_ready)
+#^^ source.sigil
+#  ^^^^^^^ source.sigil entity.name.function.sigil
+#         ^ source.sigil punctuation.section.parens.begin.sigil
+#          ^^^^^^ source.sigil variable.parameter.sigil
+#                ^ source.sigil punctuation.separator.colon.sigil
+#                 ^^^^^^^^^^^^^^^^^ source.sigil
+#                                  ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>
+>// The kill switch is operator config the host turns into the `killed` input.
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>// kill_switch is the top-ranked reason of disable, so it is also what a
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>// killed flag reports when the user's region is not ready either.
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>when killed {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^^^ source.sigil
+>  disable(reason: kill_switch)
+#^^ source.sigil
+#  ^^^^^^^ source.sigil entity.name.function.sigil
+#         ^ source.sigil punctuation.section.parens.begin.sigil
+#          ^^^^^^ source.sigil variable.parameter.sigil
+#                ^ source.sigil punctuation.separator.colon.sigil
+#                 ^^^^^^^^^^^^ source.sigil
+#                             ^ source.sigil punctuation.section.parens.end.sigil
+>}
+#^^ source.sigil
+>

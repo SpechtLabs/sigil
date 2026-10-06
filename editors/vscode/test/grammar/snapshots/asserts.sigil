@@ -1,0 +1,16 @@
+policy grants: Grants@1
+
+when "eng" in teams {
+  read(reason: member, scope: "eng")
+}
+
+when "platform" in teams {
+  write(reason: owner)
+}
+
+when "oncall" in teams {
+  write(reason: oncall)
+}
+
+// An outcome assert: whoever may write may read.
+assert("write_needs_read", write not in outcome or read in outcome)

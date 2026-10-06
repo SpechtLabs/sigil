@@ -1,6 +1,6 @@
 // Syntax highlighting for the playground's editors. The Sigil tokenizer
-// follows docs/.vuepress/sigil.tmLanguage.json, the grammar the docs'
-// ```sigil fences use, scope for scope, and the classes it emits are
+// follows editors/vscode/syntaxes/sigil.tmLanguage.json, the grammar the
+// docs' ```sigil fences use, scope for scope, and the classes it emits are
 // coloured like the site's Shiki themes (vitesse-light and vitesse-dark)
 // colour those scopes; see the .sg-* rules in playground.css. YAML and
 // JSON go through the same highlighter, so the input pane matches the docs'

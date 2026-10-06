@@ -1,0 +1,448 @@
+>policy deploy.production: DeployApproval@2
+#^^^^^^ source.sigil keyword.other.sigil
+#      ^ source.sigil
+#       ^^^^^^^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+#                        ^ source.sigil punctuation.separator.colon.sigil
+#                         ^ source.sigil
+#                          ^^^^^^^^^^^^^^ source.sigil entity.name.type.sigil
+#                                        ^ source.sigil punctuation.separator.version.sigil
+#                                         ^ source.sigil constant.numeric.sigil
+>// <- keyword.import
+#^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//     ^ module
+#^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//           ^ punctuation.delimiter
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//             ^ module
+#^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                         ^ type
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                                      ^ operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                                       ^ number
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>
+>use deploy.common.{cleared, owns_service as owns}
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+#                 ^ source.sigil punctuation.accessor.sigil
+#                  ^ source.sigil punctuation.section.braces.begin.sigil
+#                   ^^^^^^^ source.sigil
+#                          ^ source.sigil punctuation.separator.comma.sigil
+#                           ^^^^^^^^^^^^^^ source.sigil
+#                                         ^^ source.sigil keyword.other.sigil
+#                                           ^^^^^ source.sigil
+#                                                ^ source.sigil punctuation.section.braces.end.sigil
+>// <- keyword.import
+#^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//   ^ module
+#^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//               ^ punctuation.delimiter
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                ^ punctuation.bracket
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                 ^ variable
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                                       ^ keyword.import
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>use deploy.common as common
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+#                 ^ source.sigil
+#                  ^^ source.sigil keyword.other.sigil
+#                    ^ source.sigil
+#                     ^^^^^^ source.sigil entity.name.namespace.sigil
+>//                ^ keyword.import
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                   ^ module
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>
+>param min_soak: duration = 24h, min: 1h
+#^^^^^ source.sigil keyword.other.sigil
+#     ^ source.sigil
+#      ^^^^^^^^ source.sigil variable.other.definition.sigil
+#              ^ source.sigil punctuation.separator.colon.sigil
+#               ^ source.sigil
+#                ^^^^^^^^ source.sigil support.type.sigil
+#                        ^ source.sigil
+#                         ^ source.sigil keyword.operator.assignment.sigil
+#                          ^ source.sigil
+#                           ^^^ source.sigil constant.numeric.duration.sigil
+#                              ^ source.sigil punctuation.separator.comma.sigil
+#                               ^ source.sigil
+#                                ^^^ source.sigil keyword.other.sigil
+#                                   ^ source.sigil punctuation.separator.colon.sigil
+#                                    ^ source.sigil
+#                                     ^^ source.sigil constant.numeric.duration.sigil
+>// <- keyword
+#^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//    ^ variable.parameter
+#^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//              ^ type.builtin
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                       ^ operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                         ^ number
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                              ^ property
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>param approvers: list<string>
+#^^^^^ source.sigil keyword.other.sigil
+#     ^ source.sigil
+#      ^^^^^^^^^ source.sigil variable.other.definition.sigil
+#               ^ source.sigil punctuation.separator.colon.sigil
+#                ^ source.sigil
+#                 ^^^^ source.sigil support.type.sigil
+#                     ^ source.sigil punctuation.definition.typeparameters.sigil
+#                      ^^^^^^ source.sigil support.type.sigil
+#                            ^ source.sigil punctuation.definition.typeparameters.sigil
+>//               ^ type.builtin
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                   ^ punctuation.bracket
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                    ^ type.builtin
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>param tier: Tier = critical
+#^^^^^ source.sigil keyword.other.sigil
+#     ^ source.sigil
+#      ^^^^ source.sigil variable.other.definition.sigil
+#          ^ source.sigil punctuation.separator.colon.sigil
+#           ^ source.sigil
+#            ^^^^ source.sigil entity.name.type.sigil
+#                ^ source.sigil
+#                 ^ source.sigil keyword.operator.assignment.sigil
+#                  ^^^^^^^^^^ source.sigil
+>//          ^ type
+#^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>
+>pub let soaked = release.soak >= min_soak
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^ source.sigil keyword.other.sigil
+#       ^ source.sigil
+#        ^^^^^^ source.sigil variable.other.definition.sigil
+#              ^ source.sigil
+#               ^ source.sigil keyword.operator.assignment.sigil
+#                ^^^^^^^^ source.sigil
+#                        ^ source.sigil punctuation.accessor.sigil
+#                         ^^^^ source.sigil variable.other.property.sigil
+#                             ^ source.sigil
+#                              ^^ source.sigil keyword.operator.sigil
+#                                ^^^^^^^^^^ source.sigil
+>// <- keyword.modifier
+#^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//  ^ keyword
+#^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//      ^ variable
+#^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//               ^ variable
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                      ^ punctuation.delimiter
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                       ^ variable.member
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                            ^ operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>
+>let roles = actor?.roles ?? []
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^^^^^ source.sigil variable.other.definition.sigil
+#         ^ source.sigil
+#          ^ source.sigil keyword.operator.assignment.sigil
+#           ^^^^^^ source.sigil
+#                 ^^ source.sigil punctuation.accessor.sigil
+#                   ^^^^^ source.sigil variable.other.property.sigil
+#                        ^ source.sigil
+#                         ^^ source.sigil keyword.operator.sigil
+#                           ^^^^ source.sigil
+>//               ^ operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                       ^ operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                          ^ punctuation.bracket
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>
+>// A comment.
+#^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>// <- comment
+#^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>when environment == "production" and not soaked {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^^^^^^ source.sigil
+#                 ^^ source.sigil keyword.operator.sigil
+#                   ^ source.sigil
+#                    ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                     ^^^^^^^^^^ source.sigil string.quoted.double.sigil
+#                               ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                                ^ source.sigil
+#                                 ^^^ source.sigil keyword.operator.word.sigil
+#                                    ^ source.sigil
+#                                     ^^^ source.sigil keyword.operator.word.sigil
+#                                        ^^^^^^^^^^ source.sigil
+>// <- keyword.conditional
+#^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                  ^ string
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                               ^ keyword.operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                                   ^ keyword.operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                                              ^ punctuation.bracket
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>  deny(reason: soak_too_short)
+#^^ source.sigil
+#  ^^^^ source.sigil entity.name.function.sigil
+#      ^ source.sigil punctuation.section.parens.begin.sigil
+#       ^^^^^^ source.sigil variable.parameter.sigil
+#             ^ source.sigil punctuation.separator.colon.sigil
+#              ^^^^^^^^^^^^^^^ source.sigil
+#                             ^ source.sigil punctuation.section.parens.end.sigil
+>//^ constructor
+#^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//     ^ variable.parameter
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//           ^ punctuation.delimiter
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//             ^ constant
+#^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>  review(reason: service_owner, approvers: approvers,)
+#^^ source.sigil
+#  ^^^^^^ source.sigil entity.name.function.sigil
+#        ^ source.sigil punctuation.section.parens.begin.sigil
+#         ^^^^^^ source.sigil variable.parameter.sigil
+#               ^ source.sigil punctuation.separator.colon.sigil
+#                ^^^^^^^^^^^^^^ source.sigil
+#                              ^ source.sigil punctuation.separator.comma.sigil
+#                               ^ source.sigil
+#                                ^^^^^^^^^ source.sigil variable.parameter.sigil
+#                                         ^ source.sigil punctuation.separator.colon.sigil
+#                                          ^^^^^^^^^^ source.sigil
+#                                                    ^ source.sigil punctuation.separator.comma.sigil
+#                                                     ^ source.sigil punctuation.section.parens.end.sigil
+>//                              ^ variable.parameter
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                                         ^ variable
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>}
+#^^ source.sigil
+>
+>when any r in actor.roles: r like "sre-*" {
+#^^^^ source.sigil keyword.control.sigil
+#    ^ source.sigil
+#     ^^^ source.sigil keyword.operator.word.sigil
+#        ^^^ source.sigil
+#           ^^ source.sigil keyword.operator.word.sigil
+#             ^^^^^^ source.sigil
+#                   ^ source.sigil punctuation.accessor.sigil
+#                    ^^^^^ source.sigil variable.other.property.sigil
+#                         ^ source.sigil punctuation.separator.colon.sigil
+#                          ^^^ source.sigil
+#                             ^^^^ source.sigil keyword.operator.word.sigil
+#                                 ^ source.sigil
+#                                  ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                                   ^^^^^ source.sigil string.quoted.double.sigil
+#                                        ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                                         ^^^ source.sigil
+>//   ^ keyword.repeat
+#^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//       ^ variable.parameter
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//         ^ keyword.operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                           ^ keyword.operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                                ^ string.special
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>  guardrails(min_soak: 4h)
+#^^ source.sigil
+#  ^^^^^^^^^^ source.sigil entity.name.function.sigil
+#            ^ source.sigil punctuation.section.parens.begin.sigil
+#             ^^^^^^^^ source.sigil variable.parameter.sigil
+#                     ^ source.sigil punctuation.separator.colon.sigil
+#                      ^ source.sigil
+#                       ^^ source.sigil constant.numeric.duration.sigil
+#                         ^ source.sigil punctuation.section.parens.end.sigil
+>//^ constructor
+#^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                     ^ number
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>}
+#^^ source.sigil
+>
+>when service.labels["team"] matches `^team-[a-z]+$` {
+#^^^^ source.sigil keyword.control.sigil
+#    ^^^^^^^^ source.sigil
+#            ^ source.sigil punctuation.accessor.sigil
+#             ^^^^^^ source.sigil variable.other.property.sigil
+#                   ^ source.sigil
+#                    ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                     ^^^^ source.sigil string.quoted.double.sigil
+#                         ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                          ^^ source.sigil
+#                            ^^^^^^^ source.sigil keyword.operator.word.sigil
+#                                   ^ source.sigil
+#                                    ^ source.sigil string.quoted.raw.sigil punctuation.definition.string.begin.sigil
+#                                     ^^^^^^^^^^^^^ source.sigil string.quoted.raw.sigil
+#                                                  ^ source.sigil string.quoted.raw.sigil punctuation.definition.string.end.sigil
+#                                                   ^^^ source.sigil
+>//                  ^ string
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                          ^ keyword.operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                                  ^ string.regexp
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>  approve(reason: release_manager, note: "a \"note\"\n")
+#^^ source.sigil
+#  ^^^^^^^ source.sigil entity.name.function.sigil
+#         ^ source.sigil punctuation.section.parens.begin.sigil
+#          ^^^^^^ source.sigil variable.parameter.sigil
+#                ^ source.sigil punctuation.separator.colon.sigil
+#                 ^^^^^^^^^^^^^^^^ source.sigil
+#                                 ^ source.sigil punctuation.separator.comma.sigil
+#                                  ^ source.sigil
+#                                   ^^^^ source.sigil variable.parameter.sigil
+#                                       ^ source.sigil punctuation.separator.colon.sigil
+#                                        ^ source.sigil
+#                                         ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#                                          ^^ source.sigil string.quoted.double.sigil
+#                                            ^^ source.sigil string.quoted.double.sigil constant.character.escape.sigil
+#                                              ^^^^ source.sigil string.quoted.double.sigil
+#                                                  ^^ source.sigil string.quoted.double.sigil constant.character.escape.sigil
+#                                                    ^^ source.sigil string.quoted.double.sigil constant.character.escape.sigil
+#                                                      ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                                                       ^ source.sigil punctuation.section.parens.end.sigil
+>//                                          ^ string.escape
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                                       ^ string
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>}
+#^^ source.sigil
+>
+>let a = filter g in grants: g.expires > now()
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^ source.sigil variable.other.definition.sigil
+#     ^ source.sigil
+#      ^ source.sigil keyword.operator.assignment.sigil
+#       ^ source.sigil
+#        ^^^^^^ source.sigil keyword.operator.word.sigil
+#              ^^^ source.sigil
+#                 ^^ source.sigil keyword.operator.word.sigil
+#                   ^^^^^^^ source.sigil
+#                          ^ source.sigil punctuation.separator.colon.sigil
+#                           ^^ source.sigil
+#                             ^ source.sigil punctuation.accessor.sigil
+#                              ^^^^^^^ source.sigil variable.other.property.sigil
+#                                     ^ source.sigil
+#                                      ^ source.sigil keyword.operator.sigil
+#                                       ^ source.sigil
+#                                        ^^^ source.sigil entity.name.function.sigil
+#                                           ^ source.sigil punctuation.section.parens.begin.sigil
+#                                            ^ source.sigil punctuation.section.parens.end.sigil
+>//      ^ keyword.repeat
+#^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//             ^ variable.parameter
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                                      ^ function.call
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>let b = actor.teams any in service.owners
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^ source.sigil variable.other.definition.sigil
+#     ^ source.sigil
+#      ^ source.sigil keyword.operator.assignment.sigil
+#       ^^^^^^ source.sigil
+#             ^ source.sigil punctuation.accessor.sigil
+#              ^^^^^ source.sigil variable.other.property.sigil
+#                   ^ source.sigil
+#                    ^^^ source.sigil keyword.operator.word.sigil
+#                       ^ source.sigil
+#                        ^^ source.sigil keyword.operator.word.sigil
+#                          ^^^^^^^^ source.sigil
+#                                  ^ source.sigil punctuation.accessor.sigil
+#                                   ^^^^^^ source.sigil variable.other.property.sigil
+>//                  ^ keyword.operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>let c = [true, false, 0.5, 1h30m, -3, present release.owner]
+#^^^ source.sigil keyword.other.sigil
+#   ^ source.sigil
+#    ^ source.sigil variable.other.definition.sigil
+#     ^ source.sigil
+#      ^ source.sigil keyword.operator.assignment.sigil
+#       ^^ source.sigil
+#         ^^^^ source.sigil constant.language.boolean.sigil
+#             ^ source.sigil punctuation.separator.comma.sigil
+#              ^ source.sigil
+#               ^^^^^ source.sigil constant.language.boolean.sigil
+#                    ^ source.sigil punctuation.separator.comma.sigil
+#                     ^ source.sigil
+#                      ^^^ source.sigil constant.numeric.float.sigil
+#                         ^ source.sigil punctuation.separator.comma.sigil
+#                          ^ source.sigil
+#                           ^^^^^ source.sigil constant.numeric.duration.sigil
+#                                ^ source.sigil punctuation.separator.comma.sigil
+#                                 ^ source.sigil
+#                                  ^ source.sigil keyword.operator.sigil
+#                                   ^ source.sigil constant.numeric.integer.sigil
+#                                    ^ source.sigil punctuation.separator.comma.sigil
+#                                     ^ source.sigil
+#                                      ^^^^^^^ source.sigil keyword.operator.word.sigil
+#                                             ^^^^^^^^ source.sigil
+#                                                     ^ source.sigil punctuation.accessor.sigil
+#                                                      ^^^^^ source.sigil variable.other.property.sigil
+#                                                           ^^ source.sigil
+>//       ^ boolean
+#^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//             ^ boolean
+#^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                    ^ number.float
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                         ^ number
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                                ^ operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                                    ^ keyword.operator
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>
+>assert("approved", outcome != deny.not_eligible)
+#^^^^^^ source.sigil keyword.control.sigil
+#      ^ source.sigil punctuation.section.parens.begin.sigil
+#       ^ source.sigil string.quoted.double.sigil punctuation.definition.string.begin.sigil
+#        ^^^^^^^^ source.sigil string.quoted.double.sigil
+#                ^ source.sigil string.quoted.double.sigil punctuation.definition.string.end.sigil
+#                 ^ source.sigil punctuation.separator.comma.sigil
+#                  ^ source.sigil
+#                   ^^^^^^^ source.sigil constant.language.sigil
+#                          ^ source.sigil
+#                           ^^ source.sigil keyword.operator.sigil
+#                             ^^^^^ source.sigil
+#                                  ^ source.sigil punctuation.accessor.sigil
+#                                   ^^^^^^^^^^^^ source.sigil variable.other.property.sigil
+#                                               ^ source.sigil punctuation.section.parens.end.sigil
+>// <- keyword
+#^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//      ^ string
+#^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>//                 ^ variable.builtin
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>
+>---
+#^^^^ source.sigil punctuation.separator.document.sigil
+>// <- punctuation.special
+#^^^^^^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>
+>module deploy.common: DeployApproval@1
+#^^^^^^ source.sigil keyword.other.sigil
+#      ^ source.sigil
+#       ^^^^^^^^^^^^^ source.sigil entity.name.namespace.sigil
+#                    ^ source.sigil punctuation.separator.colon.sigil
+#                     ^ source.sigil
+#                      ^^^^^^^^^^^^^^ source.sigil entity.name.type.sigil
+#                                    ^ source.sigil punctuation.separator.version.sigil
+#                                     ^ source.sigil constant.numeric.sigil
+>// <- keyword.import
+#^^^^^^^^^^^^^^^^^^^^ source.sigil comment.line.double-slash.sigil
+>

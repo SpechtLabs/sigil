@@ -1,0 +1,184 @@
+>kind Access version 1
+#^^^^ source.sigil keyword.other.sigil
+#    ^ source.sigil
+#     ^^^^^^ source.sigil entity.name.type.sigil
+#           ^ source.sigil
+#            ^^^^^^^ source.sigil keyword.other.sigil
+#                   ^ source.sigil
+#                    ^ source.sigil constant.numeric.sigil
+>
+>type User {
+#^^^^ source.sigil keyword.other.sigil
+#    ^ source.sigil
+#     ^^^^ source.sigil entity.name.type.sigil
+#         ^ source.sigil
+#          ^ source.sigil punctuation.section.braces.begin.sigil
+>  name: string
+#^^ source.sigil
+#  ^^^^ source.sigil variable.other.property.sigil
+#      ^ source.sigil punctuation.separator.colon.sigil
+#       ^ source.sigil
+#        ^^^^^^ source.sigil support.type.sigil
+>  teams: list<string>
+#^^ source.sigil
+#  ^^^^^ source.sigil variable.other.property.sigil
+#       ^ source.sigil punctuation.separator.colon.sigil
+#        ^ source.sigil
+#         ^^^^ source.sigil support.type.sigil
+#             ^ source.sigil punctuation.definition.typeparameters.sigil
+#              ^^^^^^ source.sigil support.type.sigil
+#                    ^ source.sigil punctuation.definition.typeparameters.sigil
+>  admin: bool
+#^^ source.sigil
+#  ^^^^^ source.sigil variable.other.property.sigil
+#       ^ source.sigil punctuation.separator.colon.sigil
+#        ^ source.sigil
+#         ^^^^ source.sigil support.type.sigil
+>  expires: ?timestamp
+#^^ source.sigil
+#  ^^^^^^^ source.sigil variable.other.property.sigil
+#         ^ source.sigil punctuation.separator.colon.sigil
+#          ^ source.sigil
+#           ^ source.sigil keyword.operator.optional.sigil
+#            ^^^^^^^^^ source.sigil support.type.sigil
+>}
+#^ source.sigil punctuation.section.braces.end.sigil
+>
+>input user: User
+#^^^^^ source.sigil keyword.other.sigil
+#     ^ source.sigil
+#      ^^^^ source.sigil variable.other.definition.sigil
+#          ^ source.sigil punctuation.separator.colon.sigil
+#           ^ source.sigil
+#            ^^^^ source.sigil entity.name.type.sigil
+>input resource: string
+#^^^^^ source.sigil keyword.other.sigil
+#     ^ source.sigil
+#      ^^^^^^^^ source.sigil variable.other.definition.sigil
+#              ^ source.sigil punctuation.separator.colon.sigil
+#               ^ source.sigil
+#                ^^^^^^ source.sigil support.type.sigil
+>input age: duration
+#^^^^^ source.sigil keyword.other.sigil
+#     ^ source.sigil
+#      ^^^ source.sigil variable.other.definition.sigil
+#         ^ source.sigil punctuation.separator.colon.sigil
+#          ^ source.sigil
+#           ^^^^^^^^ source.sigil support.type.sigil
+>input labels: map<string, int>
+#^^^^^ source.sigil keyword.other.sigil
+#     ^ source.sigil
+#      ^^^^^^ source.sigil variable.other.definition.sigil
+#            ^ source.sigil punctuation.separator.colon.sigil
+#             ^ source.sigil
+#              ^^^ source.sigil support.type.sigil
+#                 ^ source.sigil punctuation.definition.typeparameters.sigil
+#                  ^^^^^^ source.sigil support.type.sigil
+#                        ^ source.sigil punctuation.separator.comma.sigil
+#                         ^ source.sigil
+#                          ^^^ source.sigil support.type.sigil
+#                             ^ source.sigil keyword.operator.sigil
+>
+>fn owner(string) -> string
+#^^ source.sigil keyword.other.sigil
+#  ^ source.sigil
+#   ^^^^^ source.sigil entity.name.function.sigil
+#        ^ source.sigil punctuation.section.parens.sigil
+#         ^^^^^^ source.sigil support.type.sigil
+#               ^ source.sigil punctuation.section.parens.sigil
+#                ^ source.sigil
+#                 ^^ source.sigil keyword.operator.arrow.sigil
+#                   ^ source.sigil
+#                    ^^^^^^ source.sigil support.type.sigil
+>
+>decision deny {
+#^^^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil
+#         ^^^^ source.sigil entity.name.function.sigil
+#             ^ source.sigil
+#              ^ source.sigil punctuation.section.braces.begin.sigil
+>  reason: banned | too_old | no_rule_matched
+#^^ source.sigil
+#  ^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil punctuation.separator.colon.sigil
+#         ^ source.sigil
+#          ^^^^^^ source.sigil constant.other.enum.sigil
+#                ^ source.sigil
+#                 ^ source.sigil punctuation.separator.pipe.sigil
+#                  ^ source.sigil
+#                   ^^^^^^^ source.sigil constant.other.enum.sigil
+#                          ^ source.sigil
+#                           ^ source.sigil punctuation.separator.pipe.sigil
+#                            ^ source.sigil
+#                             ^^^^^^^^^^^^^^^ source.sigil constant.other.enum.sigil
+>}
+#^ source.sigil punctuation.section.braces.end.sigil
+>
+>decision allow {
+#^^^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil
+#         ^^^^^ source.sigil entity.name.function.sigil
+#              ^ source.sigil
+#               ^ source.sigil punctuation.section.braces.begin.sigil
+>  reason: admin | team_member
+#^^ source.sigil
+#  ^^^^^^ source.sigil keyword.other.sigil
+#        ^ source.sigil punctuation.separator.colon.sigil
+#         ^ source.sigil
+#          ^^^^^ source.sigil constant.other.enum.sigil
+#               ^ source.sigil
+#                ^ source.sigil punctuation.separator.pipe.sigil
+#                 ^ source.sigil
+#                  ^^^^^^^^^^^ source.sigil constant.other.enum.sigil
+>  ttl: duration = 1h
+#^^ source.sigil
+#  ^^^ source.sigil variable.other.property.sigil
+#     ^ source.sigil punctuation.separator.colon.sigil
+#      ^ source.sigil
+#       ^^^^^^^^ source.sigil support.type.sigil
+#               ^ source.sigil
+#                ^ source.sigil keyword.operator.assignment.sigil
+#                 ^ source.sigil
+#                  ^^ source.sigil constant.numeric.duration.sigil
+>  scopes: list<string> = []
+#^^ source.sigil
+#  ^^^^^^ source.sigil variable.other.property.sigil
+#        ^ source.sigil punctuation.separator.colon.sigil
+#         ^ source.sigil
+#          ^^^^ source.sigil support.type.sigil
+#              ^ source.sigil punctuation.definition.typeparameters.sigil
+#               ^^^^^^ source.sigil support.type.sigil
+#                     ^ source.sigil punctuation.definition.typeparameters.sigil
+#                      ^ source.sigil
+#                       ^ source.sigil keyword.operator.assignment.sigil
+#                        ^^^ source.sigil
+>}
+#^ source.sigil punctuation.section.braces.end.sigil
+>
+>collect one
+#^^^^^^^ source.sigil keyword.other.sigil
+#       ^ source.sigil
+#        ^^^ source.sigil keyword.other.sigil
+>precedence deny > allow
+#^^^^^^^^^^ source.sigil keyword.other.sigil
+#          ^^^^^^ source.sigil
+#                ^ source.sigil keyword.operator.sigil
+#                 ^^^^^^^ source.sigil
+>precedence allow: admin > team_member
+#^^^^^^^^^^ source.sigil keyword.other.sigil
+#          ^^^^^^ source.sigil
+#                ^ source.sigil punctuation.separator.colon.sigil
+#                 ^^^^^^^ source.sigil
+#                        ^ source.sigil keyword.operator.sigil
+#                         ^^^^^^^^^^^^^ source.sigil
+>
+>default deny(reason: no_rule_matched)
+#^^^^^^^ source.sigil keyword.other.sigil
+#       ^ source.sigil
+#        ^^^^ source.sigil entity.name.function.sigil
+#            ^ source.sigil punctuation.section.parens.begin.sigil
+#             ^^^^^^ source.sigil variable.parameter.sigil
+#                   ^ source.sigil punctuation.separator.colon.sigil
+#                    ^^^^^^^^^^^^^^^^ source.sigil
+#                                    ^ source.sigil punctuation.section.parens.end.sigil
+>
