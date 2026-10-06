@@ -26,7 +26,7 @@ interface Message {
 }
 
 function handle(msg: Message): void {
-  record({ method: msg.method ?? "response" });
+  record({ method: msg.method ?? "response", uri: msg.params?.textDocument?.uri });
   switch (msg.method) {
     case "initialize":
       send({

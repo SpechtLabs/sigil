@@ -12,7 +12,7 @@
 // "insiders" or a version such as 1.91.0, the oldest engines.vscode allows.
 
 import { spawn } from "node:child_process";
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -133,6 +133,9 @@ async function runSuite(suite, userSettings, env, args) {
   });
   if (code !== 0) {
     console.error(`The ${suite} integration tests failed: VS Code exited with ${code}`);
+    // What the fake server read, in order, which says how far the client got.
+    const log = join(dir, "fake-server.log");
+    console.error(`The fake server's log:\n${existsSync(log) ? readFileSync(log, "utf8") : "(empty)"}`);
     process.exit(1);
   }
 }

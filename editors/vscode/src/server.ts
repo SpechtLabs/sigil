@@ -199,6 +199,11 @@ export class Server implements vscode.Disposable {
       // The server works on files on disk, and answers nothing for an
       // untitled document.
       documentSelector: [{ scheme: "file", language: "sigil" }],
+      // A document that's open but not yet in a tab when the client starts
+      // (one VS Code is still opening, or another extension read) waits for
+      // its tab. Without this, vscode-languageclient parks its didOpen until
+      // the client next sends something, which may be never.
+      textSynchronization: { delayOpenNotifications: true },
       outputChannel: this.output,
       traceOutputChannel: this.trace,
     };

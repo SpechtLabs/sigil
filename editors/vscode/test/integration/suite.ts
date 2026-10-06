@@ -16,6 +16,9 @@ const EXTENSION_ID = "spechtlabs.sigil";
 // The whole suite's budget: a step that hangs fails the run instead of CI's job.
 const SUITE_TIMEOUT_MS = 180_000;
 
+// What trace() saw, printed only when the suite fails.
+const traced: string[] = [];
+
 export function run(): Promise<void> {
   return Promise.race([
     process.env.SIGIL_TEST_SUITE === "restricted" ? restrictedSuite() : trustedSuite(),
@@ -25,7 +28,10 @@ export function run(): Promise<void> {
         SUITE_TIMEOUT_MS,
       ).unref(),
     ),
-  ]);
+  ]).catch((err: unknown) => {
+    console.log(`    What happened, in order:\n${traced.join("\n")}`);
+    throw err;
+  });
 }
 
 async function trustedSuite(): Promise<void> {
@@ -41,6 +47,7 @@ async function trustedSuite(): Promise<void> {
     await waitFor(() => extension.isActive, "the extension to activate on its own");
   });
   const { server } = extension.exports;
+  const tracing = trace(server);
 
   await step("the sigil language is registered", async () => {
     assert.ok((await vscode.languages.getLanguages()).includes("sigil"));
@@ -64,11 +71,44 @@ async function trustedSuite(): Promise<void> {
     );
   });
 
-  await step("a new .sigil file reaches the server through the watchers it registered", async () => {
-    writeFileSync(join(folder.uri.fsPath, "policies/new.sigil"), "module deploy.extra: DeployApproval@1\n");
+  await step("a document that gets its tab after the client started reaches the server", async () => {
+    // The client syncs the documents that are open when it starts only once
+    // they're in a tab, as they are here: no Sigil editor is open, and
+    // common.sigil is open with no tab, when the server restarts.
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    const common = await vscode.workspace.openTextDocument(join(folder.uri.fsPath, "policies/common.sigil"));
+    const initialized = entries(log).filter((e) => e.method === "initialized").length;
+    await vscode.commands.executeCommand("sigil.restartServer");
     await waitFor(
-      () => entries(log).some((e) => e.method === "workspace/didChangeWatchedFiles"),
+      () => entries(log).filter((e) => e.method === "initialized").length > initialized,
+      "the restarted client to initialize",
+    );
+    const sent = entries(log).length;
+    await vscode.window.showTextDocument(common, { preview: false });
+    await waitFor(
+      () =>
+        entries(log)
+          .slice(sent)
+          .some((e) => e.method === "textDocument/didOpen" && e.uri === common.uri.toString()),
+      "didOpen for common.sigil once it's in a tab",
+    );
+  });
+
+  await step("a new .sigil file reaches the server through the watchers it registered", async () => {
+    // VS Code sets a watcher up asynchronously after the client asks for it,
+    // so a file written too early goes unseen: wait for the registration,
+    // then write files until one is seen.
+    await waitFor(() => entries(log).some((e) => e.method === "response"), "the watcher registration");
+    let n = 0;
+    await waitFor(
+      () => {
+        if (entries(log).some((e) => e.method === "workspace/didChangeWatchedFiles")) return true;
+        writeFileSync(join(folder.uri.fsPath, `policies/new-${n++}.sigil`), "module deploy.extra: DeployApproval@1\n");
+        return false;
+      },
       "workspace/didChangeWatchedFiles",
+      20_000,
+      500,
     );
   });
 
@@ -129,6 +169,7 @@ async function trustedSuite(): Promise<void> {
     assert.equal(server.status.kind, "stopped");
     await waitFor(() => entries(log).some((e) => e.method === "exit"), "the server to get exit");
   });
+  tracing.dispose();
 }
 
 // In an untrusted workspace the workspace can't choose the program that runs:
@@ -145,6 +186,7 @@ async function restrictedSuite(): Promise<void> {
     await waitFor(() => extension.isActive, "the extension to activate on its own");
   });
   const { server } = extension.exports;
+  const tracing = trace(server);
 
   await step("the workspace's sigil.path is ignored, and sigil comes from PATH", async () => {
     await waitFor(() => server.status.kind === "running", "the server to run");
@@ -168,11 +210,36 @@ async function restrictedSuite(): Promise<void> {
     await server.stop();
     assert.equal(server.status.kind, "stopped");
   });
+  tracing.dispose();
+}
+
+/**
+ * Records what the extension and VS Code do while the suite runs: the
+ * server's status changes, the events that restart it, documents opening and
+ * closing and diagnostics changing, with the milliseconds since the suite
+ * started. A step that times out in CI then says what happened.
+ */
+function trace(server: Api["server"]): vscode.Disposable {
+  const start = Date.now();
+  const say = (what: string) => traced.push(`      [${Date.now() - start} ms] ${what}`);
+  say(`server ${server.status.kind}, ${server.starts} starts`);
+  return vscode.Disposable.from(
+    server.onDidChangeStatus((s) => say(`server ${s.kind}, ${server.starts} starts`)),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("sigil")) say("the sigil settings changed");
+    }),
+    vscode.workspace.onDidGrantWorkspaceTrust(() => say("workspace trust granted")),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => say("workspace folders changed")),
+    vscode.workspace.onDidOpenTextDocument((d) => say(`opened ${d.uri.toString()}`)),
+    vscode.workspace.onDidCloseTextDocument((d) => say(`closed ${d.uri.toString()}`)),
+    vscode.languages.onDidChangeDiagnostics((e) => say(`diagnostics changed for ${e.uris.map(String).join(", ")}`)),
+  );
 }
 
 interface Entry {
   args?: string[];
   method?: string;
+  uri?: string;
 }
 
 /** What the fake server has logged so far. */
@@ -194,10 +261,10 @@ async function step(name: string, body: () => Promise<void>): Promise<void> {
   await body();
 }
 
-async function waitFor(condition: () => boolean, what: string, timeoutMs = 20_000): Promise<void> {
+async function waitFor(condition: () => boolean, what: string, timeoutMs = 20_000, everyMs = 50): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!condition()) {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, everyMs));
   }
 }
