@@ -1,6 +1,13 @@
 // Finds the sigil binary the language server runs as. Nothing here imports
 // vscode: the extension passes in what it read from the editor, so the unit
 // tests drive every path, Windows' included, with plain values.
+//
+// A workspace must not be able to pick the program that runs: VS Code
+// ignores a workspace's own sigil.path until the workspace is trusted, and
+// this module never resolves anything against the workspace then either. A
+// relative sigil.path is refused in an untrusted workspace, and PATH entries
+// that aren't absolute are skipped everywhere, as Go's exec.LookPath does,
+// because the server starts in the workspace folder.
 
 import { constants } from "node:fs";
 import { access, chmod, stat } from "node:fs/promises";
@@ -16,10 +23,20 @@ export interface Found {
   source: Source;
 }
 
-/** sigil.path names something that isn't there; nothing else is tried. */
+/** Why sigil.path didn't resolve. */
+export type BadReason =
+  /** Nothing runnable at the path, or on PATH for a command name. */
+  | "missing"
+  /** A path relative to the workspace, in a workspace that isn't trusted. */
+  | "untrusted"
+  /** A Windows batch file, which can't be started without a shell. */
+  | "batch-file";
+
+/** sigil.path doesn't resolve; nothing else is tried. */
 export interface BadSetting {
   kind: "bad-setting";
   setting: string;
+  reason: BadReason;
   /** Whether the setting is a command name, looked up on PATH. */
   onPath: boolean;
   /** The paths the setting was looked up as. */
@@ -42,6 +59,8 @@ export interface Inputs {
   extensionPath: string;
   /** The first workspace folder, which a relative sigil.path is relative to. */
   workspaceFolder: string | undefined;
+  /** Whether the user trusts the workspace; an untrusted one can't pick paths. */
+  workspaceTrusted: boolean;
   /** The user's home directory, for a sigil.path starting with ~/. */
   home: string;
   /** process.platform. */
@@ -51,6 +70,9 @@ export interface Inputs {
   /** Reports whether a file exists and can be run; defaults to the file system. */
   isExecutable?: (path: string) => Promise<boolean>;
 }
+
+/** Extensions Windows runs through cmd.exe, which spawning without a shell can't start. */
+const BATCH_EXTENSIONS = [".bat", ".cmd"];
 
 /** The binary's file name on a platform. */
 export function binaryName(platform: NodeJS.Platform): string {
@@ -72,16 +94,20 @@ export async function resolveBinary(inputs: Inputs): Promise<Resolution> {
   const isExecutable = inputs.isExecutable ?? fileIsExecutable;
 
   if (inputs.setting !== "") {
+    const bad = (reason: BadReason, tried: string[]): BadSetting => ({
+      kind: "bad-setting",
+      setting: inputs.setting,
+      reason,
+      onPath: isCommandName(inputs.setting),
+      tried,
+    });
+    if (inputs.platform === "win32" && isBatchFile(inputs.setting)) return bad("batch-file", []);
+    if (isWorkspaceRelative(inputs.setting, inputs.platform) && !inputs.workspaceTrusted) return bad("untrusted", []);
     const candidates = settingCandidates(inputs);
     for (const candidate of candidates) {
       if (await isExecutable(candidate)) return { kind: "found", path: candidate, source: "setting" };
     }
-    return {
-      kind: "bad-setting",
-      setting: inputs.setting,
-      onPath: isCommandName(inputs.setting),
-      tried: candidates,
-    };
+    return bad("missing", candidates);
   }
 
   const bundled = bundledPath(inputs.extensionPath, inputs.platform);
@@ -121,12 +147,15 @@ function paths(platform: NodeJS.Platform): PlatformPath {
 function settingCandidates(inputs: Inputs): string[] {
   const { setting, platform } = inputs;
   const p = paths(platform);
-  if (setting === "~" || setting.startsWith("~/") || setting.startsWith("~\\")) {
-    return [p.join(inputs.home, setting.slice(1))];
-  }
+  if (isHomeRelative(setting)) return [p.join(inputs.home, setting.slice(1))];
   if (p.isAbsolute(setting)) return [setting];
   if (isCommandName(setting)) return pathCandidates(setting, inputs);
   return [p.resolve(inputs.workspaceFolder ?? inputs.home, setting)];
+}
+
+/** A path starting with ~/, under the home directory. */
+function isHomeRelative(setting: string): boolean {
+  return setting === "~" || setting.startsWith("~/") || setting.startsWith("~\\");
 }
 
 /** A bare name, such as sigil or sigil-dev, which is looked up on PATH. */
@@ -134,17 +163,32 @@ function isCommandName(setting: string): boolean {
   return !setting.startsWith("~") && !setting.includes("/") && !setting.includes("\\");
 }
 
-/** Every file a command name could be on PATH, with PATHEXT's extensions on Windows. */
+/** A path such as bin/sigil, which resolves against the workspace folder. */
+function isWorkspaceRelative(setting: string, platform: NodeJS.Platform): boolean {
+  return !isHomeRelative(setting) && !paths(platform).isAbsolute(setting) && !isCommandName(setting);
+}
+
+function isBatchFile(path: string): boolean {
+  const lower = path.toLowerCase();
+  return BATCH_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+/**
+ * Every file a command name could be on PATH, with PATHEXT's extensions on
+ * Windows. Relative PATH entries are skipped: the server starts in the
+ * workspace folder, so bin on PATH would let the workspace pick the binary.
+ * So are batch files, which can't be started without a shell.
+ */
 function pathCandidates(command: string, inputs: Inputs): string[] {
   const windows = inputs.platform === "win32";
   const p = paths(inputs.platform);
   const pathVar = windows ? (inputs.env.Path ?? inputs.env.PATH) : inputs.env.PATH;
-  const dirs = (pathVar ?? "").split(p.delimiter).filter((dir) => dir !== "");
+  const dirs = (pathVar ?? "").split(p.delimiter).filter((dir) => dir !== "" && p.isAbsolute(dir));
   const exts = windows
-    ? (inputs.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+    ? (inputs.env.PATHEXT ?? ".COM;.EXE")
         .split(";")
-        .filter((ext) => ext !== "")
         .map((ext) => ext.toLowerCase())
+        .filter((ext) => ext !== "" && !BATCH_EXTENSIONS.includes(ext))
     : [""];
 
   const out: string[] = [];

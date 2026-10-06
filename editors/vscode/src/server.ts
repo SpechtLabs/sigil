@@ -9,8 +9,15 @@ import * as vscode from "vscode";
 import { LanguageClient, type LanguageClientOptions, type ServerOptions, State } from "vscode-languageclient/node";
 import { ensureBundledExecutable, type Found, type Resolution, resolveBinary } from "./binary";
 import { INSTALL_URL, readSettings, resolutionError, SECTION } from "./settings";
+import { withTimeout } from "./timeout";
 
 const run = promisify(execFile);
+
+/** How long sigil lsp has to answer initialize before the start counts as failed. */
+const START_TIMEOUT_MS = 30_000;
+
+/** How long a client gets to stop or dispose before it's abandoned. */
+const STOP_TIMEOUT_MS = 5_000;
 
 /** The files the server hears about when they change on disk: sources and the configuration file. */
 const WATCHED = "**/{*.sigil,sigil.yaml,sigil.json,sigil.toml,.sigil.yaml,.sigil.json,.sigil.toml}";
@@ -85,6 +92,7 @@ export class Server implements vscode.Disposable {
       setting: settings.path,
       extensionPath: this.context.extensionPath,
       workspaceFolder: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+      workspaceTrusted: vscode.workspace.isTrusted,
       home: homedir(),
       platform: process.platform,
       env: process.env,
@@ -99,11 +107,13 @@ export class Server implements vscode.Disposable {
     return { binary: res, info: JSON.parse(stdout) as VersionInfo };
   }
 
+  /** Stops the server, then closes the output channels it writes to. */
   dispose(): void {
-    void this.stop();
-    this.statusEmitter.dispose();
-    this.output.dispose();
-    this.trace.dispose();
+    void this.stop().finally(() => {
+      this.statusEmitter.dispose();
+      this.output.dispose();
+      this.trace.dispose();
+    });
   }
 
   private enqueue(step: () => Promise<void>): Promise<void> {
@@ -146,7 +156,13 @@ export class Server implements vscode.Disposable {
     });
 
     try {
-      await client.start();
+      // A start that never settles would block the queue, and every later
+      // restart, forever.
+      await withTimeout(
+        client.start(),
+        START_TIMEOUT_MS,
+        `sigil lsp didn't answer within ${START_TIMEOUT_MS / 1000} s`,
+      );
     } catch (err) {
       // A sigil from before the language server exits at once, which is
       // the likeliest cause; the output channel has what it printed.
@@ -155,7 +171,7 @@ export class Server implements vscode.Disposable {
       this.client = undefined;
       this.watcher?.dispose();
       this.watcher = undefined;
-      await client.dispose().catch(() => undefined);
+      await withTimeout(client.dispose(STOP_TIMEOUT_MS), 2 * STOP_TIMEOUT_MS, "dispose").catch(() => undefined);
       this.setStatus({ kind: "failed", binary: res, message });
       void vscode.window
         .showErrorMessage(
@@ -173,11 +189,11 @@ export class Server implements vscode.Disposable {
     this.client = undefined;
     if (client !== undefined) {
       try {
-        await client.stop(5_000);
+        await client.stop(STOP_TIMEOUT_MS);
       } catch (err) {
         this.output.warn(`Stopping sigil lsp: ${err instanceof Error ? err.message : String(err)}`);
       }
-      await client.dispose();
+      await withTimeout(client.dispose(STOP_TIMEOUT_MS), 2 * STOP_TIMEOUT_MS, "dispose").catch(() => undefined);
     }
     this.watcher?.dispose();
     this.watcher = undefined;
@@ -198,8 +214,14 @@ export class Server implements vscode.Disposable {
   }
 
   private async reportMissing(res: Resolution, message: string): Promise<void> {
-    const actions = res.kind === "missing" ? ["Install sigil", "Open Settings"] : ["Open Settings"];
+    const actions =
+      res.kind === "missing"
+        ? ["Install sigil", "Open Settings"]
+        : res.kind === "bad-setting" && res.reason === "untrusted"
+          ? ["Manage Workspace Trust", "Open Settings"]
+          : ["Open Settings"];
     const choice = await vscode.window.showErrorMessage(message, ...actions);
+    if (choice === "Manage Workspace Trust") await vscode.commands.executeCommand("workbench.trust.manage");
     if (choice === "Install sigil") await vscode.env.openExternal(vscode.Uri.parse(INSTALL_URL));
     if (choice === "Open Settings") await vscode.commands.executeCommand("workbench.action.openSettings", "sigil.path");
   }

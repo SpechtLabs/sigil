@@ -13,6 +13,9 @@ import { checkForUpdate, fetchLatestRelease, needsUpdateNotice } from "./update-
 const LAST_CHECKED = "sigil.updates.lastChecked";
 const SKIPPED = "sigil.updates.skipped";
 
+/** The running extension's server, which deactivate stops. */
+let active: Server | undefined;
+
 /** What activate returns: a handle the integration tests inspect the server through. */
 export interface Api {
   readonly server: Server;
@@ -20,6 +23,7 @@ export interface Api {
 
 export function activate(context: vscode.ExtensionContext): Api {
   const server = new Server(context);
+  active = server;
   context.subscriptions.push(server);
 
   const status = vscode.languages.createLanguageStatusItem("sigil.server", { language: "sigil" });
@@ -35,6 +39,12 @@ export function activate(context: vscode.ExtensionContext): Api {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (needsRestart((section) => e.affectsConfiguration(section))) void server.restart();
     }),
+    // Both change what the binary resolves to: trust lets a relative
+    // sigil.path and the workspace's own settings count, and the first
+    // folder is the server's working directory and what a relative path is
+    // relative to.
+    vscode.workspace.onDidGrantWorkspaceTrust(() => void server.restart()),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => void server.restart()),
   );
 
   // Not awaited: a server that never answers mustn't hold up activation.
@@ -43,8 +53,14 @@ export function activate(context: vscode.ExtensionContext): Api {
   return { server };
 }
 
-export function deactivate(): void {
-  // The server is in context.subscriptions, which VS Code disposes.
+/**
+ * Stops the server and resolves once sigil lsp has had its shutdown and exit,
+ * which VS Code waits for before it disposes context.subscriptions.
+ */
+export function deactivate(): Promise<void> | undefined {
+  const server = active;
+  active = undefined;
+  return server?.stop();
 }
 
 /**

@@ -2,7 +2,7 @@
 // need vscode. A new setting is a row in package.json's contributes and a
 // field here; RESTART_ON lists the ones the server has to restart for.
 
-import type { Resolution } from "./binary";
+import type { BadSetting, Resolution } from "./binary";
 
 /** The settings section; every key below lives under it. */
 export const SECTION = "sigil";
@@ -47,11 +47,22 @@ export function resolutionError(res: Resolution): string | undefined {
   switch (res.kind) {
     case "found":
       return undefined;
-    case "bad-setting": {
+    case "bad-setting":
+      return badSettingError(res);
+    case "missing":
+      return "Couldn't find the sigil binary: this extension build doesn't bundle one, and there's no sigil on PATH. Install sigil, or point sigil.path at it.";
+  }
+}
+
+function badSettingError(res: BadSetting): string {
+  switch (res.reason) {
+    case "untrusted":
+      return `sigil.path is set to "${res.setting}", a path relative to the workspace, which an untrusted workspace can't choose. Trust the workspace, or make sigil.path absolute.`;
+    case "batch-file":
+      return `sigil.path is set to "${res.setting}", a batch file, which can't be started without a shell. Point it at sigil.exe.`;
+    case "missing": {
       const where = res.onPath ? `no ${res.setting} on PATH` : `no executable at ${res.tried[0]}`;
       return `sigil.path is set to "${res.setting}", but there's ${where}. Fix the setting, or clear it to use the bundled sigil.`;
     }
-    case "missing":
-      return "Couldn't find the sigil binary: this extension build doesn't bundle one, and there's no sigil on PATH. Install sigil, or point sigil.path at it.";
   }
 }

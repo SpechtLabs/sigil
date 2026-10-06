@@ -1,7 +1,9 @@
 // The integration tests, run inside VS Code by run.mjs against a copy of
 // fixture/ whose sigil.path points at fake-server.ts. VS Code loads this
 // module and calls run(); a rejection fails the run. Each step logs its name,
-// so a failure in CI says which one.
+// so a failure in CI says which one. SIGIL_TEST_SUITE picks the suite: the
+// trusted one runs with workspace trust off, the restricted one in an
+// untrusted workspace.
 
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -16,7 +18,7 @@ const SUITE_TIMEOUT_MS = 180_000;
 
 export function run(): Promise<void> {
   return Promise.race([
-    suite(),
+    process.env.SIGIL_TEST_SUITE === "restricted" ? restrictedSuite() : trustedSuite(),
     new Promise<never>((_, reject) =>
       setTimeout(
         () => reject(new Error(`the suite took longer than ${SUITE_TIMEOUT_MS} ms`)),
@@ -26,7 +28,7 @@ export function run(): Promise<void> {
   ]);
 }
 
-async function suite(): Promise<void> {
+async function trustedSuite(): Promise<void> {
   const log = process.env.SIGIL_FAKE_LOG;
   assert.ok(log, "SIGIL_FAKE_LOG is set by run.mjs");
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -126,6 +128,45 @@ async function suite(): Promise<void> {
     await server.stop();
     assert.equal(server.status.kind, "stopped");
     await waitFor(() => entries(log).some((e) => e.method === "exit"), "the server to get exit");
+  });
+}
+
+// In an untrusted workspace the workspace can't choose the program that runs:
+// VS Code drops the workspace's sigil.path, a relative sigil.path from user
+// settings is refused, and the extension falls back to PATH.
+async function restrictedSuite(): Promise<void> {
+  const pathBinary = process.env.SIGIL_FAKE_PATH;
+  assert.ok(pathBinary, "SIGIL_FAKE_PATH is set by run.mjs");
+  const extension = vscode.extensions.getExtension<Api>(EXTENSION_ID);
+  assert.ok(extension, `${EXTENSION_ID} is installed`);
+
+  await step("the extension activates in an untrusted workspace", async () => {
+    assert.equal(vscode.workspace.isTrusted, false);
+    await waitFor(() => extension.isActive, "the extension to activate on its own");
+  });
+  const { server } = extension.exports;
+
+  await step("the workspace's sigil.path is ignored, and sigil comes from PATH", async () => {
+    await waitFor(() => server.status.kind === "running", "the server to run");
+    const status = server.status;
+    assert.ok(status.kind === "running", JSON.stringify(status));
+    assert.equal(status.binary.source, "path");
+    assert.equal(status.binary.path, pathBinary);
+  });
+
+  await step("a relative sigil.path in user settings is refused", async () => {
+    const config = vscode.workspace.getConfiguration("sigil");
+    await config.update("path", "bin/sigil", vscode.ConfigurationTarget.Global);
+    await waitFor(() => server.status.kind === "no-binary", "the relative path to be refused");
+    const status = server.status;
+    assert.ok(status.kind === "no-binary" && status.message.includes("untrusted workspace"), JSON.stringify(status));
+    await config.update("path", undefined, vscode.ConfigurationTarget.Global);
+    await waitFor(() => server.status.kind === "running", "the server to run again");
+  });
+
+  await step("the server stops with the window", async () => {
+    await server.stop();
+    assert.equal(server.status.kind, "stopped");
   });
 }
 

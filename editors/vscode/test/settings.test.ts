@@ -59,13 +59,29 @@ describe("resolutionError", () => {
     { name: "found", res: { kind: "found", path: "/usr/bin/sigil", source: "path" }, want: undefined },
     {
       name: "a path setting",
-      res: { kind: "bad-setting", setting: "~/sigil", onPath: false, tried: ["/home/me/sigil"] },
+      res: { kind: "bad-setting", setting: "~/sigil", reason: "missing", onPath: false, tried: ["/home/me/sigil"] },
       want: `sigil.path is set to "~/sigil", but there's no executable at /home/me/sigil. Fix the setting, or clear it to use the bundled sigil.`,
     },
     {
       name: "a command name setting",
-      res: { kind: "bad-setting", setting: "sigil-dev", onPath: true, tried: ["/a/sigil-dev", "/b/sigil-dev"] },
+      res: {
+        kind: "bad-setting",
+        setting: "sigil-dev",
+        reason: "missing",
+        onPath: true,
+        tried: ["/a/sigil-dev", "/b/sigil-dev"],
+      },
       want: `sigil.path is set to "sigil-dev", but there's no sigil-dev on PATH. Fix the setting, or clear it to use the bundled sigil.`,
+    },
+    {
+      name: "a relative path in an untrusted workspace",
+      res: { kind: "bad-setting", setting: "bin/sigil", reason: "untrusted", onPath: false, tried: [] },
+      want: `sigil.path is set to "bin/sigil", a path relative to the workspace, which an untrusted workspace can't choose. Trust the workspace, or make sigil.path absolute.`,
+    },
+    {
+      name: "a batch file on Windows",
+      res: { kind: "bad-setting", setting: "C:\\tools\\sigil.cmd", reason: "batch-file", onPath: false, tried: [] },
+      want: `sigil.path is set to "C:\\tools\\sigil.cmd", a batch file, which can't be started without a shell. Point it at sigil.exe.`,
     },
     {
       name: "missing",

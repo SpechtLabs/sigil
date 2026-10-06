@@ -21,6 +21,7 @@ function unix(setting: string, files: string[], overrides: Partial<Inputs> = {})
     setting,
     extensionPath: EXT,
     workspaceFolder: "/work",
+    workspaceTrusted: true,
     home: "/home/me",
     platform: "linux",
     env: { PATH: "/usr/local/bin:/usr/bin" },
@@ -36,6 +37,7 @@ function windows(setting: string, files: string[], env: Record<string, string> =
     setting,
     extensionPath: WIN_EXT,
     workspaceFolder: "C:\\work",
+    workspaceTrusted: true,
     home: "C:\\Users\\me",
     platform: "win32",
     env: { Path: "C:\\tools;C:\\bin\\", PATHEXT: ".COM;.EXE", ...env },
@@ -78,7 +80,7 @@ describe("resolveBinary", () => {
     {
       name: "a setting that doesn't exist is an error, not a fall back",
       inputs: unix("/nope/sigil", ["/ext/bin/sigil", "/usr/bin/sigil"]),
-      want: { kind: "bad-setting", setting: "/nope/sigil", onPath: false, tried: ["/nope/sigil"] },
+      want: { kind: "bad-setting", setting: "/nope/sigil", reason: "missing", onPath: false, tried: ["/nope/sigil"] },
     },
     {
       name: "a ~/ setting is under the home directory",
@@ -106,9 +108,50 @@ describe("resolveBinary", () => {
       want: {
         kind: "bad-setting",
         setting: "sigil-dev",
+        reason: "missing",
         onPath: true,
         tried: ["/usr/local/bin/sigil-dev", "/usr/bin/sigil-dev"],
       },
+    },
+    {
+      name: "relative PATH entries are skipped, so a workspace's bin can't answer for sigil",
+      inputs: unix("", ["bin/sigil", "./tools/sigil", "/usr/bin/sigil"], { env: { PATH: "bin:./tools::/usr/bin" } }),
+      want: { kind: "found", path: "/usr/bin/sigil", source: "path" },
+    },
+    {
+      name: "with only relative PATH entries, nothing is found on PATH",
+      inputs: unix("", ["bin/sigil"], { env: { PATH: "bin" } }),
+      want: { kind: "missing", tried: ["/ext/bin/sigil"] },
+    },
+    {
+      name: "a command name setting skips relative PATH entries too",
+      inputs: unix("sigil-dev", ["bin/sigil-dev"], { env: { PATH: "bin" } }),
+      want: { kind: "bad-setting", setting: "sigil-dev", reason: "missing", onPath: true, tried: [] },
+    },
+    {
+      name: "an untrusted workspace can't resolve a relative setting, even one in user settings",
+      inputs: unix("bin/sigil", ["/work/bin/sigil"], { workspaceTrusted: false }),
+      want: { kind: "bad-setting", setting: "bin/sigil", reason: "untrusted", onPath: false, tried: [] },
+    },
+    {
+      name: "an untrusted workspace still resolves an absolute setting",
+      inputs: unix("/opt/sigil", ["/opt/sigil"], { workspaceTrusted: false }),
+      want: { kind: "found", path: "/opt/sigil", source: "setting" },
+    },
+    {
+      name: "an untrusted workspace still resolves a ~/ setting",
+      inputs: unix("~/go/bin/sigil", ["/home/me/go/bin/sigil"], { workspaceTrusted: false }),
+      want: { kind: "found", path: "/home/me/go/bin/sigil", source: "setting" },
+    },
+    {
+      name: "an untrusted workspace still looks a command name up on PATH",
+      inputs: unix("sigil", ["/usr/bin/sigil"], { workspaceTrusted: false }),
+      want: { kind: "found", path: "/usr/bin/sigil", source: "setting" },
+    },
+    {
+      name: "an untrusted workspace still uses the bundled binary",
+      inputs: unix("", ["/ext/bin/sigil"], { workspaceTrusted: false }),
+      want: { kind: "found", path: "/ext/bin/sigil", source: "bundled" },
     },
     {
       name: "Windows: the bundled binary is sigil.exe",
@@ -155,6 +198,26 @@ describe("resolveBinary", () => {
       want: { kind: "found", path: "C:\\work\\bin\\sigil.exe", source: "setting" },
     },
     {
+      name: "Windows: .BAT and .CMD on PATHEXT are skipped, since they need a shell",
+      inputs: windows("", ["C:\\tools\\sigil.cmd", "C:\\bin\\sigil.exe"], { PATHEXT: ".COM;.EXE;.BAT;.CMD" }),
+      want: { kind: "found", path: "C:\\bin\\sigil.exe", source: "path" },
+    },
+    {
+      name: "Windows: a batch file setting is refused",
+      inputs: windows("C:\\tools\\sigil.CMD", ["C:\\tools\\sigil.CMD"]),
+      want: { kind: "bad-setting", setting: "C:\\tools\\sigil.CMD", reason: "batch-file", onPath: false, tried: [] },
+    },
+    {
+      name: "Windows: relative PATH entries are skipped",
+      inputs: { ...windows("", ["bin\\sigil.exe", "D:\\sigil.exe"]), env: { Path: "bin;D:\\", PATHEXT: ".EXE" } },
+      want: { kind: "found", path: "D:\\sigil.exe", source: "path" },
+    },
+    {
+      name: "Windows: an untrusted workspace can't resolve a relative setting",
+      inputs: { ...windows("bin\\sigil.exe", ["C:\\work\\bin\\sigil.exe"]), workspaceTrusted: false },
+      want: { kind: "bad-setting", setting: "bin\\sigil.exe", reason: "untrusted", onPath: false, tried: [] },
+    },
+    {
       name: "Windows: a ~\\ setting is under the home directory",
       inputs: windows("~\\sigil.exe", ["C:\\Users\\me\\sigil.exe"]),
       want: { kind: "found", path: "C:\\Users\\me\\sigil.exe", source: "setting" },
@@ -185,6 +248,7 @@ describe("the file system", () => {
     const base = {
       extensionPath: ext,
       workspaceFolder: dir,
+      workspaceTrusted: true,
       home: dir,
       platform: process.platform,
       env: { PATH: pathDir },
@@ -219,6 +283,7 @@ describe("the file system", () => {
       setting: "",
       extensionPath: ext,
       workspaceFolder: undefined,
+      workspaceTrusted: true,
       home: ext,
       platform: process.platform,
       env: {},
