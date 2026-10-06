@@ -79,20 +79,6 @@ Until they do, a Go service that consumes a kind it doesn't define imports the d
 
 The planned [`sigil gen go`](#sigil-gen-go) command covers the other half: services that want typed payload structs from a kind file without importing the host.
 
-## Static cost analysis
-
-**Status:** not implemented; tracked on the [roadmap](/project/roadmap/) as a deliverable of the Hardening milestone, deferred from its fuzzing and correctness pass. **Open question:** [Static cost analysis](/project/open-questions/#static-cost-analysis).
-
-The language terminates, but termination doesn't make evaluation cheap. Nested quantifiers multiply collection sizes, so `any a in xs: any b in ys: a == b` may compare every pair, costing `len(xs) * len(ys)`. List membership and distinct-element operators scan collections, policy invocations repeat work for each instantiation, and strings, patterns and host functions have costs of their own. [Halting by construction](/understanding/halting/) has the background.
-
-The proposed analyzer would combine declared collection limits with operator and host-function costs, then reject policies over a host's budget, pointing at the expression that exceeds it. Three parts have no design yet:
-
-- how a kind declares the maximum size of a collection,
-- how a host function declares what it costs,
-- what the budget API looks like.
-
-Today kinds declare no collection limits, and neither the compiler nor `sigil check` computes, reports or enforces a cost. Hosts must bound their inputs and the work their host functions do, and should evaluate under a deadline; see [Bound evaluation time](/guides/handle-errors/#bound-evaluation-time).
-
 ## `sigil breaking`
 
 **Status:** not implemented; tracked on the [roadmap](/project/roadmap/) as a required deliverable of the Tooling II milestone. The command is registered and exits with "not implemented yet"; see [`sigil breaking`](/reference/cli/#sigil-breaking).

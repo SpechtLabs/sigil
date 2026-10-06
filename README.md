@@ -12,7 +12,7 @@ A small, statically typed policy language for Go hosts.
 Sigil is a small language for decision logic. Your Go program hands a policy typed input, the policy's rules look at it, and the answer is a typed decision: page the on-call, turn a feature on, approve a deploy, grant a role. Every decision carries a reason and a payload, and every policy is type-checked against a contract your Go code defines. The language terminates on finite inputs when its host functions terminate. It ships as an importable Go library, in the spirit of [filt-rs](https://github.com/SierraSoftworks/filters), and it's meant to replace the YAML rule engines with label-selector matchers that teams keep rebuilding.
 
 > [!IMPORTANT]
-> The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`), host-ordered types such as versions, static cost budgets, and editor tooling. The [roadmap](#roadmap) tracks what's left.
+> The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`), host-ordered types such as versions, and editor tooling. The [roadmap](#roadmap) tracks what's left.
 
 ## What it looks like
 
@@ -126,7 +126,7 @@ Nothing about the language is specific to alerts. The same constructs decide fea
 ## Design goals
 
 - **Readable on first contact.** Terse is fine; Rego-style logic programming isn't.
-- **Finite and halting by design.** No loops, no recursion, no user-defined functions. Quantifiers and filters range over finite collections. Host functions must terminate; static cost budgets are still planned.
+- **Finite and halting by design.** No loops, no recursion, no user-defined functions. Quantifiers and filters range over finite collections. Host functions must terminate, and a deadline stops an evaluation that runs long.
 - **Typed against the host's contract.** Unknown fields, misspelled enum values, type mismatches and wrong payload keys fail at compile time. A typo can't silently switch a deny rule off.
 - **Self-describing decisions.** A mandatory, literal reason on every decision, plus a typed payload the host acts on.
 - **Composable from day one.** Typed `param`s, `use` imports and policy invocation replace text templating for per-team variants, and `sigil explain` flattens any composition back into the rules it adds up to.
@@ -158,7 +158,7 @@ The host gets back the winning decision, its reason and payload, the name of the
 | --- | --- | --- |
 | [filt-rs](https://github.com/SierraSoftworks/filters) | Friendly expression syntax, `in`/`like`/`contains`, durations, parse once / eval many, errors with a fix hint | Unknown properties resolving to `null`, which makes deny rules fail open |
 | [Cedar](https://www.cedarpolicy.com/) | Schema-checked policies, forbid overrides permit, templates with slots | A principal/action/resource model too narrow for arbitrary host inputs |
-| [CEL](https://github.com/google/cel-go) | Non-Turing-complete by construction, planned static cost estimation, host-declared variables and functions | Being an expression language only, with no rules, decisions or composition |
+| [CEL](https://github.com/google/cel-go) | Non-Turing-complete by construction, host-declared variables and functions | Being an expression language only, with no rules, decisions or composition |
 | [Rego (OPA)](https://www.openpolicyagent.org/docs/latest/policy-language/) | The lesson about learning curves | Datalog semantics, implicit iteration, partial rule sets |
 | HCL / YAML DSLs | The declarative feel | Nesting that fights templating, anchors as reuse, stringly typed matchers |
 
@@ -218,7 +218,7 @@ mise run docs-dev
 
 ## Roadmap
 
-M1 to M6 are done. Hardening is in progress: fuzz targets and round-trip properties cover every layer, and a weekly campaign fuzzes each of the 33 targets for an hour. A day of fuzzing has passed; public `LoadKind` and static cost analysis remain. Editor tooling comes last.
+M1 to M6 are done. Hardening is in progress: fuzz targets and round-trip properties cover every layer, and a weekly campaign fuzzes each of the 33 targets for an hour. A day of fuzzing has passed; public `LoadKind` remains. Editor tooling comes last.
 
 | Milestone | Scope | State |
 | --- | --- | --- |
@@ -228,7 +228,7 @@ M1 to M6 are done. Hardening is in progress: fuzz targets and round-trip propert
 | M4 Policies | `when`, decision constructors, precedence, default, trace; host-ordered types remain | Done |
 | M5 Composition | `param`, `let`, modules and imports, policy invocation, `Require`, bundle loader, cycle detection, `sigil explain` | Done |
 | M6 Tooling I | `sigil fmt`, kind export, `sigil check` with lints, `sigil eval`, `sigil test`, `policytest` | Done |
-| M7 Hardening | Round-trip properties, fuzzing across layers and a weekly hour-per-target campaign; public `LoadKind` and cost analysis remain | In progress |
+| M7 Hardening | Round-trip properties, fuzzing across layers and a weekly hour-per-target campaign; public `LoadKind` remains | In progress |
 | M8 Tooling II | `sigil lsp`, `sigil gen go`, `sigil breaking`; the commands exist but aren't implemented | Planned |
 
 The roadmap lives in [`roadmap.yml`](./roadmap.yml) in the [roadmap-md](https://roadmap.sierrasoftworks.com/) format, with every deliverable and what "done" means for each milestone; open it in the [roadmap viewer](https://roadmap.sierrasoftworks.com/viewer/github.com#SpechtLabs/sigil) for the rendered version.

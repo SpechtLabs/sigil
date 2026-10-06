@@ -143,6 +143,13 @@ timeline:
       those fixed, the next run fuzzed every target for an hour without a failure. With two
       hour-per-target runs on a local machine, that's about 132 target-hours over two days, and
       the Hardening milestone's fuzzing criterion is met.
+  - date: 2026-10-06
+    title: Static cost analysis dropped
+    description: |
+      Sigil won't estimate or budget evaluation cost. Cost grows only with the collections a
+      policy walks, which the host bounds, and a deadline stops an evaluation that runs long. A
+      budget would have needed collection limits and host-function costs in every kind, for a
+      worst-case number the deadline already covers.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -524,7 +531,7 @@ milestones:
         description: |
           Type-checks and compiles every document, with a base policy's params left unbound,
           checks `--require` with `--trusted` and `--policy` roots, and prints diagnostics as text,
-          JSON or YAML. Cost reporting comes with the static cost analysis.
+          JSON or YAML.
       - title: sigil eval and sigil test
         state: DONE
         requirement: MUST
@@ -561,7 +568,7 @@ milestones:
       **Done when** a day of fuzzing finds no panics, and `Import(Export(k)) == k` holds.
       Both hold: four hour-per-target campaigns on October 4 and 5, about 132 target-hours,
       found five problems, all fixed, and the last campaign passed every target. Public
-      `LoadKind` and static cost analysis remain.
+      `LoadKind` remains.
     deliverables:
       - title: LoadKind
         state: DOING
@@ -605,12 +612,14 @@ milestones:
           last campaign, [run 37288297603](https://github.com/SpechtLabs/sigil/actions/runs/37288297603),
           passed every target. The weekly campaign keeps running.
       - title: Static cost analysis
-        state: TODO
+        state: SKIP
         requirement: SHOULD
         description: |
-          Deferred from this fuzzing and correctness pass. Collection-size declarations,
-          host-function costs and the budget API still need a design. Neither the compiler nor
-          `sigil check` currently computes or enforces a cost budget.
+          Dropped on 2026-10-06. Evaluation cost grows only with the collections a policy walks,
+          and the host bounds those; a deadline stops an evaluation that runs long. A static
+          budget would need collection limits and host-function costs in every kind for a
+          worst-case estimate a deadline already covers. [Why there's no cost
+          budget](/understanding/halting/#why-there-s-no-cost-budget) has the reasoning.
 
   - title: Tooling II
     description: |

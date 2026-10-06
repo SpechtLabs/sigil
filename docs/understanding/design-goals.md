@@ -27,7 +27,7 @@ This goal wins most arguments about syntax. It's why the language uses `and`/`or
 
 ### Finite and halting by design
 
-No loops, no recursion, no user-defined functions. The language terminates on finite inputs when its host functions terminate. Static cost analysis is a goal, not an implemented safeguard: hosts must currently bound inputs and host-function work themselves. [Halting by construction](/understanding/halting/) explains the guarantees and limits.
+No loops, no recursion, no user-defined functions. The language terminates on finite inputs when its host functions terminate. Evaluation cost grows with input size, so hosts bound their inputs and host-function work and evaluate under a deadline; there's no static cost budget. [Halting by construction](/understanding/halting/) explains the guarantees and limits.
 
 ### Typed against a host-defined contract
 

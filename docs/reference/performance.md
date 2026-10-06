@@ -15,7 +15,7 @@ What compiling and evaluating Sigil policies costs, as measured on one machine; 
 - **Cost grows in proportion to the policy.** At every size up to 512 rules, each rule that doesn't match adds about 140 ns and one allocation, and compiling costs about 5 µs and 8 KiB per rule. When every rule matches, the cost per rule rises slowly with their number, to 525 ns at 512 rules, while the allocations stay at six per rule.
 - **Compiled policies are safe to share.** A compiled policy is immutable. Concurrent evaluations share no mutable state and take no locks, so any number of goroutines can evaluate the same policy.
 - **Allocation is predictable.** An evaluation allocates the same number of objects every time for the same input and outcome; no evaluation benchmark's count varied between samples. Most of it is the result and the trace a host receives.
-- **Every evaluation halts.** Its cost grows with the input's lists, and there's no cost budget yet; see [Halting by construction](/understanding/halting/).
+- **Every evaluation halts.** Its cost grows with the input's lists, which the host bounds, and a deadline stops one that runs long; see [Halting by construction](/understanding/halting/).
 - **Checking the context is nearly free.** The [context checks](/reference/evaluation/#context-checks) cost about 2.5% in the tightest loop, a quantifier comparing two ints, and nothing measurable on the evaluation benchmarks below. Under `context.Background()`, which is never done, nothing is polled.
 
 ## Evaluating policies

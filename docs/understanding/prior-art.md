@@ -37,7 +37,7 @@ What Sigil can't take is Cedar's fixed data model. Every Cedar request is a prin
 
 ## CEL
 
-[CEL](https://github.com/google/cel-go) influenced Sigil's finite expression language and host-declared inputs and functions. CEL can also estimate an expression's cost before running it. Sigil plans something similar but doesn't compute or enforce a cost budget today; see [Halting by construction](/understanding/halting/).
+[CEL](https://github.com/google/cel-go) influenced Sigil's finite expression language and host-declared inputs and functions. CEL can also estimate an expression's cost before running it. Sigil doesn't, and [Why there's no cost budget](/understanding/halting/#why-there-s-no-cost-budget) says why.
 
 CEL stops at expressions, though. It has no rules, no decisions, no notion of combining several conditions into an outcome and no composition story. Every project that embeds CEL for policies ends up building those pieces around it, which is the same rebuild-it-again problem Sigil exists to stop.
 

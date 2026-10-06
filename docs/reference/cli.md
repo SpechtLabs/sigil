@@ -297,7 +297,6 @@ sigil check [PATH...] [flags]
 - The summary line counts every file read: the paths, the trusted paths and the kind files, each once. One tree gives one count, with or without `--policy`.
 - Errors fail the check; warnings are printed and don't. Both use the [error format](#error-messages), in file and line order, and a warning names its lint.
 - When the paths hold no `.sigil` files at all, `check` warns `no .sigil files found, so nothing was checked` and exits 0.
-- `sigil check` doesn't compute costs; see [Static cost analysis](/project/planned/#static-cost-analysis).
 
 `--policy` narrows the check to the policies it matches and every document they use, directly or through the documents they use, trusted ones included:
 

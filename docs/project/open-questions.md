@@ -62,12 +62,6 @@ When the `regions` label is missing, `service.labels["regions"]` is `""`, and Go
 
 Whatever the answer, it has to cover `exclusive in` and `one in` too, which follow `all in` and `any in`. It also has to cover the quantifier: `all r in actor.roles: r != "admin"` is vacuously true for an empty `roles` list, for the same reason. Defining one as false and not the other would make the two spellings of "every element satisfies" disagree.
 
-## Static cost analysis
-
-**Blocks:** the static cost analysis deliverable on the [roadmap](/project/roadmap/).
-
-A single quantifier costs time linear in its list, but a quantifier nested in another's body costs the product of both list sizes, so `all a in xs: any b in ys: a == b` is quadratic. A static estimate has to account for these products, list membership, repeated invocations and host-function costs. How a kind declares collection sizes, how a host function declares its cost, and what the budget API looks like are all undecided. Neither the compiler nor `sigil check` computes or enforces a cost today. The proposed analyzer is in [Planned designs](/project/planned/#static-cost-analysis), and [Halting by construction](/understanding/halting/) has the background.
-
 ## Reasons declared in the kind
 
 **Blocks:** nothing.
