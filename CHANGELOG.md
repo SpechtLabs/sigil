@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.8.0](https://github.com/SpechtLabs/sigil/compare/v0.7.3...v0.8.0) (2026-10-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **policy:** read results with a type switch and a reason switch ([#195](https://github.com/SpechtLabs/sigil/issues/195))
+
+### Features
+
+* **cli:** compare kind versions with sigil breaking ([#201](https://github.com/SpechtLabs/sigil/issues/201)) ([9dc4204](https://github.com/SpechtLabs/sigil/commit/9dc42048c7ec25d67106d22eeea717a4834d3ba1))
+* **cli:** generate typed Go code from a kind file with sigil gen go ([#200](https://github.com/SpechtLabs/sigil/issues/200)) ([d89b7c9](https://github.com/SpechtLabs/sigil/commit/d89b7c92b45bd98d2d2cc9f13b3ddc06a8b3f3fb))
+* **cli:** run the Sigil language server with sigil lsp ([#205](https://github.com/SpechtLabs/sigil/issues/205)) ([706b007](https://github.com/SpechtLabs/sigil/commit/706b007ee9c9b50fcedeb4d664bed7d215409332))
+* **editors:** add a tree-sitter grammar for Sigil ([#203](https://github.com/SpechtLabs/sigil/issues/203)) ([b13b050](https://github.com/SpechtLabs/sigil/commit/b13b0507dd978c86139a56a160ba65de3a896fa5))
+* **lsp:** type-aware completion, signature help, quick fixes and inlay hints ([#216](https://github.com/SpechtLabs/sigil/issues/216)) ([8e634a9](https://github.com/SpechtLabs/sigil/commit/8e634a90a107935565cb5c1c10d9a9f9d9585929))
+* **policy:** read results with a type switch and a reason switch ([#195](https://github.com/SpechtLabs/sigil/issues/195)) ([dce6236](https://github.com/SpechtLabs/sigil/commit/dce623664cd564d78ddcbaaaeca2791f14a8614f))
+* **vscode:** add the Sigil extension for VS Code ([#206](https://github.com/SpechtLabs/sigil/issues/206)) ([4f2f62e](https://github.com/SpechtLabs/sigil/commit/4f2f62e0b092782c398ffe7f36b2647476d3a130))
+* **vscode:** leave rule snippets to the language server's completions ([#211](https://github.com/SpechtLabs/sigil/issues/211)) ([da04aaa](https://github.com/SpechtLabs/sigil/commit/da04aaab5011f035741addff0fec0355264e3344))
+
+
+### Bug Fixes
+
+* **parser:** resynchronize kind files at exclusive ([#204](https://github.com/SpechtLabs/sigil/issues/204)) ([6e0067b](https://github.com/SpechtLabs/sigil/commit/6e0067b066461652e2ce23e2e72e4a7857b7c816))
+* **vscode:** sync a document that gets its tab after the client starts ([#210](https://github.com/SpechtLabs/sigil/issues/210)) ([52319ee](https://github.com/SpechtLabs/sigil/commit/52319eed668d2af8fddb641cc3ebed315b18b8a0))
+
+
+### Performance Improvements
+
+* **eval:** fold many candidates by sorting their fingerprints ([#202](https://github.com/SpechtLabs/sigil/issues/202)) ([421ce56](https://github.com/SpechtLabs/sigil/commit/421ce56da29b26eda88533e448a1781b2653fbad))
+
 ## [0.7.3](https://github.com/SpechtLabs/sigil/compare/v0.7.2...v0.7.3) (2026-10-05)
 
 

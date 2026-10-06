@@ -2,7 +2,7 @@
   "name": "sigil",
   "displayName": "Sigil",
   "description": "The Sigil policy language: syntax highlighting, diagnostics, completion, hover, go to definition and formatting through sigil lsp",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "publisher": "spechtlabs",
   "author": "Cedric Specht <cedric@specht-labs.de>",
   "license": "Apache-2.0",
