@@ -226,13 +226,15 @@ type OutcomeRef interface{ /* unexported methods */ }
 | `Outcome.Decision()`               | The name of the handle's decision, `"deny"`                                                                                                                                               |
 | `Outcome.Name()`                   | The reason's name, `"no_rule_matched"`                                                                                                                                                    |
 | `Outcome.Is(res)`                  | Whether `res` is exactly that reason; see [Typed matching](#typed-matching)                                                                                                               |
-| `None`                             | The payload of a decision that carries only a reason                                                                                                                                      |
+| `None`                             | The payload of a decision that carries only a reason. One decision per kind can use it                                                                                                    |
 | `DecisionRef`                      | Any `Decision[T]`, whatever its payload type, so decisions of different payload types pass together to `WithDecisions`, `WithCollect` and `WithPrecedence`. Only `Decision` implements it |
 | `OutcomeRef`                       | A decision, standing for any of its reasons, or an `Outcome` for one, as `WithExclusive` takes them. Only those two implement it                                                          |
 
 - `T`'s tagged fields are the decision's payload fields, mapped as in [Go type mapping](#go-type-mapping). The reason is implicit on every decision and never appears in `T`.
+- `T` is unique within a kind: `NewKind` rejects two decisions with the same payload type, so a [type switch on `Result.Value`](#typed-matching) has one case per decision. A named type over another payload struct, `type ReleaseManagerData GrantData`, is a type of its own with the same fields. Why: [Each decision has its own Go payload type](/understanding/decisions/#why-each-decision-has-its-own-go-payload-type).
 - Reasons are plain strings, as `Result.Reason` is.
-- An `Outcome` is how Go code names a reason: to rank it with `WithReasonPrecedence`, make it the default with `WithDefault` or the conflict outcome with `WithConflict`, declare it exclusive with `WithExclusive`, and compare a result against it with `Is`.
+- An `Outcome` is how Go code names a reason: to rank it with `WithReasonPrecedence`, make it the default with `WithDefault` or the conflict outcome with `WithConflict`, declare it exclusive with `WithExclusive`, and compare a result against it with `Is` or in a switch on `Result.Why`.
+- `Outcome` is comparable. Two handles are equal when they name the same decision and reason.
 - The zero `Outcome` names no reason, and `NewKind` rejects it.
 
 ```go
@@ -253,6 +255,10 @@ var (
 
 ```text
 policy: decision deny has no reason "no_rule_mached" (did you mean "no_rule_matched"? deny declares: not_eligible, soak_too_short, no_rule_matched)
+```
+
+```text
+decisions deployer and release_manager share payload type access.GrantData (give each decision its own payload type, like `type ReleaseManagerData GrantData`, which keeps its fields, so a type switch on the result tells them apart)
 ```
 
 Why reasons are declared names: [Decisions and reasons](/understanding/decisions/).
@@ -296,7 +302,7 @@ type ApproveData struct {
 
 - `default=` takes a Sigil constant of the field's type.
 - `default=` is the only tag option, and only payload fields take it. An option on an input's tag or on a field of a `type` struct makes `NewKind` panic, as a default on a `type` field is an error in a kind file.
-- A decision without a payload uses `policy.None`.
+- A decision without a payload uses `policy.None`, or an empty struct of its own, `type AuditorData struct{}`, when another decision of the kind uses `policy.None`.
 
 Host function signatures come from the Go function's type: each parameter type maps like a field, and the result is `T` or `(T, error)`.
 
@@ -634,7 +640,7 @@ type Result struct {
 	Decision string         // "review"
 	Reason   string         // "service_owner"
 	Policy   string         // "payments.production": the policy the host evaluated
-	Payload  map[string]any // untyped view; use Decision[T].Match for typed
+	Payload  map[string]any // untyped view; Value returns the typed one
 	Outcome  []Entry        // the winner, or for a collecting kind every candidate, sorted; may be empty
 	Trace    Trace          // all candidates, with conditions for the winning decision
 	// unexported fields
@@ -692,6 +698,11 @@ How the winner is picked: [Evaluation semantics](/reference/evaluation/). Whethe
 ## Typed matching
 
 ```go
+func (r *Result) Value() any
+func (r *Result) Why() Outcome
+func (e Entry) Value() any
+func (e Entry) Why() Outcome
+
 func (d Decision[T]) Match(res *Result) (T, bool)
 func (d Decision[T]) MatchAll(res *Result) []Matched[T]
 func (o Outcome) Is(res *Result) bool
@@ -704,24 +715,43 @@ type Matched[T any] struct {
 }
 ```
 
-| Kind                             | `Match`                                                                                                            | `Is`                                                      | `MatchAll`                                                |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | --------------------------------------------------------- |
-| `collect one`                    | `true` and the payload when the outcome is that decision                                                           | `true` when the outcome is that decision with that reason | The winner when it's that decision, and nothing otherwise |
-| `collect all` with precedence    | `true` when the outcome is exactly one entry of that decision; `false` when the top rank holds more than one entry | As `Match`, comparing the reason too                      | Every entry of that decision                              |
-| `collect all` without precedence | Panics                                                                                                             | Panics                                                    | Every entry of that decision                              |
+| Kind                             | `Value`, `Why`                                                                                            | `Match`                                                                                                            | `Is`                                                      | `MatchAll`                                                |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | --------------------------------------------------------- |
+| `collect one`                    | The winner's payload struct and reason handle                                                             | `true` and the payload when the outcome is that decision                                                           | `true` when the outcome is that decision with that reason | The winner when it's that decision, and nothing otherwise |
+| `collect all` with precedence    | The one entry at the top rank; `nil` and the zero `Outcome` when the top rank holds none or more than one | `true` when the outcome is exactly one entry of that decision; `false` when the top rank holds more than one entry | As `Match`, comparing the reason too                      | Every entry of that decision                              |
+| `collect all` without precedence | Panics                                                                                                    | Panics                                                                                                             | Panics                                                    | Every entry of that decision                              |
 
-- `Match` returns the zero `T` and `false` for a nil result or another decision; `Is` returns `false`; `MatchAll` returns nil for a nil result.
+- `Value` returns the payload as the `T` of its decision's `Decision[T]`. Payload types are unique within a kind, so a type switch on it has one case per decision.
+- `Why` returns the reason as the `Outcome` handle `Decision[T].Reason` returns, comparable with `==` and usable as a `switch` case.
+- `Entry.Value` and `Entry.Why` do the same for one outcome entry, of any kind.
+- `Value` returns nil for a nil result and `Why` the zero `Outcome`, which equals no handle. `Match` returns the zero `T` and `false` for a nil result or another decision; `Is` returns `false`; `MatchAll` returns nil for a nil result.
 - `MatchAll` returns entries in outcome order, each a `Matched[T]` whose fields other than `Payload` are those of the `Entry` it came from.
-- The result that comes with an error holds the kind's default, or its conflict outcome after a conflict, so matching that decision or reason on it succeeds. Check `err` before matching.
-- Comparing `res.Reason` with a string compiles with a typo in it and never matches; `Is` compares through a handle that was checked when it was declared.
+- The result that comes with an error holds the kind's default, or its conflict outcome after a conflict, so reading that decision or reason on it succeeds. Check `err` before reading the result.
+- Comparing `res.Reason` with a string compiles with a typo in it and never matches; `Why` and `Is` compare through a handle that was checked when it was declared.
 
 ```go
+switch d := res.Value().(type) {
+case ReviewData:
+	requestReview(d.Approvers, res.Reason) // d is a typed ReviewData
+case ApproveData:
+	startRollout(d.Bake)
+}
+
+switch res.Why() {
+case SoakTooShort:
+	retryAfterSoak(res)
+case NoRuleMatched:
+	flagUncovered(p.Name()) // the default: no rule covers this deploy
+}
+
 if r, ok := Review.Match(res); ok {
 	requestReview(r.Approvers, res.Reason) // r is a typed ReviewData
 }
 
-if NoRuleMatched.Is(res) {
-	flagUncovered(p.Name()) // the default: no rule covers this deploy
+for _, e := range res.Outcome { // a collecting kind
+	if d, ok := e.Value().(AdminData); ok {
+		grantAdmin(d.TTL, e.Reason)
+	}
 }
 
 for _, g := range Admin.MatchAll(res) {
@@ -831,7 +861,8 @@ Every exported identifier of package `policy`:
 | [`DecisionRef`, `OutcomeRef`, `Outcome`](#decisions-and-reasons)                                                                                                                                                                   | Any `Decision[T]`; a decision or one of its reasons; one reason                                                      |
 | [`None`](#decisions-and-reasons)                                                                                                                                                                                                   | The payload of a decision that carries only a reason                                                                 |
 | [`Matched[T]`](#typed-matching)                                                                                                                                                                                                    | One entry `MatchAll` returns                                                                                         |
-| [`LoadOption`, `Params`, `Require`, `RequireOption`, `From`, `Trusted`](#load-options)                                                                                                                                                        | Options for `Load` and `Compile`                                                                                     |
+| [`Result.Value`, `.Why`, `Entry.Value`, `.Why`](#typed-matching)                                                                                                                                                                   | The winner's or an entry's payload struct, for a type switch, and reason handle, for a switch on reasons             |
+| [`LoadOption`, `Params`, `Require`, `RequireOption`, `From`, `Trusted`](#load-options)                                                                                                                                             | Options for `Load` and `Compile`                                                                                     |
 | [`MapFS(files) fs.FS`](#mapfs)                                                                                                                                                                                                     | A map of file names to contents as an `fs.FS`                                                                        |
 | [`Policy[In].Eval`, `.Name`](#evaluating)                                                                                                                                                                                          | Evaluating a compiled policy, and its name                                                                           |
 | [`Result`, `Entry`, `Trace`, `Candidate`, `Condition`](#result)                                                                                                                                                                    | What an evaluation produced and why                                                                                  |

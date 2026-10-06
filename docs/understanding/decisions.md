@@ -102,8 +102,26 @@ Sometimes the candidates can't stand together. Two members of an `exclusive` set
 
 A conflict is a defect in the policy, not in the input: two rules claimed outcomes the kind says can't both stand. That's why the `exclusive` check runs before ranking. A contradiction between two rules doesn't stop being one because a deny happened to fire too and would have outranked both. And it's why a host should count conflicts apart from runtime errors and assert failures, as [Handle failed evaluations](/guides/handle-errors/#tell-the-failures-apart) shows, because each one points at a different problem. Like every failed evaluation, a conflict comes back with a result the host can still act on, and a `collect one` kind can make that result name the conflict instead of claiming no rule matched; [Every failure fails closed](/understanding/strictness/#every-failure-fails-closed) explains what it holds.
 
+## Why each decision has its own Go payload type
+
+Go programs already read one value that can be several things: an error. They switch on its type, `case *fs.PathError:`, or compare it against sentinels, `case io.EOF:`. A Go host reads a result the same way. `res.Value()` returns the winner's payload struct for a type switch, and `res.Why()` returns its reason as the handle `Decision.Reason` gave, which is comparable, so a `switch` takes the handles as cases:
+
+```go
+switch d := res.Value().(type) {
+case PageData:
+	pageOncall(d.Target, res.Reason)
+case NotifyData:
+	notifySlack(d.Channel, res.Reason)
+}
+```
+
+A type switch can only tell decisions apart by their types, which makes the payload type the decision's identity in Go. Suppose a kind declared `deployer` and `release_manager` both with `GrantData`. Then `case GrantData:` would take a release manager's grant for a deployer's, and the code would compile and pass every test that only granted deployers. In an access kind that's a privilege bug, so `NewKind` rejects the kind instead and names a fix: `type ReleaseManagerData GrantData` is a type of its own with the same fields and tags. The cost is one line per decision that would otherwise share a type, usually a second empty struct next to `policy.None`.
+
+`Decision.Match` and `Outcome.Is` still check for one decision or reason, the way `errors.As` and `errors.Is` do. They never needed unique types, since they compare decision names, but one rule for every kind is easier to hold in your head than a rule that only applies once somebody writes a switch.
+
 ## Related
 
 - [Why rule order never matters](/understanding/order-independence/) explains precedence and ties.
 - [Asserts and decisions](/understanding/asserts/) covers the other way a policy can say no.
 - [Kinds as contracts](/understanding/kinds/) covers how decisions and reasons are declared and ranked.
+- [Typed matching](/reference/go-api/#typed-matching) lists what `Value`, `Why`, `Match` and `Is` return for each kind of result.

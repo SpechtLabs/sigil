@@ -10,10 +10,9 @@
 //
 // POST /api/v1/teams/{team}/deployments runs two policies. The access policy
 // grants the requestor roles for the team, and the team's deploy policy
-// decides with those roles as actor.roles. Both results are read through the
-// typed decision handles: deploy.Approve.Match and deploy.Review.Match give
-// the winner's payload as a struct, and access.Deployer.MatchAll and its
-// siblings give every grant. The decision maps to the status, approve 200,
+// decides with those roles as actor.roles. Both results are read with a type
+// switch on the payload, each decision's own struct: on Result.Value for the
+// deploy winner, and on each outcome entry's Value for the access grants. The decision maps to the status, approve 200,
 // review 202 and deny 403, so a client can act on the status alone.
 //
 // A failed evaluation still answers with a decision, the kind's fallback,

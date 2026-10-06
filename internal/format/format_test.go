@@ -509,8 +509,9 @@ type (
 		Count   int                       `policy:"count"`
 		Nested  map[string]map[string]int `policy:"nested"`
 	}
-	buildNone   struct{}
-	buildReview struct {
+	buildNone     struct{}
+	buildApproved struct{}
+	buildReview   struct {
 		Approvers []string      `policy:"approvers"`
 		Note      string        `policy:"note,default=\"none\""`
 		Bake      time.Duration `policy:"bake,default=1h30m"`
@@ -530,7 +531,7 @@ func builtKind(t *testing.T) *kind.Kind {
 		Decisions: []gokind.Decision{
 			{Name: "deny", Payload: reflect.TypeFor[buildNone](), Reasons: []string{"no_rule_matched", "stale"}},
 			{Name: "review", Payload: reflect.TypeFor[buildReview](), Reasons: []string{"owner", "sre"}},
-			{Name: "approve", Payload: reflect.TypeFor[buildNone](), Reasons: []string{"lgtm", "release_manager"}},
+			{Name: "approve", Payload: reflect.TypeFor[buildApproved](), Reasons: []string{"lgtm", "release_manager"}},
 		},
 		Rankings:  []gokind.Ranking{{Decision: "review", Reasons: []string{"sre", "owner"}}},
 		Exclusive: [][]kind.Outcome{{{Decision: "approve", Reason: "lgtm"}, {Decision: "approve", Reason: "release_manager"}}},

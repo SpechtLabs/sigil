@@ -153,9 +153,11 @@ func FuzzComposition(f *testing.F) {
 	})
 }
 
+type writeData struct{}
+
 func FuzzCollect(f *testing.F) {
 	read := policy.NewDecision[policy.None]("read", "member")
-	write := policy.NewDecision[policy.None]("write", "owner")
+	write := policy.NewDecision[writeData]("write", "owner")
 	f.Add(true, true, false, uint8(2))
 	f.Add(false, false, true, uint8(0))
 	f.Fuzz(func(t *testing.T, member, owner, exclusive bool, duplicates uint8) {

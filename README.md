@@ -76,8 +76,17 @@ if err != nil {
 }
 
 res, err := p.Eval(ctx, Input{Alert: alert, Team: team})
-if page, ok := Page.Match(res); ok {
-	pageOncall(page.Target, res.Reason) // page is a typed PageData
+if err != nil {
+	return err // res holds the kind's default
+}
+
+switch d := res.Value().(type) { // each decision has its own payload type
+case PageData:
+	pageOncall(d.Target, res.Reason) // d is a typed PageData
+case NotifyData:
+	notifySlack(d.Channel, res.Reason)
+case policy.None: // drop
+	log.Info("dropped", "reason", res.Reason)
 }
 ```
 

@@ -19,6 +19,7 @@ type builder struct {
 	binding *Binding
 	structs map[reflect.Type]*types.Struct // Go struct types already converted
 	reached map[*types.Enum]bool           // enums already added to the kind
+	payload map[reflect.Type]string        // payload type to the first decision that declared it
 	errs    diag.ErrorList
 }
 
@@ -168,6 +169,11 @@ func (b *builder) decision(d Decision) {
 		return
 	}
 	b.binding.Payloads[d.Name] = d.Payload
+	if prev, shared := b.payload[d.Payload]; shared && prev != d.Name {
+		b.errorf(sharedPayloadHelp(d), "decisions %s and %s share payload type %v", prev, d.Name, d.Payload)
+	} else {
+		b.payload[d.Payload] = d.Name
+	}
 	for _, f := range b.taggedFields(d.Payload, "decision "+d.Name) {
 		b.binding.Fields["decision "+d.Name+"."+f.name] = f.field.Index
 		field := &kind.Field{Name: f.name, Type: b.convert(f.field.Type, "decision "+d.Name+"."+f.name)}
@@ -232,4 +238,37 @@ func (b *builder) fn(f Func) {
 		b.errorf("a host function returns a value, or a value and an error", "function %s: unsupported results %v", f.Name, t)
 		fn.Result = types.Invalid
 	}
+}
+
+// sharedPayloadHelp suggests a payload type of d's own. A type switch on
+// a result's typed payload tells decisions apart by type, so two
+// decisions sharing one would land in the same case. A named type over
+// the shared struct keeps its fields and tags.
+func sharedPayloadHelp(d Decision) string {
+	name := payloadName(d.Name)
+	if d.Payload.NumField() == 0 {
+		return fmt.Sprintf("give each decision its own payload type, like `type %s struct{}`, so a type switch on the result tells them apart", name)
+	}
+	return fmt.Sprintf("give each decision its own payload type, like `type %s %s`, which keeps its fields, so a type switch on the result tells them apart", name, typeName(d.Payload))
+}
+
+// payloadName is the conventional payload type name for a decision:
+// release_manager becomes ReleaseManagerData.
+func payloadName(decision string) string {
+	var sb strings.Builder
+	for word := range strings.SplitSeq(decision, "_") {
+		if word != "" {
+			sb.WriteString(strings.ToUpper(word[:1]) + word[1:])
+		}
+	}
+	return sb.String() + "Data"
+}
+
+// typeName is t as the host's own package writes it: its bare name, or
+// the type literal of an unnamed type.
+func typeName(t reflect.Type) string {
+	if t.Name() != "" {
+		return t.Name()
+	}
+	return t.String()
 }

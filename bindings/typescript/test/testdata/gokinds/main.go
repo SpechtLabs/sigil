@@ -185,7 +185,7 @@ type evHold struct {
 func collecting() *policy.Kind[colInput] {
 	a := policy.NewDecision[policy.None]("a", "r1", "r2")
 	b := policy.NewDecision[colB]("b", "x", "y")
-	c := policy.NewDecision[policy.None]("c", "z")
+	c := policy.NewDecision[colC]("c", "z")
 	return policy.NewKind[colInput]("Collecting",
 		policy.WithVersion(1),
 		policy.WithCollect(a, b, c),
@@ -204,6 +204,8 @@ type colInput struct {
 type colB struct {
 	Weight float64 `policy:"weight,default=1.0"`
 }
+
+type colC struct{}
 
 // minimal is the smallest kind: one input, one decision, its default.
 func minimal() *policy.Kind[minInput] {

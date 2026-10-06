@@ -37,6 +37,7 @@ func Build(o Options) (*kind.Kind, *Binding, diag.ErrorList) {
 		},
 		structs: map[reflect.Type]*types.Struct{},
 		reached: map[*types.Enum]bool{},
+		payload: map[reflect.Type]string{},
 	}
 	b.binding.RecoverHostPanics = o.RecoverHostPanics
 	if o.Ranked && o.Collect {

@@ -99,7 +99,7 @@ var (
 )
 ```
 
-`drop` carries only a reason, so its payload is `policy.None`. `channel` has a default, which matters in a moment. Why reasons are declared names and not free text: [Decisions and reasons](/understanding/decisions/).
+`drop` carries only a reason, so its payload is `policy.None`. Every decision of a kind has its own payload type, which is how your program tells them apart when it [acts on a result](#load-and-evaluate). `channel` has a default, which matters in a moment. Why reasons are declared names and not free text: [Decisions and reasons](/understanding/decisions/).
 
 ## Build the kind
 
@@ -198,21 +198,22 @@ func main() {
 }
 
 func route(res *policy.Result) string {
-	if page, ok := alerting.Page.Match(res); ok {
-		return fmt.Sprintf("page %s (%s)", page.Target, res.Reason)
+	switch d := res.Value().(type) {
+	case alerting.PageData:
+		return fmt.Sprintf("page %s (%s)", d.Target, res.Reason)
+	case alerting.NotifyData:
+		return fmt.Sprintf("post to %s (%s)", d.Channel, res.Reason)
+	case policy.None:
+		return fmt.Sprintf("drop (%s)", res.Reason)
 	}
 
-	if note, ok := alerting.Notify.Match(res); ok {
-		return fmt.Sprintf("post to %s (%s)", note.Channel, res.Reason)
-	}
-
-	return fmt.Sprintf("drop (%s)", res.Reason)
+	return "unhandled: " + res.Decision
 }
 ```
 
 - `Kind.Load` reads every `.sigil` file in the embedded tree, type-checks them against the kind, and compiles the policy named `checkout.alerts`. The compiled policy is immutable and safe to share between goroutines.
 - `Eval` takes the input as a Go value and returns the result, with the winning decision and a trace of every candidate.
-- `Page.Match` returns the payload as a `PageData` when the decision is a page. No string comparisons, no maps.
+- `res.Value()` returns the winning decision's payload as its Go struct, so the type switch has one case per decision: a `PageData` for a page, a `NotifyData` for a notification, `policy.None` for a drop. No string comparisons, no maps.
 
 Run it:
 
