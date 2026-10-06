@@ -95,7 +95,7 @@ func (c *Checker) uses(uses []*ast.UseStmt, env *Env) {
 			if doc.Module {
 				entity = Module
 			}
-			c.declare(name, env, Binding{Entity: entity, Doc: doc})
+			c.declare(name, env, Binding{Entity: entity, Doc: doc, Decl: name})
 			continue
 		}
 		for _, item := range u.Items {
@@ -110,7 +110,7 @@ func (c *Checker) uses(uses []*ast.UseStmt, env *Env) {
 			if item.Alias != nil {
 				name = item.Alias
 			}
-			c.declare(name, env, Binding{Entity: Let, Type: t, Doc: doc, Let: item.Name.Name})
+			c.declare(name, env, Binding{Entity: Let, Type: t, Doc: doc, Decl: name, Let: item.Name.Name})
 		}
 	}
 }

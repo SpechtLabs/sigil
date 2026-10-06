@@ -250,7 +250,10 @@ func addCommands(root *cobra.Command, o *options, outputFormat *output.Format) {
 		gen.NewCommand(gen.WithOutput(outputFormat)),
 	)
 	addToGroup(root, groupEditor,
-		lsp.NewCommand(lsp.WithOutput(outputFormat)),
+		lsp.NewCommand(
+			lsp.WithKinds(o.kinds),
+			lsp.WithVersion(o.version),
+		),
 	)
 	addToGroup(root, groupOther,
 		version.NewCommand(

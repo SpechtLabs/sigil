@@ -38,10 +38,26 @@ type Result struct {
 // such as a configuration file or a path that can't be read, is an error;
 // what the check finds is in the result.
 func Run(configFile string, src project.Sources, patterns, requires []string, kinds []project.Linked) (*Result, humane.Error) {
+	r, err := Load(".", configFile, src, patterns, requires, kinds)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.Diagnose(); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// Load reads the configuration and the project as [Run] does, without
+// diagnosing it, for a caller that keeps the project when the check can't
+// run, as the language server does to complete names in a repository
+// whose requirements don't hold yet. Without configFile, the nearest
+// configuration file at or above dir is read.
+func Load(dir, configFile string, src project.Sources, patterns, requires []string, kinds []project.Linked) (*Result, humane.Error) {
 	if len(src.Paths) == 0 {
 		src.Paths = []string{"."}
 	}
-	cfg, reqs, err := configure(configFile, &src, patterns, requires)
+	cfg, reqs, err := configure(dir, configFile, &src, patterns, requires)
 	if err != nil {
 		return nil, err
 	}
@@ -54,11 +70,19 @@ func Run(configFile string, src project.Sources, patterns, requires []string, ki
 		return nil, err
 	}
 	checks := workspace.Checks{Lints: cfg.Lints, Patterns: patterns, Require: requirements(cfg, reqs), Strict: whole(cfg, src.Paths)}
-	errs, err := p.Diagnose(checks)
+	return &Result{Config: cfg, Require: reqs, Files: files, Project: p, Checks: checks}, nil
+}
+
+// Diagnose runs the check over the project [Load] read and records what
+// it found in Errs. Only a requirement that can't be enforced as written,
+// or a pattern that matches no policy, is an error.
+func (r *Result) Diagnose() humane.Error {
+	errs, err := r.Project.Diagnose(r.Checks)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &Result{Config: cfg, Require: reqs, Files: files, Project: p, Checks: checks, Errs: errs}, nil
+	r.Errs = errs
+	return nil
 }
 
 // Advice is what a failed check suggests: the general hint, and when an

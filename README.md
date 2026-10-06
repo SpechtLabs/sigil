@@ -12,7 +12,7 @@ A small, statically typed policy language for Go hosts.
 Sigil is a small language for decision logic. Your Go program hands a policy typed input, the policy's rules look at it, and the answer is a typed decision: page the on-call, turn a feature on, approve a deploy, grant a role. Every decision carries a reason and a payload, and every policy is type-checked against a contract your Go code defines. The language terminates on finite inputs when its host functions terminate. It ships as an importable Go library, in the spirit of [filt-rs](https://github.com/SierraSoftworks/filters), and it's meant to replace the YAML rule engines with label-selector matchers that teams keep rebuilding.
 
 > [!IMPORTANT]
-> The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`), host-ordered types such as versions, and editor tooling. The [roadmap](#roadmap) tracks what's left.
+> The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`) and host-ordered types such as versions. The [roadmap](#roadmap) tracks what's left.
 
 ## What it looks like
 
@@ -218,7 +218,7 @@ mise run docs-dev
 
 ## Roadmap
 
-M1 to M6 are done. Hardening is in progress: fuzz targets and round-trip properties cover every layer, and a weekly campaign fuzzes each of the 33 targets for an hour. A day of fuzzing has passed; public `LoadKind` remains. Editor tooling comes last.
+M1 to M6 are done. Hardening is in progress: fuzz targets and round-trip properties cover every layer, and a weekly campaign fuzzes each of the 38 targets for an hour. A day of fuzzing has passed; public `LoadKind` remains. Tooling II has its three commands and a tree-sitter grammar.
 
 | Milestone | Scope | State |
 | --- | --- | --- |
@@ -229,7 +229,7 @@ M1 to M6 are done. Hardening is in progress: fuzz targets and round-trip propert
 | M5 Composition | `param`, `let`, modules and imports, policy invocation, `Require`, bundle loader, cycle detection, `sigil explain` | Done |
 | M6 Tooling I | `sigil fmt`, kind export, `sigil check` with lints, `sigil eval`, `sigil test`, `policytest` | Done |
 | M7 Hardening | Round-trip properties, fuzzing across layers and a weekly hour-per-target campaign; public `LoadKind` remains | In progress |
-| M8 Tooling II | `sigil lsp`, `sigil gen go`, `sigil breaking`; the commands exist but aren't implemented | Planned |
+| M8 Tooling II | `sigil lsp`, `sigil gen go`, `sigil breaking`; the invocation code lens and cross targets for `sigil compile` remain | In progress |
 
 The roadmap lives in [`roadmap.yml`](./roadmap.yml) in the [roadmap-md](https://roadmap.sierrasoftworks.com/) format, with every deliverable and what "done" means for each milestone; open it in the [roadmap viewer](https://roadmap.sierrasoftworks.com/viewer/github.com#SpechtLabs/sigil) for the rendered version.
 

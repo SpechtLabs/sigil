@@ -197,6 +197,13 @@ export default defineUserConfig({
           prefix: "/guides/",
           items: [{ text: "Embed Sigil in Rust", link: "embed-rust", icon: "simple-icons:rust" }],
         },
+        {
+          text: "Editors",
+          icon: "mdi:application-edit-outline",
+          collapsed: false,
+          prefix: "/guides/editors/",
+          items: [{ text: "Set up your editor", link: "", icon: "mdi:application-edit-outline" }],
+        },
       ],
 
       // Understanding: why the language is shaped the way it is.

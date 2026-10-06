@@ -20,33 +20,10 @@ The tools read the exported kind file (`deploy_approval.sigil` in the running ex
 | [`sigil export`](#sigil-export) | Writes the kind file of a kind linked into a host binary | A host binary; `sigil --help` lists it only there |
 | [`sigil gen go`](#sigil-gen-go) | Generates typed Go code from a kind file, for a Go service that doesn't import the host | Kind file |
 | [`sigil breaking`](#sigil-breaking) | Compares two versions of a kind file, classifies every change, and checks `version` and `accepts` | Two kind files |
+| [`sigil lsp`](#sigil-lsp) | Runs the language server editors start for diagnostics, completion, hover, go-to-definition and formatting | Kind file |
 | [`sigil version`](#sigil-version) | Shows the version and build information | Nothing |
 
 `sigil completion bash|fish|powershell|zsh` prints a shell completion script, and `sigil help <command>` or `--help` (`-h`) prints any command's help. The script completes `--policy` and `--require` with the names of the policies in the command's paths, or in `.` when it names none. It reads only the documents' headers, so it needs no kind file, and it completes `--require` from the `--trusted` paths when the command line has any.
-
-## Planned commands
-
-`sigil lsp` is planned:
-
-| Command | Will | Needs |
-| --- | --- | --- |
-| [`sigil lsp`](#sigil-lsp) | Run the language server | Kind file |
-
-::: warning Planned
-`sigil lsp` and `explain --input` aren't implemented. `sigil lsp` still runs, so its help is there (`sigil lsp --help`), but `sigil --help` doesn't list it, and it only prints an error. Their designs are in [Planned designs](/project/planned/), and the [roadmap](/project/roadmap/) tracks them.
-:::
-
-With `-o json` or `-o yaml`, `lsp` prints the error as a record on standard output instead, in the shape of the `error` record [`sigil eval`](#records) prints for a failed evaluation, and still exits with status 1:
-
-```json
-{
-  "error": {
-    "kind": "not_implemented",
-    "message": "\"sigil lsp\" is not implemented yet",
-    "help": "the command is planned for a later milestone; track progress at https://github.com/SpechtLabs/sigil/blob/main/roadmap.yml"
-  }
-}
-```
 
 ## Inputs
 
@@ -129,7 +106,7 @@ Caused by
 ```
 
 - With `-o json` or `-o yaml`, standard output holds the command's records and nothing else: no summary line, and no styling.
-- The records carry what the text shows, including what failed, such as `check`'s error diagnostics or the `error` record of a [planned command](#planned-commands).
+- The records carry what the text shows, including what failed, such as `check`'s error diagnostics or the `error` record of a [failed evaluation](#failed-evaluations).
 - The `Error:` block of a command that couldn't run at all still goes to standard error as text.
 
 Every command exits with status 0 on success and 1 on any failure: a usage error, an unreadable file, an error found by `check`, a failed evaluation, a failing test case, a bundle `compile` refuses, an unformatted file under `fmt --check`, a stale file under `export --check` or `gen go --check`, or a kind header that `breaking` finds breaks a rule. There are no other exit codes. Warnings don't change the status, and the status is the same in every output format.
@@ -1144,13 +1121,98 @@ Exits 1 when the kind file can't be read, doesn't load or can't be declared in G
 
 ## `sigil lsp`
 
+Runs the Sigil language server, which an editor starts in the background and talks to over stdin and stdout with the [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) 3.17. To connect an editor, see [Set up your editor](/guides/editors/).
+
 ```text
 sigil lsp [flags]
 ```
 
-::: warning Planned
-Not implemented. It prints `Error: "sigil lsp" is not implemented yet`, or [an `error` record](#planned-commands) with `-o json` or `-o yaml`, and exits with status 1. The design is in [sigil lsp](/project/planned/#sigil-lsp).
-:::
+| Flag | Default | Does |
+| --- | --- | --- |
+| `--stdio` | on | Talks to the editor over stdin and stdout, the only transport. Editors pass it by convention |
+
+- Stdout carries protocol messages only. Logs go to stderr, which editors keep in their language server log.
+- It needs the kind files, not the host's Go code. A host binary's linked kinds count too, as for `check`.
+- Exits 0 after the editor's `shutdown` and `exit`, and 1 when the editor exits or closes stdin without `shutdown`, or the stream breaks.
+
+### Projects
+
+The server reads each open document's project the way `sigil check` run in the project's root reads it:
+
+| The document is | The root is | It reads |
+| --- | --- | --- |
+| At or below a directory with a [configuration file](/reference/config/#finding-the-file) | The nearest such directory | The root, with the file's kind files, trusted paths, requirements and lint levels |
+| Below a workspace folder, with no configuration file above it | The deepest workspace folder holding it | The folder, with the default lint levels |
+| Outside every folder and configuration file | The document itself | The document alone |
+
+- Open documents replace their files on disk, and a new `.sigil` document below the root counts before it's saved.
+- A project is read again 200 ms after its last change, and at once when a document opens or closes, or when a request needs it.
+- Workspace folders added or removed by the editor move documents to their new roots.
+
+### Diagnostics
+
+| Behavior | Rule |
+| --- | --- |
+| What's reported | Exactly what `sigil check` reports at the root: parse, check and compile errors, requirements, and lints at the configured levels |
+| Which files | Every file of the project with a problem, open or not |
+| Severity | `error` or `warning`, as `check` prints it; a lint's name is the diagnostic's code |
+| Message | The message, then `help:` and the fix on the next line |
+| Version | The document's version the diagnostics were computed from, for an open document |
+| On close | The project is read again from disk; when no document of the project is open any more, every diagnostic it published is cleared |
+
+What stops the check, such as a configuration file that doesn't parse or a requirement that can't be enforced, is shown as an error message instead. The documents still get completion, hover and definition.
+
+### Completion
+
+Completion works in a document that doesn't parse, as it's being typed.
+
+| Where | Offers |
+| --- | --- |
+| Start of a file, or after `---` | `policy`, `module` |
+| After `policy name:` or `module name:` | The kinds the project knows |
+| After `Kind@` | The kind's current version |
+| Start of a statement | `use`, `param`, `let`, `pub let`, `when`, `assert`, and the imported policies to invoke; in a `when` body, the kind's decisions to construct; in a module, `use`, `let` and `pub let` |
+| After `use` | The policies and modules of the document's kind, trusted ones included, as dotted names |
+| Inside `use path.{` | The pub lets of `path` the import doesn't list yet |
+| After `param name:` | The built-in types, `list`, `map`, and the kind's struct types and enums |
+| After a param's default and `,` | `min`, `max` |
+| An operand | Inputs, lets, imported lets, params, quantifier and filter variables, host functions with their signatures, enum values, enums, imported modules, `any`, `all`, `filter`, `not`, `present`, `true`, `false`; in an assert, the decisions and `outcome` |
+| An operand compared with `==` or `!=`, or a payload field's or param's value | The same, with the values of the operand's enum first |
+| A value two enums declare | `Enum.value` for each, not the bare value |
+| After `x.` or `x?.` | The fields of `x`'s struct type, through optional chaining, indexing and parentheses |
+| After `Enum.` | The enum's values |
+| After `module.` | The module's pub lets |
+| After `outcome.` | The decisions, whose candidates it reads |
+| After `outcome.d.`, `d.` | The decision's reasons |
+| After a candidate variable and `.` | The decision's payload fields and `reason` |
+| After an operand | The keyword operators: `and`, `or`, `xor`, `in`, `not in`, `has`, `like`, `matches`, `all in`, `any in`, `one in`, `exclusive in` |
+| Inside `decision(` or after `,` | `reason` and the payload fields not given yet, those without a default first |
+| After `reason:` | The decision's reasons |
+| Inside `policy(` or after `,` | The invoked policy's params not given yet, required ones first |
+
+Nothing completes inside a comment or a string, or where a name is being declared.
+
+### Hover and definition
+
+| On | Hover shows | Definition goes to |
+| --- | --- | --- |
+| The kind in a header | The whole kind | The kind document |
+| A `use` path or alias, an invoked policy | The document's header, params and pub lets | The document's name |
+| An imported let, selective or `module.let` | `pub let name: type` and where it comes from | The let in the other document |
+| A decision constructor, or a decision in an assert | The decision's declaration: reasons and payload fields with types and defaults | The decision in the kind document |
+| A constructor's `reason:` or payload field | The field, with its type and default | The field in the kind document |
+| A reason | The reason and its decision's declaration | The reason in the kind document |
+| An invocation's argument | The param with its type, default and bounds | The param in the invoked policy |
+| An input, a field after `.` | The name and its type, with the struct type's or enum's declaration | The declaration in the kind document |
+| A host function | Its signature | The `fn` in the kind document |
+| An enum value or enum | The enum's declaration | The value or enum in the kind document |
+| A let, param, quantifier or filter variable | The name and its type | Its declaration |
+
+A kind linked into a host binary has no kind document, so definition finds nothing for its names.
+
+### Formatting
+
+Formatting the document applies [`sigil fmt`](#sigil-fmt)'s canonical style as one edit; the editor's formatting options are ignored. A document that doesn't parse can't be formatted, and the request fails with its first syntax error.
 
 ## Error messages
 

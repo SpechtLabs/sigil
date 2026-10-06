@@ -3,6 +3,7 @@ package check
 import (
 	"sort"
 
+	"github.com/spechtlabs/sigil/internal/ast"
 	"github.com/spechtlabs/sigil/internal/kind"
 	"github.com/spechtlabs/sigil/internal/types"
 )
@@ -53,11 +54,14 @@ func (e Entity) String() string {
 
 // Binding is what a name resolves to. An imported name carries the
 // document it came from: a whole import binds Doc alone, and a
-// selectively imported let binds Doc and Let, the let's name there.
+// selectively imported let binds Doc and Let, the let's name there. A
+// name the document declares carries its declaration in Decl, for tools
+// that go to it.
 type Binding struct {
 	Type   types.Type // nil for a host function, and for a value several enums declare
 	Func   *kind.Func // set for a host function
 	Doc    *Exported  // set for an import
+	Decl   *ast.Ident // the name where the document declares it: a param, let, variable or import; nil for the kind's names
 	Let    string     // the imported let's own name, for a selective import
 	Entity Entity
 }

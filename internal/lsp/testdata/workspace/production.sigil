@@ -1,0 +1,20 @@
+policy payments.production: DeployApproval@2
+
+use deploy.common.{cleared, owns_service}
+use deploy.guardrails
+
+guardrails(min_soak: 4h)
+
+let critical_change = service.tier == critical and release.risk == Risk.high
+let has_ticket = ticket?.approved ?? false
+
+assert("named_actor", actor.name != "")
+
+when cleared and owns_service {
+  let reviewers = filter o in service.owners: o != actor.name
+  review(reason: service_owner, approvers: reviewers, tier: critical)
+}
+
+when critical_change and any c in changes: (c.hotfix and has_ticket) {
+  approve(reason: release_manager, bake: 2h)
+}

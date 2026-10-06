@@ -17,6 +17,9 @@ package project
 import (
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/sierrasoftworks/humane-errors-go"
 
@@ -48,6 +51,11 @@ type Sources struct {
 	Paths   []string  // files, directories, or "-" for stdin, as [Expand] reads them
 	Trusted []string  // read into each kind's trusted bundle, as policy.From does
 	Kinds   []string  // kind files the paths don't hold, such as --kind names
+	// Overlay holds sources that replace a file's on disk, by the file's
+	// path, such as the unsaved buffers of an editor. A `.sigil` file only
+	// the overlay holds counts as below a directory among the paths, the
+	// way it will once it's saved.
+	Overlay map[string][]byte
 }
 
 // Files are a project's files as [Read] read them, before parsing. A file
@@ -62,8 +70,9 @@ type Files struct {
 
 // reader reads each file once, however many ways it's named.
 type reader struct {
-	stdin io.Reader
-	read  map[string]workspace.File // by identity
+	stdin   io.Reader
+	read    map[string]workspace.File // by identity
+	overlay map[string][]byte         // the overlay's sources, by identity
 }
 
 // Load reads the sources and groups their documents by kind: it's
@@ -87,7 +96,10 @@ func Load(s Sources, linked []Linked) (*Project, humane.Error) {
 // file under a trusted path is read as trusted only. Only a path that
 // can't be read fails Read; it doesn't parse anything.
 func Read(s Sources) (*Files, humane.Error) {
-	r := &reader{stdin: s.Stdin, read: map[string]workspace.File{}}
+	r := &reader{stdin: s.Stdin, read: map[string]workspace.File{}, overlay: map[string][]byte{}}
+	for name, src := range s.Overlay {
+		r.overlay[identity(name)] = src
+	}
 	f := &Files{}
 	seen := map[string]bool{}
 	for _, k := range s.Kinds {
@@ -134,16 +146,19 @@ func Root(policies []string, name string) (string, humane.Error) {
 }
 
 // sources expands the paths and the trusted paths and reads their files,
-// the paths first. A file among both is read as trusted only.
+// the paths first. A file among both is read as trusted only. The
+// overlay's new files count below both.
 func (r *reader) sources(s Sources) (regular, trusted []workspace.File, err humane.Error) {
 	tnames, err := Expand(s.Trusted, IsSigil)
 	if err != nil {
 		return nil, nil, err
 	}
+	tnames = append(tnames, unsaved(s.Overlay, s.Trusted, tnames)...)
 	rnames, err := Expand(s.Paths, IsSigil)
 	if err != nil {
 		return nil, nil, err
 	}
+	rnames = append(rnames, unsaved(s.Overlay, s.Paths, rnames)...)
 	if regular, err = r.readAll(without(rnames, tnames)); err != nil {
 		return nil, nil, err
 	}
@@ -158,6 +173,9 @@ func (r *reader) kindFile(name string) (workspace.File, humane.Error) {
 	name = clean(name)
 	if f, ok := r.read[identity(name)]; ok {
 		return f, nil
+	}
+	if src, ok := r.overlay[identity(name)]; ok {
+		return r.keep(name, src), nil
 	}
 	src, err := os.ReadFile(name) //nolint:gosec // the path comes from the command line, which is the point
 	if err != nil {
@@ -189,6 +207,9 @@ func (r *reader) file(name string) (workspace.File, humane.Error) {
 	}
 	var src []byte
 	var err error
+	if over, ok := r.overlay[identity(name)]; ok {
+		return r.keep(name, over), nil
+	}
 	if name == stdinName {
 		src, err = io.ReadAll(r.stdin)
 		if err != nil {
@@ -198,6 +219,59 @@ func (r *reader) file(name string) (workspace.File, humane.Error) {
 		return workspace.File{}, humane.Wrap(err, name+" couldn't be read", "check the file's permissions")
 	}
 	return r.keep(name, src), nil
+}
+
+// unsaved returns the `.sigil` files of the overlay that aren't on disk,
+// below one of the directories among paths and not among have, sorted,
+// so an editor's new buffer is checked with the files around it before
+// it's saved. A file whose name, or the name of a directory between it
+// and the path, starts with `.` is left out, as [Expand] leaves it out.
+func unsaved(overlay map[string][]byte, paths, have []string) []string {
+	held := map[string]bool{}
+	for _, name := range have {
+		held[identity(name)] = true
+	}
+	var out []string
+	for name := range overlay {
+		if !IsSigil(name) || held[identity(name)] {
+			continue
+		}
+		if _, err := os.Stat(name); err == nil {
+			continue
+		}
+		for _, p := range paths {
+			if p != "-" && below(p, name) {
+				out = append(out, clean(name))
+				break
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// below reports whether name is a file below the directory dir that a
+// walk of dir would reach: no part of the path between them starts with
+// `.`.
+func below(dir, name string) bool {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	absName, err := filepath.Abs(name)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absDir, absName)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return false
+	}
+	for part := range strings.SplitSeq(filepath.ToSlash(rel), "/") {
+		if strings.HasPrefix(part, ".") {
+			return false
+		}
+	}
+	return true
 }
 
 // keep records a file read, by its identity, so it's never read again.

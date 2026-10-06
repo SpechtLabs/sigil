@@ -118,6 +118,11 @@ func Parse(path string, src []byte) (*Config, humane.Error) {
 	return p.config(root)
 }
 
+// Find returns the configuration file of the nearest directory at or
+// above dir that has one, or "" when none does: the file [Load] reads
+// without a path. A directory with two is an error.
+func Find(dir string) (string, humane.Error) { return find(dir) }
+
 // Requirements returns what check enforces in a run: one requirement per
 // --require policy, each with the --trusted paths and the --policy
 // patterns, when --require is given, and otherwise the configuration's

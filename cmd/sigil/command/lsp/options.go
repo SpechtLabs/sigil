@@ -1,21 +1,23 @@
 package lsp
 
-import "github.com/spechtlabs/sigil/cmd/internal/output"
+import "github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 
 // Option configures the lsp command.
 type Option func(*options)
 
 type options struct {
-	output *output.Format
+	version string
+	kinds   []project.Linked
 }
 
-// WithOutput sets the output format. It takes a pointer so the command
-// reads the root --output flag after cobra has parsed it. A nil pointer
-// keeps text.
-func WithOutput(format *output.Format) Option {
-	return func(o *options) {
-		if format != nil {
-			o.output = format
-		}
-	}
+// WithKinds sets the kinds linked into the binary. The server checks
+// every document written against one with it, as check does, and a kind
+// file of the same name must match it.
+func WithKinds(kinds []project.Linked) Option {
+	return func(o *options) { o.kinds = kinds }
+}
+
+// WithVersion sets the version the server reports to the editor.
+func WithVersion(version string) Option {
+	return func(o *options) { o.version = version }
 }

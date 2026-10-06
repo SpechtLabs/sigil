@@ -54,6 +54,10 @@ export const navbar = defineNavbarConfig([
         text: "Embedding in Rust",
         items: [{ text: "Embed Sigil in Rust", link: "/guides/embed-rust", icon: "simple-icons:rust" }],
       },
+      {
+        text: "Editors",
+        items: [{ text: "Set up your editor", link: "/guides/editors/", icon: "mdi:application-edit-outline" }],
+      },
     ],
   },
 

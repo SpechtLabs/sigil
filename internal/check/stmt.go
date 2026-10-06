@@ -26,6 +26,7 @@ func (c *Checker) Policy(doc *ast.PolicyDoc, k *kind.Kind) {
 		return
 	}
 	env := NewEnv(k)
+	c.scope(env, doc.Pos(), doc.End(), true)
 	c.letStates = map[string]*letState{}
 	defer func() { c.letStates = nil }()
 	c.uses(doc.Uses, env)
@@ -54,6 +55,7 @@ func (c *Checker) Module(doc *ast.ModuleDoc, k *kind.Kind) {
 		return
 	}
 	env := NewEnv(k)
+	c.scope(env, doc.Pos(), doc.End(), true)
 	c.letStates = map[string]*letState{}
 	defer func() { c.letStates = nil }()
 	c.uses(doc.Uses, env)
@@ -109,7 +111,7 @@ func (c *Checker) params(stmts []ast.Stmt, env *Env) {
 			c.errorf(p.Type, "decision values only come from `outcome`", "a param can't hold decision values")
 			t = types.Invalid
 		}
-		c.declare(p.Name, env, Binding{Entity: Param, Type: t})
+		c.declare(p.Name, env, Binding{Entity: Param, Type: t, Decl: p.Name})
 		c.info.Params[p] = t
 		if t == types.Invalid {
 			continue
@@ -296,11 +298,11 @@ func (c *Checker) lets(lets []*ast.LetStmt, env *Env) {
 			if _, visible := env.Lookup(name); !visible {
 				c.errorf(l.Name, "let names are unique in a document, so a trace can name each one; rename one of them",
 					"`%s` is already the name of a let in another `when` body", name)
-				env.names[name] = Binding{Entity: Let, Type: types.Invalid}
+				env.names[name] = Binding{Entity: Let, Type: types.Invalid, Decl: l.Name}
 				continue
 			}
 		}
-		if c.declare(l.Name, env, Binding{Entity: Let}) {
+		if c.declare(l.Name, env, Binding{Entity: Let, Decl: l.Name}) {
 			c.letStates[name] = &letState{stmt: l, env: env}
 		}
 	}
@@ -350,7 +352,9 @@ func (c *Checker) checkLet(name string, use *ast.Ident) types.Type {
 		}
 		c.errorf(at, "lets form a directed acyclic graph; a let can't depend on itself, even through other lets",
 			"let `%s` depends on itself", name)
-		st.env.names[name] = Binding{Entity: Let, Type: types.Invalid}
+		b := st.env.names[name]
+		b.Type = types.Invalid
+		st.env.names[name] = b
 		return types.Invalid
 	}
 	st.state = 1
@@ -359,8 +363,9 @@ func (c *Checker) checkLet(name string, use *ast.Ident) types.Type {
 	t := c.Expr(st.stmt.Value, st.env)
 	c.typing = outer
 	st.state = 2
-	if _, done := st.env.names[name]; done && st.env.names[name].Type == nil {
-		st.env.names[name] = Binding{Entity: Let, Type: t}
+	if b, done := st.env.names[name]; done && b.Type == nil {
+		b.Type = t
+		st.env.names[name] = b
 	}
 	c.info.Lets = append(c.info.Lets, st.stmt)
 	return st.env.names[name].Type
@@ -373,6 +378,7 @@ func (c *Checker) when(s *ast.WhenStmt, env *Env) {
 	c.ExprAs(s.Cond, env, types.Bool)
 	if lets := letsOf(s.Body); len(lets) > 0 {
 		env = env.Child()
+		c.scope(env, s.Cond.End(), s.End(), false)
 		c.lets(lets, env)
 	}
 	for _, inner := range s.Body {
@@ -392,6 +398,7 @@ func (c *Checker) when(s *ast.WhenStmt, env *Env) {
 func (c *Checker) assert(s *ast.AssertStmt, env *Env) {
 	inner := env.Child()
 	inner.InAssert = true
+	c.scope(inner, s.Pos(), s.End(), false)
 	c.ExprAs(s.Cond, inner, types.Bool)
 	if s.Reason != nil && s.Reason.Value == "" {
 		c.errorf(s.Reason, "the reason is a stable identifier for metrics and grep, like `sod_customer_dev`", "an assert's reason can't be empty")

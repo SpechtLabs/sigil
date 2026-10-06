@@ -1,0 +1,153 @@
+--> initialize
+{
+  "capabilities": {
+    "completionProvider": {
+      "triggerCharacters": [
+        ".",
+        ":",
+        "{",
+        "(",
+        ",",
+        "@"
+      ]
+    },
+    "definitionProvider": true,
+    "documentFormattingProvider": true,
+    "hoverProvider": true,
+    "positionEncoding": "utf-16",
+    "textDocumentSync": {
+      "change": 1,
+      "openClose": true,
+      "save": {
+        "includeText": false
+      }
+    },
+    "workspace": {
+      "workspaceFolders": {
+        "changeNotifications": true,
+        "supported": true
+      }
+    }
+  },
+  "serverInfo": {
+    "name": "sigil",
+    "version": "test"
+  }
+}
+--> initialized
+--> open payments/production.sigil
+--> edit payments/production.sigil so it doesn't parse
+<-- diagnostics for file:///workspace/payments/production.sigil (version 2): 1
+    14:0-14:0 error: expected a field name after `.`, found end of file
+--> complete after `service.`
+<-- 4 completions
+    labels (field) map<string, string> -> "labels" at 13:13-13:13
+    name (field) string -> "name" at 13:13-13:13
+    owners (field) list<string> -> "owners" at 13:13-13:13
+    tier (field) Tier -> "tier" at 13:13-13:13
+--> complete the inputs after `when `
+<-- 20 completions
+    Tier (enum) enum Tier: critical | standard | internal -> "Tier" at 13:5-13:5
+    actor (variable) Actor -> "actor" at 13:5-13:5
+    cleared (variable) bool -> "cleared" at 13:5-13:5
+    critical (enum value) Tier -> "critical" at 13:5-13:5
+    environment (variable) string -> "environment" at 13:5-13:5
+    freeze (variable) Freeze -> "freeze" at 13:5-13:5
+    internal (enum value) Tier -> "internal" at 13:5-13:5
+    owns_service (variable) bool -> "owns_service" at 13:5-13:5
+    release (variable) Release -> "release" at 13:5-13:5
+    service (variable) Service -> "service" at 13:5-13:5
+    split (function) fn split(string, string) -> list<string> -> "split" at 13:5-13:5
+    standard (enum value) Tier -> "standard" at 13:5-13:5
+    unused (variable) int -> "unused" at 13:5-13:5
+    all (keyword) -> "all" at 13:5-13:5
+    any (keyword) -> "any" at 13:5-13:5
+    false (keyword) -> "false" at 13:5-13:5
+    filter (keyword) -> "filter" at 13:5-13:5
+    not (keyword) -> "not" at 13:5-13:5
+    present (keyword) -> "present" at 13:5-13:5
+    true (keyword) -> "true" at 13:5-13:5
+--> edit payments/production.sigil to construct decisions
+<-- diagnostics for file:///workspace/payments/production.sigil (version 3): 2
+    12:15-12:16 error: expected an expression, found `)`
+    13:2-13:33 error: decision review needs field "approvers"
+      help: review takes reason: service_owner, and approvers: list<string>
+--> complete a reason
+<-- 4 completions
+    change_freeze (enum value) reason of deny -> "change_freeze" at 12:15-12:15
+    no_rule_matched (enum value) reason of deny -> "no_rule_matched" at 12:15-12:15
+    not_eligible (enum value) reason of deny -> "not_eligible" at 12:15-12:15
+    soak_too_short (enum value) reason of deny -> "soak_too_short" at 12:15-12:15
+--> complete a payload key
+<-- 1 completions
+    approvers (field) approvers: list<string> -> "approvers: " at 13:32-13:32
+--> complete the tier's values
+<-- 19 completions
+    critical (enum value) Tier -> "critical" at 11:21-11:21
+    internal (enum value) Tier -> "internal" at 11:21-11:21
+    standard (enum value) Tier -> "standard" at 11:21-11:21
+    Tier (enum) enum Tier: critical | standard | internal -> "Tier" at 11:21-11:21
+    actor (variable) Actor -> "actor" at 11:21-11:21
+    cleared (variable) bool -> "cleared" at 11:21-11:21
+    environment (variable) string -> "environment" at 11:21-11:21
+    freeze (variable) Freeze -> "freeze" at 11:21-11:21
+    owns_service (variable) bool -> "owns_service" at 11:21-11:21
+    release (variable) Release -> "release" at 11:21-11:21
+    service (variable) Service -> "service" at 11:21-11:21
+    split (function) fn split(string, string) -> list<string> -> "split" at 11:21-11:21
+    all (keyword) -> "all" at 11:21-11:21
+    any (keyword) -> "any" at 11:21-11:21
+    false (keyword) -> "false" at 11:21-11:21
+    filter (keyword) -> "filter" at 11:21-11:21
+    not (keyword) -> "not" at 11:21-11:21
+    present (keyword) -> "present" at 11:21-11:21
+    true (keyword) -> "true" at 11:21-11:21
+--> hover over the review constructor
+<-- hover at 13:2-13:8
+    ```sigil
+    decision review {
+      reason: service_owner
+      approvers: list<string>
+    }
+    ```
+--> hover over the tier field
+<-- hover at 11:13-11:17
+    ```sigil
+    tier: Tier
+    ```
+    
+    A field of `Service`.
+    
+    ```sigil
+    enum Tier: critical | standard | internal
+    ```
+--> go to the imported let cleared
+<-- file:///workspace/deploy/common.sigil at 3:8-3:15
+--> go to the invoked policy
+<-- file:///workspace/deploy/guardrails.sigil at 0:7-0:24
+--> go to the input service
+<-- file:///workspace/deploy_approval.sigil at 29:6-29:13
+--> edit payments/production.sigil back, unformatted and with a let nothing reads
+<-- diagnostics for file:///workspace/payments/production.sigil (version 4): 1
+    11:4-11:10 warning unused-let: let unused is never read
+      help: remove the let, or read it; a private let can't be imported
+--> format payments/production.sigil
+<-- 1 edits
+    replace 0:0-12:0 with
+    policy payments.production: DeployApproval@2
+    
+    use deploy.common.{cleared, owns_service}
+    use deploy.guardrails
+    
+    guardrails(min_soak: 4h)
+    
+    when cleared and owns_service {
+      review(reason: service_owner, approvers: ["payments-leads"])
+    }
+    
+    let unused = 1
+--> close payments/production.sigil
+<-- diagnostics for file:///workspace/payments/production.sigil: 0
+--> shutdown
+<-- null
+--> exit

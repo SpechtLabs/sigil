@@ -1,0 +1,60 @@
+kind DeployApproval version 2
+
+enum Tier: critical | standard | internal
+
+enum Risk: low | standard | high
+
+type Release {
+  soak: duration
+  hotfix: bool
+  risk: Risk
+}
+
+type Ticket {
+  id: string
+  approved: bool
+}
+
+type Service {
+  name: string
+  tier: Tier
+  owners: list<string>
+  labels: map<string, string>
+}
+
+type Actor {
+  name: string
+  teams: list<string>
+  roles: list<string>
+}
+
+input release: Release
+input service: Service
+input actor: Actor
+input environment: string
+input ticket: ?Ticket
+input changes: list<Release>
+
+fn split(string, string) -> list<string>
+
+decision deny {
+  reason: not_eligible | soak_too_short | no_rule_matched
+}
+
+decision review {
+  reason: service_owner
+  approvers: list<string>
+  tier: Tier = Tier.standard
+}
+
+decision approve {
+  reason: release_manager | payments_sre
+  bake: duration = 1h
+}
+
+collect one
+precedence deny > review > approve
+precedence deny: not_eligible > soak_too_short > no_rule_matched
+precedence approve: release_manager > payments_sre
+
+default deny(reason: no_rule_matched)

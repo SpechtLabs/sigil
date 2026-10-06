@@ -24,7 +24,7 @@ when alert.severity == warning {
 `when` blocks are rules. `page(...)` and `notify(...)` are decisions, and the decisions a policy may make, their reasons and their fields are fixed by a contract your Go code defines, called the **kind**. A typo in a field, a misspelled severity or a missing payload field is a compile error, not a rule that quietly never matches.
 
 ::: info Project status
-The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`), host-ordered types such as versions, and editor tooling. The [roadmap](/project/roadmap/) tracks what's left. The language can still change; report problems through [GitHub issues](https://github.com/SpechtLabs/sigil/issues).
+The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`) and host-ordered types such as versions. The [roadmap](/project/roadmap/) tracks what's left. The language can still change; report problems through [GitHub issues](https://github.com/SpechtLabs/sigil/issues).
 :::
 
 ## What you can decide with it
