@@ -25,6 +25,7 @@ type session struct {
 	done   chan error
 	log    *syncBuffer
 	notes  []*jsonrpc.Message // the notifications the server sent, in order
+	asks   []*jsonrpc.Message // the requests the server sent, in order
 	id     int
 	cancel context.CancelFunc
 }
@@ -58,7 +59,7 @@ func TestLifecycle(t *testing.T) {
 			steps: func(s *session) {
 				s.notify(protocol.MethodDidOpen, s.opening("production.sigil", "policy p: DeployApproval@2\n"))
 				s.initialize()
-				s.wantError(s.call(protocol.MethodHover, s.at("production.sigil", 0, 0)), jsonrpc.InvalidParams)
+				s.wantResult(s.call(protocol.MethodHover, s.at("production.sigil", 0, 0)), "null")
 			},
 			end: (*session).shutdown,
 		},
@@ -191,7 +192,7 @@ func TestLifecycle(t *testing.T) {
 				s.notify(protocol.MethodCancelRequest, map[string]any{"id": s.id + 1})
 				s.notify(protocol.MethodCancelRequest, map[string]any{})
 				s.wantError(s.call(protocol.MethodHover, s.at("production.sigil", 0, 0)), jsonrpc.RequestCanceled)
-				s.wantError(s.call(protocol.MethodHover, s.at("production.sigil", 0, 0)), jsonrpc.InvalidParams)
+				s.wantResult(s.call(protocol.MethodHover, s.at("production.sigil", 0, 0)), "null")
 			},
 			end: (*session).shutdown,
 		},
@@ -371,9 +372,7 @@ func (s *session) drain() {
 			if !ok {
 				return
 			}
-			if m.IsNotification() {
-				s.notes = append(s.notes, m)
-			}
+			s.keep(m)
 		case <-time.After(10 * time.Second):
 			s.t.Fatal("the server didn't close its stream")
 		}
@@ -396,8 +395,7 @@ func (s *session) call(method string, params any) *jsonrpc.Message {
 	s.send(&jsonrpc.Message{ID: id, Method: method, Params: raw})
 	for {
 		m := s.next()
-		if m.IsNotification() {
-			s.notes = append(s.notes, m)
+		if s.keep(m) {
 			continue
 		}
 		if string(m.ID) != string(id) {
@@ -508,4 +506,53 @@ func (b *syncBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.b.String()
+}
+
+// keep keeps a notification or a request the server sent, and reports
+// whether m was one.
+func (s *session) keep(m *jsonrpc.Message) bool {
+	switch {
+	case m.IsNotification():
+		s.notes = append(s.notes, m)
+	case m.IsRequest():
+		s.asks = append(s.asks, m)
+	default:
+		return false
+	}
+	return true
+}
+
+// settle waits for the server to publish the diagnostics of file at
+// version, which it does after every load of its project, so what a
+// notification before made the server load is in by then. It returns the
+// notifications that came meanwhile.
+func (s *session) settle(file string, version int32) []*jsonrpc.Message {
+	s.t.Helper()
+	from := len(s.notes)
+	for {
+		m := s.next()
+		if !s.keep(m) {
+			s.t.Fatalf("an answer to %s, waiting for diagnostics", m.ID)
+		}
+		var p protocol.PublishDiagnosticsParams
+		if m.Method == protocol.MethodPublishDiagnostic && json.Unmarshal(m.Params, &p) == nil && p.URI == s.uri(file) && p.Version != nil && *p.Version == version {
+			return s.notes[from:]
+		}
+	}
+}
+
+// settleOn waits for the server to publish the diagnostics of file, a
+// file that isn't open, at any version.
+func (s *session) settleOn(file string) {
+	s.t.Helper()
+	for {
+		m := s.next()
+		if !s.keep(m) {
+			s.t.Fatalf("an answer to %s, waiting for diagnostics", m.ID)
+		}
+		var p protocol.PublishDiagnosticsParams
+		if m.Method == protocol.MethodPublishDiagnostic && json.Unmarshal(m.Params, &p) == nil && p.URI == s.uri(file) {
+			return
+		}
+	}
 }

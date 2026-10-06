@@ -215,7 +215,7 @@ func TestLinkedKind(t *testing.T) {
 	src := []byte("policy p: DeployApproval@2\n\nwhen service.tier == critical {\n  deny(reason: not_eligible)\n}\n")
 	p := workspace.NewLoader([]workspace.Linked{{Model: model, Binding: gokind.Synthesize(model)}}).Load([]workspace.File{{Name: root + "/p.sigil", Source: src}}, nil)
 	p.Check()
-	v := &view{proj: p, file: root + "/p.sigil", src: src}
+	v := newView(p, root+"/p.sigil", src)
 	for _, at := range []string{"when serv", "service.ti", "deny", "== crit", "DeployAppr"} {
 		got := v.targetAt(strings.Index(string(src), at) + len(at))
 		if got == nil || got.hover == "" {
@@ -225,5 +225,16 @@ func TestLinkedKind(t *testing.T) {
 		if got.defs != nil {
 			t.Errorf("%s: definition = %v, want none", at, got.defs)
 		}
+	}
+}
+
+// TestTargetUnchecked hovers over a let whose value doesn't check: the
+// hover names it without a type, and says why.
+func TestTargetUnchecked(t *testing.T) {
+	src := "policy p: DeployApproval@2\n\nlet bad = nope + 1\n\nwhen bad<|> {\n  deny(reason: not_eligible)\n}\n"
+	v, offset := viewOf(t, "production.sigil", src)
+	got := v.targetAt(offset)
+	if got == nil || !strings.Contains(got.hover, "```sigil\nlet bad\n```") || !strings.Contains(got.hover, "couldn't be worked out") {
+		t.Errorf("target = %+v, want the let without a type", got)
 	}
 }

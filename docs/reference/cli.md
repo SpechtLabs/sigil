@@ -1139,26 +1139,31 @@ sigil lsp [flags]
 
 The server reads each open document's project the way `sigil check` run in the project's root reads it:
 
-| The document is | The root is | It reads |
-| --- | --- | --- |
-| At or below a directory with a [configuration file](/reference/config/#finding-the-file) | The nearest such directory | The root, with the file's kind files, trusted paths, requirements and lint levels |
-| Below a workspace folder, with no configuration file above it | The deepest workspace folder holding it | The folder, with the default lint levels |
-| Outside every folder and configuration file | The document itself | The document alone |
+| The document is | The root is | It reads | It reports on |
+| --- | --- | --- | --- |
+| At or below a directory with a [configuration file](/reference/config/#finding-the-file) | The nearest such directory | The root, with the file's kind files, trusted paths, requirements and lint levels | Every file of the project, open or not, apart from those below another configuration file |
+| Below a workspace folder of at most 200 `.sigil` files, with no configuration file above it | The deepest workspace folder holding it | The folder, with the default lint levels | The open documents |
+| Below a larger workspace folder, with no configuration file above it | The document's directory, or the document itself when that holds more than 200 too | That directory or document, with a message that says so | The open documents |
+| Outside every folder and configuration file | The document itself | The document alone | The document |
 
-- Open documents replace their files on disk, and a new `.sigil` document below the root counts before it's saved.
-- A project is read again 200 ms after its last change, and at once when a document opens or closes, or when a request needs it.
-- Workspace folders added or removed by the editor move documents to their new roots.
+- Open documents replace their files on disk. A document that isn't on disk, saved or not, counts too.
+- A file belongs to the project of the configuration file nearest it, so a directory with a configuration file of its own is a project of its own, and the project above it doesn't report on its files.
+- A project is read again 200 ms after its last change, and at once when a document opens or closes, on a goroutine of its own, so the server keeps answering while it reads. A request about a document waits only for its project's first read.
+- Completion, hover and definition check the document's current text against the project's latest read, so a request right after an edit checks that one document, not the project.
+- Workspace folders added or removed by the editor, and configuration files created or deleted on disk, move documents to their new roots.
+- When the client lets it, the server asks the client to watch `**/*.sigil` and the configuration file names, and reads the projects again when one changes on disk.
 
 ### Diagnostics
 
 | Behavior | Rule |
 | --- | --- |
 | What's reported | Exactly what `sigil check` reports at the root: parse, check and compile errors, requirements, and lints at the configured levels |
-| Which files | Every file of the project with a problem, open or not |
+| Which files | The files the project reports on, by the table above; every open document gets a list after each read, empty when it has no problem |
 | Severity | `error` or `warning`, as `check` prints it; a lint's name is the diagnostic's code |
 | Message | The message, then `help:` and the fix on the next line |
 | Version | The document's version the diagnostics were computed from, for an open document |
 | On close | The project is read again from disk; when no document of the project is open any more, every diagnostic it published is cleared |
+| After shutdown | Nothing more is published |
 
 What stops the check, such as a configuration file that doesn't parse or a requirement that can't be enforced, is shown as an error message instead. The documents still get completion, hover and definition.
 

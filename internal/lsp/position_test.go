@@ -48,12 +48,14 @@ func TestLines(t *testing.T) {
 	}
 }
 
-// TestLinesClamp maps positions outside the text: past a line's end, past
-// the last line, and inside an emoji's surrogate pair.
+// TestLinesClamp maps positions outside the text: past a line's end, a
+// CRLF line's included, past the last line, and inside an emoji's
+// surrogate pair.
 func TestLinesClamp(t *testing.T) {
 	src := "ab\n😀x\nz"
 	tests := []struct {
 		name     string
+		src      string // the source; ab, an emoji and z when empty
 		encoding string
 		pos      protocol.Position
 		want     int
@@ -63,10 +65,17 @@ func TestLinesClamp(t *testing.T) {
 		{name: "inside a surrogate pair", encoding: protocol.EncodingUTF16, pos: protocol.Position{Line: 1, Character: 1}, want: 3},
 		{name: "past the last line's end", encoding: protocol.EncodingUTF16, pos: protocol.Position{Line: 2, Character: 9}, want: len(src)},
 		{name: "bytes past a line's end", encoding: protocol.EncodingUTF8, pos: protocol.Position{Line: 1, Character: 99}, want: 8},
+		{name: "past the end of a CRLF line", src: "ab\r\ncd", encoding: protocol.EncodingUTF16, pos: protocol.Position{Line: 0, Character: 9}, want: 2},
+		{name: "bytes past the end of a CRLF line", src: "ab\r\ncd", encoding: protocol.EncodingUTF8, pos: protocol.Position{Line: 0, Character: 9}, want: 2},
+		{name: "the end of a CRLF line", src: "ab\r\ncd", encoding: protocol.EncodingUTF16, pos: protocol.Position{Line: 0, Character: 2}, want: 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := newLines([]byte(src), tt.encoding).offset(tt.pos); got != tt.want {
+			text := src
+			if tt.src != "" {
+				text = tt.src
+			}
+			if got := newLines([]byte(text), tt.encoding).offset(tt.pos); got != tt.want {
 				t.Errorf("offset(%+v) = %d, want %d", tt.pos, got, tt.want)
 			}
 		})

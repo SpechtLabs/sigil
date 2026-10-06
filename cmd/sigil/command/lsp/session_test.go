@@ -162,9 +162,11 @@ func (c *client) exited() bool { return strings.Contains(c.log.String(), "--> ex
 
 // run runs one step: it sends the step, then for a request writes the
 // answer to the transcript, after every notification the server sent
-// before it. A notification is followed by a request of its own that
-// isn't written down, so what the notification made the server publish is
-// in the transcript at that point, whatever the server's timing.
+// before it. After an open or a change, it waits for the diagnostics the
+// load publishes for the document, at its new version; after any other
+// notification it sends a request of its own that isn't written down, so
+// what the notification made the server do is in the transcript at that
+// point, whatever the server's timing.
 func (c *client) run(s step) {
 	c.t.Helper()
 	var params any
@@ -172,12 +174,43 @@ func (c *client) run(s step) {
 		params = s.params(c)
 	}
 	fmt.Fprintf(&c.log, "--> %s\n", s.say)
-	if s.notify {
-		c.send(jsonrpc.Notification(s.method, params))
-		c.request(protocol.MethodHover, c.sync(s.doc), false)
+	if !s.notify {
+		c.request(s.method, params, true)
 		return
 	}
-	c.request(s.method, params, true)
+	c.send(jsonrpc.Notification(s.method, params))
+	switch s.method {
+	case protocol.MethodDidOpen, protocol.MethodDidChange:
+		c.published(s.doc)
+	default:
+		c.request(protocol.MethodHover, c.sync(s.doc), false)
+	}
+}
+
+// published waits for the server to publish the diagnostics of doc at
+// the version the client sent last, which it does after every load of
+// doc's project, keeping what the server sent meanwhile in the
+// transcript.
+func (c *client) published(doc string) {
+	c.t.Helper()
+	for {
+		select {
+		case m, ok := <-c.in:
+			if !ok {
+				c.t.Fatal("the server closed the connection waiting for diagnostics")
+			}
+			if !m.IsNotification() {
+				c.t.Fatalf("got the answer to %s, waiting for diagnostics", m.ID)
+			}
+			c.render(m.Method, m.Params)
+			var p protocol.PublishDiagnosticsParams
+			if m.Method == protocol.MethodPublishDiagnostic && json.Unmarshal(m.Params, &p) == nil && p.URI == c.uri(doc) && p.Version != nil && *p.Version == c.versions[doc] {
+				return
+			}
+		case <-time.After(10 * time.Second):
+			c.t.Fatalf("no diagnostics for %s", doc)
+		}
+	}
 }
 
 // request sends a request and waits for its answer, keeping the server's

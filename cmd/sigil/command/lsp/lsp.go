@@ -7,6 +7,8 @@ package lsp
 
 import (
 	"context"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +21,10 @@ import (
 	"github.com/spechtlabs/sigil/cmd/sigil/internal/project"
 	server "github.com/spechtlabs/sigil/internal/lsp"
 )
+
+// maxUndeclared is the most `.sigil` files a workspace folder without a
+// configuration file may hold for the server to read it as one project.
+const maxUndeclared = 200
 
 // loader finds and loads projects for the server as `sigil check` does,
 // with the kinds linked into the binary.
@@ -71,15 +77,25 @@ sigil lsp --stdio`,
 	return cmd
 }
 
-// Root returns the root of the project the file at path belongs to: the
-// directory of the nearest configuration file at or above it, which check
-// run from there would read, or else the deepest workspace folder holding
-// it, or else the file alone, so a file opened outside every folder
-// doesn't make the server walk the directories around it.
-func (l loader) Root(path string, folders []string) string {
+// Root returns the root of the project the file at path belongs to:
+//
+//   - the directory of the nearest configuration file at or above it,
+//     which check run from there would read, a declared project;
+//   - else the deepest workspace folder holding it, when the folder holds
+//     at most maxUndeclared `.sigil` files;
+//   - else, for a larger folder, the file's own directory, if that holds
+//     few enough, or else the file alone, with a note that says so;
+//   - and for a file outside every folder, the file alone, so the server
+//     doesn't walk the directories around it.
+//
+// A project without a configuration file reports on its open documents
+// only. The bound keeps a folder that merely contains policies, such as a
+// home directory or a large monorepo, from being checked whole on every
+// change.
+func (l loader) Root(path string, folders []string) server.Root {
 	if cfg, err := config.Find(filepath.Dir(path)); err == nil && cfg != "" {
 		if abs, err := filepath.Abs(cfg); err == nil {
-			return filepath.Dir(abs)
+			return server.Root{Path: filepath.Dir(abs), Declared: true}
 		}
 	}
 	best := ""
@@ -88,10 +104,17 @@ func (l loader) Root(path string, folders []string) string {
 			best = f
 		}
 	}
-	if best != "" {
-		return best
+	switch {
+	case best == "":
+		return server.Root{Path: path}
+	case fits(best):
+		return server.Root{Path: best}
 	}
-	return path
+	read := path
+	if dir := filepath.Dir(path); fits(dir) {
+		read = dir
+	}
+	return server.Root{Path: read, Note: fmt.Sprintf("%s holds more than %d .sigil files and no %s, so the language server reads %s alone; a sigil.yaml at the root of the policies makes them one project", best, maxUndeclared, config.FileNames[0], read)}
 }
 
 // Load reads the project at root as `sigil check` run there would, with
@@ -134,4 +157,29 @@ func inside(path, dir string) bool {
 func isDir(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+// fits reports whether dir holds at most maxUndeclared `.sigil` files,
+// by the rules a walk of a directory reads them: entries whose names
+// start with `.` are left out. It stops counting past the bound.
+func fits(dir string) bool {
+	n := 0
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return nil //nolint:nilerr // an entry that can't be read doesn't count, as a walk leaves it to the loader
+		case p != dir && strings.HasPrefix(d.Name(), "."):
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		case !d.IsDir() && project.IsSigil(p):
+			n++
+		}
+		if n > maxUndeclared {
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return n <= maxUndeclared
 }

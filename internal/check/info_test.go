@@ -49,7 +49,7 @@ func TestScopeAt(t *testing.T) {
 		{at: "any c in actor.teams: c", visible: map[string]string{"c": "c in actor"}, hidden: []string{"owners"}},
 		{at: "deny(reason: x)\n}\n", visible: map[string]string{"cleared": "cleared = true"}, hidden: []string{"c", "owners"}},
 	}
-	c, _ := checkDoc(t, scoped)
+	c := withScopes(t, scoped)
 	src := scoped
 	for _, tt := range tests {
 		t.Run(tt.at, func(t *testing.T) {
@@ -90,7 +90,7 @@ func TestScopeAt(t *testing.T) {
 // scope, and in an Info that isn't there.
 func TestScopeAtEdges(t *testing.T) {
 	src := "policy p: Test@1\n\nlet a = 1\n"
-	c, _ := checkDoc(t, src)
+	c := withScopes(t, src)
 	if env := c.Info().ScopeAt(len(src) + 10); env == nil {
 		t.Error("past the end, there's no scope; want the document's")
 	} else if _, ok := env.Lookup("a"); !ok {
@@ -111,6 +111,7 @@ func TestScopeAtEdges(t *testing.T) {
 func TestImportDecls(t *testing.T) {
 	src := "policy p: Test@1\n\nuse deploy.common as shared\nuse deploy.lets.{cleared as ok, owners}\nuse deploy.guard\n"
 	c := check.New("p.sigil")
+	c.Scopes = true
 	c.Resolver = func(name string) (*check.Exported, bool) {
 		switch name {
 		case "deploy.common":
@@ -134,4 +135,27 @@ func TestImportDecls(t *testing.T) {
 			t.Errorf("%s is declared at %v, want at %q", name, b.Decl, decl)
 		}
 	}
+}
+
+// TestScopesAreOptIn checks that a checker records scopes only when
+// asked, so a compile keeps no scope alive.
+func TestScopesAreOptIn(t *testing.T) {
+	c, _ := checkDoc(t, scoped)
+	if len(c.Info().Scopes) != 0 || c.Info().ScopeAt(len(scoped)) != nil {
+		t.Errorf("a checker without Scopes recorded %d scopes", len(c.Info().Scopes))
+	}
+}
+
+// withScopes checks src, one policy of the test kind, with scopes
+// recorded.
+func withScopes(t *testing.T, src string) *check.Checker {
+	t.Helper()
+	f, errs := parser.ParseFile("p.sigil", []byte(src))
+	if errs != nil {
+		t.Fatal(errs)
+	}
+	c := check.New("p.sigil")
+	c.Scopes = true
+	c.Policy(f.Docs[0].(*ast.PolicyDoc), loadKind(t))
+	return c
 }

@@ -64,3 +64,27 @@ type PublishDiagnosticsParams struct {
 type DocumentFormattingParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
 }
+
+// RegistrationParams is a client/registerCapability.
+type RegistrationParams struct {
+	Registrations []Registration `json:"registrations"`
+}
+
+// Registration registers one capability at run time.
+type Registration struct {
+	RegisterOptions any    `json:"registerOptions,omitempty"`
+	ID              string `json:"id"`
+	Method          string `json:"method"`
+}
+
+// DidChangeWatchedFilesRegistrationOptions says which files the client
+// watches for the server.
+type DidChangeWatchedFilesRegistrationOptions struct {
+	Watchers []FileSystemWatcher `json:"watchers"`
+}
+
+// FileSystemWatcher is one glob pattern of files to watch, for every kind
+// of change.
+type FileSystemWatcher struct {
+	GlobPattern string `json:"globPattern"`
+}

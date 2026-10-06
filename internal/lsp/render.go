@@ -61,7 +61,7 @@ func paramsOf(e *check.Exported) string {
 // paramSource renders a param as its declaration writes it, without the
 // keyword: `min_soak: duration = 24h, min: 1h`.
 func paramSource(p *check.ExportedParam) string {
-	s := p.Name + ": " + typeName(p.Type)
+	s := typed(p.Name, p.Type)
 	if p.Decl == nil {
 		return s
 	}
@@ -82,7 +82,7 @@ func letsOf(e *check.Exported) string {
 	names := e.LetNames()
 	lines := make([]string, len(names))
 	for i, name := range names {
-		lines[i] = "pub let " + name + ": " + typeName(e.Lets[name])
+		lines[i] = "pub let " + typed(name, e.Lets[name])
 	}
 	return strings.Join(lines, "\n")
 }
@@ -136,4 +136,22 @@ func joinLines(parts ...string) string {
 		}
 	}
 	return strings.Join(out, "\n\n")
+}
+
+// typed renders a name with its type, `name: type`, or the name alone
+// when its type couldn't be worked out.
+func typed(name string, t types.Type) string {
+	if typeName(t) == "" {
+		return name
+	}
+	return name + ": " + typeName(t)
+}
+
+// unchecked says that a name's type couldn't be worked out, or is ""
+// when it could.
+func unchecked(t types.Type) string {
+	if typeName(t) != "" {
+		return ""
+	}
+	return "Its type couldn't be worked out: the value has an error."
 }

@@ -13,11 +13,13 @@ import (
 const kindSource = "kind K version 1\n\ninput n: int\n\ndecision deny {\n  reason: no\n}\n\ncollect all\n"
 
 // TestRoot finds a document's project root: the nearest configuration
-// file's directory, or the deepest workspace folder holding it, or the
-// document alone.
+// file's directory, a declared project; or the deepest workspace folder
+// holding it, when it's small enough to read whole; or for a large folder
+// the document's directory, or the document alone, with a note; or for a
+// document outside every folder, the document alone.
 func TestRoot(t *testing.T) {
 	tmp := realTemp(t)
-	writeFiles(t, tmp, map[string]string{
+	files := map[string]string{
 		"repo/sigil.yaml":             "",
 		"repo/teams/a.sigil":          "",
 		"ws/inner/b.sigil":            "",
@@ -26,23 +28,36 @@ func TestRoot(t *testing.T) {
 		"two/sigil.json":              "{}",
 		"two/d.sigil":                 "",
 		"ws/inner/deeper/sub/e.sigil": "",
-	})
-	folders := []string{filepath.Join(tmp, "ws"), filepath.Join(tmp, "ws", "inner"), filepath.Join(tmp, "two")}
+		"big/team/f.sigil":            "",
+		"huge/g.sigil":                "",
+	}
+	for i := range maxUndeclared {
+		files[fmt.Sprintf("big/vendor/%d.sigil", i)] = ""
+		files[fmt.Sprintf("huge/%d.sigil", i)] = ""
+		files[fmt.Sprintf("big/.hidden/%d.sigil", i)] = ""
+	}
+	writeFiles(t, tmp, files)
+	folders := []string{filepath.Join(tmp, "ws"), filepath.Join(tmp, "ws", "inner"), filepath.Join(tmp, "two"), filepath.Join(tmp, "big"), filepath.Join(tmp, "huge")}
 	tests := []struct {
-		file string
-		want string
+		file     string
+		want     string
+		declared bool
+		note     bool
 	}{
-		{file: "repo/teams/a.sigil", want: "repo"},
+		{file: "repo/teams/a.sigil", want: "repo", declared: true},
 		{file: "ws/inner/b.sigil", want: "ws/inner"},
 		{file: "ws/inner/deeper/sub/e.sigil", want: "ws/inner"},
 		{file: "loose/c.sigil", want: "loose/c.sigil"},
 		{file: "two/d.sigil", want: "two"},
+		{file: "big/team/f.sigil", want: "big/team", note: true},
+		{file: "huge/g.sigil", want: "huge/g.sigil", note: true},
+		{file: "loose/unsaved/new.sigil", want: "loose/unsaved/new.sigil"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.file, func(t *testing.T) {
 			got := loader{}.Root(filepath.Join(tmp, filepath.FromSlash(tt.file)), folders)
-			if want := filepath.Join(tmp, filepath.FromSlash(tt.want)); got != want {
-				t.Errorf("Root() = %q, want %q", got, want)
+			if want := filepath.Join(tmp, filepath.FromSlash(tt.want)); got.Path != want || got.Declared != tt.declared || (got.Note != "") != tt.note {
+				t.Errorf("Root() = %+v, want %q, declared %v, a note %v", got, want, tt.declared, tt.note)
 			}
 		})
 	}
@@ -67,6 +82,7 @@ func TestLoad(t *testing.T) {
 		{name: "a lint the configuration sets", files: map[string]string{"sigil.yaml": "lints:\n  unused-let: error\n", "k.sigil": kindSource, "a.sigil": "policy a.p: K@1\n\nlet x = 1\n"}, project: true, diags: []string{"error unused-let: let x is never read"}},
 		{name: "a buffer over a file", files: map[string]string{"k.sigil": kindSource, "a.sigil": policy}, overlay: map[string]string{"a.sigil": "policy a.p: K@1\n\nlet x = nope\n"}, project: true, diags: []string{"error : unknown name `nope`"}},
 		{name: "a file alone", files: map[string]string{"k.sigil": kindSource, "a.sigil": policy}, root: "a.sigil", project: true, diags: []string{"error : policy a.p is written against kind K, but no kind K was found"}},
+		{name: "a buffer that isn't on disk", root: "gone/x.sigil", overlay: map[string]string{"gone/x.sigil": kindSource + "---\n" + policy}, project: true},
 		{name: "a configuration that doesn't parse", files: map[string]string{"sigil.yaml": "nope: 1\n", "a.sigil": policy}, err: "unknown key"},
 		{name: "two configurations", files: map[string]string{"sigil.yaml": "", "sigil.json": "{}"}, err: "are both configuration files"},
 		{name: "a requirement that can't be enforced", files: map[string]string{"sigil.yaml": "require:\n  - policy: a.missing\n", "k.sigil": kindSource, "a.sigil": policy}, project: true, err: "a.missing is required, but no policy a.missing was found"},

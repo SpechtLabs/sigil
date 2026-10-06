@@ -24,14 +24,16 @@ const root = "/ws"
 // reads a directory with no sigil.yaml. It counts its loads, which a test
 // reads while a server runs.
 type memLoader struct {
-	files map[string][]byte
-	err   error // what every load reports as stopping the check
-	mu    sync.Mutex
-	loads int
+	files      map[string][]byte
+	err        error // what every load reports as stopping the check
+	undeclared bool  // no configuration file declares the project
+	mu         sync.Mutex
+	loads      int
 }
 
-// Root returns the workspace's root for every file.
-func (l *memLoader) Root(string, []string) string { return root }
+// Root returns the workspace's root for every file, declared unless the
+// loader says it isn't.
+func (l *memLoader) Root(string, []string) Root { return Root{Path: root, Declared: !l.undeclared} }
 
 // count returns how many loads there were.
 func (l *memLoader) count() int {
@@ -99,5 +101,5 @@ func viewOf(t testing.TB, file, src string) (*view, int) {
 	name := root + "/" + file
 	l := &memLoader{files: testWorkspace(t)}
 	snap := l.Load(root, map[string][]byte{name: clean})
-	return &view{proj: snap.Project, file: name, src: clean}, offset
+	return newView(snap.Project, name, clean), offset
 }

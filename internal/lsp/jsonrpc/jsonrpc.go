@@ -84,6 +84,14 @@ func Failure(id json.RawMessage, code Code, msg string) *Message {
 	return &Message{JSONRPC: Version, ID: responseID(id), Error: &Error{Code: code, Message: msg}}
 }
 
+// Request returns the request of method with params, under id. Params
+// that can't be encoded are left out.
+func Request(id json.RawMessage, method string, params any) *Message {
+	m := Notification(method, params)
+	m.ID = id
+	return m
+}
+
 // Notification returns the notification of method with params. Params
 // that can't be encoded are left out.
 func Notification(method string, params any) *Message {

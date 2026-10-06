@@ -23,9 +23,23 @@ type WorkspaceFolder struct {
 }
 
 // ClientCapabilities is what the client supports. Only the position
-// encodings are read.
+// encodings and whether it lets the server register file watchers are
+// read.
 type ClientCapabilities struct {
-	General *GeneralClientCapabilities `json:"general,omitempty"`
+	General   *GeneralClientCapabilities   `json:"general,omitempty"`
+	Workspace *WorkspaceClientCapabilities `json:"workspace,omitempty"`
+}
+
+// WorkspaceClientCapabilities is what the client supports about the
+// workspace.
+type WorkspaceClientCapabilities struct {
+	DidChangeWatchedFiles *DynamicRegistration `json:"didChangeWatchedFiles,omitempty"`
+}
+
+// DynamicRegistration says whether the client lets the server register a
+// capability at run time.
+type DynamicRegistration struct {
+	DynamicRegistration bool `json:"dynamicRegistration"`
 }
 
 // GeneralClientCapabilities holds the position encodings the client

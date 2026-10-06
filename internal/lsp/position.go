@@ -54,7 +54,8 @@ func (l *lines) rangeOf(from, to int) protocol.Range {
 
 // offset returns the byte offset of p. A line past the end is the end of
 // the source, and a character past the end of its line is the line's end,
-// as the specification asks; one inside a character is its start.
+// before a `\r\n` or a `\n`, as the specification asks; one inside a
+// character is its start.
 func (l *lines) offset(p protocol.Position) int {
 	if int(p.Line) >= len(l.starts) {
 		return len(l.src)
@@ -63,6 +64,9 @@ func (l *lines) offset(p protocol.Position) int {
 	end := len(l.src)
 	if int(p.Line)+1 < len(l.starts) {
 		end = l.starts[p.Line+1] - 1 // the `\n`
+	}
+	if end > start && l.src[end-1] == '\r' {
+		end-- // a `\r\n` ends the line at the `\r`
 	}
 	if l.utf8 {
 		return start + min(int(p.Character), end-start)

@@ -15,7 +15,7 @@ The server reads the same files `sigil check` does. That means the `sigil` binar
 
 - Put `sigil` on your `PATH`; `sigil version` prints its version. A host binary built with `cli.Main` runs the language server too. Use its name in place of `sigil` below, and its linked kinds count.
 - The editor starts the server as `sigil lsp --stdio` for files that end in `.sigil`, with the language ID `sigil`, and talks to it over stdin and stdout. It takes no other flags and no settings, and its log goes to stderr.
-- For each open file, the server reads the project from the nearest `sigil.yaml` at or above it, or from the workspace folder when there's none. Use `sigil.yaml` and then `.git` as the root markers. [Projects](/reference/cli/#projects) has the rules.
+- For each open file, the server reads the project from the nearest `sigil.yaml` at or above it, or from the workspace folder when there's none and it holds at most 200 `.sigil` files. A repository with a `sigil.yaml` gets diagnostics for every file; without one, only the open files get them. Use `sigil.yaml` and then `.git` as the root markers. [Projects](/reference/cli/#projects) has the rules.
 - Run `sigil check` at the root of the policy repository first. When it finds the kinds and the policies, the server will too.
 
 ## Helix

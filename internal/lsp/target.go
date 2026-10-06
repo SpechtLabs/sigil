@@ -210,7 +210,7 @@ func (r *resolver) let(t *target, s *ast.LetStmt) *target {
 		kw = "pub let "
 	}
 	b, _ := r.lookup(s.Name)
-	t.hover = joinLines(code(kw+s.Name.Name+": "+typeName(b.Type)), code(declsOf(b.Type, r.kind)))
+	t.hover = joinLines(code(kw+typed(s.Name.Name, b.Type)), unchecked(b.Type), code(declsOf(b.Type, r.kind)))
 	t.defs = r.here(s.Name)
 	return t
 }
@@ -342,7 +342,7 @@ func (r *resolver) importedLet(t *target, d *bundle.Document, name string) *targ
 	if !ok {
 		return nil
 	}
-	t.hover = joinLines(code("pub let "+name+": "+typeName(typ)), fmt.Sprintf("From `%s`.", d.Name), code(declsOf(typ, r.kind)))
+	t.hover = joinLines(code("pub let "+typed(name, typ)), fmt.Sprintf("From `%s`.", d.Name), code(declsOf(typ, r.kind)))
 	if l := letIn(d.Node, name); l != nil {
 		t.defs = []location{{file: d.File, from: l.Name.Pos().Offset, to: l.Name.End().Offset}}
 	}
@@ -404,7 +404,7 @@ func (r *resolver) name(id *ast.Ident) *target {
 	t := r.on(id)
 	switch b.Entity {
 	case check.Input:
-		t.hover = joinLines(code("input "+id.Name+": "+typeName(b.Type)), code(declsOf(b.Type, r.kind)))
+		t.hover = joinLines(code("input "+typed(id.Name, b.Type)), code(declsOf(b.Type, r.kind)))
 		t.defs = r.inKind(func(d ast.Decl) *ast.Ident { return inputDecl(d, id.Name) })
 	case check.Function:
 		t.hover = code(b.Func.Signature())
@@ -444,7 +444,7 @@ func (r *resolver) name(id *ast.Ident) *target {
 
 // variable is a quantifier's or a filter's variable, declared at decl.
 func (r *resolver) variable(t *target, decl *ast.Ident, typ types.Type) *target {
-	t.hover = joinLines(code(decl.Name+": "+typeName(typ)), code(declsOf(typ, r.kind)))
+	t.hover = joinLines(code(typed(decl.Name, typ)), unchecked(typ), code(declsOf(typ, r.kind)))
 	t.defs = r.here(decl)
 	return t
 }

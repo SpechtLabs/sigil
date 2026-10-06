@@ -167,27 +167,6 @@ func (p *Project) KindSource(name string) (*ast.KindDoc, string) {
 	return k.doc, k.file
 }
 
-// DocumentsIn returns the policies and modules read from file, trusted or
-// not, in source order, each as its kind's bundle holds it, so one that
-// was checked carries the checker's Info. A document whose kind no source
-// provides is returned as read, unchecked; one whose name another document
-// took first isn't returned.
-func (p *Project) DocumentsIn(file string) []*bundle.Document {
-	var out []*bundle.Document
-	for _, d := range p.docs {
-		if d.File != file {
-			continue
-		}
-		if g := p.owners[d.Name]; g != nil {
-			if held := g.Bundle.Document(d.Name); held != nil && held.File == file {
-				d = held
-			}
-		}
-		out = append(out, d)
-	}
-	return out
-}
-
 // Files returns how many files were read from the paths, trusted paths
 // and kind files apart.
 func (p *Project) Files() int { return p.files }

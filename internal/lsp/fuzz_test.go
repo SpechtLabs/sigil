@@ -40,10 +40,10 @@ func FuzzQueries(f *testing.F) {
 		l := &memLoader{files: files}
 		name := root + "/production.sigil"
 		snap := l.Load(root, map[string][]byte{name: src})
-		v := &view{proj: snap.Project, file: name, src: src}
+		v := newView(snap.Project, name, src)
 		for offset := 0; offset <= len(src); offset++ {
-			if _, from := v.complete(offset); from < 0 || from > offset {
-				t.Fatalf("a completion at %d replaces from %d", offset, from)
+			if _, from, to := v.complete(offset); from < 0 || from > offset || to < offset || to > len(src) {
+				t.Fatalf("a completion at %d replaces %d to %d", offset, from, to)
 			}
 			target := v.targetAt(offset)
 			if target == nil {

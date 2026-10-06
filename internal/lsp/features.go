@@ -3,6 +3,7 @@ package lsp
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 
 	"github.com/spechtlabs/sigil/internal/format"
 	"github.com/spechtlabs/sigil/internal/lsp/jsonrpc"
@@ -11,20 +12,22 @@ import (
 
 // at decodes the params of a request about a position in an open
 // document, and returns the view to answer from and the position's
-// offset. The view has no project when the document's project couldn't be
-// loaded, or didn't read the file; its source is then the buffer's.
+// offset, or a nil view for a document that isn't open. The view checks
+// the document's current text against its project's latest load, so a
+// request right after an edit costs a check of one document, not of the
+// project. It has no project when the project couldn't be loaded.
 func (s *Server) at(raw json.RawMessage) (*view, *lines, int, *jsonrpc.Error) {
 	p, bad := decode[protocol.TextDocumentPositionParams](raw)
 	if bad != nil {
 		return nil, nil, 0, bad
 	}
-	d, snap, name := s.current(p.TextDocument.URI)
+	d, pr := s.current(p.TextDocument.URI)
 	if d == nil {
-		return nil, nil, 0, &jsonrpc.Error{Code: jsonrpc.InvalidParams, Message: p.TextDocument.URI + " isn't open"}
+		return nil, nil, 0, nil
 	}
-	v := &view{src: d.text}
-	if name != "" {
-		v = &view{proj: snap.Project, file: name, src: snap.Project.SourceOf(name)}
+	v := newView(nil, filepath.ToSlash(d.path), d.text)
+	if pr != nil && pr.snap != nil && pr.snap.Project != nil {
+		v = newView(pr.snap.Project, pr.nameOf(d), d.text)
 	}
 	l := newLines(v.src, s.encoding)
 	return v, l, l.offset(p.Position), nil
@@ -36,8 +39,11 @@ func (s *Server) completion(raw json.RawMessage) (*protocol.CompletionList, *jso
 	if bad != nil {
 		return nil, bad
 	}
-	items, from := v.complete(offset)
-	edit := l.rangeOf(from, offset)
+	if v == nil {
+		return &protocol.CompletionList{Items: []protocol.CompletionItem{}}, nil
+	}
+	items, from, to := v.complete(offset)
+	edit := l.rangeOf(from, to)
 	out := &protocol.CompletionList{Items: make([]protocol.CompletionItem, len(items))}
 	for i, it := range items {
 		insert := it.insert
@@ -66,6 +72,9 @@ func (s *Server) hover(raw json.RawMessage) (*protocol.Hover, *jsonrpc.Error) {
 	if bad != nil {
 		return nil, bad
 	}
+	if v == nil {
+		return nil, nil
+	}
 	t := v.targetAt(offset)
 	if t == nil || t.hover == "" {
 		return nil, nil
@@ -82,6 +91,9 @@ func (s *Server) definition(raw json.RawMessage) ([]protocol.Location, *jsonrpc.
 	if bad != nil {
 		return nil, bad
 	}
+	if v == nil {
+		return nil, nil
+	}
 	t := v.targetAt(offset)
 	if t == nil || len(t.defs) == 0 {
 		return nil, nil
@@ -89,15 +101,16 @@ func (s *Server) definition(raw json.RawMessage) ([]protocol.Location, *jsonrpc.
 	out := make([]protocol.Location, 0, len(t.defs))
 	for _, loc := range t.defs {
 		uri, _ := s.uriOfName(loc.file)
-		l := newLines(v.proj.SourceOf(loc.file), s.encoding)
+		l := newLines(v.sourceOf(loc.file), s.encoding)
 		out = append(out, protocol.Location{URI: uri, Range: l.rangeOf(loc.from, loc.to)})
 	}
 	return out, nil
 }
 
 // formatting answers textDocument/formatting with the edit that formats
-// the document as `sigil fmt` does: none when it's formatted already, and
-// an error when it doesn't parse, which formatting needs.
+// the document as `sigil fmt` does: none when it's formatted already, null
+// for a document that isn't open, and an error when it doesn't parse,
+// which formatting needs.
 func (s *Server) formatting(raw json.RawMessage) ([]protocol.TextEdit, *jsonrpc.Error) {
 	p, bad := decode[protocol.DocumentFormattingParams](raw)
 	if bad != nil {
@@ -105,7 +118,7 @@ func (s *Server) formatting(raw json.RawMessage) ([]protocol.TextEdit, *jsonrpc.
 	}
 	d := s.open(p.TextDocument.URI)
 	if d == nil {
-		return nil, &jsonrpc.Error{Code: jsonrpc.InvalidParams, Message: p.TextDocument.URI + " isn't open"}
+		return nil, nil
 	}
 	out, errs := format.Source(d.path, d.text)
 	if errs != nil {

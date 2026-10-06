@@ -23,6 +23,10 @@ type Checker struct {
 	file      string
 	errs      diag.ErrorList
 	older     bool // the document pins an older, still accepted kind version
+	// Scopes makes the checker record [Info.Scopes], for a tool that asks
+	// which names are visible at a position, such as the language server.
+	// A compile doesn't need them, so they're off by default.
+	Scopes bool
 }
 
 // New returns a checker for the named file. The name goes into every

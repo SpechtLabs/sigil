@@ -31,7 +31,7 @@ func TestDiagnostics(t *testing.T) {
 	prod := s.uri("production.sigil")
 
 	s.notify(protocol.MethodDidOpen, s.opening("production.sigil", broken))
-	s.sync("production.sigil")
+	s.settle("production.sigil", 1)
 	got := s.published(prod)
 	want := []string{
 		"2:5-2:9 error: unknown name `nope`\nhelp: names come from the kind's inputs, host functions, decisions and enum values, and the document's params, lets and imports",
@@ -42,7 +42,7 @@ func TestDiagnostics(t *testing.T) {
 	}
 
 	s.notify(protocol.MethodDidChange, s.changing("production.sigil", 2, fixed))
-	s.sync("production.sigil")
+	s.settle("production.sigil", 2)
 	got = s.published(prod)
 	want = []string{"2:4-2:10 warning unused-let: let unused is never read\nhelp: remove the let, or read it; a private let can't be imported"}
 	if got.Version == nil || *got.Version != 2 || !slices.Equal(render(got.Diagnostics), want) {
@@ -64,13 +64,13 @@ func TestDiagnosticsInOtherFiles(t *testing.T) {
 	s.initialize()
 	common := strings.Replace(string(testWorkspace(t)[root+"/common.sigil"]), "pub let cleared", "pub let gone", 1)
 	s.notify(protocol.MethodDidOpen, s.opening("common.sigil", common))
-	s.sync("common.sigil")
+	s.settleOn("production.sigil")
 	got := s.published(s.uri("production.sigil"))
 	if got.Version != nil || len(got.Diagnostics) == 0 || !strings.Contains(got.Diagnostics[0].Message, "deploy.common has no pub let `cleared`") {
 		t.Errorf("published %v (version %v) for production.sigil, want the missing let without a version", render(got.Diagnostics), got.Version)
 	}
 	s.notify(protocol.MethodDidChange, s.changing("common.sigil", 2, string(testWorkspace(t)[root+"/common.sigil"])))
-	s.sync("common.sigil")
+	s.settleOn("production.sigil")
 	if got = s.published(s.uri("production.sigil")); len(got.Diagnostics) != 0 {
 		t.Errorf("after the fix, published %v for production.sigil, want none", render(got.Diagnostics))
 	}
@@ -84,9 +84,9 @@ func TestLoadErrors(t *testing.T) {
 	s := start(t, l)
 	s.initialize()
 	s.notify(protocol.MethodDidOpen, s.opening("production.sigil", "policy p: DeployApproval@2\n\nwhen "))
-	s.sync("production.sigil")
+	s.settle("production.sigil", 1)
 	s.notify(protocol.MethodDidChange, s.changing("production.sigil", 2, "policy p: DeployApproval@2\n\nwhen s"))
-	s.sync("production.sigil")
+	s.settle("production.sigil", 2)
 	var shown []string
 	for _, n := range s.notes {
 		if n.Method == protocol.MethodShowMessage {
@@ -113,7 +113,7 @@ func TestReloads(t *testing.T) {
 	s := start(t, l)
 	s.initialize()
 	s.notify(protocol.MethodDidOpen, s.opening("production.sigil", fixed))
-	s.sync("production.sigil")
+	s.settle("production.sigil", 1)
 	tests := []struct {
 		name   string
 		method string
@@ -131,7 +131,7 @@ func TestReloads(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			before := l.count()
 			s.notify(tt.method, tt.params)
-			s.sync("production.sigil")
+			s.settle("production.sigil", 1)
 			if l.count() != before+1 {
 				t.Errorf("loaded %d times, want once", l.count()-before)
 			}
@@ -151,11 +151,10 @@ func TestFolderChangeDropsProjects(t *testing.T) {
 	s := start(t, l)
 	s.initialize()
 	s.notify(protocol.MethodDidOpen, s.opening("production.sigil", broken))
-	s.sync("production.sigil")
+	s.settle("production.sigil", 1)
 	s.notify(protocol.MethodDidChangeFolders, map[string]any{"event": map[string]any{"added": []any{}, "removed": []any{map[string]any{"uri": "file:///ws", "name": "ws"}}}})
-	s.sync("production.sigil")
 	var cleared bool
-	for _, n := range s.notes {
+	for _, n := range s.settle("production.sigil", 1) {
 		var p protocol.PublishDiagnosticsParams
 		if n.Method == protocol.MethodPublishDiagnostic && json.Unmarshal(n.Params, &p) == nil && len(p.Diagnostics) == 0 {
 			cleared = true
@@ -190,7 +189,7 @@ func TestNotificationsThatDoNothing(t *testing.T) {
 	} {
 		s.notify(n.method, n.params)
 	}
-	s.wantError(s.call(protocol.MethodHover, s.at("production.sigil", 0, 0)), jsonrpc.InvalidParams)
+	s.wantResult(s.call(protocol.MethodHover, s.at("production.sigil", 0, 0)), "null")
 	s.shutdown()
 	for _, want := range []string{"only file: documents are checked", "missing.sigil isn't open", "the params don't fit the method", "textDocument/didOpen panicked: no root"} {
 		if !strings.Contains(s.log.String(), want) {
@@ -264,7 +263,7 @@ func TestRequests(t *testing.T) {
 }
 
 // TestFormatting formats documents: one that needs it, one that doesn't
-// parse, and one that isn't open.
+// parse, and one that isn't open, which gets null.
 func TestFormatting(t *testing.T) {
 	s := start(t, &memLoader{files: testWorkspace(t)})
 	s.initialize()
@@ -280,14 +279,13 @@ func TestFormatting(t *testing.T) {
 	if m.Error != nil && !strings.Contains(m.Error.Message, "doesn't parse") {
 		t.Errorf("error = %s", m.Error.Message)
 	}
-	s.wantError(s.call(protocol.MethodFormatting, s.formattingOf("guardrails.sigil")), jsonrpc.InvalidParams)
+	s.wantResult(s.call(protocol.MethodFormatting, s.formattingOf("guardrails.sigil")), "null")
 	s.wantError(s.call(protocol.MethodFormatting, map[string]any{"textDocument": 1}), jsonrpc.InvalidParams)
 	s.shutdown()
 }
 
-// sync waits for the server to finish with the notifications before it:
-// a hover on file loads its project first if a document changed, and
-// publishes what the load found before it answers.
+// sync waits for the server to finish with the notifications before it,
+// with a hover on file, which it answers after them.
 func (s *session) sync(file string) {
 	s.t.Helper()
 	s.call(protocol.MethodHover, s.at(file, 0, 0))
@@ -345,26 +343,26 @@ func render(diags []protocol.Diagnostic) []string {
 type folderLoader struct{ memLoader }
 
 // Root returns the first folder holding path, or path.
-func (l *folderLoader) Root(path string, folders []string) string {
+func (l *folderLoader) Root(path string, folders []string) Root {
 	for _, f := range folders {
 		if strings.HasPrefix(path, f+"/") {
-			return f
+			return Root{Path: f}
 		}
 	}
-	return path
+	return Root{Path: path}
 }
 
 // rootPanics panics finding a root.
 type rootPanics struct{ memLoader }
 
 // Root panics.
-func (*rootPanics) Root(string, []string) string { panic(errors.New("no root")) }
+func (*rootPanics) Root(string, []string) Root { panic(errors.New("no root")) }
 
 // loadPanics panics loading.
 type loadPanics struct{}
 
 // Root returns the workspace's root.
-func (loadPanics) Root(string, []string) string { return root }
+func (loadPanics) Root(string, []string) Root { return Root{Path: root} }
 
 // Load panics.
 func (loadPanics) Load(string, map[string][]byte) *Snapshot { panic(errors.New("no load")) }
@@ -373,14 +371,14 @@ func (loadPanics) Load(string, map[string][]byte) *Snapshot { panic(errors.New("
 type loadsNothing struct{ snap *Snapshot }
 
 // Root returns the workspace's root.
-func (loadsNothing) Root(string, []string) string { return root }
+func (loadsNothing) Root(string, []string) Root { return Root{Path: root} }
 
 // Load returns snap.
 func (l loadsNothing) Load(string, map[string][]byte) *Snapshot { return l.snap }
 
-// TestDelay checks the delay before a reload: changes within it load the
-// project once, and a request in the meantime loads it first, so it
-// answers from the latest text.
+// TestDelay checks the delay before a reload: changes within it don't load
+// the project, and a request in the meantime answers from the latest text
+// by checking the edited document alone against the last load.
 func TestDelay(t *testing.T) {
 	l := &memLoader{files: testWorkspace(t)}
 	s := start(t, l, WithDelay(time.Hour))
@@ -393,8 +391,8 @@ func TestDelay(t *testing.T) {
 	if len(list.Items) != 1 || list.Items[0].Label != "service" {
 		t.Errorf("completed %+v, want service", list.Items)
 	}
-	if l.count() != 2 {
-		t.Errorf("loaded %d times, want twice: at the open, and for the request", l.count())
+	if l.count() != 1 {
+		t.Errorf("loaded %d times, want once: at the open; the request checks the edited document alone", l.count())
 	}
 	s.shutdown()
 }

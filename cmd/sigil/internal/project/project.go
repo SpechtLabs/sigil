@@ -149,12 +149,12 @@ func Root(policies []string, name string) (string, humane.Error) {
 // the paths first. A file among both is read as trusted only. The
 // overlay's new files count below both.
 func (r *reader) sources(s Sources) (regular, trusted []workspace.File, err humane.Error) {
-	tnames, err := Expand(s.Trusted, IsSigil)
+	tnames, err := r.expand(s.Trusted)
 	if err != nil {
 		return nil, nil, err
 	}
 	tnames = append(tnames, unsaved(s.Overlay, s.Trusted, tnames)...)
-	rnames, err := Expand(s.Paths, IsSigil)
+	rnames, err := r.expand(s.Paths)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -166,6 +166,27 @@ func (r *reader) sources(s Sources) (regular, trusted []workspace.File, err huma
 		return nil, nil, err
 	}
 	return regular, trusted, nil
+}
+
+// expand expands paths by [Expand]'s rules, except that a path only the
+// overlay holds, such as an editor's buffer of a file not saved yet or
+// deleted while it's open, is a file of its own, after the others.
+func (r *reader) expand(paths []string) ([]string, humane.Error) {
+	var disk, only []string
+	for _, p := range paths {
+		if _, held := r.overlay[identity(p)]; held && p != "-" {
+			if _, err := os.Stat(p); err != nil {
+				only = append(only, clean(p))
+				continue
+			}
+		}
+		disk = append(disk, p)
+	}
+	out, err := Expand(disk, IsSigil)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, only...), nil
 }
 
 // kindFile reads a kind file named outside the paths.

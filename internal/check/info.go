@@ -30,7 +30,8 @@ type Info struct {
 	// enclosing scope comes before the scopes inside it: a document, the
 	// body of a `when` that declares lets, an assert, and the body of a
 	// quantifier or a filter. [Info.ScopeAt] finds the one at a position,
-	// for tools such as the language server.
+	// for tools such as the language server. Only a checker with
+	// [Checker.Scopes] set records them.
 	Scopes []Scope
 }
 
@@ -83,7 +84,11 @@ func (i *Info) ScopeAt(offset int) *Env {
 	return nil
 }
 
-// scope records that env holds the names visible from from to to.
+// scope records that env holds the names visible from from to to, when
+// the checker records scopes.
 func (c *Checker) scope(env *Env, from, to token.Pos, doc bool) {
+	if !c.Scopes {
+		return
+	}
 	c.info.Scopes = append(c.info.Scopes, Scope{Env: env, From: from, To: to, Doc: doc})
 }

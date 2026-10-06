@@ -9,8 +9,7 @@ import (
 const lookupKind = "kind K version 1\n\ninput n: int\n\ndecision deny {\n  reason: no\n}\n\ncollect all\n"
 
 // TestProjectLookups checks what a project says about what it read: its
-// kinds and where they're declared, the documents of each file as their
-// bundles hold them, and the names of the files.
+// kinds and where they're declared, and the names of the files.
 func TestProjectLookups(t *testing.T) {
 	files := []File{
 		{Name: "/r/k.sigil", Source: []byte(lookupKind)},
@@ -34,30 +33,6 @@ func TestProjectLookups(t *testing.T) {
 	}
 	if doc, file := p.KindSource("Nope"); doc != nil || file != "" {
 		t.Errorf("KindSource(Nope) = %v, %q, want nothing", doc, file)
-	}
-
-	tests := []struct {
-		file    string
-		names   []string
-		checked []bool
-	}{
-		{file: "/r/a.sigil", names: []string{"a.m", "a.p"}, checked: []bool{true, true}},
-		{file: "/r/b.sigil", names: []string{"b.p"}, checked: []bool{false}},
-		{file: "/t/g.sigil", names: []string{"g.p"}, checked: []bool{true}},
-		{file: "/r/k.sigil"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.file, func(t *testing.T) {
-			var names []string
-			var checked []bool
-			for _, d := range p.DocumentsIn(tt.file) {
-				names = append(names, d.Name)
-				checked = append(checked, d.Info != nil)
-			}
-			if !slices.Equal(names, tt.names) || !slices.Equal(checked, tt.checked) {
-				t.Errorf("DocumentsIn() = %v, checked %v, want %v, checked %v", names, checked, tt.names, tt.checked)
-			}
-		})
 	}
 
 	want := []string{"/r/a.sigil", "/r/b.sigil", "/r/bad.sigil", "/r/k.sigil", "/t/g.sigil"}

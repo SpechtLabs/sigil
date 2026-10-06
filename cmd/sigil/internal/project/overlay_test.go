@@ -95,3 +95,20 @@ func TestOverlayTrusted(t *testing.T) {
 		t.Errorf("trusted = %v, want a.sigil and new.sigil", files.Trusted)
 	}
 }
+
+// TestOverlayAlone reads a path that only the overlay holds, as the
+// language server does for a buffer outside every folder that isn't on
+// disk: it's a file of its own, not a path that can't be read.
+func TestOverlayAlone(t *testing.T) {
+	gone := filepath.Join(t.TempDir(), "gone", "x.sigil")
+	files, err := project.Read(project.Sources{Paths: []string{gone}, Overlay: map[string][]byte{gone: []byte("policy x: K@1\n")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files.Paths) != 1 || files.Paths[0].Name != filepath.ToSlash(gone) || string(files.Paths[0].Source) != "policy x: K@1\n" {
+		t.Errorf("paths = %+v, want the buffer", files.Paths)
+	}
+	if _, err := project.Read(project.Sources{Paths: []string{gone}}); err == nil {
+		t.Error("a missing path without an overlay reads")
+	}
+}

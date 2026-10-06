@@ -75,6 +75,7 @@ type cursor struct {
 	given   []string      // the names a selective import already lists
 	offset  int           // the cursor
 	start   int           // where the name being typed starts; offset when nothing is
+	end     int           // where the name the cursor is in ends, the part after the cursor included; offset when nothing is
 	from    int           // where the dotted name after `use` starts
 	header  int           // the index of the document's header keyword, or -1
 	recv    [2]int        // the tokens of the operand before `.`, for atMember: first and last index
@@ -87,7 +88,7 @@ type cursor struct {
 
 // scan reads src up to offset.
 func scan(src []byte, offset int) *cursor {
-	c := &cursor{src: src, offset: offset, start: offset, header: -1, left: [2]int{-1, -1}}
+	c := &cursor{src: src, offset: offset, start: offset, end: offset, header: -1, left: [2]int{-1, -1}}
 	l := lexer.New(src)
 	for t := l.Next(); t.Kind != token.EOF; t = l.Next() {
 		if t.Pos.Offset >= offset {
@@ -99,7 +100,7 @@ func scan(src []byte, offset int) *cursor {
 			c.place = nowhere
 			return c
 		case (t.Kind == token.Ident || t.Kind.IsKeyword()) && offset <= t.End.Offset:
-			c.start, c.prefix = t.Pos.Offset, string(src[t.Pos.Offset:offset])
+			c.start, c.end, c.prefix = t.Pos.Offset, t.End.Offset, string(src[t.Pos.Offset:offset])
 		case t.Kind != token.Comment:
 			c.toks = append(c.toks, t)
 		}

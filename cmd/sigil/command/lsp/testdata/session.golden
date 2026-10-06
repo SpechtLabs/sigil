@@ -36,6 +36,7 @@
 }
 --> initialized
 --> open payments/production.sigil
+<-- diagnostics for file:///workspace/payments/production.sigil (version 1): 0
 --> edit payments/production.sigil so it doesn't parse
 <-- diagnostics for file:///workspace/payments/production.sigil (version 2): 1
     14:0-14:0 error: expected a field name after `.`, found end of file

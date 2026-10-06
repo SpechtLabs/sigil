@@ -10,23 +10,24 @@ import "encoding/json"
 
 // The methods the server handles, and the ones it sends.
 const (
-	MethodInitialize        = "initialize"
-	MethodInitialized       = "initialized"
-	MethodShutdown          = "shutdown"
-	MethodExit              = "exit"
-	MethodCancelRequest     = "$/cancelRequest"
-	MethodDidOpen           = "textDocument/didOpen"
-	MethodDidChange         = "textDocument/didChange"
-	MethodDidClose          = "textDocument/didClose"
-	MethodDidSave           = "textDocument/didSave"
-	MethodCompletion        = "textDocument/completion"
-	MethodHover             = "textDocument/hover"
-	MethodDefinition        = "textDocument/definition"
-	MethodFormatting        = "textDocument/formatting"
-	MethodPublishDiagnostic = "textDocument/publishDiagnostics"
-	MethodDidChangeWatched  = "workspace/didChangeWatchedFiles"
-	MethodDidChangeFolders  = "workspace/didChangeWorkspaceFolders"
-	MethodShowMessage       = "window/showMessage"
+	MethodInitialize         = "initialize"
+	MethodInitialized        = "initialized"
+	MethodShutdown           = "shutdown"
+	MethodExit               = "exit"
+	MethodCancelRequest      = "$/cancelRequest"
+	MethodDidOpen            = "textDocument/didOpen"
+	MethodDidChange          = "textDocument/didChange"
+	MethodDidClose           = "textDocument/didClose"
+	MethodDidSave            = "textDocument/didSave"
+	MethodCompletion         = "textDocument/completion"
+	MethodHover              = "textDocument/hover"
+	MethodDefinition         = "textDocument/definition"
+	MethodFormatting         = "textDocument/formatting"
+	MethodPublishDiagnostic  = "textDocument/publishDiagnostics"
+	MethodDidChangeWatched   = "workspace/didChangeWatchedFiles"
+	MethodDidChangeFolders   = "workspace/didChangeWorkspaceFolders"
+	MethodShowMessage        = "window/showMessage"
+	MethodRegisterCapability = "client/registerCapability"
 )
 
 // The position encodings a client and server can agree on: what a
@@ -96,9 +97,11 @@ type CancelParams struct {
 // MessageType is how serious a window/showMessage is.
 type MessageType int
 
-// MessageError is the type of a message about an error, the only kind the
-// server shows.
-const MessageError MessageType = 1
+// The message types the server shows.
+const (
+	MessageError   MessageType = 1
+	MessageWarning MessageType = 2
+)
 
 // ShowMessageParams is a window/showMessage, which the client shows the
 // user.

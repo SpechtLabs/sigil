@@ -41,9 +41,11 @@ type item struct {
 	kind   protocol.CompletionItemKind
 }
 
-// complete returns the completions at offset, sorted, and the offset where
-// the text they replace starts; it ends at offset.
-func (v *view) complete(offset int) ([]item, int) {
+// complete returns the completions at offset, sorted, and the span of the
+// text they replace: the whole name the cursor is in, the part after the
+// cursor included, so accepting `teams` at `actor.te|ams` gives
+// `actor.teams`, or after `use` the whole dotted name.
+func (v *view) complete(offset int) ([]item, int, int) {
 	c := scan(v.src, offset)
 	from, typed := c.start, c.prefix
 	var items []item
@@ -84,7 +86,7 @@ func (v *view) complete(offset int) ([]item, int) {
 		}
 		return strings.Compare(a.label, b.label)
 	})
-	return slices.CompactFunc(items, func(a, b item) bool { return a.label == b.label && a.sort == b.sort }), from
+	return slices.CompactFunc(items, func(a, b item) bool { return a.label == b.label && a.sort == b.sort }), from, c.end
 }
 
 // keywordItems returns keywords as completions.

@@ -100,6 +100,7 @@ func TestComplete(t *testing.T) {
 		{name: "comment", src: head + "// when <|>", exact: true},
 		{name: "string", src: head + "let s = \"serv<|>\"", exact: true},
 		{name: "kind document", file: "deploy_approval.sigil", src: "kind DeployApproval version 2\n\ninput x: <|>", exact: true},
+		{name: "a use of the kind", src: "policy p: DeployApproval@2\n\nuse DeployApproval\nuse deploy.nope\n\nwhen serv<|>", want: []string{"service"}, exact: true},
 		{name: "unknown kind", src: "policy p: Nope@1\n\nwhen <|>", want: []string{"any", "not"}, exact: false, not: []string{"service"}},
 		{name: "a header that doesn't parse", src: "policy p: DeployApproval@2 extra\n\nwhen service.<|>", want: []string{"labels", "name", "owners", "tier"}, exact: true},
 	}
@@ -110,7 +111,7 @@ func TestComplete(t *testing.T) {
 				file = "production.sigil"
 			}
 			v, offset := viewOf(t, file, tt.src)
-			items, _ := v.complete(offset)
+			items, _, _ := v.complete(offset)
 			var got []string
 			for _, it := range items {
 				got = append(got, it.label)
@@ -142,28 +143,38 @@ func TestComplete(t *testing.T) {
 	}
 }
 
-// TestCompleteReplaces checks the span a completion replaces: the name
-// being typed, or the whole dotted name after `use`, and what each item
-// inserts.
+// TestCompleteReplaces checks the span a completion replaces: the whole
+// name the cursor is in, the part after the cursor too, or the whole
+// dotted name after `use`, and what each item inserts.
 func TestCompleteReplaces(t *testing.T) {
 	tests := []struct {
 		name   string
 		src    string
 		label  string
 		from   string // the source before the span's start
+		to     string // the source before the span's end; the source before the cursor when empty
 		insert string
 	}{
 		{name: "a name", src: head + "when serv<|>", label: "service", from: head + "when ", insert: "service"},
 		{name: "the dotted name after use", src: "policy p: DeployApproval@2\n\nuse deploy.co<|>", label: "deploy.common", from: "policy p: DeployApproval@2\n\nuse ", insert: "deploy.common"},
 		{name: "an argument name", src: head + "when cleared {\n  review(<|>", label: "approvers", from: head + "when cleared {\n  review(", insert: "approvers: "},
 		{name: "a field", src: head + "when service.na<|>", label: "name", from: head + "when service.", insert: "name"},
+		{name: "inside a name", src: head + "when actor.te<|>ams {\n}\n", label: "teams", from: head + "when actor.", to: head + "when actor.teams", insert: "teams"},
+		{name: "inside a dotted name after use", src: "policy p: DeployApproval@2\n\nuse deploy.co<|>mmon\n", label: "deploy.common", from: "policy p: DeployApproval@2\n\nuse ", to: "policy p: DeployApproval@2\n\nuse deploy.common", insert: "deploy.common"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			v, offset := viewOf(t, "production.sigil", tt.src)
-			items, from := v.complete(offset)
+			items, from, to := v.complete(offset)
 			if from != len(tt.from) {
 				t.Errorf("replaces from %d, want %d", from, len(tt.from))
+			}
+			want := len(tt.to)
+			if tt.to == "" {
+				want = offset
+			}
+			if to != want {
+				t.Errorf("replaces to %d, want %d", to, want)
 			}
 			i := slices.IndexFunc(items, func(it item) bool { return it.label == tt.label })
 			if i < 0 {
@@ -207,7 +218,7 @@ func TestCompleteDetails(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			v, offset := viewOf(t, "production.sigil", tt.src)
-			items, _ := v.complete(offset)
+			items, _, _ := v.complete(offset)
 			i := slices.IndexFunc(items, func(it item) bool { return it.label == tt.label })
 			if i < 0 {
 				t.Fatalf("didn't offer %q", tt.label)
