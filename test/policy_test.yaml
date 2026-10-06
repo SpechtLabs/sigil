@@ -1,0 +1,29 @@
+policy: deploy
+cases:
+  - name: Kevin needs a Review
+    input_file: testdata/kevin-prod.json
+    expect:
+      decision: review
+      reason: manager_approval
+      payload:
+        approvers: [cedric]
+
+  - name: Cedric is admin
+    input_file: testdata/cedric-prod.json
+    expect:
+      decision: review
+      reason: manager_approval
+
+  - name: Kevin auf test ist kein problem
+    input_file: testdata/kevin-test.json
+    expect:
+      decision: approve
+      reason: we_dont_care
+      payload:
+        how_long: 4h
+
+  - name: no role and no known env falls back to the default deny
+    input_file: testdata/no-match.json
+    expect:
+      decision: deny
+      reason: no_rule_matched

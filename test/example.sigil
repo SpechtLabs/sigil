@@ -1,0 +1,36 @@
+kind Approval version 1
+
+type Requestor {
+  name: string
+  roles: list<string>
+}
+
+type Target {
+  labels: map<string, string>
+}
+
+input requestor: Requestor
+input target: Target
+
+decision deny {
+  reason: not_eligible | no_rule_matched
+}
+
+decision review {
+  reason: manager_approval
+  approvers: list<string>
+}
+
+decision approve {
+  reason: prod_user | test_user | we_dont_care
+  how_long: duration = 1h
+}
+
+fn remove_requestor(Requestor, list<string>) -> list<string>
+
+collect one
+precedence deny > review > approve
+precedence deny: not_eligible > no_rule_matched
+precedence approve: prod_user > test_user > we_dont_care
+
+default deny(reason: no_rule_matched)
