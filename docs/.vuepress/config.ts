@@ -165,6 +165,7 @@ export default defineUserConfig({
           items: [
             { text: "Set up your editor", link: "editors/", icon: "mdi:application-edit-outline" },
             { text: "Set up VS Code", link: "editors/vscode", icon: "mdi:microsoft-visual-studio-code" },
+            { text: "Set up Neovim", link: "editors/neovim", icon: "simple-icons:neovim" },
           ],
         },
       ],
