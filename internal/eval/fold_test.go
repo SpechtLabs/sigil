@@ -67,14 +67,67 @@ func TestFold(t *testing.T) {
 			for _, i := range tt.want {
 				want = append(want, cands[i])
 			}
-			got := fold(cands)
-			if !slices.Equal(got, want) {
-				t.Errorf("fold kept %v, want %v", indices(cands, got), tt.want)
-			}
-			if len(got) > 0 && &got[0] == &cands[0] {
-				t.Error("fold returned its argument; the outcome must not share the candidates' array")
+			for name, f := range folds(len(cands)) {
+				got := f(cands)
+				if !slices.Equal(got, want) {
+					t.Errorf("%s kept %v, want %v", name, indices(cands, got), tt.want)
+				}
+				if len(got) > 0 && &got[0] == &cands[0] {
+					t.Errorf("%s returned its argument; the outcome must not share the candidates' array", name)
+				}
 			}
 		})
+	}
+}
+
+// folds returns fold and, for two candidates or more, the two ways it
+// folds, so a test covers both whatever the number of candidates.
+func folds(n int) map[string]func([]*Candidate) []*Candidate {
+	if n < 2 {
+		return map[string]func([]*Candidate) []*Candidate{"fold": fold}
+	}
+	return map[string]func([]*Candidate) []*Candidate{"fold": fold, "foldPairs": foldPairs, "foldSorted": foldSorted}
+}
+
+// TestFoldMany checks fold against the comparison of every candidate
+// with every one kept before it, on more candidates than fold compares
+// pairwise: distinct payloads, repeats far apart, payloads that share a
+// fingerprint without being equal, and two reasons.
+func TestFoldMany(t *testing.T) {
+	allow := &kind.Decision{Name: "allow"}
+	member, oncall := &Rule{Decision: allow, Reason: "member"}, &Rule{Decision: allow, Reason: "oncall"}
+	var cands []*Candidate
+	for i := range 4 * foldPairsMax {
+		r := member
+		if i%7 == 0 {
+			r = oncall
+		}
+		var v any //nolint:emptyinterface // a payload field value, as a Go value
+		switch {
+		case i%5 == 0:
+			v = struct{ A int }{i % 3} // every struct has the same fingerprint
+		case i%3 == 0:
+			v = time.Duration(i%40) * time.Minute
+		default:
+			v = time.Duration(i) * time.Second
+		}
+		cands = append(cands, &Candidate{Rule: r, Payload: map[string]any{"v": v}})
+	}
+
+	var want []*Candidate
+next:
+	for _, c := range cands {
+		for _, k := range want {
+			if same(k, c) {
+				continue next
+			}
+		}
+		want = append(want, c)
+	}
+	for name, f := range folds(len(cands)) {
+		if got := f(cands); !slices.Equal(got, want) {
+			t.Errorf("%s kept %v, want %v", name, indices(cands, got), indices(cands, want))
+		}
 	}
 }
 
