@@ -1,0 +1,15 @@
+kind Unclosed version 1
+
+type Release {
+  soak: duration
+
+exclusive deny.late, approve.fast
+
+decision deny {
+  reason: late |
+
+exclusive deny.late, approve.fast
+
+decision approve {
+  reason: fast
+}
