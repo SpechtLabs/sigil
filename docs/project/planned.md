@@ -79,37 +79,6 @@ Until they do, a Go service that consumes a kind it doesn't define generates Go 
 
 Tooling reads the exported kind file through the CLI. The stock `sigil` binary checks policies against an exported kind file without the host's Go code, and evaluates them as long as no rule reaches a host function call; reaching one is a runtime error. A host binary built with `pkg/cli` supplies the real implementations. The facts are in [Host functions and host binaries](/reference/cli/#host-functions-and-host-binaries).
 
-## `sigil breaking`
-
-**Status:** not implemented; tracked on the [roadmap](/project/roadmap/) as a required deliverable of the Tooling II milestone. The command is registered and exits with "not implemented yet"; see [`sigil breaking`](/reference/cli/#sigil-breaking).
-
-`sigil breaking` compares two versions of a kind file and flags changes that would break existing policies, modeled on `buf breaking`.
-
-```text
-sigil breaking OLD_KIND_FILE NEW_KIND_FILE [flags]
-```
-
-It takes only the global flags. It classifies every change by the compatibility table in [Versioning](/reference/kind-files/#versioning); a removed reason, for example, is breaking because every policy that constructs it stops compiling. Among the enum rules, it flags a value that another enum of the new kind also declares, such as `standard` added to `Plan` while `Tier` has it, because a bare `standard` without context becomes ambiguous; a new enum counts when its values overlap an existing one. It also checks the two numbers in the kind header: it fails when the contract changed but `version` didn't, and when a change is breaking but `accepts` wasn't raised to the new version. It needs nothing but the two kind files, so it can run in either the host repository or the policy repository, against the kind file on the main branch. The intended output:
-
-```text
-deploy_approval.sigil: breaking: precedence changed
-  - deny > review > approve
-  + deny > approve > review
-  = help: raise `accepts` to 4, so policies pinned to older versions are reviewed before they load
-deploy_approval.sigil: breaking: decision deny lost reason `no_release`
-  = help: policies that construct deny(reason: no_release) no longer compile; raise `accepts` to 4
-deploy_approval.sigil: breaking: enum Plan declares `standard`, which Tier declares too
-  = help: a bare `standard` without context becomes ambiguous; raise `accepts` to 4, and qualify it as `Tier.standard`
-```
-
-A CI job would run it as:
-
-```sh
-sigil breaking old/deploy_approval.sigil deploy_approval.sigil
-```
-
-Until it exists, reviewers check `version` and `accepts` by hand; [Evolve a kind safely](/guides/evolve-a-kind/) shows what CI catches today.
-
 ## Module versioning
 
 **Status:** a proposal, not on the [roadmap](/project/roadmap/) yet. Modules have no version of their own.
@@ -126,9 +95,9 @@ A whole import binds the last segment, `use deploy.freeze.v2` makes the names `v
 
 ## `sigil breaking` for modules
 
-**Status:** a proposal, not on the [roadmap](/project/roadmap/) yet. It extends [`sigil breaking`](#sigil-breaking), which isn't implemented either.
+**Status:** a proposal, not on the [roadmap](/project/roadmap/) yet. [`sigil breaking`](/reference/cli/#sigil-breaking) compares two versions of a kind file only.
 
-The command would also compare two versions of a module file and classify the changes to its exported surface, the `pub let`s:
+The proposal extends it to compare two versions of a module file and classify the changes to its exported surface, the `pub let`s:
 
 | Change | Classified as | Why |
 | --- | --- | --- |

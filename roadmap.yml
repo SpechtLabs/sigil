@@ -164,6 +164,13 @@ timeline:
       handle per decision and reason, and a `NewKind` that builds the kind. A second Go service
       evaluates policies with typed results without importing the host, and the kind it builds
       exports the kind file it came from byte for byte.
+  - date: 2026-10-06
+    title: sigil breaking checks kind changes in CI
+    description: |
+      `sigil breaking OLD_KIND_FILE NEW_KIND_FILE` classifies every change between two versions of
+      a kind file as compatible, breaking or breaking in behavior, and fails when `version`
+      didn't move or a breaking change didn't raise `accepts`. Reviewers no longer check the two
+      numbers by hand.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -658,11 +665,16 @@ milestones:
           refused with a fix per declaration.
         reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/cli.md#sigil-gen-go
       - title: sigil breaking
-        state: TODO
+        state: DONE
         requirement: MUST
         description: |
-          Flags incompatible kind changes in CI, modeled on `buf breaking`, and checks the kind
-          header: every change bumps `version`, and a breaking change raises `accepts`.
+          Compares two versions of a kind file, modeled on `buf breaking`, and classifies every
+          change by the compatibility table: compatible, breaking, or breaking in behavior. It
+          checks the kind header too: every change bumps `version`, a breaking change raises
+          `accepts` to it, and neither goes down. Package `internal/compat` holds the comparison,
+          fuzzed against a corpus of policies that must keep compiling after every change it
+          calls compatible.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/reference/cli.md#sigil-breaking
       - title: Evaluators outside Go
         state: DONE
         requirement: SHOULD

@@ -1,0 +1,6 @@
+deploy_approval.sigil: covered: kind DeployApproval is now called Deploy
+  - DeployApproval
+  + Deploy
+  = note: every policy's header names its kind, as in `policy deploy.production: DeployApproval@3`, so none of them finds it
+
+✓ DeployApproval 3 → Deploy 4: 1 breaking change that `accepts: 4` covers

@@ -1,0 +1,23 @@
+policy gate.production: Gate@1
+
+param approvers: list<string> = []
+param tiers: list<Tier> = [standard, internal]
+
+let regions = split(service.labels["regions"], ",")
+let home = region ?? "eu"
+
+when service.tier in tiers and home in regions {
+  approve(reason: release_manager)
+}
+
+when service.tier == Tier.critical and risk(service) < 3 {
+  approve(reason: payments_sre, bake: 15m, notify: true)
+}
+
+when service.plan == free {
+  review(reason: service_owner, approvers: approvers)
+}
+
+when service.name == "" {
+  deny(reason: no_rule_matched)
+}

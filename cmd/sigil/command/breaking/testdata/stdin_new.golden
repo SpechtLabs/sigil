@@ -1,0 +1,15 @@
+<stdin>: breaking: enum Plan lost value `standard`
+  = help: policies that name `standard` no longer compile; raise `accepts` to 5
+<stdin>: breaking: input region was removed
+  = help: policies that read `region` no longer compile; raise `accepts` to 5
+<stdin>: compatible: decision deny gained reason `no_release`
+<stdin>: breaking: precedence changed
+  - deny > approve > review
+  + deny > review > approve
+  = help: every policy still compiles, but the decisions rank differently; raise `accepts` to 5, so policies pinned to older versions are reviewed before they load
+<stdin>: error: `version` went down from 4 to 3
+  = help: a kind's version only goes up; set `version` to 5, or check that OLD_KIND_FILE comes first
+<stdin>: error: 3 breaking changes, but `accepts` is 2
+  = help: raise `accepts` to 5, so policies written against version 4 or earlier are reviewed before they load
+
+✗ DeployApproval 4 → 3: 3 breaking changes and 1 compatible change

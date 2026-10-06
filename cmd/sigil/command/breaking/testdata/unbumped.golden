@@ -1,0 +1,5 @@
+deploy_approval.sigil: compatible: input region was added
+deploy_approval.sigil: error: the contract changed, but `version` is still 3
+  = help: bump `version` to 4
+
+✗ DeployApproval 3: 1 compatible change

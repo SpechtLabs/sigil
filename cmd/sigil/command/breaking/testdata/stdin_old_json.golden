@@ -1,0 +1,63 @@
+{
+  "old": {
+    "file": "\u003cstdin\u003e",
+    "kind": "DeployApproval",
+    "version": 3,
+    "accepts": 2
+  },
+  "new": {
+    "file": "deploy_approval.sigil",
+    "kind": "DeployApproval",
+    "version": 4,
+    "accepts": 2
+  },
+  "ok": false,
+  "changes": [
+    {
+      "change": "ambiguous",
+      "class": "breaking",
+      "covered": false,
+      "path": "enum Plan value standard",
+      "new": "standard",
+      "message": "enum Plan declares `standard`, which Tier declares too",
+      "help": "a bare `standard` without context becomes ambiguous; raise `accepts` to 4, and qualify it as `Tier.standard`"
+    },
+    {
+      "change": "added",
+      "class": "compatible",
+      "covered": false,
+      "path": "input region",
+      "new": "input region: string",
+      "message": "input region was added"
+    },
+    {
+      "change": "removed",
+      "class": "breaking",
+      "covered": false,
+      "path": "decision deny reason no_release",
+      "old": "no_release",
+      "message": "decision deny lost reason `no_release`",
+      "help": "policies that construct deny(reason: no_release) no longer compile; raise `accepts` to 4"
+    },
+    {
+      "change": "changed",
+      "class": "behavior",
+      "covered": false,
+      "path": "precedence",
+      "old": "deny \u003e review \u003e approve",
+      "new": "deny \u003e approve \u003e review",
+      "message": "precedence changed",
+      "help": "every policy still compiles, but the decisions rank differently; raise `accepts` to 4, so policies pinned to older versions are reviewed before they load"
+    }
+  ],
+  "problems": [
+    {
+      "rule": "accepts_not_raised",
+      "severity": "error",
+      "message": "3 breaking changes, but `accepts` is 2",
+      "help": "raise `accepts` to 4, so policies written against version 3 or earlier are reviewed before they load"
+    }
+  ],
+  "minVersion": 4,
+  "minAccepts": 4
+}

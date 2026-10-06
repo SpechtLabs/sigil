@@ -1,0 +1,20 @@
+policy gate.guardrails: Gate@1
+
+let tier = critical
+let plan = premium
+let batch = release.hotfix and "batch" in release.tags
+
+when not (environment == "production") {
+  deny(reason: not_eligible)
+}
+
+when release.soak < 1h and not batch {
+  deny(reason: soak_too_short)
+}
+
+when tier == service.tier and plan == service.plan {
+  review(reason: security, approvers: service.owners, note: "critical premium")
+}
+
+assert("short_bakes", all a in outcome.approve: a.bake <= 2h)
+assert("named_approvers", all r in outcome.review: (r.note != "" or (any x in r.approvers: true)))

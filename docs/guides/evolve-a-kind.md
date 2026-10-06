@@ -39,7 +39,7 @@ payments/production.sigil:1:44: error: DeployApproval@1 is no longer accepted; t
 
 A pin above `version` fails too, because the document was written for a kind this host doesn't have yet.
 
-Nothing enforces the two numbers yet, so make them part of the review of every kind change.
+[`sigil breaking`](#check-for-breaking-changes-in-ci) checks both numbers in CI against the kind file on the main branch.
 
 ## Know what's compatible
 
@@ -121,7 +121,7 @@ Every policy that compiled before still compiles, unless the third point applies
 
 1. No existing rule names `batch`, so a batch service matches none of them, and the kind's default decides for it. For `DeployApproval` that's `deny(reason: no_rule_matched)`, which is safe, but tell the teams: `deploy.production`'s `tiers` defaults to `[standard, internal]`, and a team that wants batch services reviewed has to pass `tiers: [standard, internal, batch]`. Add a test case for a batch service so the decision is pinned either way.
 2. An enum value joins the kind's namespace, like an input or a decision. A document pinned to `@1` that has its own `let batch` keeps it, and `sigil check` warns with [`shadowed-kind-name`](/reference/lints/#shadowed-kind-name) until its team renames the `let` and raises the pin to `@2`. A document already pinned to `@2` can't declare `batch` at all.
-3. If another enum of the kind already declares `batch`, the addition is breaking: a policy that writes `batch` where nothing fixes its type, such as `let t = batch`, stops compiling, because the name is now [ambiguous](/reference/expressions/#enum-values). Raise `accepts` along with `version`, and have those policies write `Tier.batch`.
+3. If another enum of the kind already declares `batch`, the addition is breaking: a policy that writes `batch` where nothing fixes its type, such as `let t = batch`, stops compiling, because the name is now [ambiguous](/reference/expressions/#enum-values). Raise `accepts` along with `version`, and have those policies write `Tier.batch`. `sigil breaking` reports the value as ambiguous.
 
 Removing or renaming a value is breaking: every `service.tier == internal` in a policy stops compiling. Raise `accepts` and follow [Ship a breaking change](#ship-a-breaking-change). Turning an existing `string` field into an enum is breaking too, because it changes the field's type; [Replace a string field with an enum](/guides/patterns/#replace-a-string-field-with-an-enum) walks through it. Why these rules hold: [Enums and versions](/understanding/kinds/#enums-and-versions).
 
@@ -130,23 +130,64 @@ Removing or renaming a value is breaking: every `service.tier == internal` in a 
 Reordering `precedence`, changing `default`, and adding, removing or changing a `conflict` outcome pass the type checker and still change decisions. Swapping `review` and `approve` makes the tour's service-owner deploy skip review ([the example](/understanding/kinds/#why-raise-accepts-for-a-change-that-still-compiles)), and a `default` changed from `deny(reason: no_rule_matched)` to a review sends every deploy no rule covered to a human's queue. A `conflict` outcome only touches evaluations that already fail with a conflict, but the host still acts on what they return: adding `conflict deny(reason: conflicting_rules)` turns their `deny(reason: no_rule_matched)` into `deny(reason: conflicting_rules)`, which a host checking `NoRuleMatched.Is` no longer sees, and a `conflict` that constructs an approval would turn a defect in a policy into a grant. For any of these changes:
 
 1. Treat it as breaking and raise `accepts`, so every policy written against the old behavior stops loading until its team has looked at the new one.
-2. Keep test cases that pin decisions and reasons. They catch a reordered `precedence` or a changed `default` where the type checker can't, because they pin decisions rather than types. A test case can't expect a conflict, so a changed `conflict` outcome only shows in the kind file diff, and in a Go test that checks the outcome of a conflict, as [Test a conflict](/guides/test-policies/#test-a-conflict) does.
+2. Keep test cases that pin decisions and reasons. They catch a reordered `precedence` or a changed `default` where the type checker can't, because they pin decisions rather than types. A test case can't expect a conflict, so a changed `conflict` outcome only shows in the kind file diff, in `sigil breaking`, and in a Go test that checks the outcome of a conflict, as [Test a conflict](/guides/test-policies/#test-a-conflict) does.
 
 ## Check for breaking changes in CI
 
-Three checks run today, split between the two repositories:
+Four checks run today, split between the two repositories:
 
 - In the host repo, `policytest.Schema` in `go test`, or `sigil export --check --out ../policies/deploy_approval.sigil` from a host binary, fails when the Go kind changed and the kind file wasn't regenerated. Every contract change then reaches review as a diff to `deploy_approval.sigil`.
+- In either repo, `sigil breaking` compares the kind file with the one on the main branch, classifies every change by the compatibility table, and fails when `version` didn't move or a breaking change didn't raise `accepts`.
 - In the policy repo, `sigil check` against the new kind file fails on every use of a removed or renamed name, on every payload that misses a new required field, and on every pin below `accepts`.
-- `sigil test`, also in the policy repo, fails when a test case's decision changes, which is the only automated catch for a reordered `precedence` or a new `default`. It can't catch a changed `conflict` outcome.
+- `sigil test`, also in the policy repo, fails when a test case's decision changes, which is the only automated catch for what a reordered `precedence` or a new `default` does to a policy. It can't catch a changed `conflict` outcome.
 
-None of them checks the header. Whether `version` moved, and whether `accepts` should have, is a question for the reviewer of the kind file diff.
+`sigil breaking` needs only the old and the new kind file, and reads the old one from git with `-` as its path. Say a change to `version 3, accepts: 2` adds a `region` input, drops `deny`'s `no_release` reason, swaps `review` and `approve` in `precedence`, and adds `standard` to an enum `Plan` while `Tier` declares it too, and bumps `version` to 4 only:
 
-::: warning Planned: `sigil breaking`
-[`sigil breaking OLD_KIND_FILE NEW_KIND_FILE`](/project/planned/#sigil-breaking) will classify every change by the compatibility table and fail when `version` didn't move or a breaking change didn't raise `accepts`. Today it exits with "not implemented yet".
-:::
+```text
+$ git show main:deploy_approval.sigil | sigil breaking - deploy_approval.sigil
+deploy_approval.sigil: breaking: enum Plan declares `standard`, which Tier declares too
+  = help: a bare `standard` without context becomes ambiguous; raise `accepts` to 4, and qualify it as `Tier.standard`
+deploy_approval.sigil: compatible: input region was added
+deploy_approval.sigil: breaking: decision deny lost reason `no_release`
+  = help: policies that construct deny(reason: no_release) no longer compile; raise `accepts` to 4
+deploy_approval.sigil: breaking: precedence changed
+  - deny > review > approve
+  + deny > approve > review
+  = help: every policy still compiles, but the decisions rank differently; raise `accepts` to 4, so policies pinned to older versions are reviewed before they load
+deploy_approval.sigil: error: 3 breaking changes, but `accepts` is 2
+  = help: raise `accepts` to 4, so policies written against version 3 or earlier are reviewed before they load
 
-The commands for these checks, with the rest of a policy repository's job, are in [Check policies in CI](/guides/ci/#keep-the-kind-file-current).
+✗ DeployApproval 3 → 4: 3 breaking changes and 1 compatible change
+```
+
+Every `help:` names the number to raise `accepts` to. With the header at `kind DeployApproval version 4, accepts: 4`, the same changes print as `covered` and the command exits 0. [`sigil breaking`](/reference/cli/#sigil-breaking) lists the classes, the header rules and the JSON record.
+
+On GitHub Actions, run it on every pull request that changes the kind file:
+
+```yaml
+name: kind
+on:
+  pull_request:
+    paths:
+      - deploy_approval.sigil
+jobs:
+  breaking:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - run: go install github.com/spechtlabs/sigil/cmd/sigil@latest
+      - name: Compare the kind file with the base branch
+        run: |
+          git fetch --depth=1 origin "$GITHUB_BASE_REF"
+          git show FETCH_HEAD:deploy_approval.sigil | sigil breaking - deploy_approval.sigil
+```
+
+In the host repo, name the file `sigil export --out` writes. The first pull request that adds the kind file has nothing to compare with, so `git show` fails and so does the step; skip the job for it.
+
+The commands for the other checks, with the rest of a policy repository's job, are in [Check policies in CI](/guides/ci/#keep-the-kind-file-current).
 
 ## Ship a breaking change
 

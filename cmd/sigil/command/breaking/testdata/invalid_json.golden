@@ -1,0 +1,18 @@
+[
+  {
+    "severity": "error",
+    "file": "deploy_approval.sigil",
+    "message": "enum Tier: value \"critical\" is declared twice",
+    "help": "declare each value once",
+    "line": 3,
+    "column": 34
+  },
+  {
+    "severity": "error",
+    "file": "deploy_approval.sigil",
+    "message": "precedence doesn't name decision \"approve\"",
+    "help": "list every decision exactly once, highest first",
+    "line": 39,
+    "column": 1
+  }
+]
