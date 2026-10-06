@@ -54,3 +54,49 @@ func TestCommentsWithoutSource(t *testing.T) {
 		t.Errorf("letComment() = %q for a let the module doesn't declare", got)
 	}
 }
+
+// commented returns the test workspace with doc comments above some of
+// its kind's declarations and a module's let.
+func commented(t *testing.T) map[string][]byte {
+	t.Helper()
+	files := testWorkspace(t)
+	k := string(files[root+"/deploy_approval.sigil"])
+	for _, r := range []struct{ decl, comment string }{
+		{"input service: Service", "// The service being deployed.\n//\n// Its owners review."},
+		{"fn split", "// split cuts a string at a separator."},
+		{"decision review {", "// review asks a person."},
+		{"  approvers: list<string>", "  // Who reviews."},
+		{"  owners: list<string>", "  // The teams that own it."},
+		{"type Ticket {", "// A change ticket."},
+		{"enum Risk", "// How risky a release is."},
+	} {
+		k = strings.Replace(k, r.decl, r.comment+"\n"+r.decl, 1)
+	}
+	files[root+"/deploy_approval.sigil"] = []byte(k)
+	files[root+"/common.sigil"] = []byte("module deploy.common: DeployApproval@2\n\n// Whether the actor owns the service.\npub let owns_service = actor.teams any in service.owners\npub let cleared = true\n")
+	return files
+}
+
+// TestHoverDocs checks that hover shows the doc comment of what it's on.
+func TestHoverDocs(t *testing.T) {
+	src := head + "param p: Ticket = none\nlet r = release.risk == Risk.high and split(environment, \",\") any in service.owners and owns_service\n\nwhen cleared {\n  review(reason: service_owner, approvers: [])\n}\n"
+	tests := []struct{ at, doc string }{
+		{"service.owners", "The service being deployed.\n\nIts owners review."},
+		{"owners and", "The teams that own it."},
+		{"split(", "split cuts a string at a separator."},
+		{"review(", "review asks a person."},
+		{"approvers: []", "Who reviews."},
+		{"Ticket = none", "A change ticket."},
+		{"Risk.high", "How risky a release is."},
+		{"owns_service\n", "Whether the actor owns the service."},
+	}
+	l := &memLoader{files: commented(t)}
+	snap := l.Load(root, map[string][]byte{root + "/production.sigil": []byte(src)})
+	v := newView(snap.Project, root+"/production.sigil", []byte(src))
+	for _, tt := range tests {
+		target := v.targetAt(strings.Index(src, tt.at) + 1)
+		if target == nil || !strings.Contains(target.hover, tt.doc) {
+			t.Errorf("hover at %q = %+v, want it to hold %q", tt.at, target, tt.doc)
+		}
+	}
+}

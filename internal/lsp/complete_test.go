@@ -420,19 +420,7 @@ func TestCompleteInvocationSnippet(t *testing.T) {
 // the comment above each declaration in the kind file and the module, and
 // what they say they are.
 func TestCompleteDocs(t *testing.T) {
-	files := testWorkspace(t)
-	k := string(files[root+"/deploy_approval.sigil"])
-	for _, r := range []struct{ decl, comment string }{
-		{"input service: Service", "// The service being deployed.\n//\n// Its owners review."},
-		{"fn split", "// split cuts a string at a separator."},
-		{"decision review {", "// review asks a person."},
-		{"  approvers: list<string>", "  // Who reviews."},
-		{"  owners: list<string>", "  // The teams that own it."},
-	} {
-		k = strings.Replace(k, r.decl, r.comment+"\n"+r.decl, 1)
-	}
-	files[root+"/deploy_approval.sigil"] = []byte(k)
-	files[root+"/common.sigil"] = []byte("module deploy.common: DeployApproval@2\n\n// Whether the actor owns the service.\npub let owns_service = actor.teams any in service.owners\npub let cleared = true\n")
+	files := commented(t)
 	tests := []struct {
 		name  string
 		src   string
