@@ -12,7 +12,7 @@ import (
 
 func BenchmarkCheckPolicy(b *testing.B) {
 	k, _ := benchtest.Kind(b, false)
-	for _, n := range []int{1, 64} {
+	for _, n := range []int{1, 8, 16, 32, 64, 128, 256, 512} {
 		b.Run(fmt.Sprintf("rules=%d", n), func(b *testing.B) {
 			file, errs := parser.ParseFile("bench.sigil", []byte(benchtest.Policy(n)))
 			if errs != nil {

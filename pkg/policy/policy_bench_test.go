@@ -12,7 +12,7 @@ import (
 
 func BenchmarkPolicyCompile(b *testing.B) {
 	k := benchmarkKind(false)
-	for _, n := range []int{1, 64} {
+	for _, n := range []int{1, 8, 16, 32, 64, 128, 256, 512} {
 		b.Run(fmt.Sprintf("rules=%d", n), func(b *testing.B) {
 			src := benchtest.Policy(n)
 			b.ReportAllocs()

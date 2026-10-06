@@ -27,11 +27,11 @@
         <line class="line-chart__axis" :x1="m.left" :x2="width - m.right" :y1="sy(0)" :y2="sy(0)" />
         <g class="line-chart__ticks">
           <text v-for="t in yTicks" :key="'yl' + t" :x="m.left - 8" :y="sy(t)" text-anchor="end" dominant-baseline="middle">
-            {{ t }}
+            {{ t.toLocaleString('en-US') }}
           </text>
           <text v-for="t in xTickValues" :key="'xl' + t" :x="sx(t)" :y="sy(0) + 18" text-anchor="middle">{{ t }}</text>
           <text :x="m.left + plotWidth / 2" :y="height - 4" text-anchor="middle" class="line-chart__axis-label">{{ xLabel }}</text>
-          <text :x="m.left - 8" :y="m.top - 20" text-anchor="end" class="line-chart__axis-label">{{ yUnit }}</text>
+          <text x="0" :y="m.top - 20" text-anchor="start" class="line-chart__axis-label">{{ yLabel }}</text>
         </g>
         <line
           v-if="active >= 0"
@@ -52,10 +52,17 @@
             class="line-chart__dot"
             :style="{ fill: color(i) }"
           />
-          <text :x="sx(x[x.length - 1]) + 10" :y="sy(s.values[s.values.length - 1])" dominant-baseline="middle" class="line-chart__end">
-            {{ format(s.values[s.values.length - 1]) }}
-          </text>
         </g>
+        <text
+          v-for="(y, i) in endLabelYs"
+          :key="'e' + series[i].label"
+          :x="sx(x[x.length - 1]) + 10"
+          :y="y"
+          dominant-baseline="middle"
+          class="line-chart__end"
+        >
+          {{ format(series[i].values[series[i].values.length - 1]) }}
+        </text>
         <rect
           class="line-chart__hit"
           :x="m.left"
@@ -81,10 +88,10 @@
 </template>
 
 <script setup lang="ts">
-// LineChart plots a few series of timings against one numeric x, for the
-// performance page. Values are in microseconds. Every value it shows is
-// also in the table the page puts next to it; the hover readout only
-// saves looking it up.
+// LineChart plots up to four series against one numeric x, for the
+// performance page. Values are microseconds, a count or KiB, as unit
+// says. Every value it shows is also in the table the page puts next to
+// it; the hover readout only saves looking it up.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 interface Series {
@@ -92,15 +99,20 @@ interface Series {
   values: number[]
 }
 
+type Unit = 'time' | 'count' | 'bytes'
+
 const props = withDefaults(defineProps<{
   title?: string
   x: number[]
   xTicks?: number[]
   xLabel: string
   xUnit: string
+  unit?: Unit
   yUnit?: string
   series: Series[]
-}>(), { yUnit: 'µs' })
+}>(), { unit: 'time' })
+
+const yLabels: Record<Unit, string> = { time: 'µs', count: 'allocations', bytes: 'KiB' }
 
 const height = 300
 const m = { top: 36, right: 64, bottom: 44, left: 48 }
@@ -124,6 +136,22 @@ const xMax = computed(() => Math.max(...(props.xTicks ?? props.x)))
 const yTicks = computed(() => niceTicks(Math.max(...props.series.flatMap((s) => s.values))))
 const yMax = computed(() => yTicks.value[yTicks.value.length - 1])
 const xTickValues = computed(() => props.xTicks ?? props.x)
+const yLabel = computed(() => props.yUnit ?? yLabels[props.unit])
+
+// endLabelYs places each series' last value beside its line, pushed apart
+// where lines end close together so no two labels overlap.
+const endLabelYs = computed(() => {
+  const gap = 14
+  const ys = props.series.map((s) => sy(s.values[s.values.length - 1]))
+  const order = ys.map((_, i) => i).sort((a, b) => ys[a] - ys[b])
+  const placed = [...ys]
+  order.forEach((i, k) => {
+    if (k > 0) placed[i] = Math.max(placed[i], placed[order[k - 1]] + gap)
+  })
+  const overflow = placed[order[order.length - 1]] - sy(0)
+  if (overflow > 0) order.forEach((i) => { placed[i] -= overflow })
+  return placed
+})
 
 const ariaLabel = computed(() => {
   const parts = props.series.map((s) => `${s.label}: ${s.values.map((v, i) => `${format(v)} at ${props.x[i]}`).join(', ')}`)
@@ -152,18 +180,30 @@ function points(values: number[]): string {
   return values.map((v, i) => `${sx(props.x[i])},${sy(v)}`).join(' ')
 }
 
-// color returns the series' slot color; the palette is two validated
+// color returns the series' slot color; the palette is four validated
 // categorical slots, set per theme in the style block.
 function color(i: number): string {
   return `var(--line-chart-series-${i + 1})`
 }
 
-// format renders a time in microseconds the way the page's tables do.
-function format(us: number): string {
-  if (us < 1) return `${Math.round(us * 1000)} ns`
-  if (us < 10) return `${us.toFixed(2)} µs`
-  if (us < 100) return `${us.toFixed(1)} µs`
-  return `${Math.round(us)} µs`
+// format renders a value the way the page's tables do.
+function format(v: number): string {
+  if (props.unit === 'count') return v.toLocaleString('en-US')
+  if (props.unit === 'bytes') {
+    if (v < 1) return `${Math.round(v * 1024)} B`
+    if (v < 1024) return `${threeDigits(v)} KiB`
+    return `${threeDigits(v / 1024)} MiB`
+  }
+  if (v < 1) return `${Math.round(v * 1000)} ns`
+  if (v < 1000) return `${threeDigits(v)} µs`
+  return `${threeDigits(v / 1000)} ms`
+}
+
+// threeDigits rounds to three significant digits, keeping whole numbers whole.
+function threeDigits(v: number): string {
+  if (v < 10) return v.toFixed(2)
+  if (v < 100) return v.toFixed(1)
+  return `${Math.round(v)}`
 }
 
 // niceTicks returns about five evenly spaced ticks from 0 to a round
@@ -205,6 +245,8 @@ function onKey(e: KeyboardEvent) {
 .line-chart {
   --line-chart-series-1: #2a78d6;
   --line-chart-series-2: #eb6834;
+  --line-chart-series-3: #1baf7a;
+  --line-chart-series-4: #eda100;
   margin: 1.5rem 0;
   font-family: var(--vp-font-family-base);
   text-align: left;
@@ -213,6 +255,8 @@ function onKey(e: KeyboardEvent) {
 [data-theme="dark"] .line-chart {
   --line-chart-series-1: #3987e5;
   --line-chart-series-2: #d95926;
+  --line-chart-series-3: #199e70;
+  --line-chart-series-4: #c98500;
 }
 
 .line-chart__title {
