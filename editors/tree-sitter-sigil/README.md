@@ -39,6 +39,8 @@ CI runs the same task in the Editors workflow.
 
 ### Neovim
 
+[sigil.nvim](https://github.com/SpechtLabs/sigil.nvim) registers this parser at a pinned revision, installs it on the first `.sigil` file, and starts tree-sitter highlighting and indentation along with the language server; [Use Sigil in Neovim](https://sigil.specht-labs.de/guides/editors/neovim/) sets it up. Without the plugin, do it by hand.
+
 nvim-treesitter's `main` branch installs the parser and the queries from this directory. Register it in a `User TSUpdate` autocommand, add the filetype, and run `:TSInstall sigil`:
 
 ```lua

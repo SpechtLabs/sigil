@@ -177,6 +177,12 @@ timeline:
       `sigil lsp` gives editors the diagnostics `sigil check` reports, completion, hover,
       go-to-definition and formatting, read from the exported kind file and the policies alone.
       That meets Tooling II's exit criterion.
+  - date: 2026-10-06
+    title: Neovim plugin
+    description: |
+      sigil.nvim sets Neovim up for Sigil from one lazy.nvim line: the filetype, the language
+      server from the `sigil` binary in `$PATH`, and the tree-sitter parser, which nvim-treesitter
+      builds from this repository at the revision the plugin pins.
 
 objectives:
   - title: Replace hand-rolled YAML rule engines
@@ -732,3 +738,13 @@ milestones:
           repository and the documentation with it and fails unless its tree agrees with the Go
           parser's.
         reference: https://github.com/SpechtLabs/sigil/blob/main/editors/tree-sitter-sigil/README.md
+      - title: Neovim plugin
+        state: DONE
+        requirement: SHOULD
+        description: |
+          `sigil.nvim`, in its own repository, gives `.sigil` files a filetype with `//` comments
+          and `sigil fmt`'s indentation, starts `sigil lsp` from the binary in `$PATH` through
+          `vim.lsp.enable`, and registers the tree-sitter parser at a pinned revision with
+          nvim-treesitter, which builds it on the first `.sigil` file. Under LazyVim the spec is one
+          line, and `:checkhealth sigil` names a missing or outdated binary.
+        reference: https://github.com/SpechtLabs/sigil/blob/main/docs/guides/editors/neovim.md
