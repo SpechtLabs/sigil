@@ -1,0 +1,75 @@
+kind DeployApproval version 3, accepts: 2
+// <- keyword.type
+//   ^ type.definition
+//                  ^ keyword
+//                          ^ number
+//                             ^ keyword
+
+enum Tier: critical | standard
+// <- keyword.type
+//   ^ type.definition
+//         ^ constant
+//                  ^ operator
+//                    ^ constant
+
+type Service {
+// <- keyword.type
+//   ^ type.definition
+  name: string
+//^ variable.member
+//      ^ type.builtin
+  type: ?Tier
+//^ variable.member
+//      ^ operator
+//       ^ type
+  labels: map<string, list<string>>
+//        ^ type.builtin
+//           ^ punctuation.bracket
+//                                ^ punctuation.bracket
+}
+
+input service: Service
+// <- keyword
+//    ^ variable
+//             ^ type
+
+fn split(string, string) -> list<string>
+// <- keyword.function
+// ^ function
+//                       ^ operator
+
+decision review {
+// <- keyword.type
+//       ^ constructor
+  reason: service_owner | security
+//^ variable.member
+//        ^ constant
+  approvers: list<string>
+//^ variable.member
+  bake: duration = 1h
+//               ^ operator
+//                 ^ number
+}
+
+precedence deny > review
+// <- keyword
+//         ^ constructor
+//              ^ operator
+//                ^ constructor
+precedence review: security > service_owner
+//         ^ constructor
+//                 ^ constant
+exclusive approve.release_manager, deny
+// <- keyword
+//        ^ constructor
+//                ^ constant
+//                                 ^ constructor
+collect one
+// <- keyword
+//      ^ keyword
+default deny(reason: no_rule_matched)
+// <- keyword
+//      ^ constructor
+//                   ^ constant
+conflict deny(reason: conflicting_rules)
+// <- keyword

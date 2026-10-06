@@ -1,0 +1,362 @@
+================================================================================
+Policy header with a version pin
+================================================================================
+
+policy deploy.production: DeployApproval@2
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier)
+        (identifier))
+      kind: (identifier)
+      version: (integer))))
+
+================================================================================
+Policy header without a pin
+================================================================================
+
+policy guardrails: DeployApproval
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier))))
+
+================================================================================
+Module header
+================================================================================
+
+module deploy.common: DeployApproval@1
+
+pub let owns_service = actor.teams any in service.owners
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_document
+    header: (module_header
+      name: (policy_name
+        (identifier)
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (selector_expression
+          operand: (identifier)
+          field: (identifier))
+        right: (selector_expression
+          operand: (identifier)
+          field: (identifier))))))
+
+================================================================================
+Kind header
+================================================================================
+
+kind DeployApproval version 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))))
+
+================================================================================
+Kind header with accepts
+================================================================================
+
+kind DeployApproval version 3, accepts: 2
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer)
+      accepts: (integer))))
+
+================================================================================
+Documents separated by ---
+================================================================================
+
+kind K version 1
+
+collect all
+
+---
+
+module m: K@1
+
+let a = 1
+
+---
+
+policy p: K@1
+
+let b = a
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (collect_declaration))
+  (separator)
+  (module_document
+    header: (module_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (integer)))
+  (separator)
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (identifier))))
+
+================================================================================
+The next header ends a document without a separator
+================================================================================
+
+kind K version 1
+collect all
+policy p: K@1
+let a = 1
+module m: K@1
+let b = 2
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (collect_declaration))
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (integer)))
+  (module_document
+    header: (module_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (let_statement
+      name: (identifier)
+      value: (integer))))
+
+================================================================================
+Extra separators and comments between documents
+================================================================================
+
+---
+// before the first document
+policy p: K@1
+---
+---
+// a comment between documents
+module m: K@1
+---
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (separator)
+  (comment)
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer)))
+  (separator)
+  (separator)
+  (comment)
+  (module_document
+    header: (module_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer)))
+  (separator))
+
+================================================================================
+Header keywords inside braces and after a dot are names
+================================================================================
+
+kind JIT_Approval version 1
+
+type Resource {
+  kind: string
+  policy: string
+  module: ?string
+}
+
+policy jit.sandbox: JIT_Approval@1
+
+when resource.kind == "kube_cluster" and resource.policy != "" {
+  review(reason: cluster_access, kind: resource.kind)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (type_declaration
+      name: (identifier)
+      body: (field_list
+        (field_declaration
+          name: (identifier)
+          type: (type_identifier))
+        (field_declaration
+          name: (identifier)
+          type: (type_identifier))
+        (field_declaration
+          name: (identifier)
+          type: (optional_type
+            type: (type_identifier))))))
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier)
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (when_statement
+      condition: (binary_expression
+        left: (binary_expression
+          left: (selector_expression
+            operand: (identifier)
+            field: (identifier))
+          right: (string
+            (string_content)))
+        right: (binary_expression
+          left: (selector_expression
+            operand: (identifier)
+            field: (identifier))
+          right: (string)))
+      body: (block
+        (call
+          name: (identifier)
+          arguments: (call_arguments
+            (named_argument
+              name: (identifier)
+              value: (identifier))
+            (named_argument
+              name: (identifier)
+              value: (selector_expression
+                operand: (identifier)
+                field: (identifier)))))))))
+
+================================================================================
+A whole policy on one line
+================================================================================
+
+policy single.line: K use deploy.common.{cleared} let a = environment == "production" guardrails(min_soak: 4h) when a { review(reason: service_owner) } --- module single.more: K let x = cleared
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier)
+        (identifier))
+      kind: (identifier))
+    (use_statement
+      path: (policy_name
+        (identifier)
+        (identifier))
+      imports: (import_list
+        (import_item
+          name: (identifier))))
+    (let_statement
+      name: (identifier)
+      value: (binary_expression
+        left: (identifier)
+        right: (string
+          (string_content))))
+    (call
+      name: (identifier)
+      arguments: (call_arguments
+        (named_argument
+          name: (identifier)
+          value: (duration))))
+    (when_statement
+      condition: (identifier)
+      body: (block
+        (call
+          name: (identifier)
+          arguments: (call_arguments
+            (named_argument
+              name: (identifier)
+              value: (identifier)))))))
+  (separator)
+  (module_document
+    header: (module_header
+      name: (policy_name
+        (identifier)
+        (identifier))
+      kind: (identifier))
+    (let_statement
+      name: (identifier)
+      value: (identifier))))
+
+================================================================================
+Comments
+================================================================================
+
+// A whole-line comment.
+policy p: K@1 // a trailing comment
+
+let cleared = true // so is this
+// and this, at the end
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (comment)
+  (policy_document
+    header: (policy_header
+      name: (policy_name
+        (identifier))
+      kind: (identifier)
+      version: (integer))
+    (comment)
+    (let_statement
+      name: (identifier)
+      value: (true)))
+  (comment)
+  (comment))

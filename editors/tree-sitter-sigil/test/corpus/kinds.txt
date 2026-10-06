@@ -1,0 +1,381 @@
+================================================================================
+Enums
+================================================================================
+
+kind K version 1
+
+enum Tier: critical | standard | internal
+enum Plan:
+  free
+  | pro |
+  enterprise
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (enum_declaration
+      name: (identifier)
+      value: (identifier)
+      value: (identifier)
+      value: (identifier))
+    (enum_declaration
+      name: (identifier)
+      value: (identifier)
+      value: (identifier)
+      value: (identifier))))
+
+================================================================================
+Struct types
+================================================================================
+
+kind K version 1
+
+type Service {
+  name: string
+  tier: Tier
+  type: string
+  in: ?string
+  labels: map<string, string>
+}
+
+type Empty {}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (type_declaration
+      name: (identifier)
+      body: (field_list
+        (field_declaration
+          name: (identifier)
+          type: (type_identifier))
+        (field_declaration
+          name: (identifier)
+          type: (type_identifier))
+        (field_declaration
+          name: (identifier)
+          type: (type_identifier))
+        (field_declaration
+          name: (identifier)
+          type: (optional_type
+            type: (type_identifier)))
+        (field_declaration
+          name: (identifier)
+          type: (map_type
+            key: (type_identifier)
+            value: (type_identifier)))))
+    (type_declaration
+      name: (identifier)
+      body: (field_list))))
+
+================================================================================
+Inputs
+================================================================================
+
+kind K version 1
+
+input service: Service
+input environment: string
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (input_declaration
+      name: (identifier)
+      type: (type_identifier))
+    (input_declaration
+      name: (identifier)
+      type: (type_identifier))))
+
+================================================================================
+Host functions
+================================================================================
+
+kind K version 1
+
+fn split(string, string) -> list<string>
+fn keys(map<string, string>,) -> list<string>
+fn now() -> timestamp
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (function_declaration
+      name: (identifier)
+      parameters: (parameter_types
+        (type_identifier)
+        (type_identifier))
+      result: (list_type
+        element: (type_identifier)))
+    (function_declaration
+      name: (identifier)
+      parameters: (parameter_types
+        (map_type
+          key: (type_identifier)
+          value: (type_identifier)))
+      result: (list_type
+        element: (type_identifier)))
+    (function_declaration
+      name: (identifier)
+      parameters: (parameter_types)
+      result: (type_identifier))))
+
+================================================================================
+Decisions
+================================================================================
+
+kind K version 1
+
+decision deny {
+  reason: not_eligible | soak_too_short
+}
+
+decision review {
+  reason: service_owner
+    | security
+  approvers: list<string>
+  bake: duration = 1h
+  note: ?string
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (decision_declaration
+      name: (identifier)
+      body: (decision_body
+        (reason_field
+          name: (identifier)
+          value: (identifier)
+          value: (identifier))))
+    (decision_declaration
+      name: (identifier)
+      body: (decision_body
+        (reason_field
+          name: (identifier)
+          value: (identifier)
+          value: (identifier))
+        (payload_field
+          name: (identifier)
+          type: (list_type
+            element: (type_identifier)))
+        (payload_field
+          name: (identifier)
+          type: (type_identifier)
+          default: (duration))
+        (payload_field
+          name: (identifier)
+          type: (optional_type
+            type: (type_identifier)))))))
+
+================================================================================
+A payload field named like an operator ends the default before it
+================================================================================
+
+kind K version 1
+
+decision review {
+  kind: string = ""
+  in: string = "" + "x"
+  and: int = -1
+  reason: cluster_access
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (decision_declaration
+      name: (identifier)
+      body: (decision_body
+        (payload_field
+          name: (identifier)
+          type: (type_identifier)
+          default: (string))
+        (payload_field
+          name: (identifier)
+          type: (type_identifier)
+          default: (binary_expression
+            left: (string)
+            right: (string
+              (string_content))))
+        (payload_field
+          name: (identifier)
+          type: (type_identifier)
+          default: (unary_expression
+            operand: (integer)))
+        (reason_field
+          name: (identifier)
+          value: (identifier))))))
+
+================================================================================
+Decisions in the old syntax
+================================================================================
+
+kind K version 1
+
+decision deny {
+  not_eligible
+  soak_too_short
+}
+decision review(approvers: list<string>) {
+  service_owner
+}
+decision approve(
+  bake: duration = 1h,
+  note: string = "",
+) { release_manager payments_sre }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (decision_declaration
+      name: (identifier)
+      body: (legacy_reason_list
+        value: (identifier)
+        value: (identifier)))
+    (decision_declaration
+      name: (identifier)
+      parameters: (legacy_payload_list
+        (payload_field
+          name: (identifier)
+          type: (list_type
+            element: (type_identifier))))
+      body: (legacy_reason_list
+        value: (identifier)))
+    (decision_declaration
+      name: (identifier)
+      parameters: (legacy_payload_list
+        (payload_field
+          name: (identifier)
+          type: (type_identifier)
+          default: (duration))
+        (payload_field
+          name: (identifier)
+          type: (type_identifier)
+          default: (string)))
+      body: (legacy_reason_list
+        value: (identifier)
+        value: (identifier)))))
+
+================================================================================
+Precedence
+================================================================================
+
+kind K version 1
+
+precedence deny > review > approve
+precedence approve: release_manager > lgtm
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (precedence_declaration
+      value: (identifier)
+      value: (identifier)
+      value: (identifier))
+    (precedence_declaration
+      scope: (identifier)
+      value: (identifier)
+      value: (identifier))))
+
+================================================================================
+Exclusive outcomes
+================================================================================
+
+kind K version 1
+
+exclusive grant_a, grant_b
+exclusive approve.release_manager, approve.lgtm, deny
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (exclusive_declaration
+      (outcome_reference
+        decision: (identifier))
+      (outcome_reference
+        decision: (identifier)))
+    (exclusive_declaration
+      (outcome_reference
+        decision: (identifier)
+        reason: (identifier))
+      (outcome_reference
+        decision: (identifier)
+        reason: (identifier))
+      (outcome_reference
+        decision: (identifier)))))
+
+================================================================================
+Collect, default and conflict
+================================================================================
+
+kind K version 1
+
+collect one
+collect all
+default deny(reason: no_rule_matched)
+conflict deny(reason: conflicting_rules, note: "two rules disagree")
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (kind_document
+    header: (kind_header
+      name: (identifier)
+      version: (integer))
+    (collect_declaration)
+    (collect_declaration)
+    (default_declaration
+      call: (call
+        name: (identifier)
+        arguments: (call_arguments
+          (named_argument
+            name: (identifier)
+            value: (identifier)))))
+    (conflict_declaration
+      call: (call
+        name: (identifier)
+        arguments: (call_arguments
+          (named_argument
+            name: (identifier)
+            value: (identifier))
+          (named_argument
+            name: (identifier)
+            value: (string
+              (string_content))))))))

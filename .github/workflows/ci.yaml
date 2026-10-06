@@ -47,3 +47,7 @@ jobs:
   fuzz-and-bench:
     name: Fuzz and benchmarks
     uses: ./.github/workflows/fuzz-and-bench.yaml
+
+  editors:
+    name: Editors
+    uses: ./.github/workflows/editors.yaml

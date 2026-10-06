@@ -1,0 +1,8 @@
+# As `tree-sitter init` writes it, less the bindings this grammar doesn't
+# have: src/ is what `mise run tree-sitter-generate` writes from grammar.js.
+* text=auto eol=lf
+
+# Generated source files
+src/*.json linguist-generated
+src/parser.c linguist-generated
+src/tree_sitter/* linguist-generated
