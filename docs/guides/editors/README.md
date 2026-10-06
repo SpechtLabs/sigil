@@ -5,7 +5,7 @@ createTime: 2026/10/06 12:00:00
 permalink: /guides/editors/
 ---
 
-This guide connects an editor to `sigil lsp`, the Sigil language server. Once it's set up, the editor shows the problems `sigil check` reports while you type. It also completes inputs, fields, functions, decisions, reasons and imports, shows a decision's whole declaration on hover, and jumps to where a name is declared, in the kind file or in another policy.
+This guide connects an editor to `sigil lsp`, the Sigil language server. Once it's set up, the editor shows the problems `sigil check` reports while you type. It completes inputs, fields, functions, decisions, reasons and imports, ranking first what has the type the cursor's place expects, and offers the operators the operand's type takes. Constructors and invocations complete with their required arguments filled in as snippets. Inside a call, signature help shows the arguments it takes. The editor also shows a decision's whole declaration on hover, jumps to where a name is declared, in the kind file or in another policy, fixes misspelled names and missing payload fields as quick fixes, and shows the types of lets and variables inline.
 
 For VS Code and Neovim, the editor plugins are the recommended setup: [Set up VS Code](/guides/editors/vscode/) and [Set up Neovim](/guides/editors/neovim/). The rest of this page is for any other editor that runs a language server.
 
@@ -36,7 +36,7 @@ comment-token = "//"
 language-servers = ["sigil"]
 ```
 
-`hx --health sigil` shows whether Helix finds the server. `gd` goes to the definition, `space k` shows the hover, and `:format` formats the file. Helix doesn't highlight Sigil yet, because the tree-sitter grammar's queries use Neovim's capture names.
+`hx --health sigil` shows whether Helix finds the server. `gd` goes to the definition, `space k` shows the hover, `space a` lists the quick fixes, and `:format` formats the file. Helix doesn't highlight Sigil yet, because the tree-sitter grammar's queries use Neovim's capture names.
 
 ## Emacs
 
@@ -54,7 +54,7 @@ Eglot, built into Emacs 29 and later, starts the server for a major mode. Emacs 
 (add-hook 'sigil-mode-hook #'eglot-ensure)
 ```
 
-`M-.` goes to the definition, ElDoc shows the hover in the echo area, and `M-x eglot-format-buffer` formats the file. This mode doesn't highlight anything.
+`M-.` goes to the definition, ElDoc shows the hover and signature help in the echo area, `M-x eglot-code-actions` lists the quick fixes, and `M-x eglot-format-buffer` formats the file. This mode doesn't highlight anything.
 
 ## Neovim without the plugin
 
@@ -71,14 +71,16 @@ vim.lsp.config("sigil", {
 vim.lsp.enable("sigil")
 ```
 
-`K` shows the hover, `CTRL-]` goes to the definition, and `gq` formats. For highlighting, install the tree-sitter grammar in `editors/tree-sitter-sigil`, as [its README](https://github.com/SpechtLabs/sigil/blob/main/editors/tree-sitter-sigil/README.md#neovim) describes.
+`K` shows the hover, `CTRL-]` goes to the definition, `gra` lists the quick fixes, `CTRL-S` in insert mode shows signature help, and `gq` formats. For highlighting, install the tree-sitter grammar in `editors/tree-sitter-sigil`, as [its README](https://github.com/SpechtLabs/sigil/blob/main/editors/tree-sitter-sigil/README.md#neovim) describes.
 
 ## Check that it works
 
 1. Open a policy, such as `payments/production.sigil`.
 2. On a new line, type `when service.`. The editor offers the fields of the input's struct type, and marks the line with `expected a field name after` until you pick one.
-3. Inside a `when` body, type `deny(reason: ` to get the decision's reasons.
-4. Hover over a decision constructor to see its reasons and payload fields.
+3. Inside a `when` body, type `deny(reason: ` to get the decision's reasons. Signature help shows `reason` and the payload fields.
+4. Type `when service.tier == `. The tier's values come first, the first one preselected.
+5. Hover over a decision constructor to see its reasons and payload fields.
+6. Misspell an input, such as `when servce.tier`. The diagnostic offers a quick fix that changes it to `service`.
 
 When nothing happens:
 
@@ -86,4 +88,4 @@ When nothing happens:
 - Read the server's log, where every line starts with `sigil lsp:`. It's `:log-open` in Helix, the events buffer in Emacs, and `:lua vim.cmd.edit(vim.lsp.get_log_path())` in Neovim.
 - Run `sigil check` from the file's directory. A configuration file that doesn't parse, or a requirement that can't be enforced, stops the check there and shows as an error message in the editor.
 
-[`sigil lsp`](/reference/cli/#sigil-lsp) lists what completes where, what hover shows, and where definitions go.
+[`sigil lsp`](/reference/cli/#sigil-lsp) lists what completes where, what signature help and hover show, where definitions go, and the quick fixes.

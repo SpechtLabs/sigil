@@ -148,6 +148,21 @@ func (e *Env) Child() *Env {
 	return &Env{kind: e.kind, parent: e, names: map[string]Binding{}, InAssert: e.InAssert}
 }
 
+// Depth returns how many scopes out from e the scope that binds name
+// is: 0 for e's own, such as a quantifier's variable in its body, and
+// most for the document's. It's -1 when no scope binds name. A tool
+// ranks names by it, nearest first.
+func (e *Env) Depth(name string) int {
+	depth := 0
+	for s := e; s != nil; s = s.parent {
+		if _, ok := s.names[name]; ok {
+			return depth
+		}
+		depth++
+	}
+	return -1
+}
+
 // Names returns every name in scope, sorted, for suggestions. A name bound
 // in more than one scope of the chain appears once per scope.
 func (e *Env) Names() []string {

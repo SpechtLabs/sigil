@@ -23,17 +23,36 @@ type WorkspaceFolder struct {
 }
 
 // ClientCapabilities is what the client supports. Only the position
-// encodings and whether it lets the server register file watchers are
-// read.
+// encodings, whether it lets the server register file watchers, and
+// whether its completion takes snippets are read.
 type ClientCapabilities struct {
-	General   *GeneralClientCapabilities   `json:"general,omitempty"`
-	Workspace *WorkspaceClientCapabilities `json:"workspace,omitempty"`
+	TextDocument *TextDocumentClientCapabilities `json:"textDocument,omitempty"`
+	General      *GeneralClientCapabilities      `json:"general,omitempty"`
+	Workspace    *WorkspaceClientCapabilities    `json:"workspace,omitempty"`
 }
 
 // WorkspaceClientCapabilities is what the client supports about the
 // workspace.
 type WorkspaceClientCapabilities struct {
 	DidChangeWatchedFiles *DynamicRegistration `json:"didChangeWatchedFiles,omitempty"`
+}
+
+// TextDocumentClientCapabilities is what the client supports about
+// documents.
+type TextDocumentClientCapabilities struct {
+	Completion *CompletionClientCapabilities `json:"completion,omitempty"`
+}
+
+// CompletionClientCapabilities is what the client supports about
+// completion.
+type CompletionClientCapabilities struct {
+	CompletionItem *CompletionItemCapabilities `json:"completionItem,omitempty"`
+}
+
+// CompletionItemCapabilities says whether the client takes a completion
+// whose text is a snippet.
+type CompletionItemCapabilities struct {
+	SnippetSupport bool `json:"snippetSupport,omitempty"`
 }
 
 // DynamicRegistration says whether the client lets the server register a
@@ -64,11 +83,14 @@ type ServerInfo struct {
 type ServerCapabilities struct {
 	TextDocumentSync           *TextDocumentSyncOptions `json:"textDocumentSync,omitempty"`
 	CompletionProvider         *CompletionOptions       `json:"completionProvider,omitempty"`
+	SignatureHelpProvider      *SignatureHelpOptions    `json:"signatureHelpProvider,omitempty"`
+	CodeActionProvider         *CodeActionOptions       `json:"codeActionProvider,omitempty"`
 	Workspace                  *WorkspaceCapabilities   `json:"workspace,omitempty"`
 	PositionEncoding           string                   `json:"positionEncoding,omitempty"`
 	HoverProvider              bool                     `json:"hoverProvider,omitempty"`
 	DefinitionProvider         bool                     `json:"definitionProvider,omitempty"`
 	DocumentFormattingProvider bool                     `json:"documentFormattingProvider,omitempty"`
+	InlayHintProvider          bool                     `json:"inlayHintProvider,omitempty"`
 }
 
 // TextDocumentSyncKind is how the client sends a changed document.

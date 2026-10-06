@@ -32,6 +32,7 @@ type client struct {
 	root     string                // the workspace's directory
 	rootURI  string
 	versions map[string]int32
+	shown    map[string][]protocol.Diagnostic // the diagnostics published last, by URI, for a code action to send back
 	log      strings.Builder
 	id       int
 }
@@ -68,6 +69,11 @@ when service.tier == critical {
   review(reason: service_owner, )
 }
 `
+	misspelled := original + `
+when servce.tier == critical {
+  deny(reason: not_eligible)
+}
+`
 	unformatted := strings.Replace(original, "guardrails(min_soak: 4h)", "guardrails(  min_soak :4h )", 1) + "\nlet unused = 1\n"
 	steps := []step{
 		{say: "initialize", method: protocol.MethodInitialize, params: func(c *client) any {
@@ -75,7 +81,10 @@ when service.tier == critical {
 				"processId":        nil,
 				"rootUri":          c.rootURI,
 				"workspaceFolders": []any{map[string]any{"uri": c.rootURI, "name": "editor"}},
-				"capabilities":     map[string]any{"general": map[string]any{"positionEncodings": []string{"utf-16"}}},
+				"capabilities": map[string]any{
+					"general":      map[string]any{"positionEncodings": []string{"utf-16"}},
+					"textDocument": map[string]any{"completion": map[string]any{"completionItem": map[string]any{"snippetSupport": true}}},
+				},
 			}
 		}},
 		{say: "initialized", method: protocol.MethodInitialized, notify: true, params: func(*client) any { return map[string]any{} }},
@@ -87,12 +96,19 @@ when service.tier == critical {
 		{say: "complete a reason", method: protocol.MethodCompletion, params: func(c *client) any { return c.position(prod, editing, "deny(reason: ") }},
 		{say: "complete a payload key", method: protocol.MethodCompletion, params: func(c *client) any { return c.position(prod, editing, "service_owner, ") }},
 		{say: "complete the tier's values", method: protocol.MethodCompletion, params: func(c *client) any { return c.position(prod, editing, "service.tier == ") }},
+		{say: "signature help in the review constructor", method: protocol.MethodSignatureHelp, params: func(c *client) any { return c.position(prod, editing, "service_owner, ") }},
+		{say: "complete the decisions to construct", method: protocol.MethodCompletion, params: func(c *client) any { return c.position(prod, editing, "service_owner, )\n") }},
 		{say: "hover over the review constructor", method: protocol.MethodHover, params: func(c *client) any { return c.position(prod, editing, "  revi") }},
 		{say: "hover over the tier field", method: protocol.MethodHover, params: func(c *client) any { return c.position(prod, editing, "service.ti") }},
 		{say: "go to the imported let cleared", method: protocol.MethodDefinition, params: func(c *client) any { return c.position(prod, editing, "when clea") }},
 		{say: "go to the invoked policy", method: protocol.MethodDefinition, params: func(c *client) any { return c.position(prod, editing, "\nguardr") }},
 		{say: "go to the input service", method: protocol.MethodDefinition, params: func(c *client) any { return c.position(prod, editing, "when serv") }},
+		{say: "edit " + prod + " to misspell an input", doc: prod, method: protocol.MethodDidChange, notify: true, params: func(c *client) any { return c.change(prod, misspelled) }},
+		{say: "quick fixes for the misspelled input", method: protocol.MethodCodeAction, params: func(c *client) any { return c.actions(prod) }},
 		{say: "edit " + prod + " back, unformatted and with a let nothing reads", doc: prod, method: protocol.MethodDidChange, notify: true, params: func(c *client) any { return c.change(prod, unformatted) }},
+		{say: "inlay hints of " + prod, method: protocol.MethodInlayHint, params: func(c *client) any {
+			return map[string]any{"textDocument": map[string]any{"uri": c.uri(prod)}, "range": map[string]any{"start": map[string]any{"line": 0, "character": 0}, "end": map[string]any{"line": 99, "character": 0}}}
+		}},
 		{say: "format " + prod, method: protocol.MethodFormatting, params: func(c *client) any {
 			return map[string]any{"textDocument": map[string]any{"uri": c.uri(prod)}, "options": map[string]any{"tabSize": 2, "insertSpaces": true}}
 		}},
@@ -120,7 +136,7 @@ func start(t *testing.T) *client {
 	copyTree(t, filepath.Join("testdata", "editor"), root)
 	toServer, fromClient := io.Pipe()
 	toClient, fromServer := io.Pipe()
-	c := &client{t: t, w: jsonrpc.NewWriter(fromClient), in: make(chan *jsonrpc.Message, 64), root: root, rootURI: fileURI(root), versions: map[string]int32{}}
+	c := &client{t: t, w: jsonrpc.NewWriter(fromClient), in: make(chan *jsonrpc.Message, 64), root: root, rootURI: fileURI(root), versions: map[string]int32{}, shown: map[string][]protocol.Diagnostic{}}
 	s := server.New(loader{}, server.WithDelay(time.Millisecond), server.WithVersion("test"))
 	done := make(chan error, 1)
 	go func() {
@@ -401,5 +417,19 @@ func golden(t *testing.T, path, got string) {
 	}
 	if !bytes.Equal([]byte(got), want) {
 		t.Errorf("the session differs from %s (run with -update to accept):\n%s", path, got)
+	}
+}
+
+// actions returns the params of a code action request for the whole
+// file name, with the diagnostics the server published for it last.
+func (c *client) actions(name string) any {
+	diagnostics := c.shown[c.uri(name)]
+	if diagnostics == nil {
+		diagnostics = []protocol.Diagnostic{}
+	}
+	return map[string]any{
+		"textDocument": map[string]any{"uri": c.uri(name)},
+		"range":        map[string]any{"start": map[string]any{"line": 0, "character": 0}, "end": map[string]any{"line": 99, "character": 0}},
+		"context":      map[string]any{"diagnostics": diagnostics},
 	}
 }

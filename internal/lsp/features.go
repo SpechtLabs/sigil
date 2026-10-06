@@ -21,16 +21,26 @@ func (s *Server) at(raw json.RawMessage) (*view, *lines, int, *jsonrpc.Error) {
 	if bad != nil {
 		return nil, nil, 0, bad
 	}
-	d, pr := s.current(p.TextDocument.URI)
-	if d == nil {
+	v := s.viewOf(p.TextDocument.URI)
+	if v == nil {
 		return nil, nil, 0, nil
-	}
-	v := newView(nil, filepath.ToSlash(d.path), d.text)
-	if pr != nil && pr.snap != nil && pr.snap.Project != nil {
-		v = newView(pr.snap.Project, pr.nameOf(d), d.text)
 	}
 	l := newLines(v.src, s.encoding)
 	return v, l, l.offset(p.Position), nil
+}
+
+// viewOf returns the view of the open document uri names, or nil for a
+// document that isn't open. It has no project when the project couldn't
+// be loaded.
+func (s *Server) viewOf(uri string) *view {
+	d, pr := s.current(uri)
+	if d == nil {
+		return nil
+	}
+	if pr != nil && pr.snap != nil && pr.snap.Project != nil {
+		return newView(pr.snap.Project, pr.nameOf(d), d.text)
+	}
+	return newView(nil, filepath.ToSlash(d.path), d.text)
 }
 
 // completion answers textDocument/completion.
@@ -51,11 +61,18 @@ func (s *Server) completion(raw json.RawMessage) (*protocol.CompletionList, *jso
 			insert = it.label
 		}
 		ci := protocol.CompletionItem{
-			Label:    it.label,
-			Kind:     it.kind,
-			Detail:   it.detail,
-			SortText: it.sort + it.label,
-			TextEdit: &protocol.TextEdit{Range: edit, NewText: insert},
+			Label:     it.label,
+			Kind:      it.kind,
+			Detail:    it.detail,
+			SortText:  it.sortKey(),
+			Preselect: it.best,
+			TextEdit:  &protocol.TextEdit{Range: edit, NewText: insert},
+		}
+		if s.snippets && it.snippet != "" {
+			ci.TextEdit.NewText, ci.InsertTextFormat = it.snippet, protocol.Snippet
+		}
+		if it.desc != "" {
+			ci.LabelDetails = &protocol.CompletionItemLabelDetails{Description: it.desc}
 		}
 		if it.doc != "" {
 			ci.Documentation = &protocol.MarkupContent{Kind: protocol.Markdown, Value: it.doc}
@@ -129,4 +146,21 @@ func (s *Server) formatting(raw json.RawMessage) ([]protocol.TextEdit, *jsonrpc.
 	}
 	l := newLines(d.text, s.encoding)
 	return []protocol.TextEdit{{Range: l.rangeOf(0, len(d.text)), NewText: string(out)}}, nil
+}
+
+// signatureHelp answers textDocument/signatureHelp with the signature of
+// the call the position is in, or null outside every call.
+func (s *Server) signatureHelp(raw json.RawMessage) (*protocol.SignatureHelp, *jsonrpc.Error) {
+	v, _, offset, bad := s.at(raw)
+	if bad != nil {
+		return nil, bad
+	}
+	if v == nil {
+		return nil, nil
+	}
+	sig := v.signatureAt(offset)
+	if sig == nil {
+		return nil, nil
+	}
+	return sig.protocol(), nil
 }

@@ -1,0 +1,160 @@
+package lsp
+
+import (
+	"github.com/spechtlabs/sigil/internal/check"
+	"github.com/spechtlabs/sigil/internal/types"
+)
+
+// How well a completion fits where it goes, best first.
+const (
+	rankExpected = iota // of the type the context expects
+	rankName            // nothing is expected, or a name that may fit, such as an optional of the type
+	rankOther           // of another type than the context expects
+	rankKeyword         // a keyword that doesn't fit the expected type
+)
+
+// expected returns the type the operand at the cursor should have, or
+// nil when nothing says:
+//
+//   - the condition of a `when`, an assert, a quantifier or a filter, the
+//     operand of `not`, and either side of `and`, `or` and `xor`: bool;
+//   - the right side of a comparison or of `+` and `-`: the left side's
+//     type;
+//   - after `in`: a list of the left side's type, and after `any in` and
+//     the other list operators, the left side's list;
+//   - after `has`: the key type of the map on the left;
+//   - after `??`: what the optional on the left holds;
+//   - an argument: the host function's parameter, the payload field, or
+//     the invoked policy's param;
+//   - an index: the map's key type, or int for a list;
+//   - a param's default or bound: the param's type, when it's one name.
+func (v *view) expected(c *cursor, env *check.Env) types.Type { //nolint:returninterface // a type is any of five kinds
+	var left types.Type
+	if c.left[0] >= 0 {
+		left = v.typeOf(c.text(c.left[0], c.left[1]), env)
+	}
+	switch c.op {
+	case opCond, opNot, opAnd, opOr, opXor:
+		return types.Bool
+	case "==", "!=", "<", "<=", ">", ">=", "+", "-":
+		if left == types.Timestamp && c.op != "-" {
+			return types.Duration
+		}
+		return known(left)
+	case opIn, opNotIn:
+		if left = known(left); left != nil {
+			return &types.List{Elem: left}
+		}
+	case opAnyIn, opAllIn, opOneIn, opExclusiveIn:
+		return known(left)
+	case opHas:
+		if m, ok := left.(*types.Map); ok {
+			return m.Key
+		}
+	case "??":
+		if opt, ok := left.(*types.Optional); ok {
+			return opt.Elem
+		}
+	case opLike, opMatches:
+		return types.String
+	}
+	if t := v.indexType(c, env); t != nil {
+		return t
+	}
+	if t := v.argType(c, env); t != nil {
+		return t
+	}
+	return v.paramType(c, env)
+}
+
+// known returns t, or nil for a type that wasn't worked out.
+func known(t types.Type) types.Type { //nolint:returninterface // a type is any of five kinds
+	if t == nil || t == types.Invalid {
+		return nil
+	}
+	return t
+}
+
+// indexType returns the type of the index the cursor is in: the map's
+// key type, or int for a list, or nil.
+func (v *view) indexType(c *cursor, env *check.Env) types.Type { //nolint:returninterface // a type is any of five kinds
+	if c.index[0] < 0 {
+		return nil
+	}
+	switch t := v.typeOf(c.text(c.index[0], c.index[1]), env).(type) {
+	case *types.Map:
+		return t.Key
+	case *types.List:
+		return types.Int
+	}
+	return nil
+}
+
+// argType returns the type the argument the cursor is in takes: a host
+// function's parameter at its position, a constructor's payload field, or
+// an invoked policy's param, or nil.
+func (v *view) argType(c *cursor, env *check.Env) types.Type { //nolint:returninterface // a type is any of five kinds
+	s := c.site
+	if s == nil {
+		return nil
+	}
+	b, _ := env.Lookup(s.name)
+	switch {
+	case s.fn && b.Entity == check.Function && s.index < len(b.Func.Params):
+		return b.Func.Params[s.index]
+	case s.arg == "" || s.fn:
+	case b.Entity == check.DecisionName:
+		if f := env.Kind().Decision(s.name).Field(s.arg); f != nil {
+			return f.Type
+		}
+	case b.Entity == check.Invocable:
+		if p := b.Doc.Param(s.arg); p != nil {
+			return known(p.Type)
+		}
+	}
+	return nil
+}
+
+// paramType returns the type of the param whose default or bound the
+// cursor is in, when its type is one name, or nil.
+func (v *view) paramType(c *cursor, env *check.Env) types.Type { //nolint:returninterface // a type is any of five kinds
+	if c.paramType == "" {
+		return nil
+	}
+	if b, ok := types.Lookup(c.paramType); ok {
+		return b
+	}
+	if e := env.Kind().Enum(c.paramType); e != nil {
+		return e
+	}
+	return nil
+}
+
+// fit ranks a completion of type t where want is expected.
+func fit(t, want types.Type) int {
+	switch {
+	case want == nil:
+		return rankName
+	case t == nil:
+		return rankOther
+	case types.Identical(t, want):
+		return rankExpected
+	}
+	if opt, ok := t.(*types.Optional); ok && types.Identical(opt.Elem, want) {
+		return rankName
+	}
+	return rankOther
+}
+
+// invokedParam returns the param of the invoked policy whose argument the
+// cursor is in, or nil.
+func (v *view) invokedParam(c *cursor, env *check.Env) *check.ExportedParam {
+	s := c.site
+	if s == nil || s.fn || s.arg == "" {
+		return nil
+	}
+	if b, _ := env.Lookup(s.name); b.Entity == check.Invocable {
+		return b.Doc.Param(s.arg)
+	}
+	return nil
+}

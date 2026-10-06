@@ -250,7 +250,7 @@ func TestInitialize(t *testing.T) {
 				t.Errorf("server info = %+v", got.ServerInfo)
 			}
 			c := got.Capabilities
-			if !c.HoverProvider || !c.DefinitionProvider || !c.DocumentFormattingProvider || c.CompletionProvider == nil || c.TextDocumentSync.Change != protocol.SyncFull {
+			if !c.HoverProvider || !c.DefinitionProvider || !c.DocumentFormattingProvider || c.CompletionProvider == nil || c.SignatureHelpProvider == nil || c.CodeActionProvider == nil || c.TextDocumentSync.Change != protocol.SyncFull {
 				t.Errorf("capabilities = %+v", c)
 			}
 			s.shutdown()

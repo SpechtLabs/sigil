@@ -63,32 +63,37 @@ type binder struct {
 // than the syntax tree, so it works on a statement that doesn't parse
 // yet, which is the statement being typed.
 type cursor struct {
-	src     []byte
-	toks    []token.Token // the tokens before the name being typed, comments left out
-	binders []binder      // the quantifiers and filters around the cursor, outermost first
-	prefix  string        // the name being typed, up to the cursor
-	call    string        // the constructor or invocation whose arguments the cursor is in
-	arg     string        // the argument whose value the cursor is in
-	path    string        // the dotted name typed so far after `use`, the import path of `use path.{`, or the kind before `@`
-	kind    string        // the kind the document's header names
-	args    []string      // the argument names the call already gives
-	given   []string      // the names a selective import already lists
-	offset  int           // the cursor
-	start   int           // where the name being typed starts; offset when nothing is
-	end     int           // where the name the cursor is in ends, the part after the cursor included; offset when nothing is
-	from    int           // where the dotted name after `use` starts
-	header  int           // the index of the document's header keyword, or -1
-	recv    [2]int        // the tokens of the operand before `.`, for atMember: first and last index
-	left    [2]int        // the tokens of the operand before `==` or `!=`, for atExpr, or -1 and -1
-	place   place
-	inBody  bool // atStatement in a `when` body, rather than at the top level
-	module  bool // the document is a module
-	assert  bool // the cursor is in an assert's condition
+	site      *site // the call whose arguments the cursor is in, or nil
+	src       []byte
+	toks      []token.Token // the tokens before the name being typed, comments left out
+	binders   []binder      // the quantifiers and filters around the cursor, outermost first
+	prefix    string        // the name being typed, up to the cursor
+	call      string        // the constructor or invocation whose arguments the cursor is in
+	arg       string        // the argument whose value the cursor is in
+	path      string        // the dotted name typed so far after `use`, the import path of `use path.{`, or the kind before `@`
+	kind      string        // the kind the document's header names
+	op        string        // the operator the operand at the cursor follows: an infix operator, opNot, opNeg, opPresent or opCond; "" for none
+	paramType string        // the type of the param whose default or bound the cursor is in, when it's one name
+	args      []string      // the argument names the call already gives
+	given     []string      // the names a selective import already lists
+	offset    int           // the cursor
+	start     int           // where the name being typed starts; offset when nothing is
+	end       int           // where the name the cursor is in ends, the part after the cursor included; offset when nothing is
+	from      int           // where the dotted name after `use` starts
+	header    int           // the index of the document's header keyword, or -1
+	recv      [2]int        // the tokens of the operand before `.`, for atMember: first and last index
+	left      [2]int        // the tokens of the operand before an infix operator at atExpr, or the operand itself at atOperator; -1 and -1 when there's none
+	index     [2]int        // the tokens of the operand indexed by the `[` the cursor is in, or -1 and -1
+	place     place
+	inBody    bool // atStatement in a `when` body, rather than at the top level
+	module    bool // the document is a module
+	assert    bool // the cursor is in an assert's condition
+	constant  bool // the operand is a param's default or bound, which is a constant
 }
 
 // scan reads src up to offset.
 func scan(src []byte, offset int) *cursor {
-	c := &cursor{src: src, offset: offset, start: offset, end: offset, header: -1, left: [2]int{-1, -1}}
+	c := &cursor{src: src, offset: offset, start: offset, end: offset, header: -1, left: [2]int{-1, -1}, index: [2]int{-1, -1}}
 	l := lexer.New(src)
 	for t := l.Next(); t.Kind != token.EOF; t = l.Next() {
 		if t.Pos.Offset >= offset {
@@ -135,6 +140,7 @@ func (c *cursor) classify() {
 	top := &frames[len(frames)-1]
 	prev := c.last()
 	c.assert = c.inAssert(frames)
+	c.site = c.siteOf(frames)
 	switch {
 	case prev.Kind == token.Dot || prev.Kind == token.OptDot:
 		c.member(frames)
@@ -145,9 +151,17 @@ func (c *cursor) classify() {
 	case top.kind == frameAssert:
 		if c.lastIndex() != top.open {
 			c.expr(c.stmtOf(frames))
+			if prev.Kind == token.Comma && c.depthAfter(top.open) == 0 {
+				c.op = opCond
+			}
 		}
 	case top.kind == frameGroup:
 		c.expr(c.stmtOf(frames))
+		if c.toks[top.open].Kind == token.LBracket && top.open > 0 && endsOperand(c.toks[top.open-1]) {
+			if first := c.operandStart(top.open - 1); first >= 0 {
+				c.index = [2]int{first, top.open - 1}
+			}
+		}
 	default:
 		c.statement(top)
 	}
@@ -399,6 +413,10 @@ func (c *cursor) param(stmt int) {
 	case !inType && prev.Kind == token.Comma:
 		c.place = atBound
 	case !inType:
+		c.constant = true
+		if stmt+4 <= c.lastIndex() && c.toks[stmt+3].Kind == token.Ident && (c.toks[stmt+4].Kind == token.Assign || c.toks[stmt+4].Kind == token.Comma) {
+			c.paramType = c.toks[stmt+3].Text
+		}
 		c.expr(stmt)
 	}
 }
@@ -436,11 +454,15 @@ func (c *cursor) operandStart(i int) int {
 				return -1
 			}
 			i = open
-			if t.Kind == token.RParen && (i == 0 || !endsOperand(c.toks[i-1])) {
-				return i // parentheses around an expression
+			if i == 0 || !endsOperand(c.toks[i-1]) {
+				return i // parentheses around an expression, or a list literal
 			}
 			i--
 			continue
+		case token.RBrace:
+			return c.matching(i) // a map literal
+		case token.Int, token.Float, token.Duration, token.String, token.RawString, token.KwTrue, token.KwFalse:
+			return i
 		case token.Ident, token.KwOutcome:
 		default:
 			if !t.Kind.IsKeyword() || i == 0 || c.toks[i-1].Kind != token.Dot && c.toks[i-1].Kind != token.OptDot {
@@ -545,22 +567,22 @@ func (c *cursor) depthAfter(open int) int {
 }
 
 // expr classifies a cursor in an expression that starts at token from:
-// an operand, or after one an operator, and the quantifiers around it. For
-// the operand after `==` or `!=`, it records the one before, whose type
-// the completions follow.
+// an operand, or after one an operator, and the quantifiers around it. It
+// records the operand before an operator at the cursor, whose type the
+// operators follow, and what an operand at the cursor follows, whose type
+// the operand's completions follow.
 func (c *cursor) expr(from int) {
 	c.binders = c.bindersAt(from)
 	last := c.lastIndex()
 	if endsOperand(c.last()) && last >= from {
 		c.place = atOperator
+		if first := c.operandStart(last); first >= from {
+			c.left = [2]int{first, last}
+		}
 		return
 	}
 	c.place = atExpr
-	if k := c.last().Kind; (k == token.Eq || k == token.NotEq) && last > from {
-		if first := c.operandStart(last - 1); first >= from {
-			c.left = [2]int{first, last - 1}
-		}
-	}
+	c.operator(from)
 }
 
 // stmtOf returns where the expression the cursor is in starts, for a
