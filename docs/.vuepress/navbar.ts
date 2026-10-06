@@ -47,12 +47,11 @@ export const navbar = defineNavbarConfig([
         ],
       },
       {
-        text: "Embedding in TypeScript",
-        items: [{ text: "Embed Sigil in TypeScript", link: "/guides/embed-typescript", icon: "mdi:language-typescript" }],
-      },
-      {
-        text: "Embedding in Rust",
-        items: [{ text: "Embed Sigil in Rust", link: "/guides/embed-rust", icon: "simple-icons:rust" }],
+        text: "Embedding in other  languages",
+        items: [
+          { text: "Embed Sigil in TypeScript", link: "/guides/embed-typescript", icon: "mdi:language-typescript" },
+          { text: "Embed Sigil in Rust", link: "/guides/embed-rust", icon: "simple-icons:rust" }
+        ],
       },
       {
         text: "Editors",
