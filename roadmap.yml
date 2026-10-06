@@ -10,8 +10,10 @@ title: Roadmap
 description: |
   Sigil is built in milestones, each with a concrete exit criterion. The Go API comes before the
   tooling, because the defining host builds its kind from Go structs and never reads a kind file;
-  only tooling does. The language, the Go API, composition and the CLI a policy
-  repository needs are done. Hardening is in progress, and editor tooling comes last.
+  only tooling does. Every milestone has met its exit criterion: the language, the Go API,
+  composition, the CLI a policy repository needs, fuzzing across every layer and editor tooling
+  are done. Public `LoadKind` is the one required deliverable left; host-ordered types and two
+  optional tooling extras are the rest.
 
   The language was specified in the docs before any of it was implemented, because syntax is cheap
   to change in a Markdown file and expensive to change once policies exist in the wild. Writing the
@@ -621,7 +623,7 @@ milestones:
         state: DONE
         requirement: MUST
         description: |
-          33 native Go fuzz targets take arbitrary source, grammar fixtures and valid generated
+          38 native Go fuzz targets take arbitrary source, grammar fixtures and valid generated
           contracts, and check semantic oracles: evaluation agrees with constant folding,
           collection operators with set membership, resolution with its rule. They also cover
           the WebAssembly engine's JSON requests and host-function protocol, host-function stubs,

@@ -185,5 +185,5 @@ Sigil doesn't know what an alert is. The kind says what the input looks like and
 Teams that share a kind can share rules too: a platform team publishes a library of helpers and policies with typed params, product teams invoke them with their own values, and the host can require the rules no team may switch off. [Share rules across teams](/getting-started/share-rules/) builds that from scratch.
 
 ::: info Project status
-The language, the Go API, composition and the CLI are implemented, and fuzz tests cover every layer. Not built yet: loading a kind from a file at run time (`policy.LoadKind`) and host-ordered types such as versions. The [roadmap](/project/roadmap/) tracks what's left.
+Sigil is nearly complete. The language, the Go API, composition, the CLI, the language server and editor support are built, and fuzzing covers every layer. Two pieces remain: loading a kind from a file at run time (`policy.LoadKind`) and host-ordered types such as versions. The [roadmap](/project/roadmap/) tracks them.
 :::
