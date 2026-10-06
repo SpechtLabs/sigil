@@ -31,7 +31,7 @@ func TestComplete(t *testing.T) {
 		{name: "kind's version", src: "policy p: DeployApproval@<|>", want: []string{"2"}, exact: true},
 		{name: "policy name", src: "policy pay<|>", exact: true},
 		{name: "statement at the top", src: head + "<|>", want: []string{"guardrails", "assert", "let", "param", "pub let", "use", "when"}, not: []string{"deny", "review", "service"}, exact: true},
-		{name: "statement after a let", src: head + "let a = service.name\n<|>", want: []string{"guardrails", "when"}},
+		{name: "statement after a let", src: head + "let a = service.name\n<|>", want: []string{"guardrails", "when"}, not: []string{"use"}},
 		{name: "statement after a rule", src: head + "when cleared {\n  deny(reason: not_eligible)\n}\n<|>", want: []string{"guardrails", "when"}},
 		{name: "statement in a body", src: head + "when cleared {\n  <|>\n}", want: []string{"approve", "deny", "guardrails", "review", "assert", "let", "when"}, not: []string{"param", "use"}, exact: true},
 		{name: "statement after a constructor", src: head + "when cleared {\n  deny(reason: not_eligible)\n  <|>\n}", want: []string{"approve", "deny"}},
@@ -280,7 +280,6 @@ func TestCompleteExpected(t *testing.T) {
 		{name: "a list param's default", src: "param p: list<Tier> = <|>", first: []string{"[]"}, best: "[]", not: []string{"critical", "service.tier"}},
 		{name: "a map param's default", src: "param p: map<string, int> = <|>", first: []string{"{}"}, best: "{}"},
 		{name: "a param's bound", src: "param p: duration = 1h, min: <|>", first: []string{"1h"}, best: "1h"},
-		{name: "an optional param's default", src: "param p: ?duration = <|>", first: []string{"1h", "none"}, best: "1h"},
 		{name: "a map on the left", src: "when service.labels == <|>", first: []string{"{}"}, best: "{}"},
 		{name: "an unknown name on the left", src: "when nope == <|>", first: []string{"cleared", "owns_service", "actor"}},
 		{name: "a let", src: "let x = <|>", first: []string{"cleared", "owns_service", "actor"}},
@@ -366,17 +365,17 @@ func TestCompleteSnippets(t *testing.T) {
 		label   string
 		snippet string
 	}{
-		{name: "when", src: "<|>", label: "when", snippet: "when ${1:condition} {\n\t$0\n}"},
-		{name: "assert", src: "<|>", label: "assert", snippet: "assert(\"${1:reason}\", $0)"},
-		{name: "use", src: "<|>", label: "use", snippet: "use ${1:path}.{$0}"},
+		{name: "when", src: "<|>", label: "when", snippet: "when ${1:true} {\n\t$0\n}"},
+		{name: "assert", src: "<|>", label: "assert", snippet: "assert(\"${1:reason}\", ${2:true})"},
+		{name: "use", src: "<|>", label: "use", snippet: "use ${1:deploy.common}"},
 		{name: "an invocation with no required param", src: "<|>", label: "guardrails", snippet: "guardrails($0)"},
-		{name: "a constructor with one reason", src: "when cleared {\n  <|>", label: "review", snippet: "review(reason: ${1|service_owner|}, approvers: ${2:list<string>})"},
-		{name: "a constructor with several reasons", src: "when cleared {\n  <|>", label: "deny", snippet: "deny(reason: ${1|not_eligible,soak_too_short,no_rule_matched|})"},
-		{name: "a constructor whose fields have defaults", src: "when cleared {\n  <|>", label: "approve", snippet: "approve(reason: ${1|release_manager,payments_sre|})"},
-		{name: "any", src: "when <|>", label: "any", snippet: "any ${1:x} in ${2:list}: $0"},
-		{name: "all", src: "when <|>", label: "all", snippet: "all ${1:x} in ${2:list}: $0"},
-		{name: "filter", src: "let x = <|>", label: "filter", snippet: "filter ${1:x} in ${2:list}: $0"},
-		{name: "a host function", src: "when <|>", label: "split", snippet: "split($0)"},
+		{name: "a constructor with one reason", src: "when cleared {\n  <|>", label: "review", snippet: "review(reason: service_owner, approvers: ${1:[]})"},
+		{name: "a constructor with several reasons", src: "when cleared {\n  <|>", label: "deny", snippet: "deny(reason: ${1:not_eligible})"},
+		{name: "a constructor whose fields have defaults", src: "when cleared {\n  <|>", label: "approve", snippet: "approve(reason: ${1:release_manager})"},
+		{name: "any", src: "when <|>", label: "any", snippet: "any ${1:x} in ${2:changes}: ${3:true}"},
+		{name: "all", src: "when <|>", label: "all", snippet: "all ${1:x} in ${2:changes}: ${3:true}"},
+		{name: "filter", src: "let x = <|>", label: "filter", snippet: "filter ${1:x} in ${2:changes}: ${3:true}"},
+		{name: "a host function", src: "when <|>", label: "split", snippet: "split(${1:\"\"}, ${2:\"\"})"},
 		{name: "a duration", src: "when release.soak > <|>", label: "1h", snippet: "${1:1}${2:h}"},
 		{name: "a string", src: "when environment == <|>", label: `""`, snippet: `"$0"`},
 		{name: "a list", src: "when environment in <|>", label: "[]", snippet: "[$0]"},
@@ -409,11 +408,8 @@ func TestCompleteInvocationSnippet(t *testing.T) {
 	if i < 0 {
 		t.Fatal("didn't offer guardrails")
 	}
-	if want := "guardrails(min_soak: ${1:duration}, teams: ${2:list<string>})"; items[i].snippet != want {
+	if want := "guardrails(min_soak: ${1:0s}, teams: ${2:[]})"; items[i].snippet != want {
 		t.Errorf("snippet = %q, want %q", items[i].snippet, want)
-	}
-	if got := escapeChoice(`a,b|c$d}e\`); got != `a\,b\|c\$d\}e\\` {
-		t.Errorf("escapeChoice = %q", got)
 	}
 	if got := escapePlaceholder(`$x}`); got != `\$x\}` {
 		t.Errorf("escapePlaceholder = %q", got)

@@ -206,11 +206,14 @@ func (v *view) statementItems(c *cursor) []item {
 	default:
 		words = []string{kwUse, kwParam, kwLet, kwPubLet, kwWhen, kwAssert}
 	}
-	out := keywordItems(words...)
-	for i := range out {
-		out[i].snippet = statementSnippets[out[i].label]
+	if !c.inBody && v.pastUses(c) {
+		words = slices.DeleteFunc(words, func(w string) bool { return w == kwUse })
 	}
+	out := keywordItems(words...)
 	env := v.env(c)
+	for i := range out {
+		out[i].snippet = v.statementSnippet(out[i].label, c, env)
+	}
 	if env == nil || c.module {
 		return out
 	}
@@ -230,20 +233,75 @@ func (v *view) statementItems(c *cursor) []item {
 	return out
 }
 
-// statementSnippets are what the statement keywords insert, for a client
-// that takes snippets.
-var statementSnippets = map[string]string{
-	kwWhen:   "when ${1:condition} {\n\t$0\n}",
-	kwAssert: "assert(\"${1:reason}\", $0)",
-	kwUse:    "use ${1:path}.{$0}",
-	kwLet:    "let ${1:name} = $0",
-	kwPubLet: "pub let ${1:name} = $0",
-	kwParam:  "param ${1:name}: ${2:type}",
+// statementSnippet is what the statement keyword word inserts, for a
+// client that takes snippets, with defaults that check as they are: a
+// name nothing binds yet, `true` for a condition, `string` for a type,
+// and for `use` a document the kind's bundle holds and env doesn't
+// import yet. It's "" for `use` when there's none.
+func (v *view) statementSnippet(word string, c *cursor, env *check.Env) string {
+	switch word {
+	case kwWhen:
+		return "when ${1:true} {\n\t$0\n}"
+	case kwAssert:
+		return "assert(\"${1:reason}\", ${2:true})"
+	case kwLet, kwPubLet:
+		return word + " ${1:" + freeName(env, "name") + "} = ${2:true}"
+	case kwParam:
+		return "param ${1:" + freeName(env, "name") + "}: ${2:string}"
+	case kwUse:
+		if path := v.importable(c, env); path != "" {
+			return "use ${1:" + path + "}"
+		}
+	}
+	return ""
 }
 
-// decisionItem is a decision to construct. Its snippet names the reason,
-// with the decision's reasons as the choice, and every payload field
-// without a default.
+// importable returns a document a `use` at the cursor can import whole:
+// the first module of the document's kind, or else the first policy,
+// that isn't the document itself and whose last name env doesn't bind
+// yet. It returns "" for none.
+func (v *view) importable(c *cursor, env *check.Env) string {
+	g := v.groupOf(c.kind)
+	if g == nil || c.header < 0 {
+		return ""
+	}
+	self := v.docStarting(c.toks[c.header].Pos.Offset)
+	var modules, policies []string
+	for _, d := range g.Bundle.All() {
+		name := d.Name[strings.LastIndexByte(d.Name, '.')+1:]
+		if self != nil && d.Name == self.Name || freeName(env, name) != name {
+			continue
+		}
+		if _, ok := d.Node.(*ast.ModuleDoc); ok {
+			modules = append(modules, d.Name)
+		} else {
+			policies = append(policies, d.Name)
+		}
+	}
+	if all := append(modules, policies...); len(all) > 0 {
+		return all[0]
+	}
+	return ""
+}
+
+// freeName returns base, or base with a number after it, whichever env
+// doesn't bind yet, since a document can't declare a name twice. It
+// returns base for a nil env.
+func freeName(env *check.Env, base string) string {
+	if env == nil {
+		return base
+	}
+	name := base
+	for n := 2; ; n++ {
+		if _, taken := env.Lookup(name); !taken {
+			return name
+		}
+		name = base + strconv.Itoa(n)
+	}
+}
+
+// decisionItem is a decision to construct. Its snippet names the reason
+// and every payload field without a default.
 func (v *view) decisionItem(k *kind.Kind, d *kind.Decision) item {
 	return item{
 		label: d.Name, kind: protocol.CompletionConstructor, detail: d.Signature(), desc: kwDecision,
@@ -252,38 +310,111 @@ func (v *view) decisionItem(k *kind.Kind, d *kind.Decision) item {
 	}
 }
 
-// constructorSnippet builds `deny(reason: ${1|a,b|}, field: $2)` for d:
-// its reasons as a choice, and a placeholder for every payload field
-// without a default.
+// constructorSnippet builds `deny(reason: ${1:not_eligible}, field:
+// ${2:[]})` for d: its first reason, or its only one as it is, and every
+// payload field without a default with its type's zero value, so tabbing
+// through leaves a constructor that checks. The reason completes after
+// `reason: ` with the others.
 func constructorSnippet(d *kind.Decision) string {
-	reasons := make([]string, len(d.Reasons))
-	for i, r := range d.Reasons {
-		reasons[i] = escapeChoice(r)
+	n := 1
+	reason := reasonArg + ": " + d.Reasons[0]
+	if len(d.Reasons) > 1 {
+		reason = reasonArg + ": ${1:" + escapePlaceholder(d.Reasons[0]) + "}"
+		n++
 	}
-	args := []string{reasonArg + ": ${1|" + strings.Join(reasons, ",") + "|}"}
-	n := 2
+	args := []string{reason}
 	for _, f := range d.Fields {
 		if !f.HasDefault {
-			args = append(args, fmt.Sprintf("%s: ${%d:%s}", f.Name, n, escapePlaceholder(f.Type.String())))
+			args = append(args, f.Name+": "+placeholder(n, f.Type))
 			n++
 		}
 	}
 	return d.Name + "(" + strings.Join(args, ", ") + ")"
 }
 
-// invocationSnippet builds `name(param: $1)` for an invocation of the
-// policy e: a placeholder for every param without a default.
+// invocationSnippet builds `name(param: ${1:0s})` for an invocation of
+// the policy e: every param without a default, with its type's zero
+// value.
 func invocationSnippet(name string, e *check.Exported) string {
 	var args []string
 	for _, p := range e.Params {
 		if p.Required {
-			args = append(args, fmt.Sprintf("%s: ${%d:%s}", p.Name, len(args)+1, escapePlaceholder(typeName(p.Type))))
+			args = append(args, p.Name+": "+placeholder(len(args)+1, p.Type))
 		}
 	}
 	if args == nil {
 		return name + "($0)"
 	}
 	return name + "(" + strings.Join(args, ", ") + ")"
+}
+
+// callSnippet builds `split(${1:""}, ${2:""})` for a call of the host
+// function f: every parameter with its type's zero value.
+func callSnippet(f *kind.Func) string {
+	args := make([]string, len(f.Params))
+	for i, p := range f.Params {
+		args[i] = placeholder(i+1, p)
+	}
+	if len(args) == 0 {
+		return f.Name + "($0)"
+	}
+	return f.Name + "(" + strings.Join(args, ", ") + ")"
+}
+
+// placeholder is a snippet's tabstop n for a value of type t: its zero
+// value, so tabbing through leaves code that checks, or a bare tabstop
+// for a type without a literal, such as a struct.
+func placeholder(n int, t types.Type) string {
+	if zero, ok := zeroOf(t); ok {
+		return fmt.Sprintf("${%d:%s}", n, escapePlaceholder(zero))
+	}
+	return fmt.Sprintf("$%d", n)
+}
+
+// quantifierSnippet is what `any`, `all` or `filter` inserts: a variable
+// nothing binds yet, the nearest list in scope to range over, and `true`
+// as the body.
+func quantifierSnippet(word string, env *check.Env) string {
+	over := "$2"
+	if list := nearestList(env); list != "" {
+		over = "${2:" + list + "}"
+	}
+	return word + " ${1:" + freeName(env, "x") + "} in " + over + ": ${3:true}"
+}
+
+// nearestList returns the nearest list in env to range over: a name
+// whose value is a list, or else a list field of an input or variable,
+// nearest scope first, then by name. It returns "" for none.
+func nearestList(env *check.Env) string {
+	best, depth := "", -1
+	take := func(name string, d int) {
+		if depth < 0 || d < depth {
+			best, depth = name, d
+		}
+	}
+	for _, name := range names(env) {
+		b, _ := env.Lookup(name)
+		switch b.Entity {
+		case check.Input, check.Let, check.Param, check.QuantVar, check.FilterVar:
+		default:
+			continue
+		}
+		if _, ok := b.Type.(*types.List); ok {
+			take(name, env.Depth(name))
+		}
+	}
+	if best != "" {
+		return best
+	}
+	for _, name := range names(env) {
+		b, _ := env.Lookup(name)
+		for _, it := range deepItems(name, b, env, nil) {
+			if _, ok := it.typ.(*types.List); ok && !strings.Contains(it.label, "?.") {
+				take(it.label, it.depth)
+			}
+		}
+	}
+	return best
 }
 
 // usePathItems completes the dotted name after `use`: every policy and
@@ -414,7 +545,10 @@ func (v *view) operandItems(c *cursor) []item {
 	}
 	want := v.expected(c, env)
 	for i := range out {
-		out[i].typ, out[i].snippet = keywordTypes[out[i].label], operandSnippets[out[i].label]
+		out[i].typ = keywordTypes[out[i].label]
+		if slices.Contains([]string{"any", "all", "filter"}, out[i].label) {
+			out[i].snippet = quantifierSnippet(out[i].label, env)
+		}
 	}
 	if env.InAssert {
 		out = append(out, item{label: "outcome", kind: protocol.CompletionKeyword, detail: "list<decision>", typ: &types.List{Elem: types.Decision}, rank: rankKeyword, depth: keywordDepth, class: keywordClass})
@@ -460,16 +594,8 @@ var keywordTypes = map[string]types.Type{
 	"any": types.Bool, "all": types.Bool, "not": types.Bool, "present": types.Bool, kwTrue: types.Bool, kwFalse: types.Bool,
 }
 
-// operandSnippets are what the operand keywords insert, for a client that
-// takes snippets.
-var operandSnippets = map[string]string{
-	"any":    "any ${1:x} in ${2:list}: $0",
-	"all":    "all ${1:x} in ${2:list}: $0",
-	"filter": "filter ${1:x} in ${2:list}: $0",
-}
-
 // literalItems returns the literals of the type want: a duration, a
-// string, an empty list or map, or for an optional, none and its value's. A bool's literals are keywords already.
+// string, an empty list or map. A bool's literals are keywords already.
 func literalItems(want types.Type) []item {
 	lit := func(label, snippet, detail string) []item {
 		return []item{{label: label, snippet: snippet, detail: detail, kind: protocol.CompletionValue, typ: want, rank: rankExpected, class: 1}}
@@ -486,13 +612,6 @@ func literalItems(want types.Type) []item {
 		return lit("[]", "[$0]", t.String())
 	case *types.Map:
 		return lit("{}", "{$0}", t.String())
-	case *types.Optional:
-		// An optional's literals are none and its value's.
-		out := append(lit("none", "", "no value"), literalItems(t.Elem)...)
-		for i := range out {
-			out[i].typ = want
-		}
-		return out
 	}
 	return nil
 }
@@ -519,7 +638,7 @@ func (v *view) valueItems(name string, b check.Binding, env *check.Env) []item {
 		it.kind, it.detail, it.desc = protocol.CompletionVariable, typeName(b.Type), "variable"
 	case check.Function:
 		it.kind, it.detail, it.desc, it.class, it.typ = protocol.CompletionFunction, b.Func.Signature(), "host function", 2, b.Func.Result
-		it.snippet = name + "($0)"
+		it.snippet = callSnippet(b.Func)
 		it.doc = v.kindComment(env.Kind().Name, func(d ast.Decl) *ast.Ident { return fnDecl(d, name) })
 	case check.Module:
 		it.kind, it.detail, it.desc, it.class, it.typ = protocol.CompletionModule, "module "+b.Doc.Name, "module", 2, nil
@@ -546,8 +665,8 @@ func (v *view) valueItems(name string, b check.Binding, env *check.Env) []item {
 }
 
 // deepItems returns the fields of the struct name holds, an input's or a
-// variable's, whose type is want: `service.name` where a string is
-// expected. A field of an optional struct is read with `?.`.
+// variable's, whose type is want, or all of them for a nil want:
+// `service.name` where a string is expected. A field of an optional struct is read with `?.`.
 func deepItems(name string, b check.Binding, env *check.Env, want types.Type) []item {
 	switch b.Entity {
 	case check.Input, check.Let, check.Param, check.QuantVar, check.FilterVar:
@@ -573,7 +692,7 @@ func deepItems(name string, b check.Binding, env *check.Env, want types.Type) []
 				ft = &types.Optional{Elem: ft}
 			}
 		}
-		if fit(ft, want) == rankExpected {
+		if want == nil || fit(ft, want) == rankExpected {
 			out = append(out, item{label: name + dot + f.Name, typ: ft, kind: protocol.CompletionField, detail: ft.String(), desc: "field of " + s.Name, depth: env.Depth(name), class: 4})
 		}
 	}
@@ -783,12 +902,6 @@ func fieldSource(f *kind.Field) string {
 	return s
 }
 
-// escapeChoice escapes text for a snippet's choice: `$`, `}`, `\`, `,`
-// and `|`.
-func escapeChoice(s string) string {
-	return strings.NewReplacer(`\`, `\\`, `$`, `\$`, `}`, `\}`, `,`, `\,`, `|`, `\|`).Replace(s)
-}
-
 // escapePlaceholder escapes text for a snippet's placeholder: `$`, `}`
 // and `\`.
 func escapePlaceholder(s string) string {
@@ -804,4 +917,28 @@ func constantItem(it item) bool {
 		return true
 	}
 	return it.label == kwTrue || it.label == kwFalse
+}
+
+// pastUses reports whether a statement other than a `use` comes before
+// the cursor in its document, after which a `use` can't.
+func (v *view) pastUses(c *cursor) bool {
+	if c.header < 0 {
+		return false
+	}
+	d := v.docStarting(c.toks[c.header].Pos.Offset)
+	if d == nil {
+		return false
+	}
+	var first ast.Node
+	switch n := d.Node.(type) {
+	case *ast.PolicyDoc:
+		if len(n.Stmts) > 0 {
+			first = n.Stmts[0]
+		}
+	case *ast.ModuleDoc:
+		if len(n.Lets) > 0 {
+			first = n.Lets[0]
+		}
+	}
+	return first != nil && first.Pos().Offset < c.start
 }

@@ -148,8 +148,6 @@ func zeroOf(t types.Type) (string, bool) {
 		return "[]", true
 	case *types.Map:
 		return "{}", true
-	case *types.Optional:
-		return "none", true
 	case *types.Enum:
 		if len(t.Values) > 0 {
 			return t.Name + "." + t.Values[0], true

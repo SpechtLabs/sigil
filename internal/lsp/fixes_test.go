@@ -95,7 +95,7 @@ func TestZeroOf(t *testing.T) {
 		{types.Timestamp, ""},
 		{&types.List{Elem: types.String}, "[]"},
 		{&types.Map{Key: types.String, Value: types.Int}, "{}"},
-		{&types.Optional{Elem: types.Int}, "none"},
+		{&types.Optional{Elem: types.Int}, ""},
 		{&types.Enum{Name: "Tier", Values: []string{"critical", "standard"}}, "Tier.critical"},
 		{&types.Enum{Name: "Empty"}, ""},
 		{&types.Struct{Name: "Ticket"}, ""},

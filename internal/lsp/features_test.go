@@ -24,7 +24,7 @@ func TestCompletionSnippets(t *testing.T) {
 		want         string
 		format       protocol.InsertTextFormat
 	}{
-		{name: "a client that takes snippets", capabilities: snippetCapabilities, want: "deny(reason: ${1|not_eligible,soak_too_short,no_rule_matched|})", format: protocol.Snippet},
+		{name: "a client that takes snippets", capabilities: snippetCapabilities, want: "deny(reason: ${1:not_eligible})", format: protocol.Snippet},
 		{name: "a client that doesn't", capabilities: map[string]any{}, want: "deny"},
 	}
 	for _, tt := range tests {
