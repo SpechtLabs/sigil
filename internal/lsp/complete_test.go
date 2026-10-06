@@ -4,6 +4,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/spechtlabs/sigil/internal/kind"
+	"github.com/spechtlabs/sigil/internal/types"
 )
 
 // head starts the policy the completion tests write: its header and
@@ -37,6 +40,9 @@ func TestComplete(t *testing.T) {
 		{name: "statement after a constructor", src: head + "when cleared {\n  deny(reason: not_eligible)\n  <|>\n}", want: []string{"approve", "deny"}},
 		{name: "statement in a module", file: "common.sigil", src: "module deploy.common: DeployApproval@2\n\n<|>", want: []string{"let", "pub let", "use"}, exact: true},
 		{name: "use path", src: "policy payments.production: DeployApproval@2\n\nuse <|>", want: []string{"deploy.common", "deploy.guardrails"}, exact: true},
+		{name: "use path without a cycle", file: "guardrails.sigil", src: "policy deploy.guardrails: DeployApproval@2\n\nuse <|>", want: []string{"deploy.common"}, exact: true},
+		{name: "statement above an import", src: "policy payments.production: DeployApproval@2\n\n<|>\nuse deploy.common.{cleared}\n", want: []string{"use"}, exact: true},
+		{name: "statement between imports", src: "policy payments.production: DeployApproval@2\n\nuse deploy.common.{cleared}\n<|>\nuse deploy.guardrails\n", want: []string{"use"}, exact: true},
 		{name: "use path after a dot", src: "policy payments.production: DeployApproval@2\n\nuse deploy.<|>", want: []string{"deploy.common", "deploy.guardrails"}, exact: true},
 		{name: "use path being typed", src: "policy payments.production: DeployApproval@2\n\nuse deploy.co<|>", want: []string{"deploy.common"}, exact: true},
 		{name: "use alias", src: "policy payments.production: DeployApproval@2\n\nuse deploy.common as <|>", exact: true},
@@ -282,6 +288,16 @@ func TestCompleteExpected(t *testing.T) {
 		{name: "a param's bound", src: "param p: duration = 1h, min: <|>", first: []string{"1h"}, best: "1h"},
 		{name: "a map on the left", src: "when service.labels == <|>", first: []string{"{}"}, best: "{}"},
 		{name: "an unknown name on the left", src: "when nope == <|>", first: []string{"cleared", "owns_service", "actor"}},
+		{name: "an element of a list param's default", src: "param p: list<Tier> = [<|>", first: []string{"critical", "internal", "Tier.standard"}, best: "critical", not: []string{"release", "service.tier", "[]"}},
+		{name: "a later element", src: "param p: list<Tier> = [critical, <|>]", first: []string{"critical", "internal", "Tier.standard"}, best: "critical", not: []string{"release"}},
+		{name: "a nested list's element", src: "param p: list<list<string>> = [[<|>", first: []string{`""`}, best: `""`, not: []string{"environment"}},
+		{name: "a list of lists' element", src: "param p: list<list<string>> = [<|>", first: []string{"[]"}, best: "[]"},
+		{name: "a map literal's key", src: "param p: map<string, Tier> = {<|>", first: []string{`""`}, best: `""`},
+		{name: "a map literal's value", src: "param p: map<string, Tier> = {\"a\": <|>", first: []string{"critical", "internal", "Tier.standard"}, best: "critical"},
+		{name: "a map literal's next key", src: "param p: map<string, Tier> = {\"a\": critical, <|>", first: []string{`""`}, best: `""`},
+		{name: "an element in a condition", src: "when environment in [<|>", first: []string{`""`, "environment", "actor.name", "service.name"}, best: `""`, not: []string{"[]"}},
+		{name: "an element of a payload field", src: "when cleared {\n  review(reason: service_owner, approvers: [<|>", first: []string{`""`, "environment"}, best: `""`},
+		{name: "an index inside a list", src: "let x = [service.labels[<|>", first: []string{`""`, "environment"}, best: `""`},
 		{name: "a let", src: "let x = <|>", first: []string{"cleared", "owns_service", "actor"}},
 	}
 	for _, tt := range tests {
@@ -458,5 +474,57 @@ func TestCompleteDocs(t *testing.T) {
 				t.Errorf("description = %q, want %q", items[i].desc, tt.desc)
 			}
 		})
+	}
+}
+
+// TestConstructorSnippetSkips checks that a constructor's snippet leaves
+// out a payload field whose type has no literal to write, such as an
+// optional, rather than leaving it empty.
+func TestConstructorSnippetSkips(t *testing.T) {
+	d := &kind.Decision{Name: "review", Reasons: []string{"service_owner"}, Fields: []*kind.Field{
+		{Name: "note", Type: &types.Optional{Elem: types.String}},
+		{Name: "approvers", Type: &types.List{Elem: types.String}},
+		{Name: "tier", Type: types.String, HasDefault: true},
+	}}
+	if got, want := constructorSnippet(d), "review(reason: service_owner, approvers: ${1:[]})"; got != want {
+		t.Errorf("snippet = %q, want %q", got, want)
+	}
+}
+
+// TestCompleteTrustedUse checks that `use` in a trusted document offers
+// only the trusted documents, which are all it can import.
+func TestCompleteTrustedUse(t *testing.T) {
+	files := testWorkspace(t)
+	files[root+"/platform.sigil"] = []byte("module platform.common: DeployApproval@2\n\npub let ok = true\n")
+	files[root+"/extra.sigil"] = []byte("module platform.extra: DeployApproval@2\n\npub let fine = true\n")
+	l := &memLoader{files: files, trusted: map[string]bool{root + "/platform.sigil": true, root + "/extra.sigil": true, root + "/deploy_approval.sigil": true}}
+	src := "module platform.common: DeployApproval@2\n\nuse "
+	snap := l.Load(root, map[string][]byte{root + "/platform.sigil": []byte(src)})
+	items, _, _ := newView(snap.Project, root+"/platform.sigil", []byte(src)).complete(len(src))
+	got := make([]string, 0, len(items))
+	for _, it := range items {
+		got = append(got, it.label)
+	}
+	if !slices.Equal(got, []string{"platform.extra"}) {
+		t.Errorf("completions = %v, want only the trusted platform.extra", got)
+	}
+}
+
+// TestCompleteInvocationListArgument checks an element of a list an
+// invocation passes: a constant of the param's element type, not another
+// list and not an input.
+func TestCompleteInvocationListArgument(t *testing.T) {
+	files := testWorkspace(t)
+	files[root+"/guardrails.sigil"] = []byte("policy deploy.guardrails: DeployApproval@2\n\nparam teams: list<string>\n\nwhen actor.name in teams {\n  deny(reason: soak_too_short)\n}\n")
+	l := &memLoader{files: files}
+	src := head + "guardrails(teams: ["
+	snap := l.Load(root, map[string][]byte{root + "/production.sigil": []byte(src)})
+	items, _, _ := newView(snap.Project, root+"/production.sigil", []byte(src)).complete(len(src))
+	got := make([]string, 0, len(items))
+	for _, it := range items {
+		got = append(got, it.label)
+	}
+	if !slices.Equal(got, []string{`""`}) {
+		t.Errorf("completions = %v, want only the string literal", got)
 	}
 }

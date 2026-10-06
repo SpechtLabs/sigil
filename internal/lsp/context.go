@@ -63,7 +63,8 @@ type binder struct {
 // than the syntax tree, so it works on a statement that doesn't parse
 // yet, which is the statement being typed.
 type cursor struct {
-	site      *site // the call whose arguments the cursor is in, or nil
+	site      *site   // the call whose arguments the cursor is in, or nil
+	outer     *cursor // the cursor at the start of the list or map literal the operand is an element of, which says what the literal should be; nil outside one
 	src       []byte
 	toks      []token.Token // the tokens before the name being typed, comments left out
 	binders   []binder      // the quantifiers and filters around the cursor, outermost first
@@ -73,6 +74,7 @@ type cursor struct {
 	path      string        // the dotted name typed so far after `use`, the import path of `use path.{`, or the kind before `@`
 	kind      string        // the kind the document's header names
 	op        string        // the operator the operand at the cursor follows: an infix operator, opNot, opNeg, opPresent or opCond; "" for none
+	literal   string        // the literals around the operand, outermost first: l for a list's element, k for a map's key, v for its value
 	args      []string      // the argument names the call already gives
 	given     []string      // the names a selective import already lists
 	offset    int           // the cursor
@@ -162,6 +164,7 @@ func (c *cursor) classify() {
 				c.index = [2]int{first, top.open - 1}
 			}
 		}
+		c.literals(frames)
 	default:
 		c.statement(top)
 	}
@@ -662,4 +665,58 @@ func closeBinders(open []binder, done func(binder) bool) []binder {
 		}
 	}
 	return out
+}
+
+// literals records the list and map literals the operand at the cursor
+// is an element of, innermost the frame the cursor is in, and the cursor
+// at the start of the outermost, whose context says what it should be:
+// a param's default, which makes the elements constants too, or an
+// argument. An index's bracket and parentheses aren't literals.
+func (c *cursor) literals(frames []frame) {
+	var kinds []byte
+	open, end := -1, len(c.toks)
+scan:
+	for i := len(frames) - 1; i >= 0 && frames[i].kind == frameGroup; i-- {
+		f := frames[i]
+		switch t := c.toks[f.open]; {
+		case t.Kind == token.LBracket && (f.open == 0 || !endsOperand(c.toks[f.open-1])):
+			kinds = append(kinds, 'l')
+		case t.Kind == token.LBrace:
+			kinds = append(kinds, c.mapPart(f.open, end))
+		default:
+			break scan // the literals end at any other bracket
+		}
+		open, end = f.open, f.open
+	}
+	if open < 0 {
+		return
+	}
+	slices.Reverse(kinds)
+	c.literal = string(kinds)
+	c.outer = scan(c.src, c.toks[open].Pos.Offset)
+	c.constant = c.constant || c.outer.constant
+}
+
+// mapPart returns which part of an entry of the map literal whose `{` is
+// at index open the tokens up to end leave the cursor in: v after a `:`,
+// k at the start or after a `,`.
+func (c *cursor) mapPart(open, end int) byte {
+	part, depth := byte('k'), 0
+	for i := open + 1; i < end; i++ {
+		switch c.toks[i].Kind {
+		case token.LParen, token.LBracket, token.LBrace:
+			depth++
+		case token.RParen, token.RBracket, token.RBrace:
+			depth--
+		case token.Colon:
+			if depth == 0 {
+				part = 'v'
+			}
+		case token.Comma:
+			if depth == 0 {
+				part = 'k'
+			}
+		}
+	}
+	return part
 }

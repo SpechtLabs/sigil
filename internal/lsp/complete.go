@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spechtlabs/sigil/internal/ast"
+	"github.com/spechtlabs/sigil/internal/bundle"
 	"github.com/spechtlabs/sigil/internal/check"
 	"github.com/spechtlabs/sigil/internal/constant"
 	"github.com/spechtlabs/sigil/internal/kind"
@@ -207,7 +208,14 @@ func (v *view) statementItems(c *cursor) []item {
 	default:
 		words = []string{kwUse, kwParam, kwLet, kwPubLet, kwWhen, kwAssert}
 	}
-	if !c.inBody && v.pastUses(c) {
+	past, before := false, false
+	if !c.inBody {
+		past, before = v.useOrder(c)
+	}
+	switch {
+	case before:
+		words = []string{kwUse} // above an import, only another can go
+	case past:
 		words = slices.DeleteFunc(words, func(w string) bool { return w == kwUse })
 	}
 	out := keywordItems(words...)
@@ -215,7 +223,7 @@ func (v *view) statementItems(c *cursor) []item {
 	for i := range out {
 		out[i].snippet = v.statementSnippet(out[i].label, c, env)
 	}
-	if env == nil || c.module {
+	if env == nil || c.module || before {
 		return out
 	}
 	if c.inBody {
@@ -262,15 +270,10 @@ func (v *view) statementSnippet(word string, c *cursor, env *check.Env) string {
 // that isn't the document itself and whose last name env doesn't bind
 // yet. It returns "" for none.
 func (v *view) importable(c *cursor, env *check.Env) string {
-	g := v.groupOf(c.kind)
-	if g == nil || c.header < 0 {
-		return ""
-	}
-	self := v.docStarting(c.toks[c.header].Pos.Offset)
 	var modules, policies []string
-	for _, d := range g.Bundle.All() {
+	for _, d := range v.importables(c) {
 		name := d.Name[strings.LastIndexByte(d.Name, '.')+1:]
-		if self != nil && d.Name == self.Name || freeName(env, name) != name {
+		if freeName(env, name) != name {
 			continue
 		}
 		if _, ok := d.Node.(*ast.ModuleDoc); ok {
@@ -317,8 +320,10 @@ func (v *view) decisionItem(k *kind.Kind, d *kind.Decision) item {
 // constructorSnippet builds `deny(reason: ${1:not_eligible}, field:
 // ${2:[]})` for d: its first reason, or its only one as it is, and every
 // payload field without a default with its type's zero value, so tabbing
-// through leaves a constructor that checks. The reason completes after
-// `reason: ` with the others.
+// through leaves a constructor that checks. A field whose type has no
+// literal, such as an optional or a struct, is left out rather than left
+// empty, which wouldn't parse. The reason completes after `reason: ` with
+// the others.
 func constructorSnippet(d *kind.Decision) string {
 	n := 1
 	reason := reasonArg + ": " + d.Reasons[0]
@@ -328,7 +333,7 @@ func constructorSnippet(d *kind.Decision) string {
 	}
 	args := []string{reason}
 	for _, f := range d.Fields {
-		if !f.HasDefault {
+		if _, ok := zeroOf(f.Type); ok && !f.HasDefault {
 			args = append(args, f.Name+": "+placeholder(n, f.Type))
 			n++
 		}
@@ -421,22 +426,78 @@ func nearestList(env *check.Env) string {
 	return best
 }
 
-// usePathItems completes the dotted name after `use`: every policy and
-// module of the document's kind but the document itself.
+// usePathItems completes the dotted name after `use`: the documents the
+// document can import.
 func (v *view) usePathItems(c *cursor) []item {
+	docs := v.importables(c)
+	out := make([]item, 0, len(docs))
+	for _, d := range docs {
+		out = append(out, item{label: d.Name, kind: protocol.CompletionModule, detail: describeDoc(d.Node), rank: rankName})
+	}
+	return out
+}
+
+// importables returns the documents the document at the cursor can
+// import: the policies and modules of its kind but itself, only trusted
+// ones for a trusted document, and none that imports it, directly or
+// through others, which would make a cycle.
+func (v *view) importables(c *cursor) []*bundle.Document {
 	g := v.groupOf(c.kind)
 	if g == nil || c.header < 0 {
 		return nil
 	}
-	self := v.docStarting(c.toks[c.header].Pos.Offset)
-	var out []item
+	selfName := ""
+	if self := v.docStarting(c.toks[c.header].Pos.Offset); self != nil {
+		selfName = self.Name
+	}
+	trusted := false
+	if d := g.Bundle.Document(selfName); d != nil {
+		trusted = d.Trusted
+	}
+	var out []*bundle.Document
 	for _, d := range g.Bundle.All() {
-		if self != nil && d.Name == self.Name {
+		if d.Kind || d.Name == selfName || trusted && !d.Trusted || selfName != "" && imports(g.Bundle, d, selfName) {
 			continue
 		}
-		out = append(out, item{label: d.Name, kind: protocol.CompletionModule, detail: describeDoc(d.Node), rank: rankName})
+		out = append(out, d)
 	}
 	return out
+}
+
+// imports reports whether d imports the document called name, directly
+// or through the documents it imports, as b holds them.
+func imports(b *bundle.Bundle, d *bundle.Document, name string) bool {
+	seen := map[string]bool{}
+	next := []*bundle.Document{d}
+	for len(next) > 0 {
+		doc := next[len(next)-1]
+		next = next[:len(next)-1]
+		if seen[doc.Name] {
+			continue
+		}
+		seen[doc.Name] = true
+		for _, u := range usesOf(doc.Node) {
+			path := u.Path.String()
+			if path == name {
+				return true
+			}
+			if dep := b.Document(path); dep != nil {
+				next = append(next, dep)
+			}
+		}
+	}
+	return false
+}
+
+// usesOf returns a document's imports.
+func usesOf(d ast.Doc) []*ast.UseStmt {
+	switch d := d.(type) {
+	case *ast.PolicyDoc:
+		return d.Uses
+	case *ast.ModuleDoc:
+		return d.Uses
+	}
+	return nil
 }
 
 // useItems completes a name in `use path.{`: the pub lets of the document
@@ -923,15 +984,17 @@ func constantItem(it item) bool {
 	return it.label == kwTrue || it.label == kwFalse
 }
 
-// pastUses reports whether a statement other than a `use` comes before
-// the cursor in its document, after which a `use` can't.
-func (v *view) pastUses(c *cursor) bool {
+// useOrder says where the cursor is among its document's imports, which
+// come before every other statement: past reports a statement other than
+// a `use` before the cursor, after which a `use` can't come, and before
+// a `use` after it, before which nothing else can.
+func (v *view) useOrder(c *cursor) (past, before bool) {
 	if c.header < 0 {
-		return false
+		return false, false
 	}
 	d := v.docStarting(c.toks[c.header].Pos.Offset)
 	if d == nil {
-		return false
+		return false, false
 	}
 	var first ast.Node
 	switch n := d.Node.(type) {
@@ -944,5 +1007,6 @@ func (v *view) pastUses(c *cursor) bool {
 			first = n.Lets[0]
 		}
 	}
-	return first != nil && first.Pos().Offset < c.start
+	uses := usesOf(d.Node)
+	return first != nil && first.Pos().Offset < c.start, len(uses) > 0 && uses[len(uses)-1].Pos().Offset >= c.end
 }

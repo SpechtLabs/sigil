@@ -1176,8 +1176,8 @@ Completion works in a document that doesn't parse, as it's being typed.
 | Start of a file, or after `---` | `policy`, `module` |
 | After `policy name:` or `module name:` | The kinds the project knows |
 | After `Kind@` | The kind's current version |
-| Start of a statement | `use`, `param`, `let`, `pub let`, `when`, `assert`, and the imported policies to invoke; in a `when` body, the kind's decisions to construct; in a module, `use`, `let` and `pub let` |
-| After `use` | The policies and modules of the document's kind, trusted ones included, as dotted names |
+| Start of a statement | `use`, `param`, `let`, `pub let`, `when`, `assert`, and the imported policies to invoke; in a `when` body, the kind's decisions to construct; in a module, `use`, `let` and `pub let`. `use` only before the other statements, and nothing but `use` above an import |
+| After `use` | The policies and modules of the document's kind it can import, as dotted names: trusted ones included, only trusted ones in a trusted document, and none that imports the document, which would be a cycle |
 | Inside `use path.{` | The pub lets of `path` the import doesn't list yet |
 | After `param name:` | The built-in types, `list`, `map`, and the kind's struct types and enums |
 | After a param's default and `,` | `min`, `max` |
@@ -1213,7 +1213,8 @@ Where an operand goes, the context says what type it should have:
 | A host function's argument | The parameter's type at its position |
 | A payload field's value, an invoked policy's argument | The field's or param's type; a literal's detail shows a param's default and bounds |
 | An index | A map's key type, or `int` for a list |
-| A param's default or bound | The param's type, when it's a single name |
+| A param's default or bound | The param's type |
+| An element of a list or map literal | The element, key or value type of what the literal's place expects; constants only in a param's default or an invocation's argument |
 
 Completions sort by how well they fit that type, then by how near their scope is, so a quantifier's variable comes before the document's names, then by name. The operand on an operator's left isn't offered on its right.
 
@@ -1242,7 +1243,7 @@ When the editor's completion takes snippets, these completions insert one. Every
 | `let`, `pub let` | `let name = true`, with a name nothing binds yet |
 | `param` | `param name: string`, with a name nothing binds yet |
 | `any`, `all`, `filter` | `any x in list: true`, with a variable nothing binds yet and the nearest list in scope |
-| A decision constructor | The constructor with its first reason, or its only one, and every payload field without a default set to its type's zero value, like `review(reason: service_owner, approvers: [])`; after `reason: `, completion offers the other reasons |
+| A decision constructor | The constructor with its first reason, or its only one, and every payload field without a default set to its type's zero value, leaving out a field whose type has no literal, such as an optional, like `review(reason: service_owner, approvers: [])`; after `reason: `, completion offers the other reasons |
 | An imported policy | The invocation with every param without a default set to its type's zero value |
 | A host function | The call with each argument set to its type's zero value, like `split("", "")` |
 | A duration, string, list or map literal | `1h`, with the number and the unit as placeholders, `""`, `[]` or `{}`, with the cursor inside |

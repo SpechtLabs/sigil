@@ -35,8 +35,13 @@ const (
 //   - an argument: the host function's parameter, the payload field, or
 //     the invoked policy's param;
 //   - an index: the map's key type, or int for a list;
-//   - a param's default or bound: the param's type, when it's one name.
+//   - a param's default or bound: the param's type;
+//   - an element of a list or map literal: what the literal's context
+//     expects of its elements, keys or values.
 func (v *view) expected(c *cursor, env *check.Env) types.Type { //nolint:returninterface // a type is any of five kinds
+	if c.op == "" && c.outer != nil {
+		return elementType(v.expected(c.outer, env), c.literal)
+	}
 	var left types.Type
 	if c.left[0] >= 0 {
 		left = v.typeOf(c.text(c.left[0], c.left[1]), env)
@@ -207,4 +212,32 @@ func (v *view) invokedParam(c *cursor, env *check.Env) *check.ExportedParam {
 		return b.Doc.Param(s.arg)
 	}
 	return nil
+}
+
+// elementType returns the type of an element of the literals literal
+// spells, outermost first, in a literal of type t: l for a list's
+// element, k for a map's key and v for its value. It returns nil where t
+// isn't the literal's type.
+func elementType(t types.Type, literal string) types.Type { //nolint:returninterface // a type is any of five kinds
+	for _, part := range []byte(literal) {
+		switch tt := t.(type) {
+		case *types.List:
+			if part != 'l' {
+				return nil
+			}
+			t = tt.Elem
+		case *types.Map:
+			switch part {
+			case 'k':
+				t = tt.Key
+			case 'v':
+				t = tt.Value
+			default:
+				return nil
+			}
+		default:
+			return nil
+		}
+	}
+	return t
 }
