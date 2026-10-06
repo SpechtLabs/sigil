@@ -19,9 +19,6 @@ const START_TIMEOUT_MS = 30_000;
 /** How long a client gets to stop or dispose before it's abandoned. */
 const STOP_TIMEOUT_MS = 5_000;
 
-/** The files the server hears about when they change on disk: sources and the configuration file. */
-const WATCHED = "**/{*.sigil,sigil.yaml,sigil.json,sigil.toml,.sigil.yaml,.sigil.json,.sigil.toml}";
-
 /** What `sigil version -o json` prints, as far as the extension reads it. */
 export interface VersionInfo {
   version: string;
@@ -48,8 +45,6 @@ export class Server implements vscode.Disposable {
   readonly onDidChangeStatus = this.statusEmitter.event;
 
   private client: LanguageClient | undefined;
-  /** The running client's file watcher, disposed with it. */
-  private watcher: vscode.FileSystemWatcher | undefined;
   private current: Status = { kind: "stopped" };
   /** How many times a client has been started, for the tests. */
   starts = 0;
@@ -169,8 +164,6 @@ export class Server implements vscode.Disposable {
       const message = `sigil lsp didn't start (${res.path}): ${err instanceof Error ? err.message : String(err)}`;
       this.output.error(message);
       this.client = undefined;
-      this.watcher?.dispose();
-      this.watcher = undefined;
       await withTimeout(client.dispose(STOP_TIMEOUT_MS), 2 * STOP_TIMEOUT_MS, "dispose").catch(() => undefined);
       this.setStatus({ kind: "failed", binary: res, message });
       void vscode.window
@@ -195,19 +188,17 @@ export class Server implements vscode.Disposable {
       }
       await withTimeout(client.dispose(STOP_TIMEOUT_MS), 2 * STOP_TIMEOUT_MS, "dispose").catch(() => undefined);
     }
-    this.watcher?.dispose();
-    this.watcher = undefined;
     this.setStatus({ kind: "stopped" });
   }
 
+  // No file watchers here: sigil lsp registers its own for .sigil files and
+  // the configuration file (client/registerCapability), and a second set
+  // would only make it reload twice.
   private clientOptions(): LanguageClientOptions {
-    const watcher = vscode.workspace.createFileSystemWatcher(WATCHED);
-    this.watcher = watcher;
     return {
-      // The server only reads files on disk: an untitled document would
-      // answer every request with an error.
+      // The server works on files on disk, and answers nothing for an
+      // untitled document.
       documentSelector: [{ scheme: "file", language: "sigil" }],
-      synchronize: { fileEvents: watcher },
       outputChannel: this.output,
       traceOutputChannel: this.trace,
     };

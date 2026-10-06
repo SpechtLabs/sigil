@@ -64,7 +64,7 @@ async function trustedSuite(): Promise<void> {
     );
   });
 
-  await step("a new .sigil file reaches the server as a watched-file change", async () => {
+  await step("a new .sigil file reaches the server through the watchers it registered", async () => {
     writeFileSync(join(folder.uri.fsPath, "policies/new.sigil"), "module deploy.extra: DeployApproval@1\n");
     await waitFor(
       () => entries(log).some((e) => e.method === "workspace/didChangeWatchedFiles"),

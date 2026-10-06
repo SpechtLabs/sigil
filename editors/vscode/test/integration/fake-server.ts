@@ -1,8 +1,9 @@
 // A stand-in for the sigil binary, so the integration tests exercise the
 // client without a language server: `version -o json` prints a version, and
-// `lsp --stdio` speaks just enough LSP to start, publish one diagnostic per
-// opened document and shut down. Every message it reads, and its arguments,
-// go to the JSON lines file SIGIL_FAKE_LOG names, which the tests read.
+// `lsp --stdio` speaks just enough LSP to start, register file watchers the
+// way sigil lsp does, publish one diagnostic per opened document and shut
+// down. Every message it reads, and its arguments, go to the JSON lines file
+// SIGIL_FAKE_LOG names, which the tests read.
 
 import { appendFileSync } from "node:fs";
 
@@ -31,6 +32,24 @@ function handle(msg: Message): void {
       send({
         id: msg.id,
         result: { capabilities: { textDocumentSync: 1 }, serverInfo: { name: "fake-sigil", version: "0.0.0-fake" } },
+      });
+      break;
+    case "initialized":
+      // Like sigil lsp: the server registers the watchers, the client has none.
+      send({
+        id: "register-watchers",
+        method: "client/registerCapability",
+        params: {
+          registrations: [
+            {
+              id: "sigil-watched-files",
+              method: "workspace/didChangeWatchedFiles",
+              registerOptions: {
+                watchers: [{ globPattern: "**/*.sigil" }, { globPattern: "**/{sigil,.sigil}.{yaml,json,toml}" }],
+              },
+            },
+          ],
+        },
       });
       break;
     case "textDocument/didOpen": {
