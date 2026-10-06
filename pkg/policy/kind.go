@@ -31,8 +31,9 @@ type Kind[In any] struct {
 // [WithCollect].
 //
 // NewKind panics when the contract can't be exported: a Go type with no
-// Sigil equivalent, a missing version or default, a decision whose
-// reasons are ranked twice, or a [WithConflict] on a [WithCollect] kind.
+// Sigil equivalent, a missing version or default, two decisions with the same
+// payload type, a decision whose reasons are ranked twice, or a
+// [WithConflict] on a [WithCollect] kind.
 // The panic lists every problem found, so a bad kind fails at init rather
 // than at the first [Kind.Load], and is fixed in one round.
 func NewKind[In any](name string, opts ...Option) *Kind[In] {

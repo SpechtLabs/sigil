@@ -56,48 +56,47 @@ func fallbackResponse(team, policyName string) DecisionResponse {
 // decisionPayload renders the winning decision's payload from its typed
 // struct.
 func decisionPayload(res *policy.Result) Payload {
-	if data, ok := deploy.Approve.Match(res); ok {
-		return Payload{"bake": Duration(data.Bake)}
-	}
-	if data, ok := deploy.Review.Match(res); ok {
-		return Payload{"approvers": data.Approvers}
+	switch d := res.Value().(type) {
+	case deploy.ApproveData:
+		return Payload{"bake": Duration(d.Bake)}
+	case deploy.ReviewData:
+		return Payload{"approvers": d.Approvers}
 	}
 	return renderPayload(res.Payload)
 }
 
-// decisionStatus maps a decision to its HTTP status through the typed
-// decision handles: approve is 200, review 202, and deny, or anything a
-// newer kind adds, 403, so an unknown decision fails closed.
+// decisionStatus maps a decision to its HTTP status by its payload type:
+// approve is 200, review 202, and deny, or anything a newer kind adds, 403,
+// so an unknown decision fails closed.
 func decisionStatus(res *policy.Result) int {
-	if _, ok := deploy.Approve.Match(res); ok {
+	switch res.Value().(type) {
+	case deploy.ApproveData:
 		return http.StatusOK
-	}
-	if _, ok := deploy.Review.Match(res); ok {
+	case deploy.ReviewData:
 		return http.StatusAccepted
 	}
 	return http.StatusForbidden
 }
 
-// grantResults renders an access result's outcome through the typed
-// decision handles, one MatchAll per role, as a host consumes a collecting
-// kind. The outcome is sorted by the kind's declaration order and then by
-// position, so taking the roles in declaration order keeps outcome order.
+// grantResults renders an access result's outcome, one entry at a time, with
+// a type switch on each grant's payload, as a host consumes a collecting
+// kind. A role a newer kind adds is left out, so it grants nothing here.
 func grantResults(res *policy.Result) []GrantResult {
 	out := make([]GrantResult, 0, len(res.Outcome))
-	for _, m := range access.Reader.MatchAll(res) {
-		out = append(out, grant(res, access.Reader.Name(), m.Reason, m.Policy, m.Position, nil))
-	}
-	for _, m := range access.Deployer.MatchAll(res) {
-		out = append(out, grant(res, access.Deployer.Name(), m.Reason, m.Policy, m.Position, ttl(m.Payload.TTL)))
-	}
-	for _, m := range access.ReleaseManager.MatchAll(res) {
-		out = append(out, grant(res, access.ReleaseManager.Name(), m.Reason, m.Policy, m.Position, ttl(m.Payload.TTL)))
-	}
-	for _, m := range access.Admin.MatchAll(res) {
-		out = append(out, grant(res, access.Admin.Name(), m.Reason, m.Policy, m.Position, ttl(m.Payload.TTL)))
-	}
-	for _, m := range access.Auditor.MatchAll(res) {
-		out = append(out, grant(res, access.Auditor.Name(), m.Reason, m.Policy, m.Position, nil))
+	for _, e := range res.Outcome {
+		var lifetime *Duration
+		switch d := e.Value().(type) {
+		case access.ReaderData, access.AuditorData: // no time to live
+		case access.DeployerData:
+			lifetime = ttl(d.TTL)
+		case access.ReleaseManagerData:
+			lifetime = ttl(d.TTL)
+		case access.AdminData:
+			lifetime = ttl(d.TTL)
+		default:
+			continue
+		}
+		out = append(out, grant(res, e.Decision, e.Reason, e.Policy, e.Position, lifetime))
 	}
 	return out
 }

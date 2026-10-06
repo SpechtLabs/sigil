@@ -56,7 +56,8 @@ type (
 		Ratio       float64   `policy:"ratio"`
 		Count       int       `policy:"count"`
 	}
-	None struct{}
+	None     struct{}
+	Approved struct{}
 )
 
 var (
@@ -114,7 +115,7 @@ func setup(t *testing.T, src string, assert bool) (eval.Expr, *eval.Frame) {
 	t.Helper()
 	k, b, errs := gokind.Build(gokind.Options{
 		Name: "Test", Version: 1, Input: typeOf[Input](),
-		Decisions: []gokind.Decision{{Name: "deny", Payload: typeOf[None](), Reasons: []string{"b", "a", "d", "not_eligible", "soak_too_short"}}, {Name: "approve", Payload: typeOf[None](), Reasons: []string{"a", "release_manager", "payments_sre"}}},
+		Decisions: []gokind.Decision{{Name: "deny", Payload: typeOf[None](), Reasons: []string{"b", "a", "d", "not_eligible", "soak_too_short"}}, {Name: "approve", Payload: typeOf[Approved](), Reasons: []string{"a", "release_manager", "payments_sre"}}},
 		Default:   &gokind.Default{Decision: "deny", Reason: "a"},
 		Funcs: []gokind.Func{
 			{Name: "split", Fn: strings.Split},

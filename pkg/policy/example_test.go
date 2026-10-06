@@ -143,8 +143,9 @@ func ExampleKind_Load() {
 		User  string   `policy:"user"`
 		Teams []string `policy:"teams"`
 	}
+	type AllowData struct{}
 	deny := policy.NewDecision[policy.None]("deny", "banned", "no_rule_matched")
-	allow := policy.NewDecision[policy.None]("allow", "member")
+	allow := policy.NewDecision[AllowData]("allow", "member")
 	access := policy.NewKind[Input]("Access",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
@@ -225,8 +226,9 @@ func ExampleParams() {
 	type Input struct {
 		Soak time.Duration `policy:"soak"`
 	}
+	type AllowData struct{}
 	deny := policy.NewDecision[policy.None]("deny", "soak_too_short", "no_rule_matched")
-	allow := policy.NewDecision[policy.None]("allow", "soaked")
+	allow := policy.NewDecision[AllowData]("allow", "soaked")
 	k := policy.NewKind[Input]("Soak",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
@@ -269,8 +271,9 @@ func ExampleRequire() {
 	type Input struct {
 		Hotfix bool `policy:"hotfix"`
 	}
+	type AllowData struct{}
 	deny := policy.NewDecision[policy.None]("deny", "hotfix_frozen", "no_rule_matched")
-	allow := policy.NewDecision[policy.None]("allow", "team")
+	allow := policy.NewDecision[AllowData]("allow", "team")
 	k := policy.NewKind[Input]("Deploy",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
@@ -338,8 +341,9 @@ func ExampleTrusted() {
 		Environment string   `policy:"environment"`
 		Frozen      []string `policy:"frozen"`
 	}
+	type AllowData struct{}
 	deny := policy.NewDecision[policy.None]("deny", "change_freeze", "no_rule_matched")
-	allow := policy.NewDecision[policy.None]("allow", "team")
+	allow := policy.NewDecision[AllowData]("allow", "team")
 	k := policy.NewKind[Input]("Deploy",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
@@ -412,8 +416,9 @@ func ExamplePolicy_Eval() {
 	type Input struct {
 		Roles []string `policy:"roles"`
 	}
+	type AllowData struct{}
 	deny := policy.NewDecision[policy.None]("deny", "no_rule_matched")
-	allow := policy.NewDecision[policy.None]("allow", "second_role")
+	allow := policy.NewDecision[AllowData]("allow", "second_role")
 	k := policy.NewKind[Input]("Roles",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
@@ -483,9 +488,11 @@ when team == "payments" {
 }
 
 // A reason handle names a reason once, where it's declared; the options
-// and the host's checks refer to the Go identifier, so a typo is a
+// and the host's switch refer to the Go identifier, so a typo is a
 // compile error or, in the string passed to Reason, a panic at init.
-func ExampleOutcome_Is() {
+// Why returns the result's reason as a handle, so a switch compares it
+// against the handles like an error against its sentinels.
+func ExampleResult_Why() {
 	type Input struct {
 		Frozen bool `policy:"frozen"`
 		Owner  bool `policy:"owner"`
@@ -523,12 +530,12 @@ when not owner {
 			fmt.Println(err)
 			return
 		}
-		switch {
-		case changeFreeze.Is(res):
+		switch res.Why() {
+		case changeFreeze:
 			fmt.Println("frozen: retry after the freeze")
-		case notOwner.Is(res):
+		case notOwner:
 			fmt.Println("not an owner: ask the owning team")
-		case noRuleMatched.Is(res):
+		case noRuleMatched:
 			fmt.Println("no rule matched:", res.Decision, res.Reason)
 		}
 	}
@@ -536,6 +543,151 @@ when not owner {
 	// frozen: retry after the freeze
 	// not an owner: ask the owning team
 	// no rule matched: deny no_rule_matched
+}
+
+// Is checks a result for one reason, where a switch over every reason
+// would be too much.
+func ExampleOutcome_Is() {
+	type Input struct {
+		Frozen bool `policy:"frozen"`
+	}
+	type ShipData struct{}
+	deny := policy.NewDecision[policy.None]("deny", "change_freeze")
+	ship := policy.NewDecision[ShipData]("ship", "no_freeze")
+	changeFreeze := deny.Reason("change_freeze")
+	k := policy.NewKind[Input]("Freeze",
+		policy.WithVersion(1),
+		policy.WithDecisions(deny, ship),
+		policy.WithDefault(ship.Reason("no_freeze")),
+	)
+	p, err := k.Compile(`policy freeze: Freeze@1
+
+when frozen {
+  deny(reason: change_freeze)
+}
+`, "freeze")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	res, err := p.Eval(context.Background(), Input{Frozen: true})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	if changeFreeze.Is(res) {
+		fmt.Println("frozen: retry after the freeze")
+	}
+	// Output:
+	// frozen: retry after the freeze
+}
+
+// Every decision of a kind has its own payload type, so a type switch on
+// Value reads the result like a switch on an error's type: one case per
+// decision, each with the payload as its struct.
+func ExampleResult_Value() {
+	type Input struct {
+		Severity string `policy:"severity"`
+		Muted    bool   `policy:"muted"`
+	}
+	type PageData struct {
+		Target string `policy:"target"`
+	}
+	type NotifyData struct {
+		Channel string `policy:"channel,default=\"#alerts\""`
+	}
+	page := policy.NewDecision[PageData]("page", "critical_alert")
+	drop := policy.NewDecision[policy.None]("drop", "muted")
+	notify := policy.NewDecision[NotifyData]("notify", "unrouted")
+	k := policy.NewKind[Input]("AlertRouting",
+		policy.WithVersion(1),
+		policy.WithDecisions(page, drop, notify),
+		policy.WithDefault(notify.Reason("unrouted")),
+	)
+	p, err := k.Compile(`policy alerts: AlertRouting@1
+
+when muted {
+  drop(reason: muted)
+}
+
+when severity == "critical" {
+  page(reason: critical_alert, target: "checkout-oncall")
+}
+`, "alerts")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	for _, in := range []Input{{Severity: "critical"}, {Muted: true}, {Severity: "info"}} {
+		res, err := p.Eval(context.Background(), in)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		switch d := res.Value().(type) {
+		case PageData:
+			fmt.Println("page", d.Target, "for", res.Reason)
+		case NotifyData:
+			fmt.Println("notify", d.Channel, "for", res.Reason)
+		case policy.None:
+			fmt.Println("drop for", res.Reason)
+		}
+	}
+	// Output:
+	// page checkout-oncall for critical_alert
+	// drop for muted
+	// notify #alerts for unrouted
+}
+
+// A collecting kind's outcome may hold several entries, so the type
+// switch moves into a loop over them.
+func ExampleEntry_Value() {
+	type Input struct {
+		Teams []string `policy:"teams"`
+	}
+	type ReadData struct{}
+	type AdminData struct {
+		TTL time.Duration `policy:"ttl,default=8h"`
+	}
+	read := policy.NewDecision[ReadData]("read", "member")
+	admin := policy.NewDecision[AdminData]("admin", "platform", "oncall")
+	k := policy.NewKind[Input]("Grants",
+		policy.WithVersion(1),
+		policy.WithCollect(read, admin),
+	)
+	p, err := k.Compile(`policy grants: Grants@1
+
+when "engineering" in teams {
+  read(reason: member)
+}
+
+when "platform" in teams {
+  admin(reason: platform, ttl: 1h)
+}
+`, "grants")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	res, err := p.Eval(context.Background(), Input{Teams: []string{"engineering", "platform"}})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, e := range res.Outcome {
+		switch d := e.Value().(type) {
+		case ReadData:
+			fmt.Println("read for", e.Reason)
+		case AdminData:
+			fmt.Println("admin for", e.Reason, "expires in", d.TTL)
+		}
+	}
+	// Output:
+	// read for member
+	// admin for platform expires in 1h0m0s
 }
 
 // A collecting kind applies every decision that fires, so it is read with
@@ -547,8 +699,9 @@ func ExampleDecision_MatchAll() {
 	type GrantData struct {
 		TTL time.Duration `policy:"ttl,default=8h"`
 	}
+	type AdminData GrantData // its own type, so a type switch tells admin from read
 	read := policy.NewDecision[GrantData]("read", "member")
-	admin := policy.NewDecision[GrantData]("admin", "platform", "oncall")
+	admin := policy.NewDecision[AdminData]("admin", "platform", "oncall")
 	k := policy.NewKind[Input]("Grants",
 		policy.WithVersion(1),
 		policy.WithCollect(read, admin),
@@ -594,8 +747,9 @@ func ExampleAssertionError() {
 	type Input struct {
 		Soak time.Duration `policy:"soak"`
 	}
+	type AllowData struct{}
 	deny := policy.NewDecision[policy.None]("deny", "no_rule_matched")
-	allow := policy.NewDecision[policy.None]("allow", "soaked")
+	allow := policy.NewDecision[AllowData]("allow", "soaked")
 	k := policy.NewKind[Input]("Soak",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
@@ -630,8 +784,9 @@ func ExampleWithExclusive() {
 	type Input struct {
 		Teams []string `policy:"teams"`
 	}
+	type DevEnvData struct{}
 	customerData := policy.NewDecision[policy.None]("customer_data", "support")
-	devEnv := policy.NewDecision[policy.None]("dev_env", "engineering")
+	devEnv := policy.NewDecision[DevEnvData]("dev_env", "engineering")
 	k := policy.NewKind[Input]("Grants",
 		policy.WithVersion(1),
 		policy.WithCollect(customerData, devEnv),
@@ -669,8 +824,9 @@ func ExampleWithConflict() {
 	type Input struct {
 		Roles []string `policy:"roles"`
 	}
+	type ApproveData struct{}
 	deny := policy.NewDecision[policy.None]("deny", "no_rule_matched", "conflicting_rules")
-	approve := policy.NewDecision[policy.None]("approve", "release_manager", "service_owner")
+	approve := policy.NewDecision[ApproveData]("approve", "release_manager", "service_owner")
 	k := policy.NewKind[Input]("Deploy",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, approve),
@@ -711,8 +867,9 @@ func ExampleWithFunc() {
 	type Input struct {
 		Listen string `policy:"listen"`
 	}
+	type AllowData struct{}
 	deny := policy.NewDecision[policy.None]("deny", "privileged", "no_rule_matched")
-	allow := policy.NewDecision[policy.None]("allow", "unprivileged")
+	allow := policy.NewDecision[AllowData]("allow", "unprivileged")
 	k := policy.NewKind[Input]("Ports",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),
@@ -804,8 +961,9 @@ func Example_reload() {
 	type Input struct {
 		User string `policy:"user"`
 	}
+	type AllowData struct{}
 	deny := policy.NewDecision[policy.None]("deny", "no_rule_matched")
-	allow := policy.NewDecision[policy.None]("allow", "listed")
+	allow := policy.NewDecision[AllowData]("allow", "listed")
 	k := policy.NewKind[Input]("Users",
 		policy.WithVersion(1),
 		policy.WithDecisions(deny, allow),

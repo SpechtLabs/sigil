@@ -54,7 +54,8 @@ type (
 		User User   `policy:"user"`
 		Env  string `policy:"env"`
 	}
-	None struct{}
+	None    struct{}
+	Allowed struct{}
 )
 
 func TestBindErrors(t *testing.T) {
@@ -311,7 +312,7 @@ func TestStubEvaluates(t *testing.T) {
 		Input:   reflect.TypeFor[Input](),
 		Decisions: []gokind.Decision{
 			{Name: "deny", Payload: reflect.TypeFor[None](), Reasons: []string{"no_rule_matched"}},
-			{Name: "allow", Payload: reflect.TypeFor[None](), Reasons: []string{"ok"}},
+			{Name: "allow", Payload: reflect.TypeFor[Allowed](), Reasons: []string{"ok"}},
 		},
 		Default: &gokind.Default{Decision: "deny", Reason: "no_rule_matched"},
 		Funcs: []gokind.Func{

@@ -80,7 +80,11 @@ type ApproveData struct {
 }
 ```
 
-A decision that carries only a reason uses `policy.None` as its payload.
+A decision that carries only a reason uses `policy.None` as its payload. Each decision of a kind needs its own payload type, because the host tells decisions apart by it. A second reason-only decision declares an empty struct, `type AuditorData struct{}`, and two decisions with the same fields each declare a named type over one struct, `type ReleaseManagerData GrantData`. `NewKind` panics on a shared payload type:
+
+```text
+decisions deployer and release_manager share payload type access.GrantData (give each decision its own payload type, like `type ReleaseManagerData GrantData`, which keeps its fields, so a type switch on the result tells them apart)
+```
 
 ### Declare the decisions and their reasons
 
@@ -202,7 +206,7 @@ To bind the root's params from Go instead of from a team file, pass `policy.Para
 
 ## Evaluate and act on the result
 
-Call `Eval` with the request's context and the input. Check the error first, then match the result against the decision handles:
+Call `Eval` with the request's context and the input. Check the error first, then switch on the result's payload type, the way you'd switch on an error's type:
 
 ```go
 func decide(ctx context.Context, p *policy.Policy[Input], in Input) error {
@@ -211,15 +215,17 @@ func decide(ctx context.Context, p *policy.Policy[Input], in Input) error {
 		return reject(res, err) // res holds deny(reason: no_rule_matched); see Handle failed evaluations
 	}
 
-	if r, ok := Review.Match(res); ok {
-		return requestReview(r.Approvers, res.Reason) // r is a typed ReviewData
+	switch d := res.Value().(type) {
+	case ReviewData:
+		return requestReview(d.Approvers, res.Reason) // d is a typed ReviewData
+	case ApproveData:
+		return startRollout(d.Bake)
 	}
 
-	if a, ok := Approve.Match(res); ok {
-		return startRollout(a.Bake)
-	}
-
-	if NoRuleMatched.Is(res) {
+	switch res.Why() {
+	case SoakTooShort:
+		return retryAfterSoak(res)
+	case NoRuleMatched:
 		flagUncovered(p.Name()) // the default: no rule covers this deploy
 	}
 
@@ -227,19 +233,25 @@ func decide(ctx context.Context, p *policy.Policy[Input], in Input) error {
 }
 ```
 
-- Check `err` before you match. A failed evaluation still returns a result, holding the kind's default, so `Deny.Match` reports `true` on it. [Handle failed evaluations](/guides/handle-errors/) shows what to do with the error.
-- `Match` returns the payload as its Go struct when the outcome is exactly one entry of that decision.
-- A reason handle's `Is` does the same and compares the reason too. Use it instead of comparing `res.Reason` with a string, which compiles with a typo in it and never matches.
+- Check `err` before you switch. A failed evaluation still returns a result, holding the kind's default, so the switches treat it as a deny. [Handle failed evaluations](/guides/handle-errors/) shows what to do with the error.
+- `res.Value()` returns the winner's payload as its Go struct. Each decision has its own payload type, so each `case` is one decision.
+- `res.Why()` returns the winner's reason as a handle, and the switch compares it against the handles the way you'd compare an error against sentinels. Use it instead of comparing `res.Reason` with a string, which compiles with a typo in it and never matches.
+- To check for one decision or reason, `Approve.Match(res)` returns the payload and whether it matched, and `NoRuleMatched.Is(res)` reports whether that's the reason, like `errors.As` and `errors.Is`.
 
-A collecting kind can grant a decision more than once, so read it with `MatchAll`, which returns every entry of that decision in outcome order, each with its typed payload. For the example service's `AccessGrant` kind, where `Admin` is `policy.NewDecision[AdminData]("admin", "clearance", "break_glass")`:
+A collecting kind can grant a decision more than once, so there's no single winner to switch on. Range over `res.Outcome` and switch on each entry's `Value()` instead. For the example service's `AccessGrant` kind:
 
 ```go
-for _, g := range Admin.MatchAll(res) {
-	grantAdmin(g.Payload.TTL, g.Reason) // g.Payload is a typed AdminData
+for _, e := range res.Outcome {
+	switch d := e.Value().(type) {
+	case access.DeployerData:
+		grantDeployer(d.TTL, e.Reason) // d is a typed DeployerData
+	case access.AdminData:
+		grantAdmin(d.TTL, e.Reason)
+	}
 }
 ```
 
-`Match` and `Is` panic on a `collect all` kind without precedence, since there's no single decision to match.
+`Admin.MatchAll(res)` returns one decision's entries in outcome order, each with its typed payload. `Value`, `Why`, `Match` and `Is` panic on a `collect all` kind without precedence, since there's no single winner to read.
 
 To show why a request got its decision, log or return the trace. Every candidate the rules produced is in `res.Trace.Candidates`, and `Candidate.Location()` renders where it came from, through every invocation:
 

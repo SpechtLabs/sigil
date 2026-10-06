@@ -15,13 +15,16 @@ import (
 
 // HaltInput is the input of the Halt kind: a list for quantifiers to
 // walk.
-type HaltInput struct {
-	Items []int64 `policy:"items"`
-}
+type (
+	HaltInput struct {
+		Items []int64 `policy:"items"`
+	}
+	AllowData struct{}
+)
 
 var (
 	haltDeny  = policy.NewDecision[policy.None]("deny", "no_rule_matched", "blocked")
-	haltAllow = policy.NewDecision[policy.None]("allow", "ok")
+	haltAllow = policy.NewDecision[AllowData]("allow", "ok")
 	errDown   = errors.New("registry down")
 )
 

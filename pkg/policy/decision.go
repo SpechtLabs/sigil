@@ -15,13 +15,20 @@ import (
 // deny:
 //
 //	var Deny = policy.NewDecision[policy.None]("deny", "banned", "no_rule_matched")
+//
+// Payload types are unique within a kind, so None serves one decision of
+// it. Another decision without a payload declares an empty struct of its
+// own:
+//
+//	type AuditorData struct{}
 type None struct{}
 
 // Decision is a typed handle for one of a kind's decisions: its name, the
 // reasons policies may construct it with, and the payload struct as the
 // type parameter T. Declare one per decision with [NewDecision], pass them
-// to [WithDecisions] or [WithCollect], and read results back with
-// [Decision.Match] and [Decision.MatchAll].
+// to [WithDecisions] or [WithCollect], and read results back with a type
+// switch on [Result.Value], or with [Decision.Match] and
+// [Decision.MatchAll].
 //
 // T's tagged fields are the decision's payload fields, which a policy
 // sets by name next to the reason when it constructs the decision:
@@ -30,6 +37,13 @@ type None struct{}
 //
 // A field whose tag carries a default, `policy:"bake,default=1h"`, may be
 // left out. Use [None] for a decision without a payload.
+//
+// T is the decision's identity in Go: a type switch on [Result.Value]
+// has one case per payload type, so [NewKind] rejects two decisions of a
+// kind with the same T. Two decisions with the same fields declare a
+// named type each over one struct, which keeps its fields and tags:
+//
+//	type ReleaseManagerData GrantData
 type Decision[T any] struct {
 	name    string
 	reasons []string
@@ -66,8 +80,10 @@ type OutcomeRef interface {
 // [Decision.Reason]. It is how Go code names a reason: to rank it with
 // [WithReasonPrecedence], make it the default with [WithDefault] or the
 // conflict outcome with [WithConflict], declare it exclusive with
-// [WithExclusive], and compare a result against it with [Outcome.Is].
-// The zero value names no reason, and [NewKind] rejects it.
+// [WithExclusive], and compare a result against it with [Outcome.Is], or
+// in a switch on [Result.Why]. Outcome is comparable: two handles are
+// equal when they name the same decision and reason. The zero value names
+// no reason, and [NewKind] rejects it.
 type Outcome struct {
 	decision string
 	reason   string
@@ -119,17 +135,12 @@ func (d Decision[T]) Reason(name string) Outcome {
 // default, or its [WithConflict] outcome after a conflict, so matching
 // that decision on it succeeds. Check the error before matching.
 func (d Decision[T]) Match(res *Result) (T, bool) {
-	var zero T
-	if res == nil {
+	e, ok := res.single("Match")
+	if !ok || e.Decision != d.name {
+		var zero T
 		return zero, false
 	}
-	if res.collect && !res.ranked {
-		panic("policy: Match on a collecting kind's result; use MatchAll") //nolint:nopanic // a programming error, like calling Match on the wrong type
-	}
-	if len(res.Outcome) != 1 || res.Outcome[0].Decision != d.name {
-		return zero, false
-	}
-	return res.Outcome[0].typed.(T), true
+	return e.typed.(T), true
 }
 
 // MatchAll returns every entry of decision d in res's outcome, in
@@ -169,13 +180,8 @@ func (o Outcome) Name() string { return o.reason }
 // default, or its [WithConflict] outcome after a conflict, so checking
 // for that reason on it succeeds. Check the error first.
 func (o Outcome) Is(res *Result) bool {
-	if res == nil {
-		return false
-	}
-	if res.collect && !res.ranked {
-		panic("policy: Is on a collecting kind's result; use MatchAll") //nolint:nopanic // a programming error, like Match on the same result
-	}
-	return len(res.Outcome) == 1 && res.Outcome[0].Decision == o.decision && res.Outcome[0].Reason == o.reason
+	e, ok := res.single("Is")
+	return ok && e.Why() == o
 }
 
 // ref implements DecisionRef.

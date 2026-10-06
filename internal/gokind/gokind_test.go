@@ -43,6 +43,9 @@ type (
 	ApproveData struct {
 		Bake time.Duration `policy:"bake,default=1h"`
 	}
+	// FastTrackData is ApproveData under a name of its own, a payload type
+	// another decision can declare next to approve.
+	FastTrackData ApproveData
 )
 
 const deploySchema = `kind DeployApproval version 1
@@ -354,6 +357,28 @@ func TestBuild(t *testing.T) {
 		{name: "decision declared twice", mutate: func(o *gokind.Options) {
 			o.Decisions = append(o.Decisions, gokind.Decision{Name: "deny", Payload: typeOf[None](), Reasons: []string{"no_rule_matched"}})
 		}, errs: []string{`decision "deny" is declared twice`, `precedence names "deny" twice`}},
+
+		// Payload types, one per decision.
+		{name: "decisions sharing an empty payload", mutate: func(o *gokind.Options) {
+			o.Decisions = append(o.Decisions, gokind.Decision{Name: "ship_it", Payload: typeOf[None](), Reasons: []string{"lgtm"}})
+		}, errs: []string{"decisions deny and ship_it share payload type gokind_test.None"},
+			help: "give each decision its own payload type, like `type ShipItData struct{}`, so a type switch on the result tells them apart"},
+		{name: "decisions sharing a payload struct", mutate: func(o *gokind.Options) {
+			o.Decisions = append(o.Decisions, gokind.Decision{Name: "fast_track", Payload: typeOf[ApproveData](), Reasons: []string{"lgtm"}})
+		}, errs: []string{"decisions approve and fast_track share payload type gokind_test.ApproveData"},
+			help: "give each decision its own payload type, like `type FastTrackData ApproveData`, which keeps its fields, so a type switch on the result tells them apart"},
+		{name: "decisions sharing an unnamed payload struct", mutate: func(o *gokind.Options) {
+			t := typeOf[struct {
+				N int `policy:"n"`
+			}]()
+			o.Decisions = append(o.Decisions,
+				gokind.Decision{Name: "a", Payload: t, Reasons: []string{"x"}},
+				gokind.Decision{Name: "b", Payload: t, Reasons: []string{"x"}})
+		}, errs: []string{"decisions a and b share payload type struct { N int \"policy:\\\"n\\\"\" }"},
+			help: "give each decision its own payload type, like `type BData struct { N int \"policy:\\\"n\\\"\" }`, which keeps its fields, so a type switch on the result tells them apart"},
+		{name: "a named type over a shared payload struct", mutate: func(o *gokind.Options) {
+			o.Decisions = append(o.Decisions, gokind.Decision{Name: "fast_track", Payload: typeOf[FastTrackData](), Reasons: []string{"lgtm"}})
+		}, want: "decision fast_track {\n  reason: lgtm\n  bake: duration = 1h\n}"},
 
 		// Reason rankings.
 		{name: "a ranking", mutate: func(o *gokind.Options) {

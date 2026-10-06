@@ -25,11 +25,14 @@ type (
 	AdminData struct {
 		TTL time.Duration `policy:"ttl,default=8h"`
 	}
+	WriteData  struct{}
+	GrantAData struct{}
+	GrantBData struct{}
 )
 
 var (
 	Read  = policy.NewDecision[policy.None]("read", "engineering_member", "everyone")
-	Write = policy.NewDecision[policy.None]("write", "platform_member")
+	Write = policy.NewDecision[WriteData]("write", "platform_member")
 	Admin = policy.NewDecision[AdminData]("admin", "platform_member", "oncall")
 
 	Access = policy.NewKind[AccessInput]("AccessGrant", policy.WithVersion(1), policy.WithCollect(Read, Write, Admin))
@@ -40,8 +43,8 @@ var (
 
 	// A compartment kind: an actor may be granted A or B, never both, and
 	// a deny outranks either.
-	GrantA       = policy.NewDecision[policy.None]("grant_a", "member")
-	GrantB       = policy.NewDecision[policy.None]("grant_b", "member")
+	GrantA       = policy.NewDecision[GrantAData]("grant_a", "member")
+	GrantB       = policy.NewDecision[GrantBData]("grant_b", "member")
 	Suspend      = policy.NewDecision[policy.None]("deny", "suspended", "none")
 	Compartments = policy.NewKind[AccessInput]("Compartments", policy.WithVersion(1),
 		policy.WithDecisions(Suspend, GrantA, GrantB),

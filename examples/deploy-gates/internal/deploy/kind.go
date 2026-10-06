@@ -11,7 +11,7 @@
 // [Approve] are the decision handles, each with its reasons and payload type,
 // and [Kind] ties them together with the Tier enum, the precedence, the
 // default decision and the host function split. The host reads a result
-// through the same handles: [policy.Decision.Match] hands back a
+// with a type switch on [policy.Result.Value], which hands back a
 // [ReviewData] or an [ApproveData], not a map.
 //
 // The Go types here are the source of truth. `sigilc export` writes them out

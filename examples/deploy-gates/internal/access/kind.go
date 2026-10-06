@@ -11,8 +11,8 @@
 // platform's access.guardrails, which every access policy has to invoke,
 // asserts on the outcome that no one is both auditor and deployer, and an
 // evaluation that breaks it fails with a [policy.AssertionError]. A host
-// reads the grants with [policy.Decision.MatchAll], one call per role, and
-// gets every grant's typed payload.
+// ranges over the outcome and switches on each entry's [policy.Entry.Value],
+// which is the grant's payload as its role's own struct.
 //
 // Like the deploy kind, the Go types are the source of truth and `sigilc
 // export AccessGrant` writes policies/access_grant.sigil from them.
@@ -54,20 +54,37 @@ type GrantData struct {
 	TTL time.Duration `policy:"ttl,default=8h" json:"ttl"`
 }
 
+// The payloads of the two roles that last as long as a [GrantData]. Each role
+// has its own type, so a type switch on a grant tells them apart.
+type (
+	// DeployerData is the deployer role's payload.
+	DeployerData GrantData
+	// ReleaseManagerData is the release manager role's payload.
+	ReleaseManagerData GrantData
+)
+
 // AdminData is the payload of the admin role, which expires sooner.
 type AdminData struct {
 	// TTL is one hour when the granting rule doesn't set it.
 	TTL time.Duration `policy:"ttl,default=1h" json:"ttl"`
 }
 
+// The payloads of the roles that carry only a reason.
+type (
+	// ReaderData is the reader role's payload.
+	ReaderData struct{}
+	// AuditorData is the auditor role's payload.
+	AuditorData struct{}
+)
+
 // The roles, declared with their reasons. Reader and Auditor carry only a
 // reason; the others carry a time to live.
 var (
-	Reader         = policy.NewDecision[policy.None]("reader", "team_member", "everyone_in_staging")
-	Deployer       = policy.NewDecision[GrantData]("deployer", "team_member", "oncall")
-	ReleaseManager = policy.NewDecision[GrantData]("release_manager", "platform_member")
+	Reader         = policy.NewDecision[ReaderData]("reader", "team_member", "everyone_in_staging")
+	Deployer       = policy.NewDecision[DeployerData]("deployer", "team_member", "oncall")
+	ReleaseManager = policy.NewDecision[ReleaseManagerData]("release_manager", "platform_member")
 	Admin          = policy.NewDecision[AdminData]("admin", "clearance", "break_glass")
-	Auditor        = policy.NewDecision[policy.None]("auditor", "compliance_member")
+	Auditor        = policy.NewDecision[AuditorData]("auditor", "compliance_member")
 )
 
 // Kind is the AccessGrant contract, version 1. WithCollect makes every fired

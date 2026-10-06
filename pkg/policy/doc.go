@@ -31,7 +31,9 @@
 //	}
 //
 // Each decision has a payload struct, or [None] when it carries only a
-// reason. A payload field may declare a default after its name, as a Sigil
+// reason. The payload type is the decision's identity in Go, so each
+// decision of a kind has its own, and two that carry only a reason can't
+// both use None. A payload field may declare a default after its name, as a Sigil
 // constant of the field's type; payload fields are the only ones that take
 // it. [NewDecision] declares the decision with the reasons policies may
 // give it:
@@ -51,7 +53,10 @@
 // hint, so a typo stops the program at init instead of compiling into a
 // comparison that never matches:
 //
-//	var NoRuleMatched = Deny.Reason("no_rule_matched")
+//	var (
+//		NotEligible   = Deny.Reason("not_eligible")
+//		NoRuleMatched = Deny.Reason("no_rule_matched")
+//	)
 //
 // [NewKind] ties the input struct, the decisions and the host functions
 // together. Each [Option] corresponds to one declaration of a kind file:
@@ -131,18 +136,35 @@
 // way, with the file, line and column of the rule that produced it.
 //
 // Result.Payload is an untyped map for logging and generic tooling.
-// Application code matches on the decision handle instead and gets the
-// payload struct back with [Decision.Match] or [Decision.MatchAll]:
+// Application code reads a result the way it reads an error. Every
+// decision of a kind has its own payload type, so a type switch on
+// [Result.Value] has one case per decision, each with its payload struct:
 //
 //	res, err := p.Eval(ctx, input)
 //	if err != nil {
 //		return err // res holds the kind's default
 //	}
-//	if a, ok := Approve.Match(res); ok {
-//		startRollout(a.Bake)
+//	switch d := res.Value().(type) {
+//	case ApproveData:
+//		startRollout(d.Bake)
+//	case policy.None: // deny
+//		reject(res.Reason)
 //	}
 //
-// [Outcome.Is] does the same for one reason: NoRuleMatched.Is(res).
+// [Result.Why] returns the reason as an [Outcome], which a switch compares
+// against the handles like an error against its sentinels:
+//
+//	switch res.Why() {
+//	case NotEligible:
+//		return errNotEligible
+//	case NoRuleMatched:
+//		return askForAReview()
+//	}
+//
+// [Decision.Match] and [Outcome.Is] check for one decision or reason, like
+// [errors.As] and [errors.Is]. A [WithCollect] kind's outcome may hold
+// several entries, so it is read per entry with [Entry.Value] and
+// [Entry.Why], or per decision with [Decision.MatchAll].
 //
 // # Errors
 //

@@ -148,8 +148,13 @@ An alert router asks a policy what to do with each alert: page the on-call, drop
    // ...
    res, err := p.Eval(ctx, Input{Alert: alert, Team: team})
    // ...
-   if page, ok := Page.Match(res); ok {
-   	pageOncall(page.Target, res.Reason) // page is a typed PageData
+   switch d := res.Value().(type) {
+   case PageData:
+   	pageOncall(d.Target, res.Reason) // d is a typed PageData
+   case NotifyData:
+   	notifySlack(d.Channel, res.Reason)
+   case policy.None: // drop
+   	log.Info("dropped", "reason", res.Reason)
    }
    ```
 
