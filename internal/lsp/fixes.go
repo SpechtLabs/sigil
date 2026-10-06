@@ -48,24 +48,27 @@ func fixesOf(e *diag.Error, src []byte, k *kind.Kind, l *lines) *protocol.Diagno
 	}
 	from, to := e.Pos.Offset, e.End.Offset
 	old := string(src[from:to])
+	replace := func(text, title string) protocol.Fix {
+		return protocol.Fix{Title: title, Edit: protocol.TextEdit{Range: l.rangeOf(from, to), NewText: text}}
+	}
 	var fixes []protocol.Fix
 	if isName(src[from:to]) {
 		if m := stringKey.FindStringSubmatch(e.Help); m != nil {
-			fixes = append(fixes, replace(l, from, to, old, m[1], fmt.Sprintf("Write the string key %s", m[1])))
+			fixes = append(fixes, replace(m[1], fmt.Sprintf("Write the string key %s", m[1])))
 		}
 		if m := didYouMean.FindStringSubmatch(e.Help); m != nil && m[1] != old {
-			fixes = append(fixes, replace(l, from, to, old, m[1], fmt.Sprintf("Change to `%s`", m[1])))
+			fixes = append(fixes, replace(m[1], fmt.Sprintf("Change to `%s`", m[1])))
 		} else if m := noReason.FindStringSubmatch(e.Msg); m != nil && k != nil && k.Decision(m[1]) != nil {
 			for _, r := range k.Decision(m[1]).Reasons {
-				fixes = append(fixes, replace(l, from, to, old, r, fmt.Sprintf("Change to `%s`", r)))
+				fixes = append(fixes, replace(r, fmt.Sprintf("Change to `%s`", r)))
 			}
 		}
 	}
 	if m := bareReason.FindStringSubmatch(e.Help); m != nil && m[1] != old {
-		fixes = append(fixes, replace(l, from, to, old, m[1], fmt.Sprintf("Write the reason as `%s`", m[1])))
+		fixes = append(fixes, replace(m[1], fmt.Sprintf("Write the reason as `%s`", m[1])))
 	}
 	if m := namedCall.FindStringSubmatch(e.Help); m != nil {
-		fixes = append(fixes, replace(l, from, to, old, "reason: "+m[1], fmt.Sprintf("Write `reason: %s`", m[1])))
+		fixes = append(fixes, replace("reason: "+m[1], fmt.Sprintf("Write `reason: %s`", m[1])))
 	}
 	if m := needsField.FindStringSubmatch(e.Msg); m != nil && k != nil && src[to-1] == ')' {
 		if fix, ok := missingField(src, from, to, k.Decision(m[1]), m[2], l); ok {
@@ -75,17 +78,33 @@ func fixesOf(e *diag.Error, src []byte, k *kind.Kind, l *lines) *protocol.Diagno
 	if fixes == nil {
 		return nil
 	}
+	// Every fix holds the whole lines of what it fixes, so a fix of a
+	// document edited since doesn't apply to a different construct
+	// that happens to be at the same place.
+	start, end := lineSpan(src, from, to)
+	for i := range fixes {
+		fixes[i].Guard = protocol.Guard{Range: l.rangeOf(start, end), Text: string(src[start:end])}
+	}
 	return &protocol.DiagnosticData{Fixes: fixes}
 }
 
-// replace is the fix that replaces old, from from to to, with text.
-func replace(l *lines, from, to int, old, text, title string) protocol.Fix {
-	return protocol.Fix{Title: title, Replaces: old, Edit: protocol.TextEdit{Range: l.rangeOf(from, to), NewText: text}}
+// lineSpan returns the start of the line from is on and the end of the
+// line to is on, its line break left out, `\r\n` as well as `\n`.
+func lineSpan(src []byte, from, to int) (int, int) {
+	end := len(src)
+	if i := bytes.IndexByte(src[to:], '\n'); i >= 0 {
+		end = to + i
+	}
+	if end > to && src[end-1] == '\r' {
+		end--
+	}
+	return bytes.LastIndexByte(src[:from], '\n') + 1, end
 }
 
 // missingField is the fix that adds the payload field name of d, with its
 // type's zero value, to the constructor from from to to, whose last byte
-// is its `)`. It reports false for a field whose type has no literal to
+// is its `)`: right after its last argument, so a `)` on a line of its own
+// stays there. It reports false for a field whose type has no literal to
 // write, such as a struct's.
 func missingField(src []byte, from, to int, d *kind.Decision, name string, l *lines) (protocol.Fix, bool) {
 	if d == nil || d.Field(name) == nil {
@@ -96,14 +115,16 @@ func missingField(src []byte, from, to int, d *kind.Decision, name string, l *li
 		return protocol.Fix{}, false
 	}
 	arg := name + ": " + zero
-	switch before := bytes.TrimRight(src[from:to-1], " \t\r\n"); {
+	before := bytes.TrimRight(src[from:to-1], " \t\r\n")
+	at := from + len(before)
+	switch {
 	case bytes.HasSuffix(before, []byte("(")):
 	case bytes.HasSuffix(before, []byte(",")):
 		arg = " " + arg
 	default:
 		arg = ", " + arg
 	}
-	return replace(l, to-1, to, ")", arg+")", fmt.Sprintf("Add the missing field `%s`", name)), true
+	return protocol.Fix{Title: fmt.Sprintf("Add the missing field `%s`", name), Edit: protocol.TextEdit{Range: l.rangeOf(at, at), NewText: arg}}, true
 }
 
 // zeroOf returns the literal of t's zero value, to fill a field with, or
@@ -149,9 +170,9 @@ func isName(b []byte) bool {
 
 // codeActions answers textDocument/codeAction with the quick fixes of
 // the diagnostics the client sends: the ones the server attached when it
-// published them, each while its document still holds the text it
-// replaces, so a fix of an edited document doesn't land in the wrong
-// place. A fix is preferred when it's its diagnostic's only one.
+// published them, each while its document still holds the lines it was
+// worked out from, so a fix of an edited document doesn't land in the
+// wrong place. A fix is preferred when it's its diagnostic's only one.
 func (s *Server) codeActions(raw json.RawMessage) ([]protocol.CodeAction, *jsonrpc.Error) {
 	p, bad := decode[protocol.CodeActionParams](raw)
 	if bad != nil {
@@ -170,8 +191,8 @@ func (s *Server) codeActions(raw json.RawMessage) ([]protocol.CodeAction, *jsonr
 			continue
 		}
 		for _, fix := range diagnostic.Data.Fixes {
-			from, to := l.offset(fix.Edit.Range.Start), l.offset(fix.Edit.Range.End)
-			if from > to || string(d.text[from:to]) != fix.Replaces {
+			from, to := l.offset(fix.Guard.Range.Start), l.offset(fix.Guard.Range.End)
+			if from > to || string(d.text[from:to]) != fix.Guard.Text {
 				continue
 			}
 			out = append(out, protocol.CodeAction{

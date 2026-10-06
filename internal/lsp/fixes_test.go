@@ -24,7 +24,8 @@ func TestFixes(t *testing.T) {
 		{name: "a misspelled payload field", src: "when cleared {\n  review(reason: service_owner, approvrs: [])\n}\n", want: []string{"Change to `approvers` => , approvers: []", "Add the missing field `approvers` => approvrs: [], approvers: [])"}},
 		{name: "a map key that reads a name", src: "pub let m = {servce: \"x\"}\n", want: []string{`Write the string key "servce" => {"servce": "x"}`, "Change to `service` => {service: \"x\"}"}},
 		{name: "a missing field", src: "when cleared {\n  review(reason: service_owner)\n}\n", want: []string{"Add the missing field `approvers` => review(reason: service_owner, approvers: [])"}},
-		{name: "a missing field after a trailing comma", src: "when cleared {\n  review(\n    reason: service_owner,\n  )\n}\n", want: []string{"Add the missing field `approvers` => service_owner,\n   approvers: [])"}},
+		{name: "a missing field after a trailing comma", src: "when cleared {\n  review(\n    reason: service_owner,\n  )\n}\n", want: []string{"Add the missing field `approvers` => service_owner, approvers: []\n  )"}},
+		{name: "a missing field before a closing parenthesis on its own line", src: "when cleared {\r\n  review(reason: service_owner\r\n  )\r\n}\r\n", want: []string{"Add the missing field `approvers` => service_owner, approvers: []\r\n  )"}},
 		{name: "a misspelled imported let", src: "use deploy.common.{owns_servce as o}\n", want: []string{"Change to `owns_service` => {owns_service as o}"}},
 		{name: "a misspelled decision", src: "assert(\"x\", outcome.revew == [])\n", want: []string{"Change to `review` => outcome.review"}},
 		{name: "a quoted reason", src: "when cleared {\n  deny(reason: \"not_eligible\")\n}\n", want: []string{"Write the reason as `not_eligible` => (reason: not_eligible)"}},
@@ -52,8 +53,8 @@ func TestFixes(t *testing.T) {
 				}
 				for _, fix := range data.Fixes {
 					from, to := l.offset(fix.Edit.Range.Start), l.offset(fix.Edit.Range.End)
-					if src[from:to] != fix.Replaces {
-						t.Errorf("%s replaces %q, want %q", fix.Title, src[from:to], fix.Replaces)
+					if gFrom, gTo := l.offset(fix.Guard.Range.Start), l.offset(fix.Guard.Range.End); src[gFrom:gTo] != fix.Guard.Text || from < gFrom || to > gTo {
+						t.Errorf("%s edits %d to %d, guarded by %q at %d to %d", fix.Title, from, to, fix.Guard.Text, gFrom, gTo)
 					}
 					edited := src[:from] + fix.Edit.NewText + src[to:]
 					got = append(got, fix.Title+" => "+around(edited, from, len(fix.Edit.NewText)))

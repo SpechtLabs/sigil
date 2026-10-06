@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spechtlabs/sigil/internal/lsp/protocol"
 )
@@ -128,6 +129,39 @@ func TestCodeActions(t *testing.T) {
 	s.notify(protocol.MethodDidChange, s.changing("production.sigil", 2, strings.Replace(src, "servce", "svc", 1)))
 	if got := ask(); len(got) != 0 {
 		t.Errorf("after the name changed, got %+v, want none", got)
+	}
+	s.shutdown()
+}
+
+// TestCodeActionsStale checks that a fix of a document edited since its
+// diagnostics were published doesn't apply to a different construct at
+// the same place: the constructor that missed a field is now another
+// one, whose `)` is where the old one's was.
+func TestCodeActionsStale(t *testing.T) {
+	s := start(t, &memLoader{files: testWorkspace(t)}, WithDelay(time.Hour))
+	s.initialize()
+	src := "policy p: DeployApproval@2\n\nwhen true {\n  review(reason: service_owner)\n}\n"
+	s.notify(protocol.MethodDidOpen, s.opening("production.sigil", src))
+	var diagnostics []protocol.Diagnostic
+	for _, n := range s.settle("production.sigil", 1) {
+		var p protocol.PublishDiagnosticsParams
+		if n.Method == protocol.MethodPublishDiagnostic && json.Unmarshal(n.Params, &p) == nil && p.URI == s.uri("production.sigil") {
+			diagnostics = p.Diagnostics
+		}
+	}
+	if len(diagnostics) != 1 || diagnostics[0].Data == nil {
+		t.Fatalf("diagnostics = %+v, want the missing field with a fix", diagnostics)
+	}
+	s.notify(protocol.MethodDidChange, s.changing("production.sigil", 2, strings.Replace(src, "review(reason: service_owner)", "deny(reason: no_rule_matched)", 1)))
+	var actions []protocol.CodeAction
+	params := map[string]any{
+		"textDocument": map[string]any{"uri": s.uri("production.sigil")},
+		"range":        diagnostics[0].Range,
+		"context":      map[string]any{"diagnostics": diagnostics},
+	}
+	s.decode(s.call(protocol.MethodCodeAction, params), &actions)
+	if len(actions) != 0 {
+		t.Errorf("after the constructor changed, got %+v, want none", actions)
 	}
 	s.shutdown()
 }

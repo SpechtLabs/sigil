@@ -19,7 +19,8 @@ const maxFuzzSource = 2048
 // its inlay hints and quick fixes. Nothing may panic, a completion
 // replaces text that ends at the cursor, a target and its definitions
 // are spans of the files the project read, a signature's parameters are
-// spans of its label, and a fix replaces what it says it does.
+// spans of its label, and and a fix edits inside the text it
+// guards.
 func FuzzQueries(f *testing.F) {
 	for _, pattern := range []string{"testdata/workspace/*.sigil", "../parser/testdata/*.sigil", "../../cmd/sigil/command/lsp/testdata/editor/*/*.sigil"} {
 		files, err := filepath.Glob(pattern)
@@ -78,7 +79,7 @@ func dataFixes(data *protocol.DiagnosticData) []protocol.Fix {
 
 // checkFixes checks the inlay hints of src, the source of the file called
 // name in snap, and its quick fixes: every hint is in src, and every fix
-// replaces what it says it does.
+// edits inside the text it guards, which src holds.
 func checkFixes(t *testing.T, v *view, snap *Snapshot, name string, src []byte) {
 	t.Helper()
 	for _, h := range v.hints(0, len(src)) {
@@ -96,8 +97,9 @@ func checkFixes(t *testing.T, v *view, snap *Snapshot, name string, src []byte) 
 			continue
 		}
 		for _, fix := range dataFixes(fixesOf(e, src, k, lines)) {
-			if from, to := lines.offset(fix.Edit.Range.Start), lines.offset(fix.Edit.Range.End); string(src[from:to]) != fix.Replaces {
-				t.Fatalf("%s replaces %q, not %q", fix.Title, src[from:to], fix.Replaces)
+			from, to := lines.offset(fix.Edit.Range.Start), lines.offset(fix.Edit.Range.End)
+			if gFrom, gTo := lines.offset(fix.Guard.Range.Start), lines.offset(fix.Guard.Range.End); string(src[gFrom:gTo]) != fix.Guard.Text || from < gFrom || to > gTo || from > to {
+				t.Fatalf("%s edits %d to %d, guarded by %q at %d to %d", fix.Title, from, to, fix.Guard.Text, gFrom, gTo)
 			}
 		}
 	}

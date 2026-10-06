@@ -79,11 +79,18 @@ type DiagnosticData struct {
 }
 
 // Fix is one fix of a diagnostic: an edit of its document, which applies
-// only while the edit's range still holds Replaces.
+// only while the guard's range still holds the guard's text.
 type Fix struct {
-	Title    string   `json:"title"`
-	Replaces string   `json:"replaces"`
-	Edit     TextEdit `json:"edit"`
+	Title string   `json:"title"`
+	Edit  TextEdit `json:"edit"`
+	Guard Guard    `json:"guard"`
+}
+
+// Guard is the text a fix was worked out from, and where it was: the
+// whole lines of what the fix changes.
+type Guard struct {
+	Text  string `json:"text"`
+	Range Range  `json:"range"`
 }
 
 // PublishDiagnosticsParams replaces every diagnostic of a document.
