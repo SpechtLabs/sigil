@@ -34,17 +34,17 @@ func BenchmarkCompileExpression(b *testing.B) {
 // many rules but only one of them matches, and ranked is the same on a
 // `collect one` kind with a precedence.
 func BenchmarkEvalPolicy(b *testing.B) {
-	for _, n := range []int{1, 8, 16, 32, 64, 128} {
+	for _, n := range []int{1, 8, 16, 32, 64, 128, 256, 512} {
 		b.Run(fmt.Sprintf("rules=%d", n), func(b *testing.B) {
 			benchmarkEvalPolicy(b, benchtest.Policy(n), true, n)
 		})
 	}
-	for _, n := range []int{8, 16, 32, 64, 128} {
+	for _, n := range []int{1, 8, 16, 32, 64, 128, 256, 512} {
 		b.Run(fmt.Sprintf("one-matching/rules=%d", n), func(b *testing.B) {
 			benchmarkEvalPolicy(b, benchtest.OneMatching(n), true, 1)
 		})
 	}
-	for _, n := range []int{64, 128} {
+	for _, n := range []int{1, 8, 16, 32, 64, 128, 256, 512} {
 		b.Run(fmt.Sprintf("ranked/rules=%d", n), func(b *testing.B) {
 			benchmarkEvalPolicy(b, benchtest.OneMatching(n), false, 1)
 		})

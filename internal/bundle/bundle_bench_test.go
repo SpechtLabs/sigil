@@ -10,7 +10,7 @@ import (
 
 func BenchmarkBundleCompile(b *testing.B) {
 	k, binding := benchtest.Kind(b, false)
-	for _, n := range []int{1, 64} {
+	for _, n := range []int{1, 8, 16, 32, 64, 128, 256, 512} {
 		b.Run(fmt.Sprintf("rules=%d", n), func(b *testing.B) {
 			src := []byte(benchtest.Policy(n))
 			b.ReportAllocs()

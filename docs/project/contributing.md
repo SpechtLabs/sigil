@@ -71,12 +71,12 @@ The runner records `ns/op` (elapsed time per operation), `B/op` (allocated bytes
 
 | Layer | Workloads |
 | --- | --- |
-| Lexer, parser and AST | Tokenization and file parsing at 1 and 64 rules, expression parsing, AST printing |
-| Checker and kinds | Policy checking at both sizes, contract loading and source generation |
+| Lexer, parser and AST | Tokenization and file parsing from 1 to 512 rules, expression parsing, AST printing |
+| Checker and kinds | Policy checking from 1 to 512 rules, contract loading and source generation |
 | Go bindings | Kind construction, synthesized bindings and input decoding |
-| Constants and evaluator | Constant evaluation, expression compilation, policy evaluation from 1 to 128 rules with every rule or only one matching, and composed policies |
-| Bundles, lints and formatter | Bundle compilation, linting and formatting |
-| Results and public API | Result conversion, compilation, ranked and collecting evaluation, a 64-rule policy with every rule or only one matching, conflicts, assertions, fallback and concurrent evaluation |
+| Constants and evaluator | Constant evaluation, expression compilation, policy evaluation from 1 to 512 rules with every rule matching, only one, or only one under a precedence, and composed policies |
+| Bundles, lints and formatter | Bundle compilation and formatting from 1 to 512 rules, linting |
+| Results and public API | Result conversion, compilation from 1 to 512 rules, ranked and collecting evaluation, a 64-rule policy with every rule or only one matching, conflicts, assertions, fallback and concurrent evaluation |
 | Tooling | Diagnostic rendering, CLI configuration and YAML test-suite parsing |
 
 Compilation and evaluation are measured separately. Evaluation benchmarks prepare policies and inputs before the timer starts. Serial benchmarks use `b.Loop()`; the concurrent public API workload uses `b.RunParallel()` against a shared compiled policy. The default runner uses two Go execution threads (`GOMAXPROCS=2` and `-cpu=2`). This does not reserve two physical cores. A full `mise run bench` takes a few minutes, prints each workload's medians and writes the raw samples to `benchmark-results/`.
