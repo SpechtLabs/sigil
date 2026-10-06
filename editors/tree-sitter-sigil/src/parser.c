@@ -19677,9 +19677,9 @@ TS_PUBLIC const TSLanguage *tree_sitter_sigil(void) {
     .reserved_words = &ts_reserved_words[0][0],
     .max_reserved_word_set_size = 37,
     .metadata = {
-      .major_version = 0,
-      .minor_version = 1,
-      .patch_version = 0,
+      .major_version = 0, // x-release-please-major
+      .minor_version = 7, // x-release-please-minor
+      .patch_version = 3, // x-release-please-patch
     },
   };
   return &language;

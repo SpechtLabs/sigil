@@ -25,6 +25,15 @@
           "jsonpath": "$.version"
         },
         {
+          "type": "json",
+          "path": "editors/tree-sitter-sigil/tree-sitter.json",
+          "jsonpath": "$.metadata.version"
+        },
+        {
+          "type": "generic",
+          "path": "editors/tree-sitter-sigil/src/parser.c"
+        },
+        {
           "type": "toml",
           "path": "bindings/rust/Cargo.toml",
           "jsonpath": "$.package.version"

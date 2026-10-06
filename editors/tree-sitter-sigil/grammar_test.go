@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -36,7 +37,15 @@ const (
 	mustReject                // a test case of the grammar's corpus marked `:error`
 )
 
+// update has TestGeneratedSourcesAreCurrent write src/ instead of comparing
+// it; `mise run tree-sitter-generate` runs it so.
+var update = flag.Bool("update", false, "rewrite src/ from grammar.js")
+
 var (
+	// versionLine matches a line of the parser's metadata block, which
+	// tree-sitter generate fills from tree-sitter.json's version.
+	versionLine = regexp.MustCompile(`(?m)^(\s*\.(major|minor|patch)_version = \d+,)$`)
+
 	// sigilBlock matches a fenced sigil code block in Markdown, with or
 	// without a title after the language.
 	sigilBlock = regexp.MustCompile("(?ms)^[ \t]*```sigil[^\n]*\n(.*?)^[ \t]*```")
@@ -163,7 +172,10 @@ func TestQueries(t *testing.T) {
 }
 
 // TestGeneratedSourcesAreCurrent regenerates the parser from grammar.js
-// and fails when the committed src/ differs from it.
+// and fails when the committed src/ differs from it, or with -update writes
+// it. parser.c carries the grammar's version in its metadata block, so its
+// three lines get release-please's markers: release-please bumps them with
+// tree-sitter.json, and the committed parser stays current across a release.
 func TestGeneratedSourcesAreCurrent(t *testing.T) {
 	cli := treeSitter(t)
 	out := t.TempDir()
@@ -181,6 +193,17 @@ func TestGeneratedSourcesAreCurrent(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		if rel == "parser.c" {
+			if want, err = markVersion(want); err != nil {
+				return err
+			}
+		}
+		if *update {
+			if err = os.MkdirAll(filepath.Dir(filepath.Join("src", rel)), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join("src", rel), want, 0o644)
+		}
 		got, err := os.ReadFile(filepath.Join("src", rel))
 		switch {
 		case err != nil:
@@ -193,6 +216,17 @@ func TestGeneratedSourcesAreCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// markVersion puts release-please's x-release-please-major, -minor and
+// -patch markers on the version lines of a generated parser's metadata
+// block. It fails unless it finds exactly the three, so a change to what
+// tree-sitter generates can't drop the markers unnoticed.
+func markVersion(generated []byte) ([]byte, error) {
+	if n := len(versionLine.FindAll(generated, -1)); n != 3 {
+		return nil, fmt.Errorf("parser.c has %d version lines in its metadata block, want 3; update markVersion for this tree-sitter", n)
+	}
+	return versionLine.ReplaceAll(generated, []byte("$1 // x-release-please-$2")), nil
 }
 
 // source is a Sigil source from the repository: a file, a code block in a
