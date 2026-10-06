@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"sync"
@@ -293,7 +294,7 @@ func (*notingLoader) Root(string, []string) Root {
 // document and opening it again does, never overwrites what the newer
 // project's own load found, however late it finishes.
 func TestStaleLoads(t *testing.T) {
-	l := &stagedLoader{files: testWorkspace(t), gate: make(chan struct{}), returned: make(chan struct{})}
+	l := &stagedLoader{files: testWorkspace(t), hold: "let stale", gate: make(chan struct{}), returned: make(chan struct{})}
 	s := start(t, l)
 	s.initialize()
 	stale := strings.Repeat("// padding\n", 50) + "policy payments.production: DeployApproval@2\n\nlet stale = nope\n"
@@ -317,26 +318,34 @@ func TestStaleLoads(t *testing.T) {
 	s.shutdown()
 }
 
-// stagedLoader holds its first load until the test opens the gate, and
-// lets every later one through at once.
+// stagedLoader holds the load whose open buffers hold the text hold until
+// the test opens the gate, and lets every other load through at once. It
+// picks the load by what it reads, not by the order loads arrive in:
+// each load runs on a goroutine of its own, so a later project's load
+// can reach the loader first.
 type stagedLoader struct {
 	gate     chan struct{}
-	returned chan struct{} // closed when the first load has returned
+	returned chan struct{} // closed when the held load has returned
 	memLoader
-	calls int
-	mu    sync.Mutex
+	hold string
 }
 
-// Load holds the first load, then loads.
+// Load holds the load that reads hold, then loads.
 func (l *stagedLoader) Load(r string, overlay map[string][]byte) *Snapshot {
-	l.mu.Lock()
-	l.calls++
-	first := l.calls == 1
-	l.mu.Unlock()
-	if !first {
+	if !holds(overlay, l.hold) {
 		return l.memLoader.Load(r, overlay)
 	}
 	<-l.gate
 	defer close(l.returned)
 	return l.memLoader.Load(r, overlay)
+}
+
+// holds reports whether any buffer in overlay contains text.
+func holds(overlay map[string][]byte, text string) bool {
+	for _, src := range overlay {
+		if bytes.Contains(src, []byte(text)) {
+			return true
+		}
+	}
+	return false
 }
