@@ -7,12 +7,13 @@ Install the extension and open a folder that has `.sigil` files. The extension s
 ## What you get
 
 - **Highlighting** for policy, module and kind files, and for ```` ```sigil ```` code fences in Markdown.
-- **Diagnostics**: the errors and lints `sigil check` reports, as you type, with the same messages and fixes.
-- **Completion** of inputs, fields, host functions and decision payload keys, from the kind the document names.
-- **Hover** with a decision's full signature.
+- **Diagnostics**: the errors and lints `sigil check` reports, as you type, with the same messages, and **quick fixes** for the ones with an obvious fix, such as a misspelled reason or a missing payload field.
+- **Completion** from the kind the document names: inputs, fields, host functions, decisions with their reasons and required payload fields, and rule templates such as `when`, `assert` and `use`, which fill in as snippets.
+- **Signature help** inside a decision constructor or a host function call.
+- **Hover** with a let's, an input's or a decision's type, and **inlay hints** with the type of each let and quantifier variable.
 - **Go to definition** for lets and `use` targets.
 - **Formatting** in `sigil fmt`'s canonical style: **Format Document**, or `editor.formatOnSave`.
-- **Snippets** for document headers, `when` blocks, decision constructors, asserts and kind declarations. Type `policy`, `when`, `decide` or `kind` and pick the snippet.
+- **Snippets** that start a document: type `policy`, `module` or `kind`, or `type`, `decision` or `enum` in a kind file, and pick the snippet.
 - **Comment toggling**, bracket matching, and two-space indentation as `sigil fmt` writes it.
 - **Schema validation** of the configuration file: `sigil.json` out of the box, `sigil.yaml` with the [YAML extension](https://open-vsx.org/extension/redhat/vscode-yaml), and `sigil.toml` with [Even Better TOML](https://open-vsx.org/extension/tamasfe/even-better-toml).
 

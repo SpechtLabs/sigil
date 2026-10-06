@@ -11,7 +11,7 @@ Sigil itself, the language server included, are in the
   fences in Markdown.
 - `sigil lsp` for diagnostics, completion, hover, go to definition and
   formatting, run from the bundled binary, `sigil.path` or `PATH`.
-- Snippets for document headers, rules, decisions and kind declarations.
+- Snippets that start policy, module and kind documents, and kind declarations; rules, constructors and the rest come from the language server's completions.
 - Schema validation for `sigil.yaml`, `sigil.json` and `sigil.toml`.
 - A VSIX per platform on every GitHub release, for VS Code, and the extension
   on Open VSX for VSCodium, Cursor and the other Open VSX editors. In VS Code,

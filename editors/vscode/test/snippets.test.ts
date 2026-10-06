@@ -55,7 +55,6 @@ describe("snippets", () => {
   });
 
   test("expand mirrors tabstops and takes the defaults", () => {
-    expect(expand("decide")).toBe("deny(reason: no_rule_matched)");
     expect(expand("kind")).toContain("precedence deny > allow\n\ndefault deny(reason: no_rule_matched)");
   });
 
@@ -78,15 +77,13 @@ describe("snippets", () => {
     const policy = [
       expand("policy").trimEnd(),
       "",
-      expand("use", { 2: "name" }),
+      // Rules come from the language server's completions; the snippets
+      // only start the documents.
+      "use team.common.{name}",
       "",
-      expand("param", { 1: "approvers", 2: "list<string>" }),
-      "",
-      expand("when", { 1: 'request == "admin"' }),
-      "",
-      expand("when", { 1: "name", 2: "review", 3: "owner, approvers: approvers" }),
-      "",
-      expand("assert", { 1: "named", 2: 'request != ""' }),
+      "when name {",
+      '  review(reason: owner, approvers: ["leads"])',
+      "}",
       "",
     ].join("\n");
     writeFileSync(join(dir, "kind.sigil"), bundle);
