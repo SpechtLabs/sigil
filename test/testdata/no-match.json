@@ -1,4 +1,0 @@
-{
-  "requestor": {"name": "mallory", "roles": []},
-  "target": {"labels": {"env": "staging"}}
-}

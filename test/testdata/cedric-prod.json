@@ -1,4 +1,0 @@
-{
-  "requestor": { "name": "cedric", "roles": ["manager", "user"] },
-  "target": { "labels": { "env": "prod" } }
-}
