@@ -215,6 +215,6 @@ if errors.Is(err, context.DeadlineExceeded) {
 
 Derive `ctx` from the request's context, so the evaluation also stops, with `context.Canceled`, when the client leaves; where `Eval` checks the context is in [Context checks](/reference/evaluation/#context-checks).
 
-A deadline limits how long one evaluation takes, not how much work an input asks for: a slow input still uses the CPU until the deadline. `Eval` also can't interrupt a host function that never returns; it stops as soon as the function returns. The compiler doesn't compute or enforce a cost budget, so bound the size of your inputs and the work your host functions do yourself, and evaluate under a deadline. A budget is [planned](/project/planned/#static-cost-analysis).
+A deadline limits how long one evaluation takes, not how much work an input asks for: a slow input still uses the CPU until the deadline. `Eval` also can't interrupt a host function that never returns; it stops as soon as the function returns. Sigil has no cost budget, so bound the size of your inputs and the work your host functions do yourself, and evaluate under a deadline; [Why there's no cost budget](/understanding/halting/#why-there-s-no-cost-budget) explains the choice.
 
 The checks cost nothing measurable on the evaluation benchmarks; see [Performance](/reference/performance/). Why Sigil always halts, and what a deadline adds: [Halting by construction](/understanding/halting/).

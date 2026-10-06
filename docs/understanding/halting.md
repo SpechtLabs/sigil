@@ -5,7 +5,7 @@ createTime: 2026/09/24 22:30:00
 permalink: /understanding/halting/
 ---
 
-A policy engine often runs on every request, so a policy that never finishes holds a request forever. Sigil rules that out by construction: its language constructs terminate on finite inputs, provided host functions terminate too, and the [design goals](/understanding/design-goals/#when-goals-conflict) rank that guarantee above every other. Termination isn't the whole story, though. It doesn't protect a request path from a policy that finishes eventually but takes too long, and the compiler doesn't yet estimate execution cost or enforce a budget. The second half of this page is about that gap.
+A policy engine often runs on every request, so a policy that never finishes holds a request forever. Sigil rules that out by construction: its language constructs terminate on finite inputs, provided host functions terminate too, and the [design goals](/understanding/design-goals/#when-goals-conflict) rank that guarantee above every other. Termination isn't the whole story, though. It doesn't protect a request path from a policy that finishes eventually but takes too long, and the compiler doesn't estimate execution cost or enforce a budget. The second half of this page covers how a host closes that gap, and why a static budget isn't part of the answer.
 
 ## What's missing, on purpose
 
@@ -37,11 +37,19 @@ The trade is about who reviews the code. A host function is reviewed by the peop
 
 Nested quantifiers multiply work. `any a in xs: any b in ys: a == b` may compare every pair, costing `len(xs) * len(ys)`, so two nested quantifiers over lists of size `n` can take `n²` comparisons. List membership and distinct-element operators also compare elements across collections, and policy invocations repeat work for each instantiation. Strings, patterns and host functions have costs of their own. A general promise of linear evaluation cost would be wrong.
 
-So there are two limits today, one at run time and one on the host.
+So there are two limits, one at run time and one on the host.
 
 **A deadline bounds the time.** `Eval` takes a context, and the loops check it as they go ([Context checks](/reference/evaluation/#context-checks) says where). An input that makes nested quantifiers slow then ends with `context.DeadlineExceeded` and the kind's default, instead of holding the caller. That limits how long one evaluation takes, not the work an input asks for: a slow input still uses the CPU until the deadline. [Bound evaluation time](/guides/handle-errors/#bound-evaluation-time) shows how to set one, and [Strict schema, forgiving data](/understanding/strictness/#every-failure-fails-closed) explains why the result after a deadline doesn't depend on how far the evaluation got.
 
-**The host bounds the inputs.** Until there's static cost analysis, the host has to bound its input sizes and the work its host functions do. [Static cost analysis](/project/planned/#static-cost-analysis) is the planned answer: combine declared collection limits with operator and host-function costs, and reject a policy over the host's budget at the expression that exceeds it. Kinds declare no collection limits today, and `sigil check` reports no costs. Fuzzing doesn't fill the gap either: it exercises correctness and catches crashes, but passing fuzz campaigns doesn't establish a resource bound; [What the properties check](/project/contributing/#what-the-properties-check) lists what the fuzzers check today.
+**The host bounds the inputs.** Work grows only with the sizes of the collections a policy walks, and the host decides those: it decodes the input, binds the params and implements the host functions. A host that caps the lists it accepts and the work its host functions do has bounded every evaluation. Fuzzing doesn't establish a resource bound: it exercises correctness and catches crashes; [What the properties check](/project/contributing/#what-the-properties-check) lists what the fuzzers check.
+
+## Why there's no cost budget
+
+[CEL](https://github.com/google/cel-go) estimates an expression's cost before running it and rejects one over a budget. Sigil doesn't, and doesn't plan to.
+
+A static estimate needs a size for every collection, so every kind would have to declare a maximum length for every list and map, and every host function a cost. Those declarations would be part of the contract, versioned and reviewed like the rest of it, for a number the analyzer then multiplies through nested quantifiers. The estimate is a worst case: two nested quantifiers over lists declared with up to 1,000 elements cost a million comparisons on paper, whatever the input. A budget set below that rejects a reasonable policy; one set above it bounds nothing a deadline doesn't.
+
+A deadline measures the actual evaluation of the actual input, and a realistic policy evaluates in microseconds (see [Performance](/reference/performance/)). Between a host that bounds its inputs and an evaluation that stops at its deadline, a budget would add contract surface without closing a gap.
 
 ## Where the guarantee has limits
 

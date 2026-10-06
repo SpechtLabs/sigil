@@ -248,7 +248,3 @@ Once the context is done, the evaluation stops at the next check and returns the
 - A deadline limits how long one evaluation takes, not the work an input asks for: a slow input uses the CPU until the deadline.
 
 To set a deadline, see [Bound evaluation time](/guides/handle-errors/#bound-evaluation-time). Why evaluation terminates: [Halting by construction](/understanding/halting/).
-
-::: warning Planned
-[Static cost analysis](/project/planned/#static-cost-analysis): the compiler doesn't compute or enforce a budget yet.
-:::
