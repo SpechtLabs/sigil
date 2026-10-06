@@ -56,7 +56,10 @@ export const navbar = defineNavbarConfig([
       },
       {
         text: "Editors",
-        items: [{ text: "Set up your editor", link: "/guides/editors/", icon: "mdi:application-edit-outline" }],
+        items: [
+          { text: "Set up your editor", link: "/guides/editors/", icon: "mdi:application-edit-outline" },
+          { text: "Set up VS Code", link: "/guides/editors/vscode/", icon: "mdi:microsoft-visual-studio-code" },
+        ],
       },
     ],
   },
