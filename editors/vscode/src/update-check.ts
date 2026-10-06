@@ -9,6 +9,9 @@
 /** The latest stable Sigil release, as GitHub's API returns it. */
 export const LATEST_RELEASE_URL = "https://api.github.com/repos/SpechtLabs/sigil/releases/latest";
 
+/** The releases page, which the notice opens when the API's link isn't one of its pages. */
+export const RELEASES_URL = "https://github.com/SpechtLabs/sigil/releases";
+
 /** How long after a check the next one is due. */
 export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
@@ -79,7 +82,7 @@ export async function checkForUpdate(deps: Deps): Promise<Outcome> {
   if (deps.skipped === version) return "skipped";
   const choice = await deps.notify(version);
   if (choice === "download") {
-    await deps.open(latest.url);
+    await deps.open(releasePage(latest.url));
     return "downloaded";
   }
   if (choice === "skip") {
@@ -87,6 +90,26 @@ export async function checkForUpdate(deps: Deps): Promise<Outcome> {
     return "skip-chosen";
   }
   return "notified";
+}
+
+/**
+ * The page to open for a release: the API's html_url when it's a page under
+ * the Sigil releases on github.com, else the releases page. The response is
+ * input from the network, and the notice opens it in a browser.
+ */
+export function releasePage(url: string): string {
+  try {
+    const u = new URL(url);
+    const ours =
+      u.protocol === "https:" &&
+      u.host === "github.com" &&
+      u.username === "" &&
+      u.password === "" &&
+      u.pathname.startsWith("/SpechtLabs/sigil/releases/");
+    return ours ? u.href : RELEASES_URL;
+  } catch {
+    return RELEASES_URL;
+  }
 }
 
 /** Reads the latest release from GitHub's API. */

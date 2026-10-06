@@ -10,6 +10,8 @@ import {
   needsUpdateNotice,
   type Outcome,
   parseVersion,
+  RELEASES_URL,
+  releasePage,
 } from "../src/update-check";
 
 const DAY = CHECK_INTERVAL_MS;
@@ -188,5 +190,37 @@ describe("fetchLatestRelease", () => {
 
   test("a body without the fields rejects", async () => {
     await expect(fetchLatestRelease(fakeFetch(200, { tag_name: 1 }))).rejects.toThrow("no tag_name");
+  });
+});
+
+describe("releasePage", () => {
+  const cases: { url: string; want: string }[] = [
+    { url: RELEASE.url, want: RELEASE.url },
+    {
+      url: "https://github.com/SpechtLabs/sigil/releases/latest",
+      want: "https://github.com/SpechtLabs/sigil/releases/latest",
+    },
+    { url: "http://github.com/SpechtLabs/sigil/releases/tag/v0.8.0", want: RELEASES_URL },
+    { url: "https://evil.example/SpechtLabs/sigil/releases/tag/v0.8.0", want: RELEASES_URL },
+    { url: "https://github.com.evil.example/SpechtLabs/sigil/releases/tag/v1", want: RELEASES_URL },
+    { url: "https://user@github.com/SpechtLabs/sigil/releases/tag/v0.8.0", want: RELEASES_URL },
+    { url: "https://github.com/SpechtLabs/sigil/releases/../../other/repo", want: RELEASES_URL },
+    { url: "https://github.com/someone/else/releases/tag/v0.8.0", want: RELEASES_URL },
+    { url: "javascript:alert(1)", want: RELEASES_URL },
+    { url: "not a url", want: RELEASES_URL },
+  ];
+  for (const c of cases) {
+    test(c.url, () => {
+      expect(releasePage(c.url)).toBe(c.want);
+    });
+  }
+
+  test("Download opens the releases page when the API's link isn't one of ours", async () => {
+    const { d, calls } = deps({
+      notify: async () => "download",
+      fetchLatest: async () => ({ tag: "v0.8.0", url: "https://evil.example/x" }),
+    });
+    expect(await checkForUpdate(d)).toBe("downloaded");
+    expect(calls.at(-1)).toBe(`open ${RELEASES_URL}`);
   });
 });
