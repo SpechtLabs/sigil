@@ -1,15 +1,28 @@
 package eval
 
 import (
+	stdcmp "cmp"
 	"hash/maphash"
 	"math"
 	"reflect"
+	"slices"
 	"time"
 )
+
+// foldPairsMax is the most candidates fold compares pairwise. Past it,
+// sorting their fingerprints costs less: the two cost the same at 128.
+const foldPairsMax = 128
 
 // printSeed keys the payload fingerprints. They're only compared within
 // one evaluation, so one seed per process is enough.
 var printSeed = maphash.MakeSeed()
+
+// printAt is a candidate's payload fingerprint and its position among the
+// candidates fold reads.
+type printAt struct {
+	hash uint64
+	at   int
+}
 
 // fold drops every candidate equal to an earlier one in decision, reason
 // and payload: they're one outcome, from several branches.
@@ -18,18 +31,30 @@ var printSeed = maphash.MakeSeed()
 // fingerprints agree. When many rules produce distinct payloads for one
 // decision and reason, a deep comparison between every pair of them
 // costs more than evaluating the rules: about nine times as much at 64
-// rules.
+// rules. Comparing every pair's fingerprints instead still grows with
+// the square of the candidates, a third of the evaluation at 512, so
+// past [foldPairsMax] candidates fold sorts the fingerprints and
+// compares only candidates that share one.
 func fold(cands []*Candidate) []*Candidate {
-	if len(cands) < 2 {
+	switch {
+	case len(cands) < 2:
 		return append([]*Candidate(nil), cands...)
+	case len(cands) <= foldPairsMax:
+		return foldPairs(cands)
 	}
+	return foldSorted(cands)
+}
+
+// foldPairs is fold comparing each candidate's fingerprint with every
+// kept one's.
+func foldPairs(cands []*Candidate) []*Candidate {
 	out := make([]*Candidate, 0, len(cands))
 	prints := make([]uint64, 0, len(cands)) // prints[i] is out[i]'s fingerprint
 next:
 	for _, c := range cands {
 		p := fingerprint(c.Payload)
 		for i, kept := range out {
-			if prints[i] == p && kept.Decision == c.Decision && kept.Reason == c.Reason && reflect.DeepEqual(kept.Payload, c.Payload) {
+			if prints[i] == p && same(kept, c) {
 				continue next
 			}
 		}
@@ -37,6 +62,67 @@ next:
 		prints = append(prints, p)
 	}
 	return out
+}
+
+// foldSorted is fold sorting the fingerprints, so it compares only the
+// candidates that share one.
+func foldSorted(cands []*Candidate) []*Candidate {
+	prints := make([]printAt, len(cands))
+	for i, c := range cands {
+		prints[i] = printAt{hash: fingerprint(c.Payload), at: i}
+	}
+	slices.SortFunc(prints, func(a, b printAt) int {
+		return stdcmp.Or(stdcmp.Compare(a.hash, b.hash), stdcmp.Compare(a.at, b.at))
+	})
+
+	// kept reuses prints' array: keepDistinct never writes past the
+	// entry it's reading.
+	kept := prints[:0]
+	for start := 0; start < len(prints); {
+		end := start + 1
+		for end < len(prints) && prints[end].hash == prints[start].hash {
+			end++
+		}
+		kept = keepDistinct(kept, prints[start:end], cands)
+		start = end
+	}
+
+	slices.SortFunc(kept, func(a, b printAt) int { return stdcmp.Compare(a.at, b.at) })
+	out := make([]*Candidate, len(kept))
+	for i, k := range kept {
+		out[i] = cands[k.at]
+	}
+	return out
+}
+
+// keepDistinct appends to kept each candidate of run, a run of equal
+// fingerprints in order of position, that equals none kept before it
+// from the same run. Equal candidates have equal fingerprints, so no
+// other run can hold one.
+func keepDistinct(kept, run []printAt, cands []*Candidate) []printAt {
+	first := len(kept)
+	for _, p := range run {
+		if !keptSame(kept[first:], cands[p.at], cands) {
+			kept = append(kept, p)
+		}
+	}
+	return kept
+}
+
+// keptSame reports whether c is the same outcome as a kept candidate.
+func keptSame(kept []printAt, c *Candidate, cands []*Candidate) bool {
+	for _, k := range kept {
+		if same(cands[k.at], c) {
+			return true
+		}
+	}
+	return false
+}
+
+// same reports whether two candidates are one outcome: the same
+// decision, reason and payload.
+func same(a, b *Candidate) bool {
+	return a.Decision == b.Decision && a.Reason == b.Reason && reflect.DeepEqual(a.Payload, b.Payload)
 }
 
 // fingerprint hashes a payload so that payloads reflect.DeepEqual finds
