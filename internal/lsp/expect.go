@@ -2,6 +2,8 @@ package lsp
 
 import (
 	"github.com/spechtlabs/sigil/internal/check"
+	"github.com/spechtlabs/sigil/internal/kind"
+	"github.com/spechtlabs/sigil/internal/token"
 	"github.com/spechtlabs/sigil/internal/types"
 )
 
@@ -116,18 +118,60 @@ func (v *view) argType(c *cursor, env *check.Env) types.Type { //nolint:returnin
 }
 
 // paramType returns the type of the param whose default or bound the
-// cursor is in, when its type is one name, or nil.
+// cursor is in, or nil.
 func (v *view) paramType(c *cursor, env *check.Env) types.Type { //nolint:returninterface // a type is any of five kinds
-	if c.paramType == "" {
+	if c.paramType[0] < 0 {
 		return nil
 	}
-	if b, ok := types.Lookup(c.paramType); ok {
-		return b
+	t, rest := typeOfTokens(c.toks[c.paramType[0]:c.paramType[1]+1], env.Kind())
+	if len(rest) > 0 {
+		return nil
 	}
-	if e := env.Kind().Enum(c.paramType); e != nil {
-		return e
+	return t
+}
+
+// typeOfTokens resolves the type at the start of toks, as a param
+// declares it, in kind k: a scalar, the kind's struct type or enum, a
+// list or map of types, or an optional one. It returns the tokens after
+// the type, and a nil type for tokens that don't spell one.
+func typeOfTokens(toks []token.Token, k *kind.Kind) (types.Type, []token.Token) { //nolint:returninterface // a type is any of five kinds
+	if len(toks) == 0 {
+		return nil, nil
 	}
-	return nil
+	switch t := toks[0]; {
+	case t.Kind == token.Question:
+		elem, rest := typeOfTokens(toks[1:], k)
+		if elem == nil {
+			return nil, nil
+		}
+		return &types.Optional{Elem: elem}, rest
+	case t.Kind != token.Ident:
+		return nil, nil
+	case len(toks) > 1 && toks[1].Kind == token.Lt && (t.Text == "list" || t.Text == "map"):
+		first, rest := typeOfTokens(toks[2:], k)
+		var second types.Type
+		if t.Text == "map" && first != nil && len(rest) > 0 && rest[0].Kind == token.Comma {
+			second, rest = typeOfTokens(rest[1:], k)
+		}
+		switch {
+		case first == nil || len(rest) == 0 || rest[0].Kind != token.Gt || t.Text == "map" && second == nil:
+			return nil, nil
+		case t.Text == "map":
+			return &types.Map{Key: first, Value: second}, rest[1:]
+		}
+		return &types.List{Elem: first}, rest[1:]
+	}
+	name := toks[0].Text
+	if b, ok := types.Lookup(name); ok {
+		return b, toks[1:]
+	}
+	if e := k.Enum(name); e != nil {
+		return e, toks[1:]
+	}
+	if s := k.Type(name); s != nil {
+		return s, toks[1:]
+	}
+	return nil, nil
 }
 
 // fit ranks a completion of type t where want is expected.

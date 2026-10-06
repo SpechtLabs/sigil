@@ -402,8 +402,9 @@ func (v *view) reasonItems(c *cursor) []item {
 // operandItems completes an operand: every name in scope that's a value,
 // the fields of the inputs and variables in scope whose type is the one
 // the context expects, the literals of that type, the keywords that start
-// an operand, and `outcome` in an assert, but not the operand on the
-// operator's left, which says nothing compared with itself. What fits
+// an operand, and `outcome` in an assert, only the constants of the
+// expected type for a param's default or an invocation's argument, and
+// not the operand on the operator's left, which says nothing compared with itself. What fits
 // the expected type comes first, the nearest scope first among it.
 func (v *view) operandItems(c *cursor) []item {
 	out := keywordItems("any", "all", "filter", "not", "present", kwTrue, kwFalse)
@@ -419,7 +420,8 @@ func (v *view) operandItems(c *cursor) []item {
 		out = append(out, item{label: "outcome", kind: protocol.CompletionKeyword, detail: "list<decision>", typ: &types.List{Elem: types.Decision}, rank: rankKeyword, depth: keywordDepth, class: keywordClass})
 	}
 	lits := literalItems(want)
-	if p := v.invokedParam(c, env); p != nil {
+	invoked := v.invokedParam(c, env)
+	if p := invoked; p != nil {
 		for i := range lits {
 			lits[i].detail = paramSource(p)
 		}
@@ -441,8 +443,10 @@ func (v *view) operandItems(c *cursor) []item {
 			out[i].rank = rankKeyword
 		}
 	}
-	if c.constant {
-		out = slices.DeleteFunc(out, func(it item) bool { return !constantItem(it) })
+	if c.constant || invoked != nil {
+		// A param's default and bounds, and an invoked policy's
+		// arguments, are constants of the param's type.
+		out = slices.DeleteFunc(out, func(it item) bool { return !constantItem(it) || want != nil && it.rank != rankExpected })
 	}
 	if c.left[0] >= 0 {
 		self := string(c.text(c.left[0], c.left[1]))
@@ -465,7 +469,7 @@ var operandSnippets = map[string]string{
 }
 
 // literalItems returns the literals of the type want: a duration, a
-// string, an empty list or map. A bool's literals are keywords already.
+// string, an empty list or map, or for an optional, none and its value's. A bool's literals are keywords already.
 func literalItems(want types.Type) []item {
 	lit := func(label, snippet, detail string) []item {
 		return []item{{label: label, snippet: snippet, detail: detail, kind: protocol.CompletionValue, typ: want, rank: rankExpected, class: 1}}
@@ -474,7 +478,7 @@ func literalItems(want types.Type) []item {
 	case types.Basic:
 		switch t {
 		case types.Duration:
-			return lit("1h", "${1:1}${2|"+strings.Join(durationUnits, ",")+"|}", "a duration")
+			return lit("1h", "${1:1}${2:h}", "a duration")
 		case types.String:
 			return lit(`""`, `"$0"`, "a string")
 		}
@@ -482,6 +486,13 @@ func literalItems(want types.Type) []item {
 		return lit("[]", "[$0]", t.String())
 	case *types.Map:
 		return lit("{}", "{$0}", t.String())
+	case *types.Optional:
+		// An optional's literals are none and its value's.
+		out := append(lit("none", "", "no value"), literalItems(t.Elem)...)
+		for i := range out {
+			out[i].typ = want
+		}
+		return out
 	}
 	return nil
 }

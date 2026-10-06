@@ -73,7 +73,6 @@ type cursor struct {
 	path      string        // the dotted name typed so far after `use`, the import path of `use path.{`, or the kind before `@`
 	kind      string        // the kind the document's header names
 	op        string        // the operator the operand at the cursor follows: an infix operator, opNot, opNeg, opPresent or opCond; "" for none
-	paramType string        // the type of the param whose default or bound the cursor is in, when it's one name
 	args      []string      // the argument names the call already gives
 	given     []string      // the names a selective import already lists
 	offset    int           // the cursor
@@ -84,6 +83,7 @@ type cursor struct {
 	recv      [2]int        // the tokens of the operand before `.`, for atMember: first and last index
 	left      [2]int        // the tokens of the operand before an infix operator at atExpr, or the operand itself at atOperator; -1 and -1 when there's none
 	index     [2]int        // the tokens of the operand indexed by the `[` the cursor is in, or -1 and -1
+	paramType [2]int        // the tokens of the type of the param whose default or bound the cursor is in, or -1 and -1
 	place     place
 	inBody    bool // atStatement in a `when` body, rather than at the top level
 	module    bool // the document is a module
@@ -93,7 +93,7 @@ type cursor struct {
 
 // scan reads src up to offset.
 func scan(src []byte, offset int) *cursor {
-	c := &cursor{src: src, offset: offset, start: offset, end: offset, header: -1, left: [2]int{-1, -1}, index: [2]int{-1, -1}}
+	c := &cursor{src: src, offset: offset, start: offset, end: offset, header: -1, left: [2]int{-1, -1}, index: [2]int{-1, -1}, paramType: [2]int{-1, -1}}
 	l := lexer.New(src)
 	for t := l.Next(); t.Kind != token.EOF; t = l.Next() {
 		if t.Pos.Offset >= offset {
@@ -394,8 +394,8 @@ func (c *cursor) param(stmt int) {
 	}
 	angle := 0
 	inType := true
-	for _, t := range c.toks[stmt+3:] {
-		switch t.Kind {
+	for i := stmt + 3; i <= c.lastIndex(); i++ {
+		switch c.toks[i].Kind {
 		case token.Lt:
 			angle++
 		case token.Gt:
@@ -404,6 +404,9 @@ func (c *cursor) param(stmt int) {
 			inType = false
 		case token.Comma:
 			inType = inType && angle > 0
+		}
+		if !inType && c.paramType[0] < 0 && i > stmt+3 {
+			c.paramType = [2]int{stmt + 3, i - 1}
 		}
 	}
 	prev := c.last()
@@ -414,9 +417,6 @@ func (c *cursor) param(stmt int) {
 		c.place = atBound
 	case !inType:
 		c.constant = true
-		if stmt+4 <= c.lastIndex() && c.toks[stmt+3].Kind == token.Ident && (c.toks[stmt+4].Kind == token.Assign || c.toks[stmt+4].Kind == token.Comma) {
-			c.paramType = c.toks[stmt+3].Text
-		}
 		c.expr(stmt)
 	}
 }
