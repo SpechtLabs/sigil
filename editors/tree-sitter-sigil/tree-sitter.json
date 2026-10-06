@@ -7,7 +7,9 @@
       "title": "Sigil",
       "scope": "source.sigil",
       "path": ".",
-      "file-types": ["sigil"],
+      "file-types": [
+        "sigil"
+      ],
       "injection-regex": "^sigil$",
       "highlights": "queries/highlights.scm",
       "locals": "queries/locals.scm",
@@ -16,7 +18,7 @@
     }
   ],
   "metadata": {
-    "version": "0.7.3",
+    "version": "0.8.0",
     "license": "Apache-2.0",
     "description": "Sigil policy, module and kind files for tree-sitter",
     "authors": [
