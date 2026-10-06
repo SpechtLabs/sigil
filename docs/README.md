@@ -8,6 +8,7 @@ config:
       name: Sigil
       text: A small, typed language for decision logic in Go
       tagline: Write rules that turn your program's input into a typed decision, such as paging the on-call, rolling out a feature or approving a deploy. Every decision carries a reason and a payload, and every policy is checked against a contract your Go code defines.
+      image: logo.png
       actions:
         - text: Take the tour →
           link: /getting-started/tour/
