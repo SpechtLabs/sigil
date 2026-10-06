@@ -327,7 +327,7 @@ func (s *Server) notification(m *jsonrpc.Message) ending {
 	case protocol.MethodInitialized:
 		s.register()
 	case protocol.MethodDidChangeWatched:
-		s.didChangeWatched()
+		bad = s.didChangeWatched(m.Params)
 	case protocol.MethodDidChangeFolders:
 		bad = s.didChangeFolders(m.Params)
 	}

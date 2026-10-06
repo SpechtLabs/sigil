@@ -153,8 +153,10 @@ func TestWatchers(t *testing.T) {
 }
 
 // TestRootsMove checks that a configuration file created on disk moves
-// an open document to the project it declares: the server finds the root
-// again on a watched-files change, and drops the project it left.
+// an open document to the project it declares: the server tells the
+// loader which files were created or deleted, finds the root again, and
+// the new project's diagnostics replace the old one's without an empty
+// list in between.
 func TestRootsMove(t *testing.T) {
 	l := &movingLoader{files: testWorkspace(t), at: root}
 	s := start(t, l)
@@ -162,16 +164,30 @@ func TestRootsMove(t *testing.T) {
 	s.notify(protocol.MethodDidOpen, s.opening("production.sigil", broken))
 	s.settle("production.sigil", 1)
 	l.move(root + "/elsewhere")
-	s.notify(protocol.MethodDidChangeWatched, map[string]any{"changes": []any{}})
-	var cleared bool
-	for _, n := range s.settle("production.sigil", 1) {
-		var p protocol.PublishDiagnosticsParams
-		cleared = cleared || n.Method == protocol.MethodPublishDiagnostic && json.Unmarshal(n.Params, &p) == nil && len(p.Diagnostics) == 0
-	}
-	if !cleared {
-		t.Error("the project the document left wasn't dropped")
+	s.notify(protocol.MethodDidChangeWatched, map[string]any{"changes": []any{
+		map[string]any{"uri": "file:///ws/elsewhere/sigil.yaml", "type": 1},
+		map[string]any{"uri": "file:///ws/notes.txt", "type": 2},
+	}})
+	noFlicker(t, s, "production.sigil")
+	if got := l.changes(); len(got) != 1 || got[0] != "/ws/elsewhere/sigil.yaml" {
+		t.Errorf("told the loader about %v, want the configuration created", got)
 	}
 	s.shutdown()
+}
+
+// noFlicker waits for the next diagnostics of the open document file,
+// and checks that none of the lists before them was empty: a document
+// whose project changes keeps its problems until the new project
+// replaces them.
+func noFlicker(t *testing.T, s *session, file string) {
+	t.Helper()
+	notes := s.settle(file, 1)
+	for _, n := range notes {
+		var p protocol.PublishDiagnosticsParams
+		if n.Method == protocol.MethodPublishDiagnostic && json.Unmarshal(n.Params, &p) == nil && p.URI == s.uri(file) && len(p.Diagnostics) == 0 {
+			t.Errorf("published an empty list for %s while its project moved", file)
+		}
+	}
 }
 
 // TestCancellationsAreBounded checks that cancellations of requests that
@@ -229,6 +245,13 @@ func (l *movingLoader) Root(string, []string) Root {
 	return Root{Path: l.at, Declared: true}
 }
 
+// changes returns the files the loader was told about.
+func (l *movingLoader) changes() []string {
+	l.memLoader.mu.Lock()
+	defer l.memLoader.mu.Unlock()
+	return l.changed
+}
+
 // move roots the files at path from now on.
 func (l *movingLoader) move(path string) {
 	l.mu.Lock()
@@ -263,4 +286,57 @@ type notingLoader struct{ memLoader }
 // Root returns root, with a note.
 func (*notingLoader) Root(string, []string) Root {
 	return Root{Path: root, Note: "the folder is too large"}
+}
+
+// TestStaleLoads checks that a load started for a project that was
+// dropped and created again at the same root, as closing a project's last
+// document and opening it again does, never overwrites what the newer
+// project's own load found, however late it finishes.
+func TestStaleLoads(t *testing.T) {
+	l := &stagedLoader{files: testWorkspace(t), gate: make(chan struct{}), returned: make(chan struct{})}
+	s := start(t, l)
+	s.initialize()
+	stale := strings.Repeat("// padding\n", 50) + "policy payments.production: DeployApproval@2\n\nlet stale = nope\n"
+	fresh := "policy payments.production: DeployApproval@2\n\nlet fresh = nope\n"
+	s.notify(protocol.MethodDidOpen, s.opening("production.sigil", stale))
+	s.notify(protocol.MethodDidClose, map[string]any{"textDocument": map[string]any{"uri": s.uri("production.sigil")}})
+	s.notify(protocol.MethodDidOpen, s.opening("production.sigil", fresh))
+	s.settle("production.sigil", 1)
+	close(l.gate)
+	<-l.returned
+	time.Sleep(50 * time.Millisecond) // let the stale result reach the message loop
+	var hover protocol.Hover
+	s.decode(s.call(protocol.MethodHover, s.at("production.sigil", 2, 6)), &hover)
+	if !strings.Contains(hover.Contents.Value, "let fresh") {
+		t.Errorf("hover = %q, want the fresh buffer's let", hover.Contents.Value)
+	}
+	got := s.published(s.uri("production.sigil"))
+	if len(got.Diagnostics) == 0 || got.Diagnostics[0].Range.Start.Line != 2 {
+		t.Errorf("the last diagnostics are %v, want the fresh buffer's, on line 2", render(got.Diagnostics))
+	}
+	s.shutdown()
+}
+
+// stagedLoader holds its first load until the test opens the gate, and
+// lets every later one through at once.
+type stagedLoader struct {
+	gate     chan struct{}
+	returned chan struct{} // closed when the first load has returned
+	memLoader
+	calls int
+	mu    sync.Mutex
+}
+
+// Load holds the first load, then loads.
+func (l *stagedLoader) Load(r string, overlay map[string][]byte) *Snapshot {
+	l.mu.Lock()
+	l.calls++
+	first := l.calls == 1
+	l.mu.Unlock()
+	if !first {
+		return l.memLoader.Load(r, overlay)
+	}
+	<-l.gate
+	defer close(l.returned)
+	return l.memLoader.Load(r, overlay)
 }

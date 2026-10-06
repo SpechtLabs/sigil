@@ -120,12 +120,27 @@ func (s *Server) didChangeFolders(raw json.RawMessage) *jsonrpc.Error {
 	return nil
 }
 
-// didChangeWatched follows files changed on disk. A configuration file
-// created or deleted moves documents to another root, so every open
-// document's project is found again, and every project is loaded again
-// after the delay.
-func (s *Server) didChangeWatched() {
+// didChangeWatched follows files changed on disk. The loader forgets what
+// it learned about the directories of the files created or deleted, and
+// since a configuration file created or deleted moves documents to
+// another root, every open document's project is found again, and every
+// project is loaded again after the delay.
+func (s *Server) didChangeWatched(raw json.RawMessage) *jsonrpc.Error {
+	p, bad := decode[protocol.DidChangeWatchedFilesParams](raw)
+	if bad != nil {
+		return bad
+	}
+	var moved []string
+	for _, c := range p.Changes {
+		if path, ok := pathOf(c.URI); ok && c.Type != protocol.FileChanged {
+			moved = append(moved, path)
+		}
+	}
+	if len(moved) > 0 {
+		s.loader.Changed(moved)
+	}
 	s.reroot()
+	return nil
 }
 
 // reroot finds every open document's project again, drops the projects

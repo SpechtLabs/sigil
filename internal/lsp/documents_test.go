@@ -145,7 +145,8 @@ func TestReloads(t *testing.T) {
 }
 
 // TestFolderChangeDropsProjects checks that a project whose documents
-// move to another root is dropped, and its diagnostics cleared.
+// move to another root is dropped, and that the new project replaces its
+// diagnostics without an empty list in between.
 func TestFolderChangeDropsProjects(t *testing.T) {
 	l := &folderLoader{memLoader{files: testWorkspace(t)}}
 	s := start(t, l)
@@ -153,16 +154,7 @@ func TestFolderChangeDropsProjects(t *testing.T) {
 	s.notify(protocol.MethodDidOpen, s.opening("production.sigil", broken))
 	s.settle("production.sigil", 1)
 	s.notify(protocol.MethodDidChangeFolders, map[string]any{"event": map[string]any{"added": []any{}, "removed": []any{map[string]any{"uri": "file:///ws", "name": "ws"}}}})
-	var cleared bool
-	for _, n := range s.settle("production.sigil", 1) {
-		var p protocol.PublishDiagnosticsParams
-		if n.Method == protocol.MethodPublishDiagnostic && json.Unmarshal(n.Params, &p) == nil && len(p.Diagnostics) == 0 {
-			cleared = true
-		}
-	}
-	if !cleared {
-		t.Error("the old project's diagnostics weren't cleared")
-	}
+	noFlicker(t, s, "production.sigil")
 	s.shutdown()
 }
 
@@ -185,6 +177,7 @@ func TestNotificationsThatDoNothing(t *testing.T) {
 		{protocol.MethodDidSave, map[string]any{"textDocument": 1}},
 		{protocol.MethodDidChange, map[string]any{"textDocument": 1}},
 		{protocol.MethodDidChangeFolders, map[string]any{"event": 1}},
+		{protocol.MethodDidChangeWatched, map[string]any{"changes": 1}},
 		{protocol.MethodDidOpen, s.opening("production.sigil", fixed)},
 	} {
 		s.notify(n.method, n.params)
@@ -367,6 +360,9 @@ func (loadPanics) Root(string, []string) Root { return Root{Path: root} }
 // Load panics.
 func (loadPanics) Load(string, map[string][]byte) *Snapshot { panic(errors.New("no load")) }
 
+// Changed does nothing.
+func (loadPanics) Changed([]string) {}
+
 // loadsNothing loads snap, or nil.
 type loadsNothing struct{ snap *Snapshot }
 
@@ -375,6 +371,9 @@ func (loadsNothing) Root(string, []string) Root { return Root{Path: root} }
 
 // Load returns snap.
 func (l loadsNothing) Load(string, map[string][]byte) *Snapshot { return l.snap }
+
+// Changed does nothing.
+func (loadsNothing) Changed([]string) {}
 
 // TestDelay checks the delay before a reload: changes within it don't load
 // the project, and a request in the meantime answers from the latest text

@@ -25,8 +25,9 @@ const root = "/ws"
 // reads while a server runs.
 type memLoader struct {
 	files      map[string][]byte
-	err        error // what every load reports as stopping the check
-	undeclared bool  // no configuration file declares the project
+	err        error    // what every load reports as stopping the check
+	undeclared bool     // no configuration file declares the project
+	changed    []string // the files Changed was told about
 	mu         sync.Mutex
 	loads      int
 }
@@ -34,6 +35,13 @@ type memLoader struct {
 // Root returns the workspace's root for every file, declared unless the
 // loader says it isn't.
 func (l *memLoader) Root(string, []string) Root { return Root{Path: root, Declared: !l.undeclared} }
+
+// Changed records the files created or deleted on disk.
+func (l *memLoader) Changed(paths []string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.changed = append(l.changed, paths...)
+}
 
 // count returns how many loads there were.
 func (l *memLoader) count() int {

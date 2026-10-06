@@ -160,6 +160,8 @@ func TestCompleteReplaces(t *testing.T) {
 		{name: "an argument name", src: head + "when cleared {\n  review(<|>", label: "approvers", from: head + "when cleared {\n  review(", insert: "approvers: "},
 		{name: "a field", src: head + "when service.na<|>", label: "name", from: head + "when service.", insert: "name"},
 		{name: "inside a name", src: head + "when actor.te<|>ams {\n}\n", label: "teams", from: head + "when actor.", to: head + "when actor.teams", insert: "teams"},
+		{name: "right after a dot, before a name", src: head + "when actor.<|>teams {\n}\n", label: "name", from: head + "when actor.", to: head + "when actor.teams", insert: "name"},
+		{name: "before a name after a space", src: head + "when <|>cleared {\n}\n", label: "service", from: head + "when ", to: head + "when cleared", insert: "service"},
 		{name: "inside a dotted name after use", src: "policy p: DeployApproval@2\n\nuse deploy.co<|>mmon\n", label: "deploy.common", from: "policy p: DeployApproval@2\n\nuse ", to: "policy p: DeployApproval@2\n\nuse deploy.common", insert: "deploy.common"},
 	}
 	for _, tt := range tests {

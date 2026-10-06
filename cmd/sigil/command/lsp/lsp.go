@@ -11,7 +11,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -26,10 +28,25 @@ import (
 // configuration file may hold for the server to read it as one project.
 const maxUndeclared = 200
 
+// maxEntries is the most entries a walk visits to count a folder's
+// `.sigil` files; a folder with more, such as one holding a dependency
+// tree, doesn't fit, however few of them are `.sigil` files.
+const maxEntries = 10000
+
 // loader finds and loads projects for the server as `sigil check` does,
 // with the kinds linked into the binary.
 type loader struct {
+	sizes *sizes // what the loader learned about how large folders are; nil remembers nothing
 	kinds []project.Linked
+}
+
+// sizes remembers which directories fit a project without a configuration
+// file, so a walk of a large folder runs once, not on every open or
+// watched-file event. The server calls Root and Changed on its message
+// loop only, but a mutex keeps the loader safe for any caller.
+type sizes struct {
+	fit map[string]bool
+	mu  sync.Mutex
 }
 
 // NewCommand returns the lsp command, configured by opts.
@@ -66,7 +83,7 @@ sigil lsp --stdio`,
 			if ctx == nil {
 				ctx = context.Background()
 			}
-			s := server.New(loader{kinds: o.kinds}, server.WithLog(cmd.ErrOrStderr()), server.WithVersion(o.version))
+			s := server.New(loader{kinds: o.kinds, sizes: &sizes{fit: map[string]bool{}}}, server.WithLog(cmd.ErrOrStderr()), server.WithVersion(o.version))
 			return s.Serve(ctx, cmd.InOrStdin(), cmd.OutOrStdout())
 		},
 	}
@@ -82,7 +99,7 @@ sigil lsp --stdio`,
 //   - the directory of the nearest configuration file at or above it,
 //     which check run from there would read, a declared project;
 //   - else the deepest workspace folder holding it, when the folder holds
-//     at most maxUndeclared `.sigil` files;
+//     at most maxUndeclared `.sigil` files and maxEntries entries;
 //   - else, for a larger folder, the file's own directory, if that holds
 //     few enough, or else the file alone, with a note that says so;
 //   - and for a file outside every folder, the file alone, so the server
@@ -107,14 +124,14 @@ func (l loader) Root(path string, folders []string) server.Root {
 	switch {
 	case best == "":
 		return server.Root{Path: path}
-	case fits(best):
+	case l.fits(best):
 		return server.Root{Path: best}
 	}
 	read := path
-	if dir := filepath.Dir(path); fits(dir) {
+	if dir := filepath.Dir(path); l.fits(dir) {
 		read = dir
 	}
-	return server.Root{Path: read, Note: fmt.Sprintf("%s holds more than %d .sigil files and no %s, so the language server reads %s alone; a sigil.yaml at the root of the policies makes them one project", best, maxUndeclared, config.FileNames[0], read)}
+	return server.Root{Path: read, Note: fmt.Sprintf("%s has no %s and is too large to read whole, with more than %d .sigil files or %d entries, so the language server reads %s alone; a sigil.yaml at the root of the policies makes them one project", best, config.FileNames[0], maxUndeclared, maxEntries, read)}
 }
 
 // Load reads the project at root as `sigil check` run there would, with
@@ -159,11 +176,45 @@ func isDir(path string) bool {
 	return err == nil && info.IsDir()
 }
 
+// Changed forgets which directories fit, when a `.sigil` file or a
+// configuration file was created or deleted; other files don't change
+// the count.
+func (l loader) Changed(paths []string) {
+	if l.sizes == nil {
+		return
+	}
+	for _, p := range paths {
+		if project.IsSigil(p) || slices.Contains(config.FileNames, filepath.Base(p)) {
+			l.sizes.mu.Lock()
+			clear(l.sizes.fit)
+			l.sizes.mu.Unlock()
+			return
+		}
+	}
+}
+
 // fits reports whether dir holds at most maxUndeclared `.sigil` files,
-// by the rules a walk of a directory reads them: entries whose names
-// start with `.` are left out. It stops counting past the bound.
+// remembering the answer.
+func (l loader) fits(dir string) bool {
+	if l.sizes == nil {
+		return fits(dir)
+	}
+	l.sizes.mu.Lock()
+	defer l.sizes.mu.Unlock()
+	ok, known := l.sizes.fit[dir]
+	if !known {
+		ok = fits(dir)
+		l.sizes.fit[dir] = ok
+	}
+	return ok
+}
+
+// fits reports whether dir holds at most maxUndeclared `.sigil` files,
+// by the rules a walk of a directory reads them, as `sigil check`'s does:
+// entries whose names start with `.` are left out. It stops counting past
+// the bound, and a directory of more than maxEntries entries doesn't fit.
 func fits(dir string) bool {
-	n := 0
+	n, seen := 0, 0
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		switch {
 		case err != nil:
@@ -176,10 +227,11 @@ func fits(dir string) bool {
 		case !d.IsDir() && project.IsSigil(p):
 			n++
 		}
-		if n > maxUndeclared {
+		seen++
+		if n > maxUndeclared || seen > maxEntries {
 			return fs.SkipAll
 		}
 		return nil
 	})
-	return n <= maxUndeclared
+	return n <= maxUndeclared && seen <= maxEntries
 }

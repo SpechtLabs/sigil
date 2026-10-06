@@ -1142,8 +1142,8 @@ The server reads each open document's project the way `sigil check` run in the p
 | The document is | The root is | It reads | It reports on |
 | --- | --- | --- | --- |
 | At or below a directory with a [configuration file](/reference/config/#finding-the-file) | The nearest such directory | The root, with the file's kind files, trusted paths, requirements and lint levels | Every file of the project, open or not, apart from those below another configuration file |
-| Below a workspace folder of at most 200 `.sigil` files, with no configuration file above it | The deepest workspace folder holding it | The folder, with the default lint levels | The open documents |
-| Below a larger workspace folder, with no configuration file above it | The document's directory, or the document itself when that holds more than 200 too | That directory or document, with a message that says so | The open documents |
+| Below a workspace folder of at most 200 `.sigil` files and 10,000 entries, with no configuration file above it | The deepest workspace folder holding it | The folder, with the default lint levels | The open documents |
+| Below a larger workspace folder, with no configuration file above it | The document's directory, or the document itself when that's too large too | That directory or document, with a message that says so | The open documents |
 | Outside every folder and configuration file | The document itself | The document alone | The document |
 
 - Open documents replace their files on disk. A document that isn't on disk, saved or not, counts too.

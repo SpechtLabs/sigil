@@ -92,6 +92,9 @@ func scan(src []byte, offset int) *cursor {
 	l := lexer.New(src)
 	for t := l.Next(); t.Kind != token.EOF; t = l.Next() {
 		if t.Pos.Offset >= offset {
+			if t.Pos.Offset == offset && c.start == offset && (t.Kind == token.Ident || t.Kind.IsKeyword()) {
+				c.end = t.End.Offset // the cursor is at the start of a name, as after a `.`
+			}
 			break
 		}
 		switch {

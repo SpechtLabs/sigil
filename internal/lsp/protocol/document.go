@@ -30,9 +30,27 @@ type DidSaveTextDocumentParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
 }
 
-// DidChangeWatchedFilesParams is a workspace/didChangeWatchedFiles. The
-// server reloads on any change, so the events aren't read.
-type DidChangeWatchedFilesParams struct{}
+// DidChangeWatchedFilesParams is a workspace/didChangeWatchedFiles: the
+// files that changed on disk.
+type DidChangeWatchedFilesParams struct {
+	Changes []FileEvent `json:"changes"`
+}
+
+// FileEvent is one file that changed on disk, and how.
+type FileEvent struct {
+	URI  string         `json:"uri"`
+	Type FileChangeType `json:"type"`
+}
+
+// FileChangeType is how a file changed.
+type FileChangeType int
+
+// The ways a file changes.
+const (
+	FileCreated FileChangeType = 1
+	FileChanged FileChangeType = 2
+	FileDeleted FileChangeType = 3
+)
 
 // DiagnosticSeverity is how serious a diagnostic is.
 type DiagnosticSeverity int

@@ -30,6 +30,7 @@ type project struct {
 type loaded struct {
 	snap     *Snapshot
 	versions map[string]int32
+	owner    *project // the project the load was started for, which the result belongs to only while it's still the project at its root
 	root     string
 }
 
@@ -49,7 +50,7 @@ func (s *Server) rootOf(path string) Root {
 func (s *Server) touch(r Root) *project {
 	p, ok := s.projects[r.Path]
 	if !ok {
-		p = &project{root: r.Path}
+		p = &project{root: r.Path, published: map[string]string{}}
 		s.projects[r.Path] = p
 	}
 	p.declared = r.Declared
@@ -57,9 +58,12 @@ func (s *Server) touch(r Root) *project {
 	return p
 }
 
-// prune drops the projects no open document belongs to any more, clears
-// what was published for them, and answers the requests that waited for
-// them, which now find their documents closed.
+// prune drops the projects no open document belongs to any more, and
+// answers the requests that waited for them, which now find their
+// documents closed. What a dropped project published for a document that
+// moved to another project is that project's to replace, so it doesn't
+// flicker empty until the next load; everything else it published is
+// cleared.
 func (s *Server) prune() {
 	held := map[string]bool{}
 	for _, d := range s.docs {
@@ -71,6 +75,10 @@ func (s *Server) prune() {
 		}
 		p := s.projects[root]
 		for _, uri := range sortedKeys(p.published) {
+			if next := s.heir(p.published[uri]); next != nil {
+				next.published[uri] = p.published[uri]
+				continue
+			}
 			s.notify(protocol.MethodPublishDiagnostic, protocol.PublishDiagnosticsParams{URI: uri, Diagnostics: []protocol.Diagnostic{}})
 		}
 		delete(s.projects, root)
@@ -78,6 +86,16 @@ func (s *Server) prune() {
 			s.request(m)
 		}
 	}
+}
+
+// heir returns the project of the open document at path, which publishes
+// its diagnostics now, or nil when it isn't open.
+func (s *Server) heir(path string) *project {
+	d, ok := s.docs[path]
+	if !ok {
+		return nil
+	}
+	return s.projects[d.root]
 }
 
 // schedule loads the changed projects once the delay has passed without
@@ -120,14 +138,14 @@ func (s *Server) start(p *project) {
 		}
 	}
 	p.dirty, p.loading = false, true
-	go s.background(p.root, overlay, versions, s.done)
+	go s.background(loaded{versions: versions, owner: p, root: p.root}, overlay, s.done)
 }
 
-// background loads the project at root, with overlay, which nothing
-// changes any more, and hands the result to the message loop, or drops it
-// when done is closed because Serve returned.
-func (s *Server) background(root string, overlay map[string][]byte, versions map[string]int32, done <-chan struct{}) {
-	res := loaded{snap: s.load(root, overlay), versions: versions, root: root}
+// background loads the project res names, with overlay, which nothing
+// changes any more, and hands res, with the snapshot, to the message loop,
+// or drops it when done is closed because Serve returned.
+func (s *Server) background(res loaded, overlay map[string][]byte, done <-chan struct{}) {
+	res.snap = s.load(res.root, overlay)
 	select {
 	case s.loads <- res:
 	case <-done:
@@ -137,10 +155,13 @@ func (s *Server) background(root string, overlay map[string][]byte, versions map
 // finish takes a finished load over: its project answers from it, shows
 // what stopped the check, publishes its diagnostics, answers the
 // requests that waited for it, and loads again when a document changed in
-// the meantime. A load of a project dropped since is thrown away.
+// the meantime. A load of a project dropped since is thrown away, and so is
+// one of a project dropped and created again at the same root, whose own
+// load is the one that counts: each project runs one load at a time, so a
+// result always belongs to the project it was started for.
 func (s *Server) finish(res loaded) {
 	p := s.projects[res.root]
-	if p == nil {
+	if p == nil || p != res.owner {
 		return
 	}
 	p.loading = false

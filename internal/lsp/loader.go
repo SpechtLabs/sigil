@@ -20,6 +20,11 @@ type Loader interface {
 	// name in the result must be the file's absolute path,
 	// slash-separated, so the server can map it to a URI.
 	Load(root string, overlay map[string][]byte) *Snapshot
+	// Changed tells the loader that the files at paths, absolute paths,
+	// were created or deleted on disk, so it forgets what it learned
+	// about the directories that hold them, such as how many `.sigil`
+	// files a folder holds. The server calls it on its message loop.
+	Changed(paths []string)
 }
 
 // Root is where a document's project is, and how the server reports on

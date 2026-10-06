@@ -189,3 +189,40 @@ func writeFiles(t *testing.T, dir string, files map[string]string) {
 func frame(body string) string {
 	return fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(body), body)
 }
+
+// TestRootSizes checks how the loader sizes a folder without a
+// configuration file: a folder with more than maxEntries entries doesn't
+// fit, however few are `.sigil` files; the answer is remembered, so a
+// folder is walked once; and it's forgotten when a `.sigil` file or a
+// configuration file is created or deleted, not for other files.
+func TestRootSizes(t *testing.T) {
+	tmp := realTemp(t)
+	files := map[string]string{"wide/policy.sigil": "", "small/a.sigil": ""}
+	for i := range maxEntries {
+		files[fmt.Sprintf("wide/vendor/%d.txt", i)] = ""
+	}
+	writeFiles(t, tmp, files)
+	l := loader{sizes: &sizes{fit: map[string]bool{}}}
+	wide, small := filepath.Join(tmp, "wide"), filepath.Join(tmp, "small")
+	if got := l.Root(filepath.Join(wide, "policy.sigil"), []string{wide}); got.Path == wide || got.Note == "" {
+		t.Errorf("Root() in a folder of %d entries = %+v, want it not read whole", maxEntries+1, got)
+	}
+	file := filepath.Join(small, "a.sigil")
+	if got := l.Root(file, []string{small}); got.Path != small {
+		t.Fatalf("Root() = %+v, want the folder", got)
+	}
+	more := map[string]string{}
+	for i := range maxUndeclared {
+		more[fmt.Sprintf("small/%d.sigil", i)] = ""
+	}
+	writeFiles(t, tmp, more)
+	l.Changed([]string{filepath.Join(small, "notes.txt")})
+	if got := l.Root(file, []string{small}); got.Path != small {
+		t.Errorf("Root() after a change to another file = %+v, want the folder as remembered", got)
+	}
+	l.Changed([]string{filepath.Join(small, "0.sigil")})
+	if got := l.Root(file, []string{small}); got.Path == small {
+		t.Errorf("Root() after .sigil files were created = %+v, want the folder too large", got)
+	}
+	loader{}.Changed([]string{file})
+}
