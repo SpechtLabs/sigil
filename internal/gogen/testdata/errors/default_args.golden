@@ -1,0 +1,23 @@
+default_args.sigil:16:39: error: a Go kind can't pass note to its default
+   |
+16 | default deny(reason: no_rule_matched, note: "none", code: 1)
+   |                                       ^^^^
+   = help: a Go kind's default takes its payload from the fields' defaults; give deny.note the default instead, and drop the argument
+
+default_args.sigil:16:53: error: a Go kind can't pass code to its default
+   |
+16 | default deny(reason: no_rule_matched, note: "none", code: 1)
+   |                                                     ^^^^
+   = help: the argument equals the default of deny.code; drop it
+
+default_args.sigil:17:42: error: a Go kind can't pass note to its conflict
+   |
+17 | conflict deny(reason: conflicting_rules, note: "conflict", code: 2)
+   |                                          ^^^^
+   = help: a Go kind's conflict takes its payload from the fields' defaults; give deny.note the default instead, and drop the argument
+
+default_args.sigil:17:60: error: a Go kind can't pass code to its conflict
+   |
+17 | conflict deny(reason: conflicting_rules, note: "conflict", code: 2)
+   |                                                            ^^^^
+   = help: a Go kind's conflict takes its payload from the fields' defaults; give deny.code the default instead, and drop the argument

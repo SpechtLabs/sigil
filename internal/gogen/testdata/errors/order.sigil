@@ -1,0 +1,32 @@
+kind Order version 1
+
+enum Unused: spare
+enum Tier: critical | standard
+
+type Release {
+  soak: duration
+}
+
+type Service {
+  tier: Tier
+}
+
+type Orphan {
+  x: int
+}
+
+input service: Service
+input release: Release
+
+decision approve {
+  reason: ok
+}
+
+decision deny {
+  reason: no
+}
+
+collect one
+precedence deny > approve
+
+default deny(reason: no)

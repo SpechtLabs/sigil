@@ -1,0 +1,23 @@
+order.sigil:3:6: error: a Go kind can't declare enum Unused here
+  |
+3 | enum Unused: spare
+  |      ^^^^^^
+  = help: a Go kind declares the enums its inputs, host functions and payloads use in the order they first use them, then the others; declare them as Tier, Unused, which changes no policy
+
+order.sigil:6:6: error: a Go kind can't declare type Release here
+  |
+6 | type Release {
+  |      ^^^^^^^
+  = help: a Go kind declares struct types in the order its inputs, host functions and payloads first use them; declare them as Service, Release, which changes no policy
+
+order.sigil:14:6: error: type Orphan is used by no input, host function or payload, so a Go kind can't declare it
+   |
+14 | type Orphan {
+   |      ^^^^^^
+   = help: use it in an input, a host function or a payload, or remove it
+
+order.sigil:30:1: error: a Go kind can't rank its decisions in another order than it declares them: policy.WithDecisions takes them in precedence order
+   |
+30 | precedence deny > approve
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: declare the decisions in precedence order, deny, approve, which changes no policy

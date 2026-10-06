@@ -1,0 +1,72 @@
+kind Shapes version 4, accepts: 2
+
+enum Tier: critical | standard | internal
+enum Plan: free | standard | enterprise
+enum Region: eu | us
+enum Unused: spare | extra
+
+type Service {
+  tier: Tier
+  nodes: list<Node>
+  by_region: map<Region, list<Node>>
+  matrix: list<list<int>>
+  nested: map<string, map<int, list<?Window>>>
+  limits: map<Tier, float>
+  windows: map<timestamp, duration>
+}
+
+type Node {
+  name: string
+  weight: float
+  tags: list<string>
+  window: ?Window
+  plan: ?Plan
+}
+
+type Window {
+  start: timestamp
+  length: duration
+}
+
+type Empty {}
+
+input service: ?Service
+input plan: Plan
+input count: int
+input ratio: float
+input since: timestamp
+input flags: map<bool, string>
+input nothing: Empty
+
+fn lookup(Tier, list<Region>, ?string) -> map<string, int>
+fn now() -> timestamp
+
+decision deny {
+  reason: blocked | fallback | conflicting
+}
+
+decision grant {
+  reason: approved | standing
+  ttl: duration = 1h30m
+  plan: Plan = standard
+  tiers: list<Tier> = [critical, internal]
+  limits: map<string, int> = {"a": 1, "b": 2}
+  ratio: float = 0.5
+  owner: ?string
+  note: string = "say \"hi\" `now`"
+  count: int = -3
+  enabled: bool = true
+}
+
+decision review {
+  reason: needs_owner
+  owners: list<string>
+}
+
+collect one
+precedence deny > grant > review
+precedence deny: blocked > conflicting > fallback
+exclusive grant.approved, review
+
+default deny(reason: fallback)
+conflict deny(reason: conflicting)

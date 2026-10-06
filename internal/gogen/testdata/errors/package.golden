@@ -1,0 +1,5 @@
+package.sigil:1:6: error: package name "switch" is a Go keyword
+  |
+1 | kind Switch version 1
+  |      ^^^^^^
+  = help: the package is named after the kind; name another with --package, a Go identifier that isn't a keyword, like `deployapproval`

@@ -18,16 +18,16 @@ flowchart LR
   A[Go structs] --> B[policy.NewKind]
   B -- Schema --> C[deploy_approval.sigil]
   C --> D[policy.LoadKind<br/>planned]
-  C --> E[sigil gen go<br/>planned]
+  C --> E[sigil gen go]
   C --> F[CLI and CI]
   C --> G[LSP<br/>planned]
 ```
 
-The defining host always uses its Go definition. Everything else reads the exported file: `sigil check`, `eval`, `explain` and `test`, and CI jobs in a policy repository that doesn't import the host's code. A policy author never needs the host's source to learn what they can write, and the host never needs to trust a copy of its own contract.
+The defining host always uses its Go definition. Everything else reads the exported file: `sigil check`, `eval`, `explain` and `test`, CI jobs in a policy repository that doesn't import the host's code, and other Go services, which build the kind from the Go code [`sigil gen go`](/reference/cli/#sigil-gen-go) generates from the file. That code goes back through `policy.NewKind`, so it exports the same file. A policy author never needs the host's source to learn what they can write, and the host never needs to trust a copy of its own contract.
 
 Going through Go has a consequence for how a broken kind fails. `NewKind` checks every validity rule and panics at program start, listing every problem at once, so a bad kind stops the program before it serves anything, and a kind that exists can always be exported, and the exported file parses back into the same contract, which fuzz tests check. A kind document that turns up in a policy bundle is never taken as the contract either; [Bundles and trust](/understanding/bundles/#why-a-kind-document-must-match-the-host-s-kind) explains why a mismatched one fails the load.
 
-The planned pieces in the diagram, loading a kind at run time and generating Go from a kind file, are described under [Planned designs](/project/planned/#loading-a-kind-at-run-time).
+The planned pieces in the diagram, loading a kind at run time and the language server, are described under [Planned designs](/project/planned/#loading-a-kind-at-run-time).
 
 ## What the version pin says
 

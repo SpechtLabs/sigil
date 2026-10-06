@@ -177,6 +177,7 @@ export default defineUserConfig({
             { text: "Build a host binary", link: "host-binary", icon: "mdi:console" },
             { text: "Build policies in Go", link: "build-policies-in-go", icon: "mdi:code-braces-box" },
             { text: "Evolve a kind safely", link: "evolve-a-kind", icon: "mdi:source-branch" },
+            { text: "Use a kind from another Go service", link: "generate-go", icon: "mdi:file-code-outline" },
             { text: "The example service", link: "example-service", icon: "mdi:rocket-launch-outline" },
           ],
         },

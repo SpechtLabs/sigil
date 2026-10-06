@@ -1,0 +1,10 @@
+[
+  {
+    "severity": "error",
+    "file": "gate.sigil",
+    "message": "type Orphan is used by no input, host function or payload, so a Go kind can't declare it",
+    "help": "use it in an input, a host function or a payload, or remove it",
+    "line": 3,
+    "column": 6
+  }
+]

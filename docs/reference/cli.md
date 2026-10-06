@@ -18,20 +18,20 @@ The tools read the exported kind file (`deploy_approval.sigil` in the running ex
 | [`sigil test`](#sigil-test) | Runs test cases: an input plus the expected decision and reason, the asserts that fail, or a runtime error | Kind file; a host binary or stubs for functions |
 | [`sigil compile`](#sigil-compile) | Checks policies, then writes a copy of the binary with them compiled in, which evaluates them without any file | Kind file; a host binary for kinds with functions |
 | [`sigil export`](#sigil-export) | Writes the kind file of a kind linked into a host binary | A host binary; `sigil --help` lists it only there |
+| [`sigil gen go`](#sigil-gen-go) | Generates typed Go code from a kind file, for a Go service that doesn't import the host | Kind file |
 | [`sigil version`](#sigil-version) | Shows the version and build information | Nothing |
 
 `sigil completion bash|fish|powershell|zsh` prints a shell completion script, and `sigil help <command>` or `--help` (`-h`) prints any command's help. The script completes `--policy` and `--require` with the names of the policies in the command's paths, or in `.` when it names none. It reads only the documents' headers, so it needs no kind file, and it completes `--require` from the `--trusted` paths when the command line has any.
 
-`sigil breaking`, `sigil gen go` and `sigil lsp` are planned:
+`sigil breaking` and `sigil lsp` are planned:
 
 | Command | Will | Needs |
 | --- | --- | --- |
 | [`sigil breaking`](#sigil-breaking) | Compare two kind versions and flag incompatible changes | Two kind files |
-| [`sigil gen go`](#sigil-gen-go) | Generate typed Go code from a kind file | Kind file |
 | [`sigil lsp`](#sigil-lsp) | Run the language server | Kind file |
 
 ::: warning Planned
-`sigil breaking`, `sigil gen go`, `sigil lsp` and `explain --input` aren't implemented. The first three still run, so their help is there (`sigil breaking --help`), but `sigil --help` doesn't list them, and each one only prints an error. Their designs are in [Planned designs](/project/planned/), and the [roadmap](/project/roadmap/) tracks them.
+`sigil breaking`, `sigil lsp` and `explain --input` aren't implemented. The first two still run, so their help is there (`sigil breaking --help`), but `sigil --help` doesn't list them, and each one only prints an error. Their designs are in [Planned designs](/project/planned/), and the [roadmap](/project/roadmap/) tracks them.
 :::
 
 ## Inputs
@@ -94,7 +94,7 @@ Every command takes two global flags:
 | `-o`, `--output` | `text` | Output format: `text`, `json` or `yaml`. Every command honors it; each command's section describes its records |
 | `--color` | `auto` | When to color text output: `auto`, `always` or `never`. `auto` colors on a terminal, and not when piped or when `NO_COLOR` is set |
 
-`check`, `test`, `compile`, `fmt --check`, `fmt --write` and `export --out` end their text output with one line that sums the run up, marked `✓`, `!` or `✗`:
+`check`, `test`, `compile`, `fmt --check`, `fmt --write`, `export --out` and `gen go --out` end their text output with one line that sums the run up, marked `✓`, `!` or `✗`:
 
 ```text
 ✓ checked 4 files, no problems found
@@ -118,7 +118,7 @@ Caused by
 - The records carry what the text shows, including what failed, such as `check`'s error diagnostics or the `error` record of a [planned command](#sigil-breaking).
 - The `Error:` block of a command that couldn't run at all still goes to standard error as text.
 
-Every command exits with status 0 on success and 1 on any failure: a usage error, an unreadable file, an error found by `check`, a failed evaluation, a failing test case, a bundle `compile` refuses, an unformatted file under `fmt --check` or a stale file under `export --check`. There are no other exit codes. Warnings don't change the status, and the status is the same in every output format.
+Every command exits with status 0 on success and 1 on any failure: a usage error, an unreadable file, an error found by `check`, a failed evaluation, a failing test case, a bundle `compile` refuses, an unformatted file under `fmt --check`, or a stale file under `export --check` or `gen go --check`. There are no other exit codes. Warnings don't change the status, and the status is the same in every output format.
 
 ## Host functions and host binaries
 
@@ -951,7 +951,7 @@ sigil breaking OLD_KIND_FILE NEW_KIND_FILE [flags]
 Not implemented. It prints `Error: "sigil breaking" is not implemented yet` and exits with status 1. The design is in [sigil breaking](/project/planned/#sigil-breaking).
 :::
 
-With `-o json` or `-o yaml`, `breaking`, `gen go` and `lsp` print the error as a record on standard output instead, in the shape of the `error` record [`sigil eval`](#records) prints for a failed evaluation, and still exit with status 1:
+With `-o json` or `-o yaml`, `breaking` and `lsp` print the error as a record on standard output instead, in the shape of the `error` record [`sigil eval`](#records) prints for a failed evaluation, and still exit with status 1:
 
 ```json
 {
@@ -965,15 +965,87 @@ With `-o json` or `-o yaml`, `breaking`, `gen go` and `lsp` print the error as a
 
 ## `sigil gen go`
 
+Generates a Go file from a kind file: Go types for the kind and a constructor that builds it with [`policy.NewKind`](/reference/go-api/#newkind), for a Go service that doesn't import the host that defines the kind.
+
 ```text
 sigil gen go KIND_FILE [flags]
 ```
 
-::: warning Planned
-Not implemented. It prints `Error: "sigil gen go" is not implemented yet`, or [an `error` record](#sigil-breaking) with `-o json` or `-o yaml`, and exits with status 1. The design is in [sigil gen go](/project/planned/#sigil-gen-go).
-:::
+| Flag | Default | Does |
+| --- | --- | --- |
+| `-p`, `--package` | the kind's name in lower case | Package name of the generated file. A Go identifier that isn't a keyword |
+| `--out` | stdout | File to write the code to instead of printing it. Its directory is created |
+| `--check` | off | Only compares with the `--out` file, and fails when it's stale. Needs `--out` |
 
-Aliases: `sigil generate go`, `sigil gen golang`.
+- `KIND_FILE` is one kind file, or `-` for stdin.
+- `--out` writes the file, and says whether it wrote it or found it current.
+- Aliases: `sigil generate go`, `sigil gen golang`.
+
+What the file declares, for the running example's `DeployApproval`:
+
+| Kind file | Go |
+| --- | --- |
+| `enum Tier: critical \| standard \| internal` | `type Tier string`, and the constants `TierCritical`, `TierStandard`, `TierInternal` |
+| `type Service { ... }` | `type Service struct`, one field per field, tagged `policy:"name"` |
+| the `input`s | `type Input struct`, one field per input; `NewKind`'s type parameter |
+| `decision approve { ... }` | `type ApproveData struct`, its payload, with defaults in the tags: `policy:"bake,default=1h"` |
+| the decisions | `var Deny`, `Review`, `Approve`: `policy.Decision` handles |
+| the reasons | `var DenyNoRuleMatched`, `ApprovePaymentsSre`, ...: `policy.Outcome` handles, `<Decision><Reason>` |
+| the `fn`s | `type Funcs struct`, one `func(...) (T, error)` field per function. Only when the kind declares one |
+| the kind | `func NewKind(funcs Funcs, opts ...policy.Option) *policy.Kind[Input]`, without `funcs` when the kind declares no function |
+
+- Types map as in [Go type mapping](/reference/go-api/#go-type-mapping), with one Go type per Sigil type: `int` is `int64`, `float` is `float64`, `duration` is `time.Duration`, `timestamp` is `time.Time`, `?T` is `*T`, `list<T>` is `[]T`, `map<K, V>` is `map[K]V`.
+- Every decision has a payload type of its own, an empty struct when it has no payload fields, so a type switch on `Result.Value` has one case per decision.
+- `NewKind` builds the kind with the declaring options in kind-file order, then `opts`. Its `Schema()` is the kind file, byte for byte, so `Load` accepts a bundle that holds the kind file. An option in `opts` that declares contract, such as `WithVersion`, makes the two differ.
+- `NewKind` panics when a field of `funcs` is nil, naming every nil field: `approval.NewKind: no implementation for host functions: Funcs.Split`.
+- The file starts with `// Code generated by sigil gen go. DO NOT EDIT.` and names the kind's version, not sigil's, so it changes only when the kind does.
+
+Names:
+
+| Declaration | Go name |
+| --- | --- |
+| Struct type, enum | The kind's name, unchanged. A name Go doesn't export, such as `service`, also gets an exported alias, `type Service = service` |
+| Everything else | Each `_`-separated word capitalized, initialisms such as `id`, `ttl` and `url` in capitals: `user_id` is `UserID`. A name that would start with a digit gets an `X` |
+| A clash | Two declarations with one Go name: the first in this order keeps it, a later one gets a number from 2: struct types and enums, their aliases, `Input` (then `<Kind>Input`), `Funcs`, `NewKind`, the decisions, each followed by its payload type and reasons, the enum values. Fields number within their struct |
+| `time` | Imported as `gotime` when a struct type or enum is called `time` |
+
+`gen go` refuses a kind file Go can't declare exactly, and names each declaration with a fix. A kind file a host exported already declares everything in `NewKind`'s order.
+
+| Refused | Why |
+| --- | --- |
+| A struct type or enum named after a Go keyword or predeclared identifier, `init` or `_` | The generated type keeps the kind's name |
+| Struct types or enums in another order than `NewKind` declares them | `NewKind` declares them in the order the inputs, host functions and payloads first use them; enums nothing uses come last |
+| A struct type nothing uses | `NewKind` declares only the types it reaches |
+| A `collect one` precedence other than the decisions' declaration order | `WithDecisions` declares the decisions in precedence order |
+| Payload arguments on `default` or `conflict` | `WithDefault` and `WithConflict` take a reason; the payload comes from the field defaults |
+| A package name, `--package` or the kind's, that isn't a Go identifier or is a keyword | It names the package |
+
+```text
+deploy_approval.sigil:3:6: error: a Go kind can't declare type Release here
+  |
+3 | type Release {
+  |      ^^^^^^^
+  = help: a Go kind declares struct types in the order its inputs, host functions and payloads first use them; declare them as Service, Release, which changes no policy
+```
+
+```text
+$ sigil gen go --check --package approval --out approval/kind.go deploy_approval.sigil
+✓ approval/kind.go is up to date
+```
+
+`-o json` and `-o yaml` print one record:
+
+| Field | Holds |
+| --- | --- |
+| `kind`, `version` | From the kind header |
+| `package` | The generated file's package name |
+| `code` | The generated Go source |
+| `file` | With `--out`: the file |
+| `status` | With `--out`: `current` when the file already matched, `written` when `gen go` wrote it, `stale` when `--check` found it out of date |
+
+A kind file that doesn't load, or that Go can't declare, prints its diagnostics as [`check`](#sigil-check) does instead.
+
+Exits 1 when the kind file can't be read, doesn't load or can't be declared in Go, a flag is wrong, or `--check` finds the file stale. To use the generated code in a service, see [Use a kind from another Go service](/guides/generate-go/).
 
 ## `sigil lsp`
 

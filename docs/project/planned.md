@@ -75,9 +75,9 @@ The proposal records every host function call an evaluation makes, its arguments
 
 A public `policy.LoadKind` would let a Go service load a kind from its kind file at run time instead of defining the kind in Go. It needs a companion API to bind Go functions to the host functions a loaded kind file declares. Neither exists yet.
 
-Until they do, a Go service that consumes a kind it doesn't define imports the defining host's package, and tooling reads the exported kind file through the CLI. The stock `sigil` binary checks policies against an exported kind file without the host's Go code, and evaluates them as long as no rule reaches a host function call; reaching one is a runtime error. A host binary built with `pkg/cli` supplies the real implementations. The facts are in [Host functions and host binaries](/reference/cli/#host-functions-and-host-binaries).
+Until they do, a Go service that consumes a kind it doesn't define generates Go code from the exported kind file with [`sigil gen go`](/reference/cli/#sigil-gen-go), whose `NewKind` builds the kind from Go types with the service's own host function implementations, or it imports the defining host's package; [Use a kind from another Go service](/guides/generate-go/) shows the first. What `LoadKind` would add is a kind known only at run time, without a generate step.
 
-The planned [`sigil gen go`](#sigil-gen-go) command covers the other half: services that want typed payload structs from a kind file without importing the host.
+Tooling reads the exported kind file through the CLI. The stock `sigil` binary checks policies against an exported kind file without the host's Go code, and evaluates them as long as no rule reaches a host function call; reaching one is a runtime error. A host binary built with `pkg/cli` supplies the real implementations. The facts are in [Host functions and host binaries](/reference/cli/#host-functions-and-host-binaries).
 
 ## `sigil breaking`
 
@@ -146,21 +146,6 @@ The last row is the one CI can't catch any other way. The platform's own tests p
 A host binary exports its kind, so a policy repository can check team policies without the host's Go code. It doesn't export the host's trusted documents, such as a vocabulary module built with [`pkg/build`](/reference/go-builder/) and embedded in the service. A repository that imports `deploy.freeze` has to vendor a copy and list it under [`trusted`](/reference/config/#keys), and nothing tells it when that copy goes stale.
 
 The proposal links the trusted documents into the host binary the way `cli.WithKind` links the kind, and has `sigil export` write them into a directory next to the kind file, with `--check` failing on a stale copy as it does for the kind. The option that would link them doesn't exist in package `cli` yet.
-
-## `sigil gen go`
-
-**Status:** not implemented; tracked on the [roadmap](/project/roadmap/) under Tooling II. The command is registered and exits with "not implemented yet"; see [`sigil gen go`](/reference/cli/#sigil-gen-go).
-
-`sigil gen go` generates typed Go code from a kind file: a struct for every input type and decision payload. A second Go service can then consume decisions with typed payload structs instead of importing the host or [loading the kind at run time](#loading-a-kind-at-run-time).
-
-```text
-sigil gen go KIND_FILE [flags]
-```
-
-| Flag | Default | Does |
-| --- | --- | --- |
-| `-p`, `--package` | the kind's name | Go package name of the generated code |
-| `--out` | stdout | File to write the generated code to |
 
 ## `sigil lsp`
 

@@ -42,6 +42,7 @@ export const navbar = defineNavbarConfig([
           { text: "Build a host binary", link: "/guides/host-binary", icon: "mdi:console" },
           { text: "Build policies in Go", link: "/guides/build-policies-in-go", icon: "mdi:code-braces-box" },
           { text: "Evolve a kind safely", link: "/guides/evolve-a-kind", icon: "mdi:source-branch" },
+          { text: "Use a kind from another Go service", link: "/guides/generate-go", icon: "mdi:file-code-outline" },
           { text: "The example service", link: "/guides/example-service", icon: "mdi:rocket-launch-outline" },
         ],
       },

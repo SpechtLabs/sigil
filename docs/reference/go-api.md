@@ -71,7 +71,7 @@ func (k *Kind[In]) Contract() *contract.Kind
 | `Load`, `Compile` | A compiled policy; see [Loading](#loading)                                                                                                                                                                                                  |
 | `Contract()`      | The kind model and its binding to the Go types and functions, for this module's tooling, `cli` and `policytest`. Its type is internal to the module, so nothing outside it can use it                                                       |
 
-A `*Kind` is immutable and safe for concurrent use. To write `Schema()` to a file and keep it current, see [Build a host binary](/guides/host-binary/#export-the-kind).
+A `*Kind` is immutable and safe for concurrent use. To write `Schema()` to a file and keep it current, see [Build a host binary](/guides/host-binary/#export-the-kind). For a service that doesn't import the host, [`sigil gen go`](/reference/cli/#sigil-gen-go) generates the Go code that builds the kind from its kind file.
 
 ::: warning Planned
 `policy.LoadKind`, which would load a kind from its kind file at run time, and an API to bind host functions to such a kind don't exist yet; see [Loading a kind at run time](/project/planned/#loading-a-kind-at-run-time).

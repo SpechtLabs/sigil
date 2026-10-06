@@ -1,0 +1,24 @@
+kind Reserved version 1
+
+enum error: a | b
+
+type chan {
+  x: int
+}
+
+type init {
+  y: int
+}
+
+input c: chan
+input i: init
+input e: error
+
+decision deny {
+  reason: no
+}
+
+collect one
+precedence deny
+
+default deny(reason: no)
