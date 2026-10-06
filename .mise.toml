@@ -396,10 +396,13 @@ run = ["tree-sitter test", "go test ./"]
 
 # editors/vscode: the VS Code extension. Its bundle inlines its dependencies,
 # so the VSIX needs no node_modules; see editors/vscode/README.md.
+# --ignore-scripts: nothing here needs an install script, and the release
+# jobs that install these hold a contents: write token or mint an OIDC one,
+# so no dependency's script (keytar's downloads a native binary) may run.
 [tasks.vscode-install]
 description = "Install the VS Code extension's dev dependencies"
 dir = "editors/vscode"
-run = "bun install --frozen-lockfile"
+run = "bun install --frozen-lockfile --ignore-scripts"
 
 [tasks.vscode-build]
 description = "Bundle the VS Code extension into editors/vscode/dist"

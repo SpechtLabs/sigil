@@ -200,15 +200,16 @@ jobs:
       # The module GoReleaser built, signed and attached to this release, not
       # one built again here, so the registry gets the bytes the GitHub
       # release has, with the version GoReleaser stamped into them. cosign
-      # checks the signature over checksums.txt against this workflow's own
-      # identity, and the archive's line in it checks the archive. Go isn't
+      # checks the signature over checksums.txt against release.yaml on main,
+      # the only identity a release is signed with, whichever ref this run
+      # started from, and the archive's line in it checks the archive. Go isn't
       # installed, so a wasm-build task that decided to rebuild the module
       # would fail rather than replace it; the touch keeps the module newer
       # than its sources, which is what lets the task skip.
       - name: Fetch and verify the release's WebAssembly module
         env:
           GH_TOKEN: ${{ github.token }}
-          IDENTITY: https://github.com/${{ github.workflow_ref }}
+          IDENTITY: https://github.com/SpechtLabs/sigil/.github/workflows/release.yaml@refs/heads/main
         run: |
           set -euo pipefail
           release="${RUNNER_TEMP}/release"
@@ -356,7 +357,7 @@ jobs:
         if: steps.check.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          IDENTITY: https://github.com/${{ github.workflow_ref }}
+          IDENTITY: https://github.com/SpechtLabs/sigil/.github/workflows/release.yaml@refs/heads/main
         run: |
           set -euo pipefail
           release="${RUNNER_TEMP}/release"
@@ -421,6 +422,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG }}
+          persist-credentials: false
 
       # A repair of a tag from before the extension stops here.
       - name: Decide whether to package
@@ -452,7 +454,7 @@ jobs:
         if: steps.check.outputs.package == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          IDENTITY: https://github.com/${{ github.workflow_ref }}
+          IDENTITY: https://github.com/SpechtLabs/sigil/.github/workflows/release.yaml@refs/heads/main
         run: |
           set -euo pipefail
           release="${RUNNER_TEMP}/release"
@@ -511,6 +513,11 @@ jobs:
   # secret publishes, and without either the job says so and skips. ovsx
   # reads OVSX_PAT from the environment and prefers it to trusted
   # publishing, so only the token step sees it.
+  #
+  # id-token: write covers the whole job, so nothing before the publish runs
+  # third-party code: vscode-install passes --ignore-scripts, so installing
+  # ovsx runs no package's install script, and ovsx is the first package
+  # code that runs.
   vscode-openvsx:
     name: Publish the VS Code extension to Open VSX
     runs-on: ubuntu-latest
@@ -551,6 +558,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG }}
+          persist-credentials: false
 
       - name: Set up mise
         if: steps.check.outputs.with != 'none'
