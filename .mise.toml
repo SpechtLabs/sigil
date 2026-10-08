@@ -7,7 +7,7 @@
 [tools]
 # Keep in lockstep with the toolchain directive in go.mod; Renovate bumps both
 # together. The go directive (minimum language version) is bumped by hand.
-go = "1.27.1"
+go = "1.27.2"
 # bindings/rust and examples/feature-flags. CI installs the minimal profile, so
 # the components the lint and coverage tasks need are listed. Keep in lockstep with the rust
 # images in examples/feature-flags/Dockerfile.
