@@ -60,7 +60,7 @@ node = "24.21.0"
 # Editor support: generates and tests the tree-sitter grammar under
 # editors/tree-sitter-sigil (see the tree-sitter-* tasks). Its own QuickJS runs
 # grammar.js, so generating needs no Node.
-"aqua:tree-sitter/tree-sitter" = "0.27.0"
+"aqua:tree-sitter/tree-sitter" = "0.27.1"
 
 [tasks.build]
 description = "Build the sigil binary into bin/"
