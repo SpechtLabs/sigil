@@ -12,7 +12,7 @@
 # sigil.wasm, the engine. WebAssembly is the same on every platform, so it's
 # built once, on the build platform. Keep in lockstep with the go pin in
 # ../../.mise.toml, and the flags with its wasm-build task.
-FROM --platform=$BUILDPLATFORM golang:1.27.1 AS wasm
+FROM --platform=$BUILDPLATFORM golang:1.27.2 AS wasm
 
 WORKDIR /src
 COPY go.mod go.sum ./
