@@ -7,7 +7,7 @@
 #   docker build -f examples/deploy-gates/Dockerfile --build-arg VERSION=dev -t deploygate .
 
 # Keep in lockstep with the toolchain directive in examples/deploy-gates/go.mod.
-FROM --platform=$BUILDPLATFORM golang:1.27.1 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.2 AS builder
 
 WORKDIR /src
 
