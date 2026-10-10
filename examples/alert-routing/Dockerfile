@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # the build platform: the install picks platform-specific packages (sharp,
 # which Next traces into the standalone output), so it must pick the
 # target's.
-FROM oven/bun:1.4.2 AS bun
+FROM oven/bun:1.4.3 AS bun
 FROM node:24.21.0-trixie-slim AS build
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 ENV NEXT_TELEMETRY_DISABLED=1
