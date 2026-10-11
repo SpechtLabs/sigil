@@ -35,7 +35,7 @@ prometheus = { version = "0.14.0", features = ["process"] }
 pyroscope = { version = "2.1.1", default-features = false, features = ["backend-pprof-rs"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["json"] }
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = { version = "1.0.152", features = ["preserve_order"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
 serde_yaml_ng = "0.10.0"
 
 sha2 = "0.11.0"
