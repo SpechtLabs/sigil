@@ -55,7 +55,7 @@ node = "24.21.0"
 # Renders roadmap.yml into docs/project/roadmap.md (see the docs-roadmap task).
 "github:SierraSoftworks/roadmap" = "1.4.2"
 # Serves the Go API documentation as pkg.go.dev renders it (see the docs-godoc task).
-"go:golang.org/x/pkgsite/cmd/pkgsite" = "0.5.0"
+"go:golang.org/x/pkgsite/cmd/pkgsite" = "0.6.0"
 
 # Editor support: generates and tests the tree-sitter grammar under
 # editors/tree-sitter-sigil (see the tree-sitter-* tasks). Its own QuickJS runs
