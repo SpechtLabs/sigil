@@ -146,7 +146,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
 
       - name: Set up mise
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: go goreleaser
@@ -192,7 +192,7 @@ jobs:
           ref: ${{ env.TAG }}
 
       - name: Set up mise
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: bun node cosign
@@ -304,7 +304,7 @@ jobs:
           key: rustup-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}-${{ steps.rust.outputs.components }}
 
       - name: Set up mise
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: rust cosign
@@ -443,7 +443,7 @@ jobs:
 
       - name: Set up mise
         if: steps.check.outputs.package == 'true'
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: bun node cosign
@@ -562,7 +562,7 @@ jobs:
 
       - name: Set up mise
         if: steps.check.outputs.with != 'none'
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: bun node

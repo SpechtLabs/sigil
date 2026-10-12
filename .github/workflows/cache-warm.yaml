@@ -67,7 +67,7 @@ jobs:
       # Exactly as examples.yaml's feature-flags job sets up mise, so this
       # saves the mise cache that job restores.
       - name: Set up mise
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: ${{ env.MISE_TOOLS }} rust k6
@@ -142,7 +142,7 @@ jobs:
 
       - name: Set up mise
         if: steps.lookup.outputs.cache-hit != 'true'
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: ${{ env.MISE_TOOLS }}
@@ -198,7 +198,7 @@ jobs:
 
       - name: Set up mise
         if: steps.lookup.outputs.cache-hit != 'true'
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: ${{ env.MISE_TOOLS }}
@@ -241,7 +241,7 @@ jobs:
 
       - name: Set up mise
         if: steps.lookup.outputs.cache-hit != 'true'
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: ${{ env.MISE_TOOLS }}
