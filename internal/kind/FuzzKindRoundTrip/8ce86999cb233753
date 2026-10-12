@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("\x04\x17\x00\x01\x02\x03\x17\x05")
+int64(53)
+string("hello")
+bool(false)

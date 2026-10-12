@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("\x03\x03.\x06")
+string("#1 _$&_ ay_bYA_CZa ")
+int64(94)
+string("")
+bool(false)

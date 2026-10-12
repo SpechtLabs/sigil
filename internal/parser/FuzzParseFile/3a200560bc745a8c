@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:A0 let A=0 an(A0!=\"\"and policy A:A use A.{A}when not 0<0 and not 0{}use A.{A,A}whe(A0!=\"\"and 0 and 0!=\"\"and use A.{A}when not 0<0 and not 0{}use A.{A,A}whe(A0!=\"\"and 0 in 0 and 0 in 0 and")

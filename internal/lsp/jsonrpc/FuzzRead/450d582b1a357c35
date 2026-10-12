@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Content-Length:50\n\n{\"0000000\":\"000\",\"00\":0,\"0\xa2\xa2\xa2\xa2\xa2\xa2\xa200000\"00000000000")

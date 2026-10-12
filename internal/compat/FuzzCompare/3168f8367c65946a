@@ -1,0 +1,3 @@
+go test fuzz v1
+string("kind A version 1 input Z:string decision deny{reason:A00000000000000000000000000000000000000|conflicting_rules}decision review{reason:A}decision approve{reason:A}collect one precedence deny>review>approve default deny(reason:conflicting_rules)")
+string("kind A version 1 enum A000:A enum A001:A type Release{}type Service{}input Z:Release input C:Service input B:string decision deny{reason:A00000000000000000000000000000000000000|conflicting_rules}decision review{reason:A}decision approve{reason:A}collect one precedence deny>approve>review default deny(reason:conflicting_rules)")

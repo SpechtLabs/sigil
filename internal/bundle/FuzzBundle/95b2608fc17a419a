@@ -1,0 +1,3 @@
+go test fuzz v1
+string("policy A:A whe( true(true whe( true(true")
+string("0")

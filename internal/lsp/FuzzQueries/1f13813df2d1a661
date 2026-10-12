@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy:A!A00 \npolicy A:A!!!!A \nwhen true {  A0000(A00000 00000000000\npolicy :A!!!!!!A000000000000 let A =A00000000 !A! 000---module A0:A 000 A 00\"0000000000000")

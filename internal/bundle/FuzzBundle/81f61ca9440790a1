@@ -1,0 +1,3 @@
+go test fuzz v1
+string("module lib:K@1 p\x90A\x13$\xa0\x99\x8aub let A00000=\"\"policy guard:K@1 use lib---policy A:K@1 use guard")
+string("X07")

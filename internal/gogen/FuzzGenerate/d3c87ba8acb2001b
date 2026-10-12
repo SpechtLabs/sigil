@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("A 0 B 0 A00")
+int64(-9223372036854775772)
+string("0")
+bool(true)

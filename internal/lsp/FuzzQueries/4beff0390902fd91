@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind Broken version 1\n\ntype Release {\n  \x05\xff\xff\x05: duration = 24h\n  hotfix: bool\n}\n\ntype Unclosed {\n  name: string\n\ninput release: Release\n\ndecision empty()\ndecision nested(ticket: ??string) {\n  x\n}\ndecision missing(tags: list<string) {\n  x\n}\n\ncollect\ndefault \"no_rule_matched\"\n\nprecedence deny > > review\n")

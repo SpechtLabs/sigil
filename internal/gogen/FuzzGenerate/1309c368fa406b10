@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("9\x000d")
+string("_1#_#yY a9x_2")
+int64(-65)
+string("")
+bool(false)

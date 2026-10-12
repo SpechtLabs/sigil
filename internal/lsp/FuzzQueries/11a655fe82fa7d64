@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind aaaaa version 0 aaaaaaaaa conflict A(reason:A)aaaaaaaaaaa default A(reason:A)kind aaaaaaa version 0 aaaaaaaaaaaaaaaaa0")

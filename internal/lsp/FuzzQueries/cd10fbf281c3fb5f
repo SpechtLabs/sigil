@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module deploy.common: DeployApproval@2\n\npub let owns_service = actor.\x7f\x00ams any i\xa7r\x03tA!\x1b^n service.owners\npub let cleared = split(service.labels[\"regions\"], \",\") all in actor.teams\n")

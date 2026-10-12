@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("double:\n returns: 0000-1-1")

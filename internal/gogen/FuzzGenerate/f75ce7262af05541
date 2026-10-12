@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("")
+string("#c\xfa\x96\xbb\xa0B")
+int64(6)
+string("0")
+bool(true)

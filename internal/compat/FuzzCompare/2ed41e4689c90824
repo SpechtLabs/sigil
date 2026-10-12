@@ -1,0 +1,3 @@
+go test fuzz v1
+string("kind A version 0 decision admin{reason:A A00000000000000000000000000000000000000000000000000000000000000000000:A}default admin()")
+string("0")

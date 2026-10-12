@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Content-Length:52\n\n{\"00000aaaa\":\"000\",\"id\":0,\"00aaaa\":\"00000000\",\"a\":0}")

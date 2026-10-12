@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy single.line: DeployApproval use deploy.common.{cleared} let a = enviro-ment == \"production\" let b = \"deployer\" in actor.roles guardrails(min_soak: 4h) when a and b { review(reason: service_owner, approvers: approvers) } -n- module single.more: DeployApproval let x = cleared\n")

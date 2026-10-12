@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("0")
+int64(181)
+string("\r\r\r\r\r\r\r\r\r\r\r\r\r\r\r\r")
+bool(false)

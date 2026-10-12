@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("0")
+int64(-81)
+string("`µ\U0008a084\u0558\xf2\xa6\x88ÝÁ¼µ\U0008a084\u0558\xf2\xa6\x880Ý")
+bool(false)

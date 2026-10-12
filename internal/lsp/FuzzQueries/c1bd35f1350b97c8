@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 0 enum A:A 0 type type type type input input input input input input fn decision decision decision collect precedence A 0 precedence A 0")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:A A(0!=\"\"and when 0<0 and 0{use A.{A A(0!=0 and 0!=\"\"and use when 0<0 and 0!=\"\"and 0 in 0 and 0 in 0 and")

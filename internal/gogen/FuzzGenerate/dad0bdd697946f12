@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("0")
+int64(-9223372036854775808)
+string("\xd0\x7fˠ\xeb\x86\x1b")
+bool(true)

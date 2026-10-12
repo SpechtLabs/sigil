@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("\x10\x03\x06\x06")
+string("_1 _ _9'a$7A\x00! 9")
+int64(-63)
+string("")
+bool(false)

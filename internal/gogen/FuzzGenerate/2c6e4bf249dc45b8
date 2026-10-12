@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0%")
+string("A000 A001 A000_00 a00000 level a0000_000 A00 kind A0000")
+int64(42)
+string("79yP\xa7Y}z0")
+bool(false)

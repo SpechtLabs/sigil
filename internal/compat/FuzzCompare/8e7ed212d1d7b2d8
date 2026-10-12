@@ -1,0 +1,3 @@
+go test fuzz v1
+string("kind A version 0\n\ninput a\x80\x00\x00\x00\n\ndecision a{\nreason:aaaa\n}\n\ndecision aaaaa {\nreason:aaaaaa\naaa:aaaaaaaa=0h\n}\n\ncollect all\n\ndefault aaaaa(aaaaaa.a0aaaa)\n")
+string("0")

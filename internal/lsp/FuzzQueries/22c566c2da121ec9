@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind a version 1 0 enum A:A,00A00000!!!!00A0\xff\x7f\xff\xff!00(0000A 0000000A 0000000A0000!!0000000A 0000000A0000!!!!decision(!!")

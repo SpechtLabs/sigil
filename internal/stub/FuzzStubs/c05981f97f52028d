@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("A:\n  A:\n    - A: [{A,A0,A, [A]},[A,A,A]]\n      A: [A,A,A]\n  A0000: [{A},[A,A]]\nA00: A\nA:\nA:\nA: A\nA:\nA:  {A,A}\nA:\nA:\nA: A0")

@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("")
+string("\xf2\xad")
+int64(1)
+string("\x93")
+bool(true)

@@ -1,0 +1,3 @@
+go test fuzz v1
+string("kind A version 0 enum A000:A enum A0000000000:A type A0000000000000{A:A010}")
+string("0")

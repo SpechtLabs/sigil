@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Content-Length: 52\r\n\r\n{\"jsonrpc\":\"2. \",\"idod\":1,\"method\":\"shutdown\",\"x\":1}")

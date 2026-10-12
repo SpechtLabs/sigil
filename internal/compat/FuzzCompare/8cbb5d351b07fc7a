@@ -1,0 +1,3 @@
+go test fuzz v1
+string("kind A version 0 fn A(A0\x11\x11fn A()->A decision A{decision A(A:list<A>decision A{default A(0 conflict A(0)")
+string("0")

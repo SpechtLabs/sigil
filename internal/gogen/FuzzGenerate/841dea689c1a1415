@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("Z000000000000x0000000000900\xa70  A  B       0 0   X 0  Z A000    a    b\xf7c A0  x  000\x8cy  A0\xe8z\xa80 A0   C 0000000  0  00\xa300$0000000")
+int64(181)
+string("0")
+bool(false)

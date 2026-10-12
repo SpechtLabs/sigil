@@ -1,0 +1,3 @@
+go test fuzz v1
+string("kind A version 0 enum A0:A enum A:A type A0{A:A A:A}type A0{A:A A:A A:A A:A}input A:A input A:A input A:A fn A(A,A)->list<A>fn A(A)->A decision A{reason:A A:A A:A}")
+string("0")

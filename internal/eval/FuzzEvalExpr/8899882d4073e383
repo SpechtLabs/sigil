@@ -1,0 +1,3 @@
+go test fuzz v1
+string("`\x87\x87\x80\xf9`matches\"$0|$0|$0|$\"")
+int64(-804)

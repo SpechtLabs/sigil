@@ -1,0 +1,4 @@
+go test fuzz v1
+string("kind A version 0 type A{A:list type A{A:list<A>A:list<list type A{A:list<A>A:list<list<list")
+string("0")
+bool(true)

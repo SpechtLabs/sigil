@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind Aaaaaa version 0 decision deny{aaa_eligible aaaaaaaaaaaaaa}default deny(AAAigiBle)")

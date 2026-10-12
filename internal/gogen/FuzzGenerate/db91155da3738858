@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("0")
+int64(159)
+string("\vռڅ̇пқȒʰב\vڿ麆ǅ\u05fc̗ג˥\vƶ߫\v\v\v\v\vˁҝ")
+bool(false)

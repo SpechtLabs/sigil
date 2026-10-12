@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("0")
+int64(218)
+string("`\"\x7f\xff\"\"0\"")
+bool(false)

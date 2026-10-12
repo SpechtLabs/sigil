@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("Η\u0091")
+int64(-9223372036854775763)
+string("0")
+bool(false)

@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("")
+string("    0 0           0   0  0 0    0      0   0         0     0    0 0          \x84 0    \x950\x8f0\xf60 \xa60\x85  \x9d 0\xa3  0 0 \xbb\x9f\xf9\x8a0   0  \xf9\xf5 \xb6 0 \xf90 \xb7\xbb0\xa0     \xfd     \x9c\x9e\xf5\x9c 0\xa2 \xaa 0\xfd \xfa0 0   \xfd 0\x8f0  0   \x950\x92")
+int64(10)
+string("0")
+bool(false)

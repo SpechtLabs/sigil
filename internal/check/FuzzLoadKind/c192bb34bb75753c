@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 decision d{A}default d(\"\xddA\xba\x8e\xab\xb1\x9e000\xfe\xa400\x9e\xb800\x8b0\")")

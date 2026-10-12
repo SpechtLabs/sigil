@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0%")
+string("A000 A001 A000_00 a00000 00000 a000_000 A00_0000000000")
+int64(42)
+string("0000000`")
+bool(true)

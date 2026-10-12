@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy payments.production: DeployApproval@2\n\nuse deploy.common.{cleared, owns_service}\nuse d\x9fٟ\xe5\nteploy.guardrails\n\nguardrails(min_soak: 4h)\n\nwhen cleared and owns_service {\n  review(reason: service_owner, approvers: [\"payments-leads\"])\n}\n")

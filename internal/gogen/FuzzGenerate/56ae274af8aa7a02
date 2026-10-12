@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("C#")
+string("x A.a8 0 b(9 a_ 0")
+int64(0)
+string("0)\x98\x980\x8d0")
+bool(false)

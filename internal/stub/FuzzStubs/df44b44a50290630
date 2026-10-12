@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("ve_requestor:\n calls:\n    - args: []\n      returns:\n    - args: []\n      returns:\n0:\n error: 0\ndouble:\n returns: A")

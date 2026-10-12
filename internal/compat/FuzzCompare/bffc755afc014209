@@ -1,0 +1,3 @@
+go test fuzz v1
+string("kind AaaaaaAaaaa version 0 input aaaa:string decision aaab{aaaaaa}decision admin{reason:oncall aaa:duration=A}collect all default admin(reason:oncall)")
+string("0")

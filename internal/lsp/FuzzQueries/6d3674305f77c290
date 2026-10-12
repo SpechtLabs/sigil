@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("let orphan = true\n\npolicy : DeployAppr\x80val\n\npolicy good.first: DeployApproval\n\nwhen true {\n  deny(reason: unclose-)\n\npolicy good.two: DeployApproval\nlet a = min_soak\n-d-\n1h\n---\nmodule good.three: DeployApprovnl\nlet b = `unterminated\n")

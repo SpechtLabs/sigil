@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("0")
+int64(-9223372036854775807)
+string("\"\"\b0\"0000000\x0f\xdd00\x030\xd300\xb40\xc1\x9c\x9c`\x10\xd7\x1c0\a0\xc60\xb50")
+bool(false)

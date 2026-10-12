@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy d90l1ZguaScZa: DeployApproval@2\n\n8%C\nwhen tA'CC{\na deny(reason: stab2oo_short)\n}x")

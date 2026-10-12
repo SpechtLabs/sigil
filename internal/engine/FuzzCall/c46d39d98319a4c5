@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"op\":B\"version\", \"id\": 1e400}")

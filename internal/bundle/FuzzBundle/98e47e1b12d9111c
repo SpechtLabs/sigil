@@ -1,0 +1,3 @@
+go test fuzz v1
+string("policy A:K when\"\"{let let let }when\"\"0{let let A=0\"\"let let }when\"\"{let")
+string("0")

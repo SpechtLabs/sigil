@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("\x80")
+string("0")
+int64(-126)
+string("\x80`\xebn\x12U\xa6\x02p\xe7\xeaU<\xa6\xa4\b\xd1\xd2r\xdb\xf3 {\xa1\xc4^0\xcf")
+bool(false)

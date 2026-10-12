@@ -1,0 +1,3 @@
+go test fuzz v1
+string("kind A version 1 decision A0000{reason:A00000 A:duration=0h}collect all")
+string("0da 0ha 0ha")

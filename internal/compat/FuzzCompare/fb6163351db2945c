@@ -1,0 +1,3 @@
+go test fuzz v1
+string("\"\U0001a69a\U0001a698\"")
+string("0")

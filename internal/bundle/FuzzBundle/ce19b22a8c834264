@@ -1,0 +1,3 @@
+go test fuzz v1
+string("kind K version 0 0 collect precedence d 000000 collect collect 000 precedence A 0 precedence A 0 collect one precedence A collect one precedence A!collect one collect one 0 collect one precedence A collect one precedence A!collect one collect one precedence A!precedence A 0 decision precedence A 0")
+string("0")

@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("\x00\x01\x02\x03\x04\x05")
+string("Tier tier user_id userID level level_low new_kind6Input")
+int64(42)
+string("say `+i`")
+bool(false)

@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("11111")
+string("0\x140 0 0")
+int64(59)
+string("")
+bool(false)

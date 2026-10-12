@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("0")
+int64(101)
+string("Ϥ\x13Ҿ݃进\x14ӽ`\x1b\x01\x15߰\x05\x02㏍\x05\x16ˀ\x11\x02\x02\x10\x04\x1e\x1aİ")
+bool(false)
