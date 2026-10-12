@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/SpechtLabs/sigil/compare/v0.8.0...v0.8.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate serde_json to 1.0.152 ([#256](https://github.com/SpechtLabs/sigil/issues/256)) ([d999dfa](https://github.com/SpechtLabs/sigil/commit/d999dfab5b0c440fa21e807e30a78973db36c275))
+* **deps:** update rust crate serde_json to 1.0.154 ([#260](https://github.com/SpechtLabs/sigil/issues/260)) ([4ec6b64](https://github.com/SpechtLabs/sigil/commit/4ec6b644e5c6ac55b13704bc0205db7aaf69e8a9))
+
 ## [0.8.0](https://github.com/SpechtLabs/sigil/compare/v0.7.3...v0.8.0) (2026-10-06)
 
 
