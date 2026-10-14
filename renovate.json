@@ -140,7 +140,7 @@
       "groupSlug": "go-modules"
     },
     {
-      "description": "examples/deploy-gates and cmd/sigil-wasm/test replace github.com/spechtlabs/sigil with the checkout, so their go.mod has to list every version the root go.mod raises, or builds there stop with \"updates to go.mod needed\". gomodTidy does not keep them in step (PRs #242 and #277 both came out untidy), and Renovate skips indirect requirements by default, so bump them here too; the Go modules group then moves them in the same branch as the root.",
+      "description": "examples/deploy-gates and cmd/sigil-wasm/test replace github.com/spechtlabs/sigil with the checkout, so their go.mod has to list every version the root go.mod raises, or builds there stop with \"updates to go.mod needed\". gomodTidy does not keep them in step (PRs #242 and #277 both came out untidy), and Renovate skips indirect requirements by default, so bump them here too; the Go modules group then moves them in the same branch as the root. Never majors: a new major is a new module path, which nothing there imports, so Renovate would swap the line for one go.sum does not have (#294).",
       "matchManagers": [
         "gomod"
       ],
@@ -150,6 +150,11 @@
       ],
       "matchDepTypes": [
         "indirect"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
       ],
       "enabled": true
     },
