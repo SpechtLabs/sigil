@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/SpechtLabs/sigil/compare/v0.8.2...v0.8.3) (2026-10-14)
+
+
+### Bug Fixes
+
+* **vscode:** spell the publisher as the Open VSX namespace is spelled ([#296](https://github.com/SpechtLabs/sigil/issues/296)) ([f0cd5df](https://github.com/SpechtLabs/sigil/commit/f0cd5df1dbd90fad4b9008cab0e702acffb03088))
+
 ## [0.8.2](https://github.com/SpechtLabs/sigil/compare/v0.8.1...v0.8.2) (2026-10-14)
 
 
