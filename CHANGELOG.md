@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.2](https://github.com/SpechtLabs/sigil/compare/v0.8.1...v0.8.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* **deps:** update go modules ([#242](https://github.com/SpechtLabs/sigil/issues/242)) ([c7d846f](https://github.com/SpechtLabs/sigil/commit/c7d846fb2be4d5fbcbe93eca6b55b29d2df8958b))
+* **deps:** update rust crate tokio to 1.53.3 ([#280](https://github.com/SpechtLabs/sigil/issues/280)) ([2c02b2f](https://github.com/SpechtLabs/sigil/commit/2c02b2f95504130ff68c9c3196efb6f5e86939fc))
+* **deps:** update rust crate wasmtime to 49.0.3 ([#289](https://github.com/SpechtLabs/sigil/issues/289)) ([21e7aa2](https://github.com/SpechtLabs/sigil/commit/21e7aa244c3df85101e2c7bf2c392e9516db1080))
+
 ## [0.8.1](https://github.com/SpechtLabs/sigil/compare/v0.8.0...v0.8.1) (2026-10-12)
 
 

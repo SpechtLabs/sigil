@@ -2268,7 +2268,7 @@ dependencies = [
 
 [[package]]
 name = "spechtlabs-sigil"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "getrandom 0.4.3",
  "serde",
