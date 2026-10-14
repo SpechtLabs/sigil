@@ -46,5 +46,5 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )
