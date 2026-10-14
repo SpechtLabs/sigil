@@ -19679,7 +19679,7 @@ TS_PUBLIC const TSLanguage *tree_sitter_sigil(void) {
     .metadata = {
       .major_version = 0, // x-release-please-major
       .minor_version = 8, // x-release-please-minor
-      .patch_version = 1, // x-release-please-patch
+      .patch_version = 2, // x-release-please-patch
     },
   };
   return &language;
