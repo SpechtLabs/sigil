@@ -21,7 +21,6 @@
   "ignorePaths": [
     "**/node_modules/**",
     "**/bower_components/**",
-    "**/test/**",
     "**/tests/**",
     "**/__tests__/**",
     "**/__fixtures__/**"
@@ -139,6 +138,20 @@
       ],
       "groupName": "Go modules",
       "groupSlug": "go-modules"
+    },
+    {
+      "description": "examples/deploy-gates and cmd/sigil-wasm/test replace github.com/spechtlabs/sigil with the checkout, so their go.mod has to list every version the root go.mod raises, or builds there stop with \"updates to go.mod needed\". gomodTidy does not keep them in step (PRs #242 and #277 both came out untidy), and Renovate skips indirect requirements by default, so bump them here too; the Go modules group then moves them in the same branch as the root.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchFileNames": [
+        "examples/deploy-gates/go.mod",
+        "cmd/sigil-wasm/test/go.mod"
+      ],
+      "matchDepTypes": [
+        "indirect"
+      ],
+      "enabled": true
     },
     {
       "description": "Group Rust crate updates together. bindings/rust and examples/feature-flags share most crates, and families like wasmtime/wasmtime-wasi and opentelemetry/tracing-opentelemetry only build when they move in lockstep.",
