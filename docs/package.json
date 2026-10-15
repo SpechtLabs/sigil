@@ -48,7 +48,7 @@
     "@codemirror/view": "^6.43.14",
     "@lezer/highlight": "^1.2.5",
     "@spechtlabs/docs-kit": "github:SpechtLabs/docs-kit#v0.1.1",
-    "@spechtlabs/sigil": "0.8.2",
+    "@spechtlabs/sigil": "0.8.3",
     "@vue/component-compiler-utils": "^3.3.0",
     "lru-cache": "^11.5.3",
     "markdown-it-emoji": "^3.1.0",
@@ -57,7 +57,7 @@
     "yaml": "^2.9.1"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "^4.64.6",
+    "@rollup/rollup-linux-x64-gnu": "^4.64.7",
     "sass-embedded-linux-x64": "latest"
   },
   "scripts": {
