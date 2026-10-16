@@ -11,7 +11,7 @@ go = "1.27.2"
 # bindings/rust and examples/feature-flags. CI installs the minimal profile, so
 # the components the lint and coverage tasks need are listed. Keep in lockstep with the rust
 # images in examples/feature-flags/Dockerfile.
-rust = { version = "1.99.0", components = "rustfmt,clippy,llvm-tools" }
+rust = { version = "1.99.1", components = "rustfmt,clippy,llvm-tools" }
 # Rust coverage for Codecov (see the rust-coverage task); it needs the
 # llvm-tools component above.
 "aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
