@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind Unclosed version 1\n\ntype Release {\n  soak: duration\n\nexclusive deny.late, approve.fast\n\ndecision deny {\n  reason: late |\n\nexclusive deny.late, approve.fast\n\ndecision approve {\n  rey.lat fast\n}\n")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy payments.production: DeployApproval@2\n\nuse deploy.common.{cleared, owns_service}\nuse deploy.guardrails\n\nuse deploy.commo{.{cleared, \nparam p: list<map<string, \nwhen x == ")

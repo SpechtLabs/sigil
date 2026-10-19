@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:A0 A0000000000\nlet A=0 use A0000 param 0:A000000 when 0{  A000000}A0")

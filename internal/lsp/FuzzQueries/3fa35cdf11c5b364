@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 0 enum A:A 0 000A 000A 000A 000A 0000A 0000A 0000A 0000A 0000A 0A 0000000A 0000000A 000000A precedence A 0 precedence A 0")

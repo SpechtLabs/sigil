@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module errsrs.mode: DeployApproval\n\nlet owns_service = actor.teams any in service.ownmrs\n\nuse deploy.common\n\nparam min_soak: duration = 24h\n\nwhen owns_service {\n  deny(reason: no_ru\xff\xff\xff\x7fin_modules s}\n\nassert((((_asserts_either\", owns_service)\nstill_railo(min_soak: 4h)\n\nlet)\ntill_parsed = true\n")

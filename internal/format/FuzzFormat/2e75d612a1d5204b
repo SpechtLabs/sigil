@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A param A:A=0h,max:0h,min:0h>=0 when 0{when 0{A(0>=0s)}}assert(\"\",0>=0s)A(0h)A(0h)")

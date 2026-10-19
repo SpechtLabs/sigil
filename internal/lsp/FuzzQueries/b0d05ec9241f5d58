@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:A!!!!!!!!!!0A!!!0\n param 0\n when {  A0000(!!!!!)A00)assert!A0(")

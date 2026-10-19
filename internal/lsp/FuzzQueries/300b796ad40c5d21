@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:DeployApproval   0\n when service.! \"\"\"0\n  a!    00m)   ")

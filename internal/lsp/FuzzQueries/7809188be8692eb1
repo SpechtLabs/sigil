@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:DeployApproval any service. param 0:= A000000000000 deny(A000000( let aA=A0000")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("remove_requestor:\n  calls:\n    - args: [{name: 0C}, []]\n      returns: [0]\n    - args: [{name: .)y}, [c]]\n      error: 9:aA")

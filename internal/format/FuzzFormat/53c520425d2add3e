@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A let A=[]exclusive in 0 let A=[]exclusive in{}([]exclusive in[])")

@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("0")
+int64(-77)
+string("\a\a\a\a\a\a\a\a\a\a\a\a\a\a\a\a")
+bool(true)

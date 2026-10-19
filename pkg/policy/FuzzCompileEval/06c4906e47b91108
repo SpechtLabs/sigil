@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval let aA=actor.teams any in service.owners let aB=split(service.labels[\"\"],\"\")all in actor.regions when A{let A=actor.teams any in service.owners let B=split(service.labels[\"\"],\"\")all in actor.regions when C in C and C{ when C+C and C{}when C in C and C{}}when C+C and C{}when C in C and C{}}")
+string("0")
+bool(false)

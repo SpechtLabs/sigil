@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:DeployApproval use deploy.guardrails\n guardrails(min_soak: 00)A0000.A.A00")

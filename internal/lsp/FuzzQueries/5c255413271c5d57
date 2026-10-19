@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy n: DeployApproval@2\n\nuse deploy.common.{cleared,!owns_service\x00\x00\x00\x80ls\n7whe2 any c in changes:1c.assert(\"x\", outcome.review.")

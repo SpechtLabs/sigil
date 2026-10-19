@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy :A A0000000\nuse A00000000000000.us.A000000000000000000.us.A0000000")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("0!!!!policy A:A 0 policy A0:A 0!000 module A1:A 0")

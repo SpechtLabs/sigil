@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 type A{A:A A:list<B>A:list<B>A:A0}000000000000000")

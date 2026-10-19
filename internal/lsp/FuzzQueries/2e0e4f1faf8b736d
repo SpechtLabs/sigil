@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy deploy.guardrails: DeployApproval@70 p\n  deny(reason: soak_too_short) 0\n")

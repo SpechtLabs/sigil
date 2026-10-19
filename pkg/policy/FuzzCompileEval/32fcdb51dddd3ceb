@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval let owns_service=0 let cleared=00 let eligible=0 when 0{let owns_service=0 let cleared=0 let eligible=0 let eligible=0}")
+string("0")
+bool(false)

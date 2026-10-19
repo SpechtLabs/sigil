@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("")
+string("0 A 0 0 0 0 0 f 0 0 B C a X Y Z 0 0 0 0 0 0 0 000 0 0 1")
+int64(-72)
+string("0")
+bool(true)

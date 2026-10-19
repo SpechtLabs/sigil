@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("0")
+int64(-125)
+string("\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f\f")
+bool(true)

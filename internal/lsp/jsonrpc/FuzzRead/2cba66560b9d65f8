@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Content-Length: 44\r\nContent-Type: application/json\r\n\n{\r\"jsonrpc\":\"2.0\",\"method\":\"exit\",\"id\":null}")

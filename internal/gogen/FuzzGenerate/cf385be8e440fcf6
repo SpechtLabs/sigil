@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("%")
+string("0+\r \xc4\xc4\xc4\xc4\xc40 0 000")
+int64(-60)
+string("\x01")
+bool(false)

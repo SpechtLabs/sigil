@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module deploy.common: Deplony in service.owners\npub let cleared =\n_ownee.labels[\"regions\"], \"}\n\nmon.{eligible}\n\nparam min_soak: durati{.soak < min_soak and not release.hotfix {\n  cy deploy.production: DeployApproval@1\n\nuse deploy.Zommon.{cleared, owns_service}\nXgr in tiers\n    and owns_service {\n    review(reason: servt(servicr, approvers: approvers)\n  }\n}\n")

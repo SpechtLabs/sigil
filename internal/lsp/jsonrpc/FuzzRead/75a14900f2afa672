@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Content-Length:10\n\n000\x9d\x9d\x9d\u00a0  ")

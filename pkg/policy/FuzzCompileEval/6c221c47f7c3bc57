@@ -1,0 +1,4 @@
+go test fuzz v1
+string("//B\npolicy p:DeployApproval@1\nwhen false {let  B078=split(actor.roles[0], \"2\")  let owners =service.owners when \"0\" in owners {  } }")
+string("B")
+bool(true)

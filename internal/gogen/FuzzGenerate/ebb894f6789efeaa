@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("0")
+int64(-326)
+string("Ⱚ땸螉ᾈ뢠覯`Ⱚ땸螉ᾈ뢠")
+bool(true)
