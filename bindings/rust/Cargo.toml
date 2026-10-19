@@ -55,7 +55,7 @@ wasmtime = { version = "49.0.3", optional = true, default-features = false, feat
 [dev-dependencies]
 # Text format for the tiny modules the unit tests assemble.
 wasmtime = { version = "49.0.3", default-features = false, features = ["wat"] }
-rstest = "0.27.0"
+rstest = "0.28.0"
 tempfile = "3.27.0"
 tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "rt"] }
 
