@@ -67,7 +67,7 @@ jobs:
       # Exactly as examples.yaml's feature-flags job sets up mise, so this
       # saves the mise cache that job restores.
       - name: Set up mise
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: ${{ env.MISE_TOOLS }} rust k6
@@ -77,7 +77,7 @@ jobs:
       # after it. It downloads nothing and saves nothing.
       - name: Look up the cargo cache
         id: lookup
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: examples/feature-flags
           shared-key: feature-flags
@@ -87,7 +87,7 @@ jobs:
 
       - name: Restore and save the cargo cache
         if: steps.lookup.outputs.cache-hit != 'true'
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: examples/feature-flags
           shared-key: feature-flags
@@ -142,7 +142,7 @@ jobs:
 
       - name: Set up mise
         if: steps.lookup.outputs.cache-hit != 'true'
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: ${{ env.MISE_TOOLS }}
@@ -198,7 +198,7 @@ jobs:
 
       - name: Set up mise
         if: steps.lookup.outputs.cache-hit != 'true'
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: ${{ env.MISE_TOOLS }}
@@ -241,7 +241,7 @@ jobs:
 
       - name: Set up mise
         if: steps.lookup.outputs.cache-hit != 'true'
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: ${{ env.MISE_TOOLS }}
