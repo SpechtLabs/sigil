@@ -146,7 +146,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
 
       - name: Set up mise
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: go goreleaser
@@ -192,7 +192,7 @@ jobs:
           ref: ${{ env.TAG }}
 
       - name: Set up mise
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: bun node cosign
@@ -304,7 +304,7 @@ jobs:
           key: rustup-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}-${{ steps.rust.outputs.components }}
 
       - name: Set up mise
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: rust cosign
@@ -345,7 +345,7 @@ jobs:
       # Cargo.lock under this key (see the rust job in wasm.yaml).
       - name: Restore cargo registry and dependencies
         if: steps.check.outputs.publish == 'true'
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: bindings/rust
           shared-key: bindings-rust
@@ -443,7 +443,7 @@ jobs:
 
       - name: Set up mise
         if: steps.check.outputs.package == 'true'
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: bun node cosign
@@ -562,7 +562,7 @@ jobs:
 
       - name: Set up mise
         if: steps.check.outputs.with != 'none'
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: bun node
