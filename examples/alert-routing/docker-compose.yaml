@@ -59,7 +59,7 @@ services:
     restart: unless-stopped
 
   alloy:
-    image: grafana/alloy:v1.21.0
+    image: grafana/alloy:v1.21.1
     command: [run, /etc/alloy/config.alloy, --storage.path=/var/lib/alloy/data, --server.http.listen-addr=0.0.0.0:12345]
     ports:
       - "4317:4317"
@@ -82,7 +82,7 @@ services:
     restart: unless-stopped
 
   tempo:
-    image: grafana/tempo:3.1.0
+    image: grafana/tempo:3.1.1
     command: [-config.file=/etc/tempo.yaml]
     ports:
       - "3200:3200"
@@ -112,7 +112,7 @@ services:
     restart: unless-stopped
 
   pyroscope:
-    image: grafana/pyroscope:2.4.0
+    image: grafana/pyroscope:2.4.1
     command: [-config.file=/etc/pyroscope.yaml]
     ports:
       - "4040:4040"
