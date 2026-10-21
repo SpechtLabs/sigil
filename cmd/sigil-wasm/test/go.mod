@@ -2,7 +2,7 @@ module github.com/spechtlabs/sigil/cmd/sigil-wasm/test
 
 go 1.27
 
-toolchain go1.27.2
+toolchain go1.27.3
 
 // The WebAssembly module's end-to-end tests are a module of their own, so
 // the wazero runtime they drive it with never reaches the library's go.mod.
