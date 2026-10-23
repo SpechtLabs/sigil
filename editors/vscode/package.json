@@ -182,7 +182,7 @@
     "test:integration": "bun run build:integration && node test/integration/run.mjs"
   },
   "devDependencies": {
-    "@types/bun": "1.4.3",
+    "@types/bun": "1.4.4",
     "@types/node": "20.19.43",
     "@types/vscode": "1.91.0",
     "@vscode/test-electron": "3.1.0",
