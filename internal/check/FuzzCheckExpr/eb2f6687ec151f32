@@ -1,0 +1,2 @@
+go test fuzz v1
+string("a.A+Asss+aer.A+Tier+A0+Ta7")

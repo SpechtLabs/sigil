@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy :DeployApproval when!{A000000000000000:A)!000A0000000000")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Content-length:5\n\n[0000Content-Length:2\n\n00")

@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("id_id_id_id_a_id")
+int64(129)
+string("0")
+bool(false)

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module :\n\nA A A000000\n\nA000000000000!000\n\nA0000")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:DeployApproval let A=A000000000000!A\"\"let B=A000000000000!A")

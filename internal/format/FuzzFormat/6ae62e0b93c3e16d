@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A param A:A=000h when 0{when 0{A(0s)}}assert(\"\",000000000h)")

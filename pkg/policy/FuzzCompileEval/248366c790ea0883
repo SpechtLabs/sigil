@@ -1,0 +1,4 @@
+go test fuzz v1
+string("kind DeployApproval version 0 type aA0A{A:A A:A}type A0A0A0A0{A:A A:list<A>A:list<A>A:A A:A1}type A0{A:A A:list<A>A:list<A>A:A}input A:A input A:A")
+string("0")
+bool(true)

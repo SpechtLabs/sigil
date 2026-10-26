@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy p:DeployApproval@1 when\"\"in actor.teams{approve(reason:payments_sre,bake:0d0m)}")
+string("0")
+bool(true)

@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("7")
+string("A000 0000 A000A00 A0 A0000000000000 000000000000")
+int64(6)
+string("0")
+bool(true)

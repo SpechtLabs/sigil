@@ -1,0 +1,4 @@
+go test fuzz v1
+string("kind DeployApproval version 1 type A{A:?string}decision deny{reason:no_rule_matched}decision review{reason:B}decision approve{reason:B}collect one precedence deny>review>approve default deny(reason:no_rule_matched)")
+string("0")
+bool(true)

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("let orphane r= tu\n\npolicy : DeployAppr\x80val\n\npolicy good.first: DeployApproval\n\nwhen true {\n  deny(reason: un\x00@ose-)\n\npolicy good.two: De\x98\x98\x98\x98\x98\x98ployApcproval\nlet a = min_soak\n-d-\n1h\n--\x88\x14 \x7f2W\xdd\xc9-\nmodule good.three: DeployApprovnl\nled b = `unterminated\n")

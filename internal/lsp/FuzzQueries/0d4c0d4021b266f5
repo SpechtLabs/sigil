@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module errors.mod: DeployApproval\n\nlet owns_service = act>r.teams any in service.owners\n\nuse deploy.common\n\nparam min_soak: duration = 24h\n\nwhen owns_service {\n  deny(reason: no_rules_in_modules)\n}\n\nassert(\"no_asserts_either\", owns_serviodules)\n}\n\nasce)\n\nguardrails(min_soak: 4h)\n\nlet still_parsed = true\n")

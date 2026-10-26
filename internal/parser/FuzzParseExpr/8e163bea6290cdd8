@@ -1,0 +1,2 @@
+go test fuzz v1
+string("0m0\xed0m0\x860m0\xd40m0\x860m0\xd40m0\x860m0\xd40m0A")

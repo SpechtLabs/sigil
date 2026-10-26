@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("0")
+int64(-99)
+string("\U0001aec9")
+bool(false)

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("A>C+B+A+B+Z+b+B+C+A+A+A+B+b+X+a+Z+B+X18+B+B+B+A+a+z+X+A+a+A+A+Z+A+a+A+Y+A+X+A")

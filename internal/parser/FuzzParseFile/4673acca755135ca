@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:A assert(\"\",[]exclusive in outcome)assert(\"\",outcome)assert(\"\"assert(\"\",[]exclusive in outcome)assert(\"\",outcome)assert(\"\"assert(\"\",\"\")assert(\"\",\"\")")

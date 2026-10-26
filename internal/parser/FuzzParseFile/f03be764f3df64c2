@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind A version 0 0 enum A:all enum A:enum A:all enum A:policy A:A whe(00| whe(00|")

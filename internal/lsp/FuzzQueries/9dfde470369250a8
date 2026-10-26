@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy :DeployApproval (any A in+A000000:0 000000")

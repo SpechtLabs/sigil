@@ -1,0 +1,4 @@
+go test fuzz v1
+string("\"\\U0000000X\"\"\\U0000000X\"")
+string("0")
+bool(false)

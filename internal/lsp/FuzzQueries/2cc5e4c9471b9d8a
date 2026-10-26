@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:A!!!!!when{A!!!!!!!!!!!!!!0A!!!000A0 when{A!!!!!!!")

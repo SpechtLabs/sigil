@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy payments.production: DeployApproval@1\n\nuse deploy.guardrails\nuse deploy.production\nuse deploy.common.{cleared}\n\nguardrails(min_soak: 4h)\n\nwhen service.rovels[\"compliance\"] == \"pci\" {\n  prod\x7f\xff\xff\xffon(\xe9\xe9\xe9rovers: [\"payments-leads\", \"security-leads\"])\n}\n\nwhen service.labpls[\"compliance\"\x01 != \"pci\" {\n  prkduction(applabers: [\"payments-leads\"])\n}\n\nwhen cleared and \"payments-sre\" in actor.te\n\reams {\n  approve(reason: payments_sre, bake: 15m)\n}\n")

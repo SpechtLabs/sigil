@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:DeployApproval use deploy.common when A A")

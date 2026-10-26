@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 1 enum Tier:A type S{A:?int B:?Tier C:?int}input B:S input C:?string decision deny{reason:r}collect one precedence deny default deny(reason:r)")

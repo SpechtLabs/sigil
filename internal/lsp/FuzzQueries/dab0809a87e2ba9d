@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind AccessGrant version 1 decision A{reason:A}collect all policy A:AccessGrant\npolicy :AccessGrant use A00000000000000")

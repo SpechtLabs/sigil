@@ -1,0 +1,2 @@
+go test fuzz v1
+string("X+AdY+C+z+Z+ZM+Y+C+zb+C")

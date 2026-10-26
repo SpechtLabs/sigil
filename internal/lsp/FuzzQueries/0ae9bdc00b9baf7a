@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy s:DeployApproval{,0000000)use s let A=0\nassert(\"\",\"\") when 0{   let A=A0\n A0000000 \n}")
