@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.4](https://github.com/SpechtLabs/sigil/compare/v0.8.3...v0.8.4) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** update rust crates ([#342](https://github.com/SpechtLabs/sigil/issues/342)) ([3ecc83f](https://github.com/SpechtLabs/sigil/commit/3ecc83f16af7e8685b330f459905921b1d777abb))
+
 ## [0.8.3](https://github.com/SpechtLabs/sigil/compare/v0.8.2...v0.8.3) (2026-10-14)
 
 
