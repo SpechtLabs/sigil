@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind al version 1\nenum Tizr:b| tandard\nenum  nt:X\ndecision deny { reason: no_rule_matched |Ale|c_osct}\n\ndecision review {\n reason:e\n rr: list<string>\n}\ndecision approve {reason:daAd\n}collect one\nprecedence deny > review> approve\ndefault deny(reason:no_rule_matched) ")

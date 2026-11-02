@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy p:DeployApproval@1 when service.tier!=\"\xea\xba0\xf2\xaa\xeb\x9e0\xe1\x810\xea\x8f0\"{}")
+string("0")
+bool(false)

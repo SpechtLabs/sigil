@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:A w(A000 A(0 A(0 w(A000 w(A000 w(A0\"\" when (00{w(A000 w(A0\"\"000 w(A000 w(A0\"\"A0()w(A000 w(A000 w(A0\"\" w(A000 w(A000 w(A000 w(A0\"\"A0(0 w(A000 w(A000 w(A0\"\" w(A000 w(A0\"\"A0()w(A000 w(A000 w(A0\"\" w(A000 w(A000 w(A0000")
+string("0")
+bool(true)

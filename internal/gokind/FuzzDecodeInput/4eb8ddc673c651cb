@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("\"\\ud80000AAAA\\ud80000AAAA0\"")
+bool(true)

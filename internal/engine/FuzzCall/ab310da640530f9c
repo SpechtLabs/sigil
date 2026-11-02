@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"op\":\"test\",\"test_files\":[{\"pAth\":\"_test.yml\",\"sourCe\":\"\\\"0000\"}]}")

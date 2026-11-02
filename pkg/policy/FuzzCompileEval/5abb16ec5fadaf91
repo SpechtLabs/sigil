@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval let cleared=[\"\"]when cleared{when cleared{}when cleared{}}when cleared{let A=actor.teams in service.owners when cleared{}}when cleared{}when cleared{}")
+string("0")
+bool(false)

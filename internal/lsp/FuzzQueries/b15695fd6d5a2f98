@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind B version 1 decision A{reason:A}collect all policy A:A")

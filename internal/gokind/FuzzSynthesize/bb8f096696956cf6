@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 0 decision deny{A}default deny(\"A\xb0\xce\xc0Ճ00\x920A000\xf5\xe700\")")

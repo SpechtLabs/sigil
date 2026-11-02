@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy C:DeployApproval let Ac=9'let AC=2*let b10=0%181%let A=00")
+string("1")
+bool(true)

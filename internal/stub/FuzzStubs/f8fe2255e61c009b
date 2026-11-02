@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("ﻛ:\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n0")

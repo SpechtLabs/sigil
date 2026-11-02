@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("0: {calls: [{args: [00,{0B7,A,C,B,1}:]}]} ")

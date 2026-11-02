@@ -1,0 +1,3 @@
+go test fuzz v1
+string("u")
+string("\xd9\r\xb0b")

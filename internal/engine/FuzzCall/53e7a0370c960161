@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"handle\":1,\"in},\"op\":\"eval\",\"\x8fimeo\x80t_ms\":10}")

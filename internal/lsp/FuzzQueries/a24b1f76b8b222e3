@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy s:DeployApproval!use s \nassert(\"\",\"\")when[0{000000000000000}")

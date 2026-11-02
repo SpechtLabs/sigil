@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("0")
+string("\xb3\xe7\x8e0")
+int64(-9223372036854775685)
+string("0")
+bool(true)

@@ -1,0 +1,4 @@
+go test fuzz v1
+string("kind DeployApproval version 0 type A{A:map<string,string>A:map<string,string>}")
+string("0")
+bool(true)

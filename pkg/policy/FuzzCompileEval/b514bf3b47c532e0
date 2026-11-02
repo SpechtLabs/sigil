@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval when A!=\"\"and\"\"in A{when 0 in 0{when 0<0{}when A!=\"\"and\"\"in A{when 0 in 0{}}when\"\"in A{}when 0<0{}when A!=\"\"and\"\"in A{when 0 in 0{}}}when 0<0{}when A!=\"\"and\"\"in A{let A=0 in[\"\"]when 0<0{}when B!=\"\"and\"\"in B{when 0 in 0{}}}when 0<0{}when A!=\"\"and\"\"in A{when 0 in 0{}}when\"\"in A{}when 0<0{}when A!=\"\"and\"\"in A{when 0 in 0{}}}when release<A{}when A!=\"\"and\"\"in A{when 0 in 0{}}when\"\"in A{}assert(\"\",0>0)")
+string("0")
+bool(false)

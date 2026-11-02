@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind z version 1\nenum Tier: a |b decision d {reason: a |aZ0X8 t: Tier = b}collect all\ndefault d(t: a, reason: a)")
