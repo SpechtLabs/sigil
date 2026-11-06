@@ -57,7 +57,7 @@
     "yaml": "^2.9.1"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "^4.67.5",
+    "@rollup/rollup-linux-x64-gnu": "^4.68.0",
     "sass-embedded-linux-x64": "latest"
   },
   "scripts": {
