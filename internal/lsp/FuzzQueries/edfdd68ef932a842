@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy :DeployApproval param 0:duration=A! A0 release.soak+A00000000 and no+A0 {  0000A")

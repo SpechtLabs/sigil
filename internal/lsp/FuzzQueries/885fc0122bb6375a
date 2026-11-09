@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy :DeployApproval assert(outcome.approve.eAse_mA0Ager !=0")

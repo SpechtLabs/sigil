@@ -1,0 +1,2 @@
+go test fuzz v1
+string("service.by_tier has A")

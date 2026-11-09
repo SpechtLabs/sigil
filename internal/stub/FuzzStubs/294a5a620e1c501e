@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("remove_requestor:\n  calls:\n    - args: [{name: yob}, [Zer(&!9z]]\n      error:  08")

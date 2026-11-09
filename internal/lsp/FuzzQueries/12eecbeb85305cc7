@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:DeployApproval use deploy.common.{cleared}let A0=  0!  \"\"let A= \"\"in 0! )when a and 0{(}let a=  0!   ")

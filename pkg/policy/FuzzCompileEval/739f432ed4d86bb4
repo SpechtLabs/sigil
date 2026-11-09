@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval param A:A param A:list<string>=[\"\",\"\"]let A=0 let A=00 let A=0 param A:list<string>=[\"\",\"\"]let A=0 let A=0 let A=0 param A:A param A:list<string>=[\"\",\"\"]let A=0 let A=00 let A=0 param A:list<string>=[\"\",\"\"]let A=00")
+string("0")
+bool(true)

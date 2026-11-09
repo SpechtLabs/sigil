@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:DeployApproval param A:list<Tier> =[Tier.A000000]!let B=Risk.high")

@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:A0 let A=0==0==let A=0==0==whe(A0==0==let A=0==0 an(A0==0==whe(A0==0==")
+string("0")
+bool(true)

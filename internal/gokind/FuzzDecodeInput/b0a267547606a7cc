@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("{b,2y,y,Ca,8XB.y,8,z,+,A,9,C,ZXy$,a}}K")
+bool(false)

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind B version 0 policy A:A0 policy A0:A")
