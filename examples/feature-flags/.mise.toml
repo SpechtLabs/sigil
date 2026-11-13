@@ -21,7 +21,7 @@
 # The load-test suite's runner, for `k6 inspect` on the host; the suite itself
 # runs in the compose stack's k6 container. Keep in lockstep with the k6 image
 # in docker-compose.yaml.
-k6 = "2.3.0"
+k6 = "2.4.0"
 
 # Where `up` points: the API and the Grafana dashboard, at the ports
 # docker-compose.yaml publishes.
