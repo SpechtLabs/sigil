@@ -61,7 +61,7 @@ services:
     restart: unless-stopped
 
   alloy:
-    image: grafana/alloy:v1.21.3
+    image: grafana/alloy:v1.22.0
     command: [run, /etc/alloy/config.alloy, --storage.path=/var/lib/alloy/data, --server.http.listen-addr=0.0.0.0:12345]
     ports:
       - "4317:4317"
@@ -104,7 +104,7 @@ services:
     restart: unless-stopped
 
   mimir:
-    image: grafana/mimir:3.2.4
+    image: grafana/mimir:3.2.5
     command: [-config.file=/etc/mimir.yaml]
     ports:
       - "9009:9009"
@@ -127,7 +127,7 @@ services:
 
   # Runs only when requested with `mise run loadtest` or `docker compose run`.
   k6:
-    image: grafana/k6:2.3.0
+    image: grafana/k6:2.4.0
     profiles: [loadtest]
     environment:
       BASE_URL: http://featuregate:8080
