@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module :DeployApproval (000!any in A0()all in A00000000000")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("//\n\n//\n\n//\npolicy A:A when 0{A()\n//\n\n//\n}//\n\n//\nmodule A:A")

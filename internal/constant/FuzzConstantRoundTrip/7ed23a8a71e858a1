@@ -1,0 +1,5 @@
+go test fuzz v1
+int64(63)
+float64(-278.2986111111111)
+string("\U000dd8a2\U000d18a2\U000dd751\U000dd8a2\U000d18a2\U000d175d\U000d175d\U000d175d")
+bool(false)

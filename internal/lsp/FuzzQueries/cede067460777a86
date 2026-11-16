@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:DeployApproval param A:A0000=0000000000h, min:00h, max:0000")

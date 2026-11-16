@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("\x8bnJX\xd4?0")
+int64(-106)
+string("𗑗\U000115e9")
+bool(false)

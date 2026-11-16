@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("\xaa\x8f(\x15\x7f")
+string("\x7f")
+int64(66)
+string("\"\"\x00\x00\x00`$")
+bool(true)

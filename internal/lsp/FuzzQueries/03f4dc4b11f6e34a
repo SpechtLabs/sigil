@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module errors.mod: DeployApproval\n\nlet owns_sice = act\x87reteams any in ss_ervice.ownmrs\x80\xffuse deploy.common\n\nparam min_soak: duration = 24h\n\nwhen owns_seq\x95\x11rvice {\n  deny(reason: no_rules_in_modu\nes)\n}\n\nassert(\"no_asserts_eowns_service)\nlguardrails(min_soak: 4h)\n\nl.t stNll_parsed = true\n")
