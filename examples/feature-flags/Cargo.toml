@@ -26,7 +26,7 @@ e2e = []
 
 [dependencies]
 axum = "0.8.9"
-clap = { version = "4.6.7", features = ["derive"] }
+clap = { version = "4.6.8", features = ["derive"] }
 http-body-util = "0.1.5"
 opentelemetry = "0.33.1"
 opentelemetry-otlp = { version = "0.33.1", features = ["grpc-tonic", "trace"] }
