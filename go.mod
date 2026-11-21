@@ -6,16 +6,16 @@ toolchain go1.27.4
 
 require (
 	charm.land/fang/v2 v2.0.1
-	charm.land/lipgloss/v2 v2.0.6
-	github.com/aymanbagabas/go-udiff v0.4.1
+	charm.land/lipgloss/v2 v2.1.1
+	github.com/aymanbagabas/go-udiff v0.4.2
 	github.com/charmbracelet/colorprofile v0.4.3
-	github.com/charmbracelet/x/ansi v0.11.9
+	github.com/charmbracelet/x/ansi v0.11.10
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/sierrasoftworks/humane-errors-go v0.0.0-20260709190713-8d6350c8d11d
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.10
-	go.yaml.in/yaml/v3 v3.0.5
+	github.com/spf13/pflag v1.1.0
+	go.yaml.in/yaml/v3 v3.0.6
 )
 
 require (
