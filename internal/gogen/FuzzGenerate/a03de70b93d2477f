@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("02111")
+string("\xe5")
+int64(-9223372036854775698)
+string("0")
+bool(false)

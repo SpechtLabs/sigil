@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy :DeployApproval let (filter A in service>A:00000 A00000000000000")

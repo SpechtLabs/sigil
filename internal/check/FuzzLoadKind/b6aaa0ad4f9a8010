@@ -1,0 +1,2 @@
+go test fuzz v1
+string("\"\\xX0\"\"\\x0X\"\"\\xX0\"\"\\x0X\"\"\\x0X\"\"\\xX0\"\"\\x0X\"\"\\x0X\"")

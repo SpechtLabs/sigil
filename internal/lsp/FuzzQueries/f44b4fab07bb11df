@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module :DeployApproval (0000(0(\"000000000\\b0000000000\" A\"0\") al) .A000000000")

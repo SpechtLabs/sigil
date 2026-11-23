@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy :DeployApproval\"\"review(reason:,00000\"000000000000000000000000000000000000000000000000000000000")

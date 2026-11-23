@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Content-Length:10\n\n[\x8700000000Content-Length:10\n\n[\xfa00000000Content-Length:1\n\n\x880")

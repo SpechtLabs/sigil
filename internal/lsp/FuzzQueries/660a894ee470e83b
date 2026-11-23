@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:DeployApproval let A=A000000.A and A000000.A0000!= A000.A000 let B=filter A in service.owners: 00!= A0000.A000 ")

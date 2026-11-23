@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module:DeployApproval actor.A0000 service.A\"\"actor.A0000")

@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("1")
+string("\xdbD\x88=H\r\xdcm")
+int64(8)
+string("\"")
+bool(true)

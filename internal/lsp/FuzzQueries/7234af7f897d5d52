@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy :DeployApproval(filter A in service.wners:00000 actor.Ame A00000\"0000000000000000000000000000000000000")

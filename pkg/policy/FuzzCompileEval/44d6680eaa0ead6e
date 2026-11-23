@@ -1,0 +1,4 @@
+go test fuzz v1
+string("module B:A module C:A module A:A module X:A")
+string("0")
+bool(false)

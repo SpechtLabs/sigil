@@ -1,0 +1,4 @@
+go test fuzz v1
+string("kind DeployApproval version 0 type A0{A:A A:list<A>A:list<A>A:A A:A}type B{A:A A:A A:A}type A0{A::list<A>A:list<A>A:A A:A}type B{A:A A:A A:A}type A0{A:A A:list<A>A:list<A>A:A A:A}type A0{A:A A:list<A>A:list<A>A:A}type B{A:A A:A A:A}type A0{A:A A:list<A>A:list<A>A:A A:A}type A0{A:A A:list<A>A:list<A>A:A A:A}type A0{A:A A:list<A>A:list<A>A:A}fn A()->A type B{A:A A:A A:A}type A0{A:A A:list<A>A:list<A>A:A A:A}type A0{A:A A:list<A>A:list<A>A:A A:AA A:list<A>A:list<A>A:A A:A}type A0{A:A A:list<A>A:list<A>A:A}type B{A:A A:A A:A}type A0{A:A A:list<A>A:list<A>A:A A:A}type A0{A:A A:list<A>A:list<A>A:A A:A}type A0{A:A A:list<A>A:list<A>A:A}fn A()->A type B{A:A A:A A:A}type A0{A:A A:list<A>A:list<A>A:A A:A}type A0{A:A A:list<A>A:list<A>A:A A:A}type A0{A:A A:list<A>A:list<A>A:A}input A:A type A0{A:A A:list<A>A:list<A>A:A}")
+string("\xc1\x03\xe9@]U\x93j\x98Ǡ\xc1\xfb!Eд\x0e\xb0\x84w\x98z\xed\x12\xd5\fN\x00W\xbd40")
+bool(false)

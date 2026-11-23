@@ -1,0 +1,3 @@
+go test fuzz v1
+string("0da 0da 0da 0sa 0da 0da 0sa 0da")
+string("0")

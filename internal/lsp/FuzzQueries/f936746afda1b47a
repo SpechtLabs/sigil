@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy :use deploy.common.{A 0000000000000)use deploy.common.{A 0 A000 000 A000 A000000000 000000 A 000")

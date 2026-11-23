@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy A:DeployApproval assert(\"\",approve.A00000000000000)approve(reason:A00000000000000)0")

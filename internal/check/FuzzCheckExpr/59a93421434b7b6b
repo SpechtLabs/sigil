@@ -1,0 +1,2 @@
+go test fuzz v1
+string("AU1+B+Y+A+Z+Z+A+A+z+B+A+A+c+A+A+Y+X+a+B+A+a+A+Z+A+A+A+A+B+Z+Y+A+A+C+A+a")

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind A version 1 enum Tier:A type Outer{A:map<int,float>B:?Inner A0:Tier}type Inner{A:int}input B:Outer input C:string fn X(int)->list<string>decision deny{reason:no_rule_matched}decision allow{reason:A A:duration}collect one precedence deny>allow default deny(reason:no_rule_matched)")

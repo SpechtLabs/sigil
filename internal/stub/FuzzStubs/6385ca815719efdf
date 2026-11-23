@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("0:\n calls:\n    - args: [[A]]\n      returns: [As: [[A, arg]:    -A]]\n1:\n 00rns: la00000re00000\n\n2:\n returnsS 0")

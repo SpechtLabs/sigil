@@ -1,0 +1,4 @@
+go test fuzz v1
+string("policy A:DeployApproval when 0{let A=00 when 0{when A.A{}when B.A{when B.A!=B.A{}when B.A and B.A{when B.A{}when B.A{}}}when B.A{when B.A!=B.A{when B.A{}when B.A{}when B.A{when B.A!=B.A{}}}}when B.A and B.A{when B.A{}when B.A{}}let C=B.A!=B.A}}")
+string("0")
+bool(true)

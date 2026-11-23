@@ -1,0 +1,2 @@
+go test fuzz v1
+string("kind la version 1\nenum Tier:standard\nenum Plan:ra\ntype Rele2se{}\ntype ServicX {c1: Tier\n}\ntype Actor {}\ninput rent: string\nfn t(string,string) ->list<string>fn erf(string) -> Tier\n\ndecision deny{reason:no_rule_matched|x |eligl|s_ozb\n}decision review { reason:r| ce_we aprov:list<string>}decision approve {reason:ox7h er:Tier= standard}collect one\nprecedence deny>review> approve default deny(reason:no_rule_matched) ")

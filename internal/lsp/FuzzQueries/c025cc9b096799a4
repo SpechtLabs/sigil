@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy :use .{as A00000000 as A0000")

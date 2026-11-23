@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy :DeployApproval assert(approve.payments_sre .A0000000000000")

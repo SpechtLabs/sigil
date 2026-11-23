@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind AccessGrant version 1 type Actor{A:list<string>}input A:Actor decision B{reason:A}collect all\npolicy :AccessGrant when 0000A")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("policy :DeployApproval assert(all A in outcome.review:  and00000000000")

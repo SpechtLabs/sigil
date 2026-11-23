@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("module A:DeployApproval let A=B e.A0000000000[\"0000000000000000000000000000000000000000\nB0000")

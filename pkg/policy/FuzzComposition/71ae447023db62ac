@@ -1,0 +1,4 @@
+go test fuzz v1
+string("\xb4\xa2\x15\x15s\xd0's\xd0')")
+bool(false)
+bool(false)

@@ -1,0 +1,3 @@
+go test fuzz v1
+string("A>A+Y+8+BA+y+A+A+A+A+b+A+A+C")
+int64(612)
