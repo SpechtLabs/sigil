@@ -45,7 +45,7 @@
     "@codemirror/language": "^6.13.1",
     "@codemirror/lint": "^6.9.8",
     "@codemirror/state": "^6.7.6",
-    "@codemirror/view": "^6.44.1",
+    "@codemirror/view": "^6.44.2",
     "@lezer/highlight": "^1.2.5",
     "@spechtlabs/docs-kit": "github:SpechtLabs/docs-kit#v0.1.1",
     "@spechtlabs/sigil": "0.8.3",
