@@ -11,7 +11,7 @@
         "@codemirror/language": "^6.13.1",
         "@codemirror/lint": "^6.9.8",
         "@codemirror/state": "^6.7.6",
-        "@codemirror/view": "^6.44.1",
+        "@codemirror/view": "^6.44.2",
         "@lezer/highlight": "^1.2.5",
         "@spechtlabs/docs-kit": "github:SpechtLabs/docs-kit#v0.1.1",
         "@spechtlabs/sigil": "0.8.3",
@@ -80,7 +80,7 @@
 
     "@codemirror/streamparser": ["@codemirror/streamparser@6.0.0", "", {}, "sha512-JTFPF6xrfjt0mnfGPgzcLiMwYmvIyNaoizp8BYzv8FE8KrT6GBGDZ190rtt+O7Wke3gG/MFHyiY9YGNeimof4w=="],
 
-    "@codemirror/view": ["@codemirror/view@6.44.1", "", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-tRpGVUboI0Tehkhk4y0loEuU6O+y9EvXWFTM9gTRSriu+OIHaP9cEbyYUZ3wIRx/1F/BKRPSTF3ihiRiDA84ZQ=="],
+    "@codemirror/view": ["@codemirror/view@6.44.2", "", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-7yxTh7+iCbxIV9QCJAVlkYjWV/TCHD0zmLIaIR3NOb47YpCWwVUuFUnHwkRC3z+8cXNgeJzrCy4QtlR3fVt5kg=="],
 
     "@docsearch/css": ["@docsearch/css@5.2.0", "", {}, "sha512-KqJjLYMniiiKgZFdK+f7LTy3ZTL5r13buvxagNjDnYVGfa0NR+bb9BnjZq3FTl3VvsmkeW3aSr9AGIZsiQXY/A=="],
 
