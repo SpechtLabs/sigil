@@ -31,7 +31,7 @@ jobs:
       # Only the two tools the grammar's tests run, like go.yaml's macOS job:
       # the rest of go.yaml's MISE_TOOLS would only slow this job down.
       - name: Set up mise
-        uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
+        uses: jdx/mise-action@3277a0f272901982804abc53abd93520db809be4 # v5.4.0
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: go aqua:tree-sitter/tree-sitter
@@ -67,7 +67,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up mise
-        uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
+        uses: jdx/mise-action@3277a0f272901982804abc53abd93520db809be4 # v5.4.0
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: go bun node biome
@@ -144,7 +144,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up mise
-        uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
+        uses: jdx/mise-action@3277a0f272901982804abc53abd93520db809be4 # v5.4.0
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: bun node
