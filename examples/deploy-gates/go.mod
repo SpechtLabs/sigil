@@ -8,20 +8,20 @@ go 1.27.1
 replace github.com/spechtlabs/sigil => ../../
 
 require (
-	github.com/gin-contrib/zap v1.1.10
+	github.com/gin-contrib/zap v1.1.11
 	github.com/gin-gonic/gin v1.12.0
-	github.com/grafana/pyroscope-go v1.4.3
-	github.com/onsi/ginkgo/v2 v2.33.1
+	github.com/grafana/pyroscope-go v1.5.0
+	github.com/onsi/ginkgo/v2 v2.34.0
 	github.com/onsi/gomega v1.44.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
-	github.com/prometheus/common v0.73.1
+	github.com/prometheus/common v0.74.0
 	github.com/sierrasoftworks/humane-errors-go v0.0.0-20260820132314-9a466da5e0f0
 	github.com/spechtlabs/go-otel-utils/otelprovider v0.2.3
 	github.com/spechtlabs/go-otel-utils/otelzap v0.2.3
 	github.com/spechtlabs/sigil v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.10
+	github.com/spf13/pflag v1.1.0
 	github.com/spf13/viper v1.21.0
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.72.0
 	go.opentelemetry.io/otel v1.47.0
@@ -87,7 +87,7 @@ require (
 	github.com/muesli/mango-pflag v0.2.0 // indirect
 	github.com/muesli/roff v0.1.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/pandatix/go-abnf v0.5.3 // indirect
+	github.com/pandatix/go-abnf v0.5.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
